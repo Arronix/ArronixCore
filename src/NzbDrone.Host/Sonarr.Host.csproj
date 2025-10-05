@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 	<PropertyGroup>
-		<TargetFrameworks>net8.0</TargetFrameworks>
+		<TargetFrameworks>net9.0</TargetFrameworks>
 		<OutputType>Library</OutputType>
 	</PropertyGroup>
 	<ItemGroup>
@@ -11,7 +11,7 @@
 		</PackageReference>
 		<PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="8.0.0" />
 		<PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />
 		<PackageReference Include="DryIoc.dll" Version="5.4.3" />
 		<PackageReference Include="DryIoc.Microsoft.DependencyInjection" Version="6.2.0" />
 		<PackageReference Remove="StyleCop.Analyzers" />
