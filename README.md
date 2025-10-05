@@ -1,85 +1,147 @@
-# <img width="24px" src="./Logo/256.png" alt="Sonarr"></img> Sonarr
+# <img width="24px" src="./Logo/Arronix.svg" alt="Arronix"/> Arronix — A Single Host, Many Media Kinds
 
-[![Translated](https://translate.servarr.com/widget/servarr/sonarr/svg-badge.svg)](https://translate.servarr.com/engage/servarr/)
-[![Backers on Open Collective](https://opencollective.com/Sonarr/backers/badge.svg)](#backers)
-[![Sponsors on Open Collective](https://opencollective.com/Sonarr/sponsors/badge.svg)](#sponsors)
-[![Mega Sponsors on Open Collective](https://opencollective.com/Sonarr/megasponsors/badge.svg)](#mega-sponsors)
+Arronix is a **modular, extensible media automation platform**. It enables different media types—TV, movies, music, books, and more—to operate as plugins on a shared, unified core.  
+The project began as an architectural restructuring of the Sonarr v5 codebase, evolving the *-arr* family into a single, coherent framework.
 
-Sonarr is a PVR for Usenet and BitTorrent users. It can monitor multiple RSS feeds for new episodes of your favorite shows and will grab, sort and rename them. It can also be configured to automatically upgrade the quality of files already downloaded when a better quality format becomes available.
+## Objectives
 
-## Getting Started
+- Replace fragmented *-arr* applications with one shared architecture.  
+- Separate **core orchestration** (queueing, scheduling, indexers, quality logic) from **media-specific logic**.  
+- Provide a **plugin interface** that lets developers add new media kinds without modifying the core.  
+- Maintain the usability and reliability of Sonarr while modernising its design.
 
-- [Download/Installation](https://sonarr.tv/#downloads-v3)
-- [FAQ](https://wiki.servarr.com/sonarr/faq)
-- [Wiki](https://wiki.servarr.com/Sonarr)
-- [API Documentation](https://sonarr.tv/docs/api)
-- [Donate](https://sonarr.tv/donate)
+## Why
 
-## Support
+- **Stop forking:** unify Sonarr/Radarr/Lidarr/etc. under one scheduler, queue, and API.  
+- **Safe extensibility:** use contracts + manifests, not copy-paste.  
+- **Operational simplicity:** one service, many libraries, consistent policies.
 
-Note: GitHub Issues are for Bugs and Feature Requests Only
+## Architecture Overview
 
-- [Forums](https://forums.sonarr.tv/)
-- [Discord](https://discord.gg/M6BvZn5)
-- [GitHub - Bugs and Feature Requests Only](https://github.com/Sonarr/Sonarr/issues)
-- [IRC](https://web.libera.chat/?channels=#sonarr)
-- [Reddit](https://www.reddit.com/r/sonarr)
-- [Wiki](https://wiki.servarr.com/sonarr)
+```text
+Core
+ ├── Abstractions
+ ├── Host Runtime
+ ├── Plugin Loader
+ └── Storage Layer
+Plugins
+ ├── TV
+ ├── Movies
+ ├── Music
+ └── Books
+```
 
-## Features
+Each plugin contributes metadata models, parsing rules, quality and import policies, and UI tokens that integrate seamlessly with the shared runtime.
 
-### Current Features
+## High-Level Architecture
 
-- Support for major platforms: Windows, Linux, macOS, Raspberry Pi, etc.
-- Automatically detects new episodes
-- Can scan your existing library and download any missing episodes
-- Can watch for better quality of the episodes you already have and do an automatic upgrade. _eg. from DVD to Blu-Ray_
-- Automatic failed download handling will try another release if one fails
-- Manual search so you can pick any release or to see why a release was not downloaded automatically
-- Fully configurable episode renaming
-- Full integration with SABnzbd and NZBGet
-- Full integration with Kodi, Plex (notification, library update, metadata)
-- Full support for specials and multi-episode releases
-- And a beautiful UI
+- **Arronix.Abstractions:** stable contracts (interfaces/DTOs) for providers, policies, and jobs.  
+- **Arronix.Host:** runtime — DI container, plugin loader (`AssemblyLoadContext`), schedulers, queue, HTTP API, health, telemetry.  
+- **Plugins** (`/plugins/*`): each implements `IPluginModule` and ships a `plugin.json` manifest declaring capabilities, tokens, identifiers, and policy graphs.  
+- **Storage:** polymorphic media model behind an `IMediaStore` façade; plugins own their specific tables, Core stores cross-media relations.  
+- **Policies:** parsing, matching, quality, import, and naming are **policy chains** provided by plugins; Core executes them and enforces validation.
+
+```mermaid
+flowchart LR
+  subgraph Host
+    Core[Arronix.Host] --> Sched[Scheduler/Queue]
+    Core --> API[HTTP API]
+    Core --> Health[Health/Telemetry]
+    Core --> Store[IMediaStore]
+    Core --> Reg[Plugin Registry]
+  end
+
+  subgraph Abstractions
+    A[Arronix.Abstractions]
+  end
+
+  subgraph Plugins
+    TV[Plugin: TV]
+    MV[Plugin: Movies]
+    MU[Plugin: Music]
+  end
+
+  A -. contracts .- Core
+  A -. contracts .- TV
+  A -. contracts .- MV
+  A -. contracts .- MU
+  TV --> Reg
+  MV --> Reg
+  MU --> Reg
+  Core --> Store
+```
+
+## 📦 Plugin Manifest (v0)
+
+```json
+{
+  "id": "tv",
+  "name": "TV Shows",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.1 <1.0" },
+  "identifiers": ["tvdb","tmdb"],
+  "capabilities": ["indexing","metadata","parsing","renaming","import"],
+  "tokens": ["{SeriesTitle}","{SeasonNumber}","{EpisodeNumber}","{EpisodeTitle}"],
+  "policies": {
+    "parsing": ["SceneNumbering","MultiEpisode","YearDisambiguation"],
+    "matching": ["ExactSeriesMatch","SeasonWindow","AirdateGuard"],
+    "quality": ["SourceTier","Codec/BitDepth","Cutoff"],
+    "import": ["LibraryLayout","Dup/UpgradeRules"]
+  }
+}
+```
+
+## 🧠 Design Principles
+
+- **Media-agnostic Core:** no TV/Movie types in Core.  
+- **Stable Contracts:** versioned abstractions; plugins pin to ranges.  
+- **Config-First:** manifests define tokens + policy graphs; code fills pragmatic gaps.  
+- **Single Scheduler:** plugins register jobs; host coordinates.  
+- **Testable by Design:** golden tests for parsing/renaming; contract tests for providers.
+
+## 🛠️ Getting Started
+
+Arronix is still in early development.  
+To experiment locally:
+
+```bash
+git clone https://github.com/Arronix/ArronixCore.git
+cd ArronixCore
+dotnet build
+dotnet run
+```
+
+More detailed setup and contribution guides will arrive as the architecture stabilises.
+
+## Initial Work Plan
+
+1. Core Abstractions & Contracts (#1)  
+2. Plugin Loader & Manifests (#2)  
+3. Extract TV into Plugin (#3)  
+4. Storage Model & Migration (#4)  
+5. Policy Pipelines (#5)
+
+## Migration Notes (v4/v5 → Core)
+
+- **Database:** migrated to polymorphic model via tool (`tools/migrate-v4-to-core`).  
+- **API:** initial compatibility layer for Sonarr TV endpoints; new media-agnostic endpoints added over time.  
+- **Paths/Naming:** validated against plugin-declared token sets.
 
 ## Contributing
 
-### Development
+Arronix is an open-source community project.  
+Contributions are welcome across all areas—architecture, plugins, UI, documentation, and testing.
 
-This project exists thanks to all the people who contribute. [Contribute](CONTRIBUTING.md).
+> This repository currently tracks the refactor from Sonarr v5 (`sonarr-v5-develop` branch) toward the new modular core.  
+> Please open issues for architectural discussions or early plugin proposals.
 
-<a href="https://github.com/Sonarr/Sonarr/graphs/contributors"><img src="https://opencollective.com/Sonarr/contributors.svg?width=890&button=false" /></a>
+## License & Acknowledgements
 
-### Supporters
+- Licensed under the **GNU GPL v3**.  
+- Portions of the code originated from **Sonarr v5**, © 2010–2025 the Sonarr developers, used under the GPLv3 license.  
+- Arronix is an independent project unaffiliated with the original Sonarr or Servarr teams.
 
-This project would not be possible without the support of our users and software providers.
-[**Become a sponsor or backer**](https://opencollective.com/sonarr) to help us out!
+---
 
-#### Mega Sponsors
-
-[![Sponsors](https://opencollective.com/sonarr/tiers/mega-sponsor.svg?width=890)](https://opencollective.com/sonarr/contribute/mega-sponsor-21443/checkout)
-
-#### Sponsors
-
-[![Flexible Sponsors](https://opencollective.com/sonarr/sponsors.svg?width=890)](https://opencollective.com/sonarr/contribute/sponsor-21457/checkout)
-
-#### Backers
-
-[![Backers](https://opencollective.com/sonarr/backers.svg?width=890)](https://opencollective.com/sonarr/contribute/backer-21442/checkout)
-
-#### JetBrains
-
-Thank you to [<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/jetbrains.png" alt="JetBrains" width="96">](http://www.jetbrains.com/) for providing us with free licenses to their great tools
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/TeamCity.png" alt="TeamCity" width="64">](http://www.jetbrains.com/teamcity/)
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/ReSharper.png" alt="ReSharper" width="64">](http://www.jetbrains.com/resharper/)
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/dotTrace.png" alt="dotTrace" width="64">](http://www.jetbrains.com/dottrace/)
-
-[<img src="https://resources.jetbrains.com/storage/products/company/brand/logos/Rider.png" alt="Rider" width="64">](http://www.jetbrains.com/rider/)
-
-### Licenses
-
-- [GNU GPL v3](http://www.gnu.org/licenses/gpl.html)
-- Copyright 2010-2025
+### © 2025 Arronix Contributors  
+Unified media automation for every kind of signal.
