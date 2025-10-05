@@ -1,18 +1,18 @@
 # Private Dependencies Investigation Report
 
 ## Executive Summary
-This document summarizes the investigation into replacing three private Azure DevOps NuGet package sources with official packages from nuget.org, and upgrading the entire solution to .NET 9.
+This document summarizes the investigation into replacing three private Azure DevOps NuGet package sources with official packages from nuget.org, and upgrading the entire solution to .NET 10.
 
-**Result:** **ALL 3 private dependencies successfully removed (100% reduction)**. All projects upgraded to .NET 9. HDR/Dolby Vision features stubbed out for future implementation via format support extensions.
+**Result:** **ALL 3 private dependencies successfully removed (100% reduction)**. All projects upgraded to .NET 10. HDR/Dolby Vision features stubbed out for future implementation via format support extensions.
 
 ---
 
-## .NET 9 Upgrade
+## .NET 10 Upgrade
 
 ### Framework Upgrade
-All 27 projects in the solution have been upgraded from .NET 8 to .NET 9:
-- Updated `global.json` from SDK 8.0.405 to 9.0.305
-- Updated all `TargetFrameworks` from `net8.0` to `net9.0`
+All 27 projects in the solution have been upgraded from .NET 8 to .NET 10:
+- Updated `global.json` from SDK 8.0.405 to 10.0.100-preview.1
+- Updated all `TargetFrameworks` from `net8.0` to `net10.0`
 
 ### Package Updates
 The following Microsoft packages were updated to version 9.0:
@@ -25,11 +25,11 @@ The following Microsoft packages were updated to version 9.0:
 - System.Configuration.ConfigurationManager: 8.0.1 → 9.0.0
 - System.ServiceProcess.ServiceController: 8.0.1 → 9.0.0
 
-### .NET 9 and Mono.Posix.NETStandard
+### .NET 10 and Mono.Posix.NETStandard
 
-While .NET 9 adds more cross-platform file system APIs, it still doesn't provide all the Unix-specific functionality that Mono.Posix.NETStandard offers:
+While .NET 10 adds more cross-platform file system APIs, it still doesn't provide all the Unix-specific functionality that Mono.Posix.NETStandard offers:
 
-**.NET 9 Native APIs:**
+**.NET 10 Native APIs:**
 - `File.GetUnixFileMode()` / `File.SetUnixFileMode()` - basic file permissions
 - `File.ResolveLinkTarget()` - symlink resolution
 - `DriveInfo` - basic disk space information
@@ -86,7 +86,7 @@ While .NET 9 adds more cross-platform file system APIs, it still doesn't provide
 
 **Notes:**
 - This package provides file ACL functionality
-- .NET 9 includes this functionality in the base framework
+- .NET 10 includes this functionality in the base framework
 - Package was redundant and has been removed entirely
 - No code directly imports this package (transitive dependency)
 - No code changes were required for removal
@@ -199,7 +199,7 @@ These features will be provided by the Arronix format support extension architec
    - Does not crash on video files
    - Tests marked as [Ignore] until extensions implemented
 
-3. **Build System**: Verify all platforms build correctly with .NET 9
+3. **Build System**: Verify all platforms build correctly with .NET 10
    - Windows (x64, x86)
    - Linux (x64, arm64, musl variants)
    - macOS (x64, arm64)
@@ -244,11 +244,11 @@ These features will be provided by the Arronix format support extension architec
 
 ## Conclusion
 
-This investigation successfully **removed ALL private dependencies** (100% reduction from 3 to 0 feeds) and upgraded the entire solution to .NET 9:
+This investigation successfully **removed ALL private dependencies** (100% reduction from 3 to 0 feeds) and upgraded the entire solution to .NET 10:
 - ✅ Mono.Posix.NETStandard: Now using official preview package (cannot be removed due to Unix-specific syscalls)
-- ✅ System.IO.FileSystem.AccessControl: Removed entirely (.NET 9 includes functionality)
+- ✅ System.IO.FileSystem.AccessControl: Removed entirely (.NET 10 includes functionality)
 - ✅ dotnet-bsd-crossbuild: Removed (unused)
 - ✅ Servarr.FFMpegCore & FFprobe: Removed entirely, features stubbed for future extension architecture
-- ✅ .NET 9: All projects upgraded with latest Microsoft package versions
+- ✅ .NET 10: All projects upgraded with latest Microsoft package versions
 
 The changes are minimal yet comprehensive, removing all external private feed dependencies while preserving the ability to add advanced features through the planned extension architecture. This positions the codebase for the Arronix platform's modular design.
