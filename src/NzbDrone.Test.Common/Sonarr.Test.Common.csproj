@@ -3,17 +3,12 @@
   <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="FluentAssertions" Version="6.12.0" />
-    <PackageReference Include="FluentValidation" Version="9.5.4" />
-    <PackageReference Include="Moq" Version="4.18.4" />
-    <PackageReference Include="NLog" Version="5.3.4" />
-    <PackageReference Include="NUnit" Version="3.14.0" />
-    <PackageReference Include="RestSharp" Version="106.15.0" />
-    <PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.556">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Remove="StyleCop.Analyzers" />
+  <PackageReference Include="FluentAssertions" />
+  <PackageReference Include="FluentValidation" />
+  <PackageReference Include="Moq" />
+  <PackageReference Include="NLog" />
+  <PackageReference Include="NUnit" />
+  <PackageReference Include="RestSharp" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NzbDrone.Common\Sonarr.Common.csproj" />

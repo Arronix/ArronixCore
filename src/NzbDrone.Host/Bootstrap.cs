@@ -4,7 +4,6 @@ using System.IO;
 using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using DryIoc;
 using DryIoc.Microsoft.DependencyInjection;
 using Microsoft.AspNetCore.Hosting;
@@ -53,7 +52,7 @@ namespace NzbDrone.Host
 
                 var startupContext = new StartupContext(args);
 
-                Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+                // Removed CodePagesEncodingProvider registration: relying on built-in UTF-8/Unicode encodings only.
 
                 var appMode = GetApplicationMode(startupContext);
                 var config = GetConfiguration(startupContext);
@@ -286,7 +285,8 @@ namespace NzbDrone.Host
                 }
                 else if (type == X509ContentType.Pkcs12)
                 {
-                    certificate = new X509Certificate2(cert, password, X509KeyStorageFlags.DefaultKeySet);
+                    // Modern API replaces obsolete constructor
+                    certificate = X509CertificateLoader.LoadPkcs12FromFile(cert, password);
                 }
                 else
                 {

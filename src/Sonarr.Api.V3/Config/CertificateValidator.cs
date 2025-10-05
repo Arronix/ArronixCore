@@ -47,12 +47,14 @@ namespace Sonarr.Api.V3.Config
                 }
                 else if (type == X509ContentType.Pkcs12)
                 {
-                    new X509Certificate2(certPath, certPassword, X509KeyStorageFlags.DefaultKeySet);
+                    // SYSLIB0057: Use X509CertificateLoader for Pkcs12
+                    X509CertificateLoader.LoadPkcs12FromFile(certPath, certPassword);
                 }
                 else
                 {
                     Logger.Debug("Invalid SSL certificate file. Unexpected certificate type: {0}", type);
                     context.MessageFormatter.AppendArgument("passwordOrKey", "password");
+                    context.MessageFormatter.AppendArgument("message", "Unexpected certificate type");
 
                     return false;
                 }
