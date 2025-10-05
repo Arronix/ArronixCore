@@ -16,9 +16,11 @@ Core abstractions and contracts for the Arronix media platform.
 ## Package Contents
 
 ### Identity Types
+
 - `MediaKindId`, `MediaItemId`, `ReleaseId`
 
 ### Core Interfaces
+
 - `IMediaKind` - Plugin identity and capabilities
 - `IMediaIdResolver` - External ID to internal ID mapping
 - `IReleaseParser` - Release name parsing
@@ -28,15 +30,18 @@ Core abstractions and contracts for the Arronix media platform.
 - `ILibraryLayout` - Folder structure generation
 
 ### Provider Interfaces
+
 - `IMetadataProvider` - External metadata sources
 - `IIndexerProvider` - Release indexers
 - `IDownloadClientAdapter` - Download client integration
 
 ### Scheduling
+
 - `IScheduledJob` - Background task contract
 - `IBackgroundTaskRegistry` - Job registration
 
 ### DTOs
+
 - Release: `ReleaseCandidate`, `ParsedRelease`
 - Decisions: `MatchDecision`, `ImportDecision`
 - Quality: `QualityTier`, `CutoffPolicy`
@@ -44,6 +49,7 @@ Core abstractions and contracts for the Arronix media platform.
 - Language support
 
 ### Health & Errors
+
 - `HealthCheck`, `CoreErrorCode`
 - Health status and severity enums
 

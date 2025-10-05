@@ -119,6 +119,7 @@ The abstractions layer provides the foundational contracts that enable media-agn
   - `CoreErrorCode` enumeration
 
 **Documentation:**
+
 - API Stability Policy: [`docs/contracts/stability.md`](../docs/contracts/stability.md)
 - Contract tests: `src/Arronix.Abstractions.Tests/`
 
