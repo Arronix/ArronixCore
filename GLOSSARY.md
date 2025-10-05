@@ -43,4 +43,3 @@ Core terminology used across the Arronix platform. All definitions are intention
 | Quality Evaluation | Assessment stage assigning rank or tier based on source, resolution, codec, bit depth, and configured cutoffs. |
 | Upgrade Rule | A rule governing whether an existing imported item can be replaced by a higher-quality candidate. |
 | Library Layout Policy | A set of rules governing directory/structure decisions when placing media on disk. |
-

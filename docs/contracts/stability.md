@@ -37,6 +37,7 @@ APIs marked without any special attributes are considered **stable** and follow 
 - **Bug fixes** that don't change signatures occur at PATCH version boundaries
 
 Current stable APIs include:
+
 - All identity types (`MediaKindId`, `MediaItemId`, `ReleaseId`)
 - Core interfaces (`IMediaKind`, `IMediaIdResolver`, `IReleaseParser`, etc.)
 - DTOs and enums
@@ -60,6 +61,7 @@ When a stable API needs to be removed or changed in a breaking way:
 3. **Removal**: The deprecated API is removed in the next MAJOR version
 
 Example:
+
 ```csharp
 [Obsolete("Use NewMethod instead. This will be removed in version 2.0.0")]
 public void OldMethod() { }
