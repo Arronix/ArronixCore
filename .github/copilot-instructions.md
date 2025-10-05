@@ -175,8 +175,8 @@ Each plugin requires a `plugin.json` with:
 
 ### API Development
 - Use OpenAPI/Swagger for documentation
-- API key authentication via header (`X-Api-Key`) or query parameter (`apikey`)
-- Maintain backward compatibility where possible
+- API key authentication **must** be performed via the `X-Api-Key` header.
+- **Passing API keys via query parameters (e.g., `apikey`) is deprecated due to security risks (exposure in logs, browser history, proxy caches) and will be removed in a future release.** Only use the `X-Api-Key` header for authentication. Query parameter support is retained temporarily for backward compatibility.
 - New endpoints should be media-agnostic when applicable
 
 ### Database Migrations / EF Core (Planned)
