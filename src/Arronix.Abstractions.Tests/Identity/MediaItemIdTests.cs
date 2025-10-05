@@ -44,4 +44,18 @@ public class MediaItemIdTests
         Assert.That(id1, Is.EqualTo(id2));
         Assert.That(id1, Is.Not.EqualTo(id3));
     }
+
+    [Test]
+    public void MediaItemId_FromIntCreatesInstance()
+    {
+        var id = MediaItemId.FromInt(500);
+        Assert.That(id.Value, Is.EqualTo(500));
+    }
+
+    [Test]
+    public void MediaItemId_ToMediaItemIdReturnsValue()
+    {
+        var id = new MediaItemId(750);
+        Assert.That(id.ToMediaItemId(), Is.EqualTo(750));
+    }
 }

@@ -44,4 +44,18 @@ public class ReleaseIdTests
         Assert.That(id1, Is.EqualTo(id2));
         Assert.That(id1, Is.Not.EqualTo(id3));
     }
+
+    [Test]
+    public void ReleaseId_FromStringCreatesInstance()
+    {
+        var id = ReleaseId.FromString("from-string-value");
+        Assert.That(id.Value, Is.EqualTo("from-string-value"));
+    }
+
+    [Test]
+    public void ReleaseId_ToReleaseIdReturnsValue()
+    {
+        var id = new ReleaseId("to-method-value");
+        Assert.That(id.ToReleaseId(), Is.EqualTo("to-method-value"));
+    }
 }

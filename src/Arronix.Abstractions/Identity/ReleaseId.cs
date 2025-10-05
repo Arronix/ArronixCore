@@ -13,6 +13,19 @@ public readonly record struct ReleaseId(string Value)
     public override string ToString() => Value;
 
     /// <summary>
+    /// Creates a ReleaseId from a string value.
+    /// </summary>
+    /// <param name="value">The string identifier for the release.</param>
+    /// <returns>A new ReleaseId instance.</returns>
+    public static ReleaseId FromString(string value) => new(value);
+
+    /// <summary>
+    /// Converts this ReleaseId to its string representation.
+    /// </summary>
+    /// <returns>The string value of this release identifier.</returns>
+    public string ToReleaseId() => Value;
+
+    /// <summary>
     /// Implicitly converts a string to a ReleaseId.
     /// </summary>
     public static implicit operator string(ReleaseId id) => id.Value;

@@ -44,4 +44,18 @@ public class MediaKindIdTests
         Assert.That(id1, Is.EqualTo(id2));
         Assert.That(id1, Is.Not.EqualTo(id3));
     }
+
+    [Test]
+    public void MediaKindId_FromStringCreatesInstance()
+    {
+        var id = MediaKindId.FromString("audio");
+        Assert.That(id.Value, Is.EqualTo("audio"));
+    }
+
+    [Test]
+    public void MediaKindId_ToMediaKindIdReturnsValue()
+    {
+        var id = new MediaKindId("podcasts");
+        Assert.That(id.ToMediaKindId(), Is.EqualTo("podcasts"));
+    }
 }
