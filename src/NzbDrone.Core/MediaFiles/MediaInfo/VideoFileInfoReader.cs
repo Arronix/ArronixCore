@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using NLog;
 using NzbDrone.Common.Disk;
-using NzbDrone.Common.Extensions;
 
 namespace NzbDrone.Core.MediaFiles.MediaInfo
 {
@@ -81,6 +79,38 @@ namespace NzbDrone.Core.MediaFiles.MediaInfo
         {
             // TODO: Implement via format support extension
             return TimeSpan.Zero;
+        }
+
+        // Temporary HDR format inference stub to satisfy legacy migration logic.
+        // The original implementation used MediaInfo fields plus potential HDR metadata.
+        // Since HDR analysis is deferred to future extensions, we perform very light heuristics
+        // and otherwise return HdrFormat.None to avoid misleading data.
+        public static HdrFormat GetHdrFormat(int bitDepth, string colourPrimaries, string transferCharacteristics, object _)
+        {
+            if (bitDepth >= 10)
+            {
+                var primaries = (colourPrimaries ?? string.Empty).ToLowerInvariant();
+                var transfer = (transferCharacteristics ?? string.Empty).ToLowerInvariant();
+
+                // Basic heuristics: detect HDR10/PQ vs HLG. (Dolby Vision requires dedicated metadata not present here.)
+                if (transfer.Contains("2084") || transfer.Contains("pq"))
+                {
+                    return HdrFormat.Hdr10; // Treat any PQ-based transfer as HDR10 for placeholder purposes
+                }
+
+                if (transfer.Contains("hlg") || transfer.Contains("arib-std-b67"))
+                {
+                    return HdrFormat.Hlg10;
+                }
+
+                // If we know it's wide gamut BT.2020 but no transfer match, mark unknown HDR rather than None.
+                if (primaries.Contains("2020"))
+                {
+                    return HdrFormat.UnknownHdr;
+                }
+            }
+
+            return HdrFormat.None;
         }
     }
 }

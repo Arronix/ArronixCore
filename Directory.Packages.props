@@ -1,0 +1,58 @@
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+  <PackageVersion Include="FluentValidation" Version="9.5.4" />
+    <PackageVersion Include="NLog" Version="6.0.4" />
+    <PackageVersion Include="NLog.Extensions.Logging" Version="5.3.15" />
+    <PackageVersion Include="Ical.Net" Version="4.3.1" />
+    <PackageVersion Include="Swashbuckle.AspNetCore.Annotations" Version="8.0.0" />
+    <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerGen" Version="8.0.0" />
+    <PackageVersion Include="DryIoc.dll" Version="5.4.3" />
+    <PackageVersion Include="DryIoc.Microsoft.DependencyInjection" Version="6.2.0" />
+    <PackageVersion Include="FluentAssertions" Version="6.12.0" />
+    <PackageVersion Include="Moq" Version="4.18.4" />
+    <PackageVersion Include="NUnit" Version="3.14.0" />
+    <PackageVersion Include="RestSharp" Version="106.15.0" />
+    <PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
+    <PackageVersion Include="Selenium.Support" Version="3.141.0" />
+    <PackageVersion Include="Selenium.WebDriver.ChromeDriver" Version="134.0.6998.16500" />
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.10.0" />
+    <PackageVersion Include="NUnit3TestAdapter" Version="5.1.0" />
+    <PackageVersion Include="NunitXml.TestLogger" Version="3.1.20" />
+    <PackageVersion Include="Lib.Harmony" Version="2.3.5" />
+    <PackageVersion Include="Dapper" Version="2.1.66" />
+    <PackageVersion Include="Diacritical.Net" Version="1.0.4" />
+    <PackageVersion Include="Equ" Version="2.3.0" />
+    <PackageVersion Include="MailKit" Version="4.10.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.Cryptography.KeyDerivation" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Data.SqlClient" Version="6.0.1" />
+    <PackageVersion Include="Polly" Version="8.5.2" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+    <PackageVersion Include="FluentMigrator.Runner" Version="6.2.0" />
+    <PackageVersion Include="FluentMigrator.Runner.SQLite" Version="6.2.0" />
+    <PackageVersion Include="FluentMigrator.Runner.Postgres" Version="6.2.0" />
+    <PackageVersion Include="SixLabors.ImageSharp" Version="3.1.11" />
+    <PackageVersion Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageVersion Include="MonoTorrent" Version="3.0.2" />
+    <PackageVersion Include="Npgsql" Version="9.0.3" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />
+    <PackageVersion Include="IPAddressRange" Version="6.1.0" />
+    <PackageVersion Include="NLog.Layouts.ClefJsonLayout" Version="1.0.2" />
+    <PackageVersion Include="NLog.Targets.Syslog" Version="7.0.0" />
+    <PackageVersion Include="Sentry" Version="4.0.2" />
+    <PackageVersion Include="SharpZipLib" Version="1.4.2" />
+    <PackageVersion Include="SourceGear.sqlite3" Version="3.50.4.2" />
+    <PackageVersion Include="System.Data.SQLite" Version="2.0.2" />
+    <PackageVersion Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
+    <PackageVersion Include="System.ServiceProcess.ServiceController" Version="9.0.0" />
+    <PackageVersion Include="ImpromptuInterface" Version="8.0.6" />
+    <PackageVersion Include="Mono.Posix.NETStandard" Version="5.20.1-preview" />
+    <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.12" />
+    <PackageVersion Include="NBuilder" Version="6.1.0" />
+  </ItemGroup>
+</Project>

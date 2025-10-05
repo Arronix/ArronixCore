@@ -4,17 +4,11 @@
 		<OutputType>Library</OutputType>
 	</PropertyGroup>
 	<ItemGroup>
-		<PackageReference Include="NLog.Extensions.Logging" Version="5.3.15" />
-		<PackageReference Include="StyleCop.Analyzers.Unstable" Version="1.2.0.556">
-		  <PrivateAssets>all</PrivateAssets>
-		  <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-		</PackageReference>
-		<PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="8.0.0" />
-		<PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
-		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" />
-		<PackageReference Include="DryIoc.dll" Version="5.4.3" />
-		<PackageReference Include="DryIoc.Microsoft.DependencyInjection" Version="6.2.0" />
-		<PackageReference Remove="StyleCop.Analyzers" />
+		<PackageReference Include="NLog.Extensions.Logging" />
+		<PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" />
+		<PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+		<PackageReference Include="DryIoc.dll" />
+		<PackageReference Include="DryIoc.Microsoft.DependencyInjection" />
 	</ItemGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\NzbDrone.Common\Sonarr.Common.csproj" />

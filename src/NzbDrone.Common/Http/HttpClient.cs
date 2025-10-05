@@ -59,7 +59,8 @@ namespace NzbDrone.Common.Http
             _httpDispatcher = httpDispatcher;
             _logger = logger;
 
-            ServicePointManager.DefaultConnectionLimit = 12;
+            // Removed obsolete ServicePointManager usage (SYSLIB0014). For custom limits,
+            // configure SocketsHttpHandler in an injected HttpClientFactory in future refactor.
             _cookieContainerCache = cacheManager.GetCache<CookieContainer>(typeof(HttpClient));
         }
 
