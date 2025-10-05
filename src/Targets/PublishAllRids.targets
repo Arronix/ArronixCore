@@ -10,7 +10,10 @@
 
   <Target Name="PublishAllRids">
     <ItemGroup>
-      <Frameworks Include="$(TargetFrameworks)" />
+   <!-- When we have converted projects to a single <TargetFramework>, $(TargetFrameworks) may be empty.
+     Fallback to $(TargetFramework) so publish logic still works. -->
+   <Frameworks Include="$(TargetFrameworks)" Condition=" '$(TargetFrameworks)' != '' " />
+   <Frameworks Include="$(TargetFramework)" Condition=" '$(TargetFrameworks)' == '' and '$(TargetFramework)' != '' " />
 
       <Combined Include="$(RuntimeIdentifiers)">
         <Framework>%(Frameworks.Identity)</Framework>
