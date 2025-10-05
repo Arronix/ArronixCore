@@ -1,4 +1,3 @@
-using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 
 namespace Arronix.Abstractions.Naming;
@@ -18,12 +17,12 @@ public interface IRenamePolicy
     /// Generates a file name for a media item based on a naming template.
     /// </summary>
     /// <param name="itemId">The media item identifier.</param>
-    /// <param name="template">The naming template containing tokens.</param>
+    /// <param name="namingTemplate">The naming template containing tokens.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The generated file name.</returns>
     Task<string> GenerateFileNameAsync(
         MediaItemId itemId,
-        string template,
+        string namingTemplate,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -39,7 +38,7 @@ public interface IRenamePolicy
     /// <summary>
     /// Validates a naming template to ensure it only uses supported tokens.
     /// </summary>
-    /// <param name="template">The naming template to validate.</param>
+    /// <param name="namingTemplate">The naming template to validate.</param>
     /// <returns>True if the template is valid; otherwise, false.</returns>
-    bool ValidateTemplate(string template);
+    bool ValidateTemplate(string namingTemplate);
 }

@@ -76,6 +76,7 @@ Implement the interfaces relevant to your plugin's capabilities.
 ### For Host Developers
 
 Reference this package in the host runtime to:
+
 - Validate plugin contract compatibility
 - Invoke plugin services via interfaces
 - Exchange data using the defined DTOs
