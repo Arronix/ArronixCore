@@ -1,9 +1,47 @@
 # Private Dependencies Investigation Report
 
 ## Executive Summary
-This document summarizes the investigation into replacing three private Azure DevOps NuGet package sources with official packages from nuget.org.
+This document summarizes the investigation into replacing three private Azure DevOps NuGet package sources with official packages from nuget.org, and upgrading the entire solution to .NET 9.
 
-**Result:** 2 out of 3 dependencies successfully replaced; 1 cannot be replaced without significant code changes.
+**Result:** 2 out of 3 dependencies successfully replaced; 1 cannot be replaced without significant code changes. All projects upgraded to .NET 9.
+
+---
+
+## .NET 9 Upgrade
+
+### Framework Upgrade
+All 27 projects in the solution have been upgraded from .NET 8 to .NET 9:
+- Updated `global.json` from SDK 8.0.405 to 9.0.305
+- Updated all `TargetFrameworks` from `net8.0` to `net9.0`
+
+### Package Updates
+The following Microsoft packages were updated to version 9.0:
+- Microsoft.Extensions.DependencyInjection: 8.0.1 → 9.0.0
+- Microsoft.Extensions.Logging: 8.0.1 → 9.0.0
+- Microsoft.Extensions.Configuration: 8.0.0 → 9.0.0
+- Microsoft.Extensions.Hosting.WindowsServices: 8.0.1 → 9.0.0
+- Microsoft.AspNetCore.Cryptography.KeyDerivation: 8.0.12 → 9.0.0
+- System.Text.Json: 8.0.5 → 9.0.0
+- System.Configuration.ConfigurationManager: 8.0.1 → 9.0.0
+- System.ServiceProcess.ServiceController: 8.0.1 → 9.0.0
+
+### .NET 9 and Mono.Posix.NETStandard
+
+While .NET 9 adds more cross-platform file system APIs, it still doesn't provide all the Unix-specific functionality that Mono.Posix.NETStandard offers:
+
+**.NET 9 Native APIs:**
+- `File.GetUnixFileMode()` / `File.SetUnixFileMode()` - basic file permissions
+- `File.ResolveLinkTarget()` - symlink resolution
+- `DriveInfo` - basic disk space information
+
+**Still Requires Mono.Posix.NETStandard:**
+- `Syscall.stat()`, `Syscall.chmod()`, `Syscall.ioctl()`, `Syscall.uname()`, `Syscall.unlink()`
+- `UnixDriveInfo` with detailed mount information
+- `UnixFileSystemInfo` with Unix-specific file metadata
+- `UnixPath` utilities for canonical path resolution
+- `FilePermissions` enum with full permission bits (beyond basic 755/644)
+- `NativeConvert.FromOctalPermissionString()` for permission parsing
+- FICLONE ioctl for reflink/copy-on-write file operations
 
 ---
 
@@ -177,7 +215,7 @@ Keep the Servarr.FFMpegCore fork due to:
    - HDR detection (relies on Servarr fork)
    - Dolby Vision classification
 
-3. **Build System**: Verify all platforms build correctly
+3. **Build System**: Verify all platforms build correctly with .NET 9
    - Windows (x64, x86)
    - Linux (x64, arm64, musl variants)
    - macOS (x64, arm64)
@@ -192,7 +230,7 @@ Keep the Servarr.FFMpegCore fork due to:
 ## Future Considerations
 
 1. **System.IO.FileSystem.AccessControl**
-   - Audit if this package is still needed with .NET 8+
+   - Audit if this package is still needed with .NET 9+
    - Consider removing if functionality is covered by framework
 
 2. **FFMpegCore Fork**
@@ -205,14 +243,20 @@ Keep the Servarr.FFMpegCore fork due to:
    - Consider using official runtime packages if available
    - Example: `Curiosity.FFmpeg.Runtimes.*` packages for cross-platform binaries
 
+4. **.NET 10 Migration**
+   - Monitor .NET 10 preview releases for additional Unix file system APIs
+   - Re-evaluate Mono.Posix.NETStandard dependency when .NET 10 is released
+   - Track: https://github.com/dotnet/runtime for new cross-platform APIs
+
 ---
 
 ## Conclusion
 
-This investigation successfully reduced private dependencies from 3 to 1 feed:
-- ✅ Mono.Posix.NETStandard: Now using official preview package
+This investigation successfully reduced private dependencies from 3 to 1 feed and upgraded the entire solution to .NET 9:
+- ✅ Mono.Posix.NETStandard: Now using official preview package (cannot be removed due to Unix-specific syscalls)
 - ✅ System.IO.FileSystem.AccessControl: Now using stable official package
 - ✅ dotnet-bsd-crossbuild: Removed (unused)
 - ⚠️ FFMpegCore: Must remain on Servarr fork due to extensive custom HDR functionality
+- ✅ .NET 9: All projects upgraded with latest Microsoft package versions
 
-The changes are minimal, surgical, and preserve all existing functionality while reducing external dependencies by 66%.
+The changes are minimal, surgical, and preserve all existing functionality while using more modern frameworks and reducing external dependencies by 66%.
