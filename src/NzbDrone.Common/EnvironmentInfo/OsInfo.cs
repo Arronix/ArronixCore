@@ -11,7 +11,7 @@ namespace NzbDrone.Common.EnvironmentInfo
         public static Os Os { get; }
 
         public static bool IsNotWindows => !IsWindows;
-        public static bool IsLinux => Os == Os.Linux || Os == Os.LinuxMusl || Os == Os.Bsd;
+        public static bool IsLinux => Os == Os.Linux || Os == Os.Bsd;
         public static bool IsOsx => Os == Os.Osx;
         public static bool IsWindows => Os == Os.Windows;
 
@@ -38,11 +38,7 @@ namespace NzbDrone.Common.EnvironmentInfo
             }
             else
             {
-#if ISMUSL
-                Os = Os.LinuxMusl;
-#else
                 Os = Os.Linux;
-#endif
             }
         }
 
@@ -101,7 +97,6 @@ namespace NzbDrone.Common.EnvironmentInfo
         Windows,
         Linux,
         Osx,
-        LinuxMusl,
         Bsd
     }
 }
