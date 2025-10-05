@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0</TargetFrameworks>
+    <RootNamespace>Arronix.Abstractions.Tests</RootNamespace>
+    <AssemblyName>Arronix.Abstractions.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+  </ItemGroup>
+</Project>
