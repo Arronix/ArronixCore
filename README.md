@@ -1,7 +1,8 @@
-# <img width="24px" src="./Logo/Arronix.svg" alt="Arronix"/> Arronix — A Single Host, Many Media Kinds
+# Arronix
 
 Arronix is a **modular, extensible media automation platform**. It enables different media types—TV, movies, music, books, and more—to operate as plugins on a shared, unified core.  
-The project began as an architectural restructuring of the Sonarr v5 codebase, evolving the *-arr* family into a single, coherent framework.
+
+This project is an architectural restructuring of the Sonarr v5 codebase, evolving the *-arr* family into a single, coherent framework.
 
 ## Objectives
 
@@ -9,6 +10,13 @@ The project began as an architectural restructuring of the Sonarr v5 codebase, e
 - Separate **core orchestration** (queueing, scheduling, indexers, quality logic) from **media-specific logic**.  
 - Provide a **plugin interface** that lets developers add new media kinds without modifying the core.  
 - Maintain the usability and reliability of Sonarr while modernising its design.
+
+## References
+
+Links above cover the platform structure and shared terminology
+
+- [Architecture](./ARCHITECTURE.md)
+- [Glossary](./GLOSSARY.md)
 
 ## Why
 
@@ -71,7 +79,9 @@ flowchart LR
   Core --> Store
 ```
 
-## 📦 Plugin Manifest (v0)
+## Plugin Manifest
+
+> **Note:** Purely for illustrative purposes only, specification hasnt been defined yet.
 
 ```json
 {
@@ -91,7 +101,7 @@ flowchart LR
 }
 ```
 
-## 🧠 Design Principles
+## Design Principles
 
 - **Media-agnostic Core:** no TV/Movie types in Core.  
 - **Stable Contracts:** versioned abstractions; plugins pin to ranges.  
@@ -99,7 +109,7 @@ flowchart LR
 - **Single Scheduler:** plugins register jobs; host coordinates.  
 - **Testable by Design:** golden tests for parsing/renaming; contract tests for providers.
 
-## 🛠️ Getting Started
+## Getting Started
 
 Arronix is still in early development.  
 To experiment locally:
@@ -121,12 +131,6 @@ More detailed setup and contribution guides will arrive as the architecture stab
 4. Storage Model & Migration (#4)  
 5. Policy Pipelines (#5)
 
-## Migration Notes (v4/v5 → Core)
-
-- **Database:** migrated to polymorphic model via tool (`tools/migrate-v4-to-core`).  
-- **API:** initial compatibility layer for Sonarr TV endpoints; new media-agnostic endpoints added over time.  
-- **Paths/Naming:** validated against plugin-declared token sets.
-
 ## Contributing
 
 Arronix is an open-source community project.  
@@ -140,8 +144,3 @@ Contributions are welcome across all areas—architecture, plugins, UI, document
 - Licensed under the **GNU GPL v3**.  
 - Portions of the code originated from **Sonarr v5**, © 2010–2025 the Sonarr developers, used under the GPLv3 license.  
 - Arronix is an independent project unaffiliated with the original Sonarr or Servarr teams.
-
----
-
-### © 2025 Arronix Contributors  
-Unified media automation for every kind of signal.
