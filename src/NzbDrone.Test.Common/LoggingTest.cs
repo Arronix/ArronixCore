@@ -60,9 +60,7 @@ namespace NzbDrone.Test.Common
             fileTarget.FileName = Path.Combine(TestContext.CurrentContext.WorkDirectory, "TestLog.txt");
             fileTarget.AutoFlush = false;
             fileTarget.KeepFileOpen = true;
-            fileTarget.ConcurrentWrites = true;
-            fileTarget.ConcurrentWriteAttemptDelay = 50;
-            fileTarget.ConcurrentWriteAttempts = 10;
+            // Removed deprecated concurrency properties (NLog 6+) which are now implicit or no longer configurable.
             fileTarget.Layout = layout;
 
             LogManager.Configuration.AddTarget(fileTarget.GetType().Name, fileTarget);

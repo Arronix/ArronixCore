@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
-using FFMpegCore;
 using NzbDrone.Core.Datastore;
 
 namespace NzbDrone.Core.MediaFiles.MediaInfo
@@ -27,7 +26,8 @@ namespace NzbDrone.Core.MediaFiles.MediaInfo
 
         public string VideoTransferCharacteristics { get; set; }
 
-        public DoviConfigurationRecordSideData DoviConfigurationRecord { get; set; }
+        // TODO: Stubbed - will be replaced by format extension
+        // public DoviConfigurationRecordSideData DoviConfigurationRecord { get; set; }
 
         public HdrFormat VideoHdrFormat { get; set; }
 
