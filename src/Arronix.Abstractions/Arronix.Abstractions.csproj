@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <RootNamespace>Arronix.Abstractions</RootNamespace>
+    <AssemblyName>Arronix.Abstractions</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>Core abstractions and contracts for the Arronix media platform. Defines media-agnostic interfaces for scheduling, queueing, parsing, quality management, and orchestration.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+</Project>

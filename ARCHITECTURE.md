@@ -2,8 +2,6 @@
 
 This document consolidates and expands the architectural content that was previously embedded in `README.md`. It explains the core platform design, layering, plugin model, contracts, policy pipelines, and forward evolution strategy.
 
-> This document is currently indicative of concept only, none of the concepts have been designed or implemented. Use it to update the current architecture more formally once decided.
-
 ## 1. Purpose & Scope
 
 Arronix provides a **single host runtime** for multiple media domains (TV, movies, music, books, etc.) implemented as **independent plugins**. The goal is to replace the historical proliferation of separate *-arr* applications with a unified, extensible core while preserving reliability and user expectations.
@@ -64,16 +62,65 @@ flowchart LR
 
 ## 3. Core Components
 
-| Component | Responsibility | Notes |
-|-----------|---------------|-------|
-| Abstractions (`Arronix.Abstractions`) | Versioned interfaces, DTOs, policy & job contracts | Semantic versioning with compatibility ranges in plugin manifests. |
-| Host Runtime (`Arronix.Host`) | DI composition root, plugin lifecycle, scheduling, job execution, API hosting, telemetry | Uses `AssemblyLoadContext` per plugin for isolation. |
-| Plugin Loader | Discovers `plugin.json`, loads assemblies, validates contract ranges, registers services | Enforces capability declarations & token exposure. |
-| Scheduler / Queue | Central orchestration of background jobs, indexer runs, parsing tasks, imports | Media‑agnostic; jobs supplied by plugins via contracts. |
-| Policy Engine | Executes declared policy chains for parsing, matching, quality, import, naming | Chains defined in manifest; host injects execution context. |
-| Storage Layer | Polymorphic persistence via `IMediaStore` and plugin‑owned schema fragments | Core stores cross‑media relations (e.g., history, downloads). |
-| HTTP API | Unified public interface; legacy compatibility layer + new media‑neutral endpoints | Gradual migration from Sonarr v5 shapes. |
-| Health & Telemetry | Status endpoints, metrics, structured events | Plugin participation via optional health contributors. |
+| Component | Responsibility | Notes | Status |
+|-----------|---------------|-------|--------|
+| Abstractions (`Arronix.Abstractions`) | Versioned interfaces, DTOs, policy & job contracts | Semantic versioning with compatibility ranges in plugin manifests. | ✅ **Implemented** (v0.1.0) |
+| Host Runtime (`Arronix.Host`) | DI composition root, plugin lifecycle, scheduling, job execution, API hosting, telemetry | Uses `AssemblyLoadContext` per plugin for isolation. | 🚧 **Planned** |
+| Plugin Loader | Discovers `plugin.json`, loads assemblies, validates contract ranges, registers services | Enforces capability declarations & token exposure. | 🚧 **Planned** |
+| Scheduler / Queue | Central orchestration of background jobs, indexer runs, parsing tasks, imports | Media‑agnostic; jobs supplied by plugins via contracts. | 🚧 **Planned** |
+| Policy Engine | Executes declared policy chains for parsing, matching, quality, import, naming | Chains defined in manifest; host injects execution context. | 🚧 **Planned** |
+| Storage Layer | Polymorphic persistence via `IMediaStore` and plugin‑owned schema fragments | Core stores cross‑media relations (e.g., history, downloads). | 🚧 **Planned** |
+| HTTP API | Unified public interface; legacy compatibility layer + new media‑neutral endpoints | Gradual migration from Sonarr v5 shapes. | 🚧 **Planned** |
+| Health & Telemetry | Status endpoints, metrics, structured events | Plugin participation via optional health contributors. | 🚧 **Planned** |
+
+### 3.1 Arronix.Abstractions (Implemented)
+
+**Version:** 0.1.0  
+**Status:** ✅ Complete and stable
+
+The abstractions layer provides the foundational contracts that enable media-agnostic plugin development. All public APIs in this layer are stable and follow semantic versioning guarantees.
+
+**Key Components:**
+
+- **Identity Types:**
+  - `MediaKindId`: Unique identifier for media types (e.g., "tv", "movies")
+  - `MediaItemId`: Internal identifier for specific media items
+  - `ReleaseId`: Identifier for downloadable releases
+
+- **Media Interfaces:**
+  - `IMediaKind`: Defines identity and capabilities of a media type
+  - `IMediaIdResolver`: Maps external IDs (TVDB, TMDB) to internal IDs
+
+- **Parsing & Quality:**
+  - `IReleaseParser`: Extracts structured data from release titles
+  - `IQualityModel`: Evaluates quality and determines upgrades
+
+- **Import & Naming:**
+  - `IImportPipeline`: Validates and imports media files
+  - `IRenamePolicy`: Generates file names from templates
+  - `ILibraryLayout`: Defines folder structure
+
+- **Providers:**
+  - `IMetadataProvider`: External metadata sources
+  - `IIndexerProvider`: Release indexers (trackers/Usenet)
+  - `IDownloadClientAdapter`: Download client integration
+
+- **Scheduling:**
+  - `IScheduledJob`: Background task interface
+  - `IBackgroundTaskRegistry`: Job registration and management
+
+- **DTOs:**
+  - `ReleaseCandidate`, `ParsedRelease`, `MatchDecision`, `ImportDecision`
+  - `QualityTier`, `Language`, `CutoffPolicy`
+  - `LibraryPathSpec`, `NamingToken`
+
+- **Health & Errors:**
+  - `HealthCheck`, `HealthStatus`, `HealthSeverity`
+  - `CoreErrorCode` enumeration
+
+**Documentation:**
+- API Stability Policy: [`docs/contracts/stability.md`](../docs/contracts/stability.md)
+- Contract tests: `src/Arronix.Abstractions.Tests/`
 
 ## 4. Plugin Model
 

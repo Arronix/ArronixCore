@@ -1,9 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
-VisualStudioVersion = 16.0.29806.167
-MinimumVisualStudioVersion = 10.0.40219.1
-# Visual Studio Version 17
 VisualStudioVersion = 17.2.32516.85
 MinimumVisualStudioVersion = 15.0.26124.0
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sonarr.Console", "NzbDrone.Console\Sonarr.Console.csproj", "{3DCA7B58-B8B3-49AC-9D9E-56F4A0460976}"
@@ -76,6 +73,10 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Sonarr.Windows", "NzbDrone.Windows\Sonarr.Windows.csproj", "{4AE3B731-442E-4AF0-88A5-9FABEB685A0D}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sonarr.Api.V5", "Sonarr.Api.V5\Sonarr.Api.V5.csproj", "{1A9DFC67-3712-47A5-8DCA-0BCAA95F9EDC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Arronix.Abstractions", "Arronix.Abstractions\Arronix.Abstractions.csproj", "{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Arronix.Abstractions.Tests", "Arronix.Abstractions.Tests\Arronix.Abstractions.Tests.csproj", "{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -299,6 +300,22 @@ Global
 		{1A9DFC67-3712-47A5-8DCA-0BCAA95F9EDC}.Release|Posix.Build.0 = Release|Any CPU
 		{1A9DFC67-3712-47A5-8DCA-0BCAA95F9EDC}.Release|Windows.ActiveCfg = Release|Any CPU
 		{1A9DFC67-3712-47A5-8DCA-0BCAA95F9EDC}.Release|Windows.Build.0 = Release|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Debug|Posix.ActiveCfg = Debug|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Debug|Posix.Build.0 = Debug|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Debug|Windows.ActiveCfg = Debug|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Debug|Windows.Build.0 = Debug|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Release|Posix.ActiveCfg = Release|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Release|Posix.Build.0 = Release|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Release|Windows.ActiveCfg = Release|Any CPU
+		{92BD43B1-EE5F-4EB2-A6AD-AFEFCFF3EB17}.Release|Windows.Build.0 = Release|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Debug|Posix.ActiveCfg = Debug|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Debug|Posix.Build.0 = Debug|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Debug|Windows.ActiveCfg = Debug|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Debug|Windows.Build.0 = Debug|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Release|Posix.ActiveCfg = Release|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Release|Posix.Build.0 = Release|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Release|Windows.ActiveCfg = Release|Any CPU
+		{599EB8F9-BADA-4991-88A4-5BC0D5ED9643}.Release|Windows.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
