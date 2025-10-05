@@ -2,6 +2,8 @@
 
 This document consolidates and expands the architectural content that was previously embedded in `README.md`. It explains the core platform design, layering, plugin model, contracts, policy pipelines, and forward evolution strategy.
 
+> This document is currently indicative of concept only, none of the concepts have been designed or implemented. Use it to update the current architecture more formally once decided.
+
 ## 1. Purpose & Scope
 
 Arronix provides a **single host runtime** for multiple media domains (TV, movies, music, books, etc.) implemented as **independent plugins**. The goal is to replace the historical proliferation of separate *-arr* applications with a unified, extensible core while preserving reliability and user expectations.
