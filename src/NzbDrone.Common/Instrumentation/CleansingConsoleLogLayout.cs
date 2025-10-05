@@ -5,15 +5,9 @@ using NzbDrone.Common.EnvironmentInfo;
 
 namespace NzbDrone.Common.Instrumentation;
 
-public class CleansingConsoleLogLayout : Layout
+public class CleansingConsoleLogLayout(string format) : Layout
 {
-    private readonly SimpleLayout _inner;
-
-    public CleansingConsoleLogLayout(string format)
-    {
-        // Reuse NLog's SimpleLayout for parsing the format string.
-        _inner = new SimpleLayout(format);
-    }
+    private readonly SimpleLayout _inner = new SimpleLayout(format);
 
     protected override void RenderFormattedMessage(LogEventInfo logEvent, StringBuilder target)
     {

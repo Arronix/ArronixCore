@@ -1,12 +1,11 @@
 using System.Text.RegularExpressions;
 
-namespace NzbDrone.Common.Extensions
+namespace NzbDrone.Common.Extensions;
+
+public static class RegexExtensions
 {
-    public static class RegexExtensions
+    public static int EndIndex(this Capture regexMatch)
     {
-        public static int EndIndex(this Capture regexMatch)
-        {
-            return regexMatch.Index + regexMatch.Length;
-        }
+        return regexMatch.Index + regexMatch.Length;
     }
 }

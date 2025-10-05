@@ -1,11 +1,10 @@
-﻿namespace NzbDrone.Common.Expansive
+﻿namespace NzbDrone.Common.Expansive;
+
+internal class Tree<T> : TreeNode<T>
 {
-    internal class Tree<T> : TreeNode<T>
+    public Tree(T rootValue)
+        : base(rootValue)
     {
-        public Tree(T rootValue)
-            : base(rootValue)
-        {
-            Value = rootValue;
-        }
+        Value = rootValue;
     }
 }

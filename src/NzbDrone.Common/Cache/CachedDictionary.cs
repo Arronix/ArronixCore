@@ -3,128 +3,121 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace NzbDrone.Common.Cache
+namespace NzbDrone.Common.Cache;
+
+public class CachedDictionary<TValue>(Func<IDictionary<string, TValue>> fetchFunc = null, TimeSpan? ttl = null) : ICachedDictionary<TValue>
 {
-    public class CachedDictionary<TValue> : ICachedDictionary<TValue>
+    private readonly Func<IDictionary<string, TValue>> _fetchFunc = fetchFunc;
+    private readonly TimeSpan? _ttl = ttl;
+
+    private DateTime _lastRefreshed = DateTime.MinValue;
+    private ConcurrentDictionary<string, TValue> _items = new ConcurrentDictionary<string, TValue>();
+
+    public bool IsExpired(TimeSpan ttl)
     {
-        private readonly Func<IDictionary<string, TValue>> _fetchFunc;
-        private readonly TimeSpan? _ttl;
+        return _lastRefreshed.Add(ttl) < DateTime.UtcNow;
+    }
 
-        private DateTime _lastRefreshed = DateTime.MinValue;
-        private ConcurrentDictionary<string, TValue> _items = new ConcurrentDictionary<string, TValue>();
-
-        public CachedDictionary(Func<IDictionary<string, TValue>> fetchFunc = null, TimeSpan? ttl = null)
-        {
-            _fetchFunc = fetchFunc;
-            _ttl = ttl;
-        }
-
-        public bool IsExpired(TimeSpan ttl)
-        {
-            return _lastRefreshed.Add(ttl) < DateTime.UtcNow;
-        }
-
-        public void RefreshIfExpired()
-        {
-            if (_ttl.HasValue && _fetchFunc != null)
-            {
-                RefreshIfExpired(_ttl.Value);
-            }
-        }
-
-        public void RefreshIfExpired(TimeSpan ttl)
+    public void RefreshIfExpired()
     {
-            if (IsExpired(ttl))
-            {
-                Refresh();
-            }
-        }
-
-        public void Refresh()
+        if (_ttl.HasValue && _fetchFunc != null)
         {
-            if (_fetchFunc == null)
-            {
-                throw new InvalidOperationException("Cannot update cache without data source.");
-            }
-
-            Update(_fetchFunc());
-            ExtendTTL();
+            RefreshIfExpired(_ttl.Value);
         }
+    }
 
-        public void Update(IDictionary<string, TValue> items)
+    public void RefreshIfExpired(TimeSpan ttl)
+{
+        if (IsExpired(ttl))
         {
-            _items = new ConcurrentDictionary<string, TValue>(items);
-            ExtendTTL();
+            Refresh();
         }
+    }
 
-        public void ExtendTTL()
+    public void Refresh()
+    {
+        if (_fetchFunc == null)
         {
-            _lastRefreshed = DateTime.UtcNow;
+            throw new InvalidOperationException("Cannot update cache without data source.");
         }
 
-        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-        public ICollection<TValue> Values
-        {
-            get
-            {
-                RefreshIfExpired();
-                return _items.Values;
-            }
-        }
+        Update(_fetchFunc());
+        ExtendTTL();
+    }
 
-        [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-        public int Count
-        {
-            get
-            {
-                RefreshIfExpired();
-                return _items.Count;
-            }
-        }
+    public void Update(IDictionary<string, TValue> items)
+    {
+        _items = new ConcurrentDictionary<string, TValue>(items);
+        ExtendTTL();
+    }
 
-        public TValue Get(string key)
+    public void ExtendTTL()
+    {
+        _lastRefreshed = DateTime.UtcNow;
+    }
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    public ICollection<TValue> Values
+    {
+        get
         {
             RefreshIfExpired();
-
-            if (!_items.TryGetValue(key, out var result))
-            {
-                throw new KeyNotFoundException(string.Format("Item {0} not found in cache.", key));
-            }
-
-            return result;
+            return _items.Values;
         }
+    }
 
-        public TValue Find(string key)
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    public int Count
+    {
+        get
         {
             RefreshIfExpired();
-
-            _items.TryGetValue(key, out var result);
-
-            return result;
+            return _items.Count;
         }
+    }
 
-        public void Clear()
+    public TValue Get(string key)
+    {
+        RefreshIfExpired();
+
+        if (!_items.TryGetValue(key, out var result))
         {
-            _items.Clear();
-            _lastRefreshed = DateTime.MinValue;
+            throw new KeyNotFoundException(string.Format("Item {0} not found in cache.", key));
         }
 
-        public void ClearExpired()
+        return result;
+    }
+
+    public TValue Find(string key)
+    {
+        RefreshIfExpired();
+
+        _items.TryGetValue(key, out var result);
+
+        return result;
+    }
+
+    public void Clear()
+    {
+        _items.Clear();
+        _lastRefreshed = DateTime.MinValue;
+    }
+
+    public void ClearExpired()
+    {
+        if (!_ttl.HasValue)
         {
-            if (!_ttl.HasValue)
-            {
-                throw new InvalidOperationException("Checking expiry without ttl not possible.");
-            }
-
-            if (IsExpired(_ttl.Value))
-            {
-                Clear();
-            }
+            throw new InvalidOperationException("Checking expiry without ttl not possible.");
         }
 
-        public void Remove(string key)
+        if (IsExpired(_ttl.Value))
         {
-            _items.TryRemove(key, out _);
+            Clear();
         }
+    }
+
+    public void Remove(string key)
+    {
+        _items.TryRemove(key, out _);
     }
 }

@@ -2,14 +2,13 @@ using System.Text;
 using NLog;
 using NLog.Targets;
 
-namespace NzbDrone.Common.Instrumentation
+namespace NzbDrone.Common.Instrumentation;
+
+public class CleansingFileTarget : FileTarget
 {
-    public class CleansingFileTarget : FileTarget
+    protected override void RenderFormattedMessage(LogEventInfo logEvent, StringBuilder target)
     {
-        protected override void RenderFormattedMessage(LogEventInfo logEvent, StringBuilder target)
-        {
-            var result = CleanseLogMessage.Cleanse(Layout.Render(logEvent));
-            target.Append(result);
-        }
+        var result = CleanseLogMessage.Cleanse(Layout.Render(logEvent));
+        target.Append(result);
     }
 }

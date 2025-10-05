@@ -1,59 +1,47 @@
 using System;
 using NzbDrone.Common.Extensions;
 
-namespace NzbDrone.Common.Http.Proxy
+namespace NzbDrone.Common.Http.Proxy;
+
+public class HttpProxySettings(ProxyType type, string host, int port, string bypassFilter, bool bypassLocalAddress, string username = null, string password = null)
 {
-    public class HttpProxySettings
+    public ProxyType Type { get; private set; } = type;
+    public string Host { get; private set; } = host.IsNullOrWhiteSpace() ? "127.0.0.1" : host;
+    public int Port { get; private set; } = port;
+    public string Username { get; private set; } = username ?? string.Empty;
+    public string Password { get; private set; } = password ?? string.Empty;
+    public string BypassFilter { get; private set; } = bypassFilter ?? string.Empty;
+    public bool BypassLocalAddress { get; private set; } = bypassLocalAddress;
+
+    public string[] BypassListAsArray
     {
-        public HttpProxySettings(ProxyType type, string host, int port, string bypassFilter, bool bypassLocalAddress, string username = null, string password = null)
+        get
         {
-            Type = type;
-            Host = host.IsNullOrWhiteSpace() ? "127.0.0.1" : host;
-            Port = port;
-            Username = username ?? string.Empty;
-            Password = password ?? string.Empty;
-            BypassFilter = bypassFilter ?? string.Empty;
-            BypassLocalAddress = bypassLocalAddress;
-        }
-
-        public ProxyType Type { get; private set; }
-        public string Host { get; private set; }
-        public int Port { get; private set; }
-        public string Username { get; private set; }
-        public string Password { get; private set; }
-        public string BypassFilter { get; private set; }
-        public bool BypassLocalAddress { get; private set; }
-
-        public string[] BypassListAsArray
-        {
-            get
+            if (!string.IsNullOrWhiteSpace(BypassFilter))
             {
-                if (!string.IsNullOrWhiteSpace(BypassFilter))
+                var hostlist = BypassFilter.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+                for (var i = 0; i < hostlist.Length; i++)
                 {
-                    var hostlist = BypassFilter.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-                    for (var i = 0; i < hostlist.Length; i++)
+                    if (hostlist[i].StartsWith("*"))
                     {
-                        if (hostlist[i].StartsWith("*"))
-                        {
-                            hostlist[i] = ";" + hostlist[i];
-                        }
+                        hostlist[i] = ";" + hostlist[i];
                     }
-
-                    return hostlist;
                 }
 
-                return Array.Empty<string>();
+                return hostlist;
             }
-        }
 
-        public string Key => string.Join("_",
-            Type,
-            Host,
-            Port,
-            Username,
-            Password,
-            BypassFilter,
-            BypassLocalAddress);
+            return Array.Empty<string>();
+        }
     }
+
+    public string Key => string.Join("_",
+        Type,
+        Host,
+        Port,
+        Username,
+        Password,
+        BypassFilter,
+        BypassLocalAddress);
 }

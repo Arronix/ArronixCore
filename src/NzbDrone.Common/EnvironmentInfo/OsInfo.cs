@@ -4,99 +4,98 @@ using System.IO;
 using System.Linq;
 using NLog;
 
-namespace NzbDrone.Common.EnvironmentInfo
+namespace NzbDrone.Common.EnvironmentInfo;
+
+public class OsInfo : IOsInfo
 {
-    public class OsInfo : IOsInfo
+    public static Os Os { get; }
+
+    public static bool IsNotWindows => !IsWindows;
+    public static bool IsLinux => Os == Os.Linux || Os == Os.Bsd;
+    public static bool IsOsx => Os == Os.Osx;
+    public static bool IsWindows => Os == Os.Windows;
+
+    // this needs to not be static so we can mock it
+    public bool IsDocker { get; }
+
+    public string Version { get; }
+    public string Name { get; }
+    public string FullName { get; }
+
+    static OsInfo()
     {
-        public static Os Os { get; }
-
-        public static bool IsNotWindows => !IsWindows;
-        public static bool IsLinux => Os == Os.Linux || Os == Os.Bsd;
-        public static bool IsOsx => Os == Os.Osx;
-        public static bool IsWindows => Os == Os.Windows;
-
-        // this needs to not be static so we can mock it
-        public bool IsDocker { get; }
-
-        public string Version { get; }
-        public string Name { get; }
-        public string FullName { get; }
-
-        static OsInfo()
+        if (OperatingSystem.IsWindows())
         {
-            if (OperatingSystem.IsWindows())
-            {
-                Os = Os.Windows;
-            }
-            else if (OperatingSystem.IsMacOS())
-            {
-                Os = Os.Osx;
-            }
-            else if (OperatingSystem.IsFreeBSD())
-            {
-                Os = Os.Bsd;
-            }
-            else
-            {
-                Os = Os.Linux;
-            }
+            Os = Os.Windows;
         }
-
-        public OsInfo(IEnumerable<IOsVersionAdapter> versionAdapters, Logger logger)
+        else if (OperatingSystem.IsMacOS())
         {
-            OsVersionModel osInfo = null;
+            Os = Os.Osx;
+        }
+        else if (OperatingSystem.IsFreeBSD())
+        {
+            Os = Os.Bsd;
+        }
+        else
+        {
+            Os = Os.Linux;
+        }
+    }
 
-            foreach (var osVersionAdapter in versionAdapters.Where(c => c.Enabled))
+    public OsInfo(IEnumerable<IOsVersionAdapter> versionAdapters, Logger logger)
+    {
+        OsVersionModel osInfo = null;
+
+        foreach (var osVersionAdapter in versionAdapters.Where(c => c.Enabled))
+        {
+            try
             {
-                try
-                {
-                    osInfo = osVersionAdapter.Read();
-                }
-                catch (Exception e)
-                {
-                    logger.Error(e, "Couldn't get OS Version info");
-                }
-
-                if (osInfo != null)
-                {
-                    break;
-                }
+                osInfo = osVersionAdapter.Read();
+            }
+            catch (Exception e)
+            {
+                logger.Error(e, "Couldn't get OS Version info");
             }
 
             if (osInfo != null)
             {
-                Name = osInfo.Name;
-                Version = osInfo.Version;
-                FullName = osInfo.FullName;
-            }
-            else
-            {
-                Name = Os.ToString();
-                FullName = Name;
-            }
-
-            if (IsLinux &&
-                (File.Exists("/.dockerenv") ||
-                 (File.Exists("/proc/1/cgroup") && File.ReadAllText("/proc/1/cgroup").Contains("/docker/"))))
-            {
-                IsDocker = true;
+                break;
             }
         }
-    }
 
-    public interface IOsInfo
-    {
-        string Version { get; }
-        string Name { get; }
-        string FullName { get; }
-        bool IsDocker { get; }
-    }
+        if (osInfo != null)
+        {
+            Name = osInfo.Name;
+            Version = osInfo.Version;
+            FullName = osInfo.FullName;
+        }
+        else
+        {
+            Name = Os.ToString();
+            FullName = Name;
+        }
 
-    public enum Os
-    {
-        Windows,
-        Linux,
-        Osx,
-        Bsd
+        if (IsLinux &&
+            (File.Exists("/.dockerenv") ||
+             (File.Exists("/proc/1/cgroup") && File.ReadAllText("/proc/1/cgroup").Contains("/docker/"))))
+        {
+            IsDocker = true;
+        }
     }
+}
+
+public interface IOsInfo
+{
+    string Version { get; }
+    string Name { get; }
+    string FullName { get; }
+    bool IsDocker { get; }
+}
+
+public enum Os
+{
+    Windows,
+    Linux,
+    Osx,
+    Bsd
 }

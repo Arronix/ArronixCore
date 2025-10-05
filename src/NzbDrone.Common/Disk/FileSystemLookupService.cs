@@ -5,191 +5,184 @@ using System.Linq;
 using NzbDrone.Common.EnvironmentInfo;
 using NzbDrone.Common.Extensions;
 
-namespace NzbDrone.Common.Disk
+namespace NzbDrone.Common.Disk;
+
+public interface IFileSystemLookupService
 {
-    public interface IFileSystemLookupService
+    FileSystemResult LookupContents(string query, bool includeFiles, bool allowFoldersWithoutTrailingSlashes);
+}
+
+public class FileSystemLookupService(IDiskProvider diskProvider, IRuntimeInfo runtimeInfo) : IFileSystemLookupService
+{
+    private readonly IDiskProvider _diskProvider = diskProvider;
+    private readonly IRuntimeInfo _runtimeInfo = runtimeInfo;
+
+    public FileSystemResult LookupContents(string query, bool includeFiles, bool allowFoldersWithoutTrailingSlashes)
     {
-        FileSystemResult LookupContents(string query, bool includeFiles, bool allowFoldersWithoutTrailingSlashes);
+        if (query.IsNullOrWhiteSpace())
+        {
+            if (OsInfo.IsWindows)
+            {
+                var result = new FileSystemResult();
+                result.Directories = GetDrives();
+
+                return result;
+            }
+
+            query = "/";
+        }
+
+        if (
+            allowFoldersWithoutTrailingSlashes &&
+            query.IsPathValid(PathValidationType.CurrentOs) &&
+            _diskProvider.FolderExists(query))
+        {
+            return GetResult(query, includeFiles);
+        }
+
+        var lastSeparatorIndex = query.LastIndexOf(Path.DirectorySeparatorChar);
+        var path = query.Substring(0, lastSeparatorIndex + 1);
+
+        if (lastSeparatorIndex != -1)
+        {
+            return GetResult(path, includeFiles);
+        }
+
+        return new FileSystemResult();
     }
 
-    public class FileSystemLookupService : IFileSystemLookupService
+    private List<FileSystemModel> GetDrives()
     {
-        private readonly IDiskProvider _diskProvider;
-        private readonly IRuntimeInfo _runtimeInfo;
+        return _diskProvider.GetMounts()
+                            .Where(d =>
+                            {
+                                // Fow Windows Services, exclude mapped network drives.
+                                if (_runtimeInfo.IsWindowsService)
+                                {
+                                    return d.DriveType != DriveType.Network;
+                                }
 
-        public FileSystemLookupService(IDiskProvider diskProvider, IRuntimeInfo runtimeInfo)
+                                return true;
+                            })
+                            .Select(d => new FileSystemModel
+                            {
+                                Type = FileSystemEntityType.Drive,
+                                Name = GetVolumeName(d),
+                                Path = d.RootDirectory,
+                                LastModified = null
+                            })
+                            .ToList();
+    }
+
+    private FileSystemResult GetResult(string path, bool includeFiles)
+    {
+        var result = new FileSystemResult();
+
+        try
         {
-            _diskProvider = diskProvider;
-            _runtimeInfo = runtimeInfo;
+            result.Parent = GetParent(path);
+            result.Directories = GetDirectories(path);
+
+            if (includeFiles)
+            {
+                result.Files = GetFiles(path);
+            }
         }
-
-        public FileSystemResult LookupContents(string query, bool includeFiles, bool allowFoldersWithoutTrailingSlashes)
+        catch (DirectoryNotFoundException)
         {
-            if (query.IsNullOrWhiteSpace())
-            {
-                if (OsInfo.IsWindows)
-                {
-                    var result = new FileSystemResult();
-                    result.Directories = GetDrives();
-
-                    return result;
-                }
-
-                query = "/";
-            }
-
-            if (
-                allowFoldersWithoutTrailingSlashes &&
-                query.IsPathValid(PathValidationType.CurrentOs) &&
-                _diskProvider.FolderExists(query))
-            {
-                return GetResult(query, includeFiles);
-            }
-
-            var lastSeparatorIndex = query.LastIndexOf(Path.DirectorySeparatorChar);
-            var path = query.Substring(0, lastSeparatorIndex + 1);
-
-            if (lastSeparatorIndex != -1)
-            {
-                return GetResult(path, includeFiles);
-            }
-
+            return new FileSystemResult { Parent = GetParent(path) };
+        }
+        catch (ArgumentException)
+        {
             return new FileSystemResult();
         }
-
-        private List<FileSystemModel> GetDrives()
+        catch (IOException)
         {
-            return _diskProvider.GetMounts()
-                                .Where(d =>
-                                {
-                                    // Fow Windows Services, exclude mapped network drives.
-                                    if (_runtimeInfo.IsWindowsService)
-                                    {
-                                        return d.DriveType != DriveType.Network;
-                                    }
-
-                                    return true;
-                                })
-                                .Select(d => new FileSystemModel
-                                {
-                                    Type = FileSystemEntityType.Drive,
-                                    Name = GetVolumeName(d),
-                                    Path = d.RootDirectory,
-                                    LastModified = null
-                                })
-                                .ToList();
+            return new FileSystemResult { Parent = GetParent(path) };
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return new FileSystemResult { Parent = GetParent(path) };
         }
 
-        private FileSystemResult GetResult(string path, bool includeFiles)
+        return result;
+    }
+
+    private List<FileSystemModel> GetDirectories(string path)
+    {
+        var directories = _diskProvider.GetDirectoryInfos(path)
+                                       .OrderBy(d => d.Name)
+                                       .Select(d => new FileSystemModel
+                                       {
+                                           Name = d.Name,
+                                           Path = GetDirectoryPath(d.FullName.GetActualCasing()),
+                                           LastModified = d.LastWriteTimeUtc,
+                                           Type = FileSystemEntityType.Folder
+                                       })
+                                       .ToList();
+
+        directories.RemoveAll(d => SpecialFolders.IsSpecialFolder(d.Name));
+
+        return directories;
+    }
+
+    private List<FileSystemModel> GetFiles(string path)
+    {
+        return _diskProvider.GetFileInfos(path)
+                            .OrderBy(d => d.Name)
+                            .Select(d => new FileSystemModel
+                            {
+                                Name = d.Name,
+                                Path = d.FullName.GetActualCasing(),
+                                LastModified = d.LastWriteTimeUtc,
+                                Extension = d.Extension,
+                                Size = d.Length,
+                                Type = FileSystemEntityType.File
+                            })
+                            .ToList();
+    }
+
+    private static string GetVolumeName(IMount mountInfo)
+    {
+        if (mountInfo.VolumeLabel.IsNullOrWhiteSpace())
         {
-            var result = new FileSystemResult();
-
-            try
-            {
-                result.Parent = GetParent(path);
-                result.Directories = GetDirectories(path);
-
-                if (includeFiles)
-                {
-                    result.Files = GetFiles(path);
-                }
-            }
-            catch (DirectoryNotFoundException)
-            {
-                return new FileSystemResult { Parent = GetParent(path) };
-            }
-            catch (ArgumentException)
-            {
-                return new FileSystemResult();
-            }
-            catch (IOException)
-            {
-                return new FileSystemResult { Parent = GetParent(path) };
-            }
-            catch (UnauthorizedAccessException)
-            {
-                return new FileSystemResult { Parent = GetParent(path) };
-            }
-
-            return result;
+            return mountInfo.Name;
         }
 
-        private List<FileSystemModel> GetDirectories(string path)
+        return $"{mountInfo.Name} ({mountInfo.VolumeLabel})";
+    }
+
+    private static string GetDirectoryPath(string path)
+    {
+        if (path.Last() != Path.DirectorySeparatorChar)
         {
-            var directories = _diskProvider.GetDirectoryInfos(path)
-                                           .OrderBy(d => d.Name)
-                                           .Select(d => new FileSystemModel
-                                           {
-                                               Name = d.Name,
-                                               Path = GetDirectoryPath(d.FullName.GetActualCasing()),
-                                               LastModified = d.LastWriteTimeUtc,
-                                               Type = FileSystemEntityType.Folder
-                                           })
-                                           .ToList();
-
-            directories.RemoveAll(d => SpecialFolders.IsSpecialFolder(d.Name));
-
-            return directories;
+            path += Path.DirectorySeparatorChar;
         }
 
-        private List<FileSystemModel> GetFiles(string path)
-        {
-            return _diskProvider.GetFileInfos(path)
-                                .OrderBy(d => d.Name)
-                                .Select(d => new FileSystemModel
-                                {
-                                    Name = d.Name,
-                                    Path = d.FullName.GetActualCasing(),
-                                    LastModified = d.LastWriteTimeUtc,
-                                    Extension = d.Extension,
-                                    Size = d.Length,
-                                    Type = FileSystemEntityType.File
-                                })
-                                .ToList();
-        }
+        return path;
+    }
 
-        private static string GetVolumeName(IMount mountInfo)
+    private static string GetParent(string path)
+    {
+        var di = new DirectoryInfo(path);
+
+        if (di.Parent != null)
         {
-            if (mountInfo.VolumeLabel.IsNullOrWhiteSpace())
+            var parent = di.Parent.FullName;
+
+            if (parent.Last() != Path.DirectorySeparatorChar)
             {
-                return mountInfo.Name;
+                parent += Path.DirectorySeparatorChar;
             }
 
-            return $"{mountInfo.Name} ({mountInfo.VolumeLabel})";
+            return parent;
         }
 
-        private static string GetDirectoryPath(string path)
+        if (!path.Equals("/"))
         {
-            if (path.Last() != Path.DirectorySeparatorChar)
-            {
-                path += Path.DirectorySeparatorChar;
-            }
-
-            return path;
+            return string.Empty;
         }
 
-        private static string GetParent(string path)
-        {
-            var di = new DirectoryInfo(path);
-
-            if (di.Parent != null)
-            {
-                var parent = di.Parent.FullName;
-
-                if (parent.Last() != Path.DirectorySeparatorChar)
-                {
-                    parent += Path.DirectorySeparatorChar;
-                }
-
-                return parent;
-            }
-
-            if (!path.Equals("/"))
-            {
-                return string.Empty;
-            }
-
-            return null;
-        }
+        return null;
     }
 }

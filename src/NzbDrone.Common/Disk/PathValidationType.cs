@@ -1,8 +1,7 @@
-namespace NzbDrone.Common.Disk
+namespace NzbDrone.Common.Disk;
+
+public enum PathValidationType
 {
-    public enum PathValidationType
-    {
-        CurrentOs,
-        AnyOs
-    }
+    CurrentOs,
+    AnyOs
 }

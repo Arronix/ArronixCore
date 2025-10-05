@@ -1,12 +1,7 @@
 ﻿using System;
 
-namespace NzbDrone.Common.Expansive
+namespace NzbDrone.Common.Expansive;
+
+public class CircularReferenceException(string message) : Exception(message)
 {
-    public class CircularReferenceException : Exception
-    {
-        public CircularReferenceException(string message)
-            : base(message)
-        {
-        }
-    }
 }

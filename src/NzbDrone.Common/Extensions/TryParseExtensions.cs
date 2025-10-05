@@ -1,37 +1,36 @@
 using System.Globalization;
 
-namespace NzbDrone.Common.Extensions
+namespace NzbDrone.Common.Extensions;
+
+public static class TryParseExtensions
 {
-    public static class TryParseExtensions
+    public static int? ParseInt32(this string source)
     {
-        public static int? ParseInt32(this string source)
+        if (int.TryParse(source, out var result))
         {
-            if (int.TryParse(source, out var result))
-            {
-                return result;
-            }
-
-            return null;
+            return result;
         }
 
-        public static long? ParseInt64(this string source)
-        {
-            if (long.TryParse(source, out var result))
-            {
-                return result;
-            }
+        return null;
+    }
 
-            return null;
+    public static long? ParseInt64(this string source)
+    {
+        if (long.TryParse(source, out var result))
+        {
+            return result;
         }
 
-        public static double? ParseDouble(this string source)
-        {
-            if (double.TryParse(source.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var result))
-            {
-                return result;
-            }
+        return null;
+    }
 
-            return null;
+    public static double? ParseDouble(this string source)
+    {
+        if (double.TryParse(source.Replace(',', '.'), NumberStyles.Number, CultureInfo.InvariantCulture, out var result))
+        {
+            return result;
         }
+
+        return null;
     }
 }

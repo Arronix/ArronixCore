@@ -1,34 +1,33 @@
-namespace NzbDrone.Common
+namespace NzbDrone.Common;
+
+public static class ConvertBase32
 {
-    public static class ConvertBase32
+    private static string ValidChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+
+    public static byte[] FromBase32String(string str)
     {
-        private static string ValidChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+        var numBytes = str.Length * 5 / 8;
+        var bytes = new byte[numBytes];
 
-        public static byte[] FromBase32String(string str)
+        // all UPPERCASE chars
+        str = str.ToUpper();
+
+        var bitBuffer = 0;
+        var bitBufferCount = 0;
+        var index = 0;
+
+        for (var i = 0; i < str.Length; i++)
         {
-            var numBytes = str.Length * 5 / 8;
-            var bytes = new byte[numBytes];
+            bitBuffer = (bitBuffer << 5) | ValidChars.IndexOf(str[i]);
+            bitBufferCount += 5;
 
-            // all UPPERCASE chars
-            str = str.ToUpper();
-
-            var bitBuffer = 0;
-            var bitBufferCount = 0;
-            var index = 0;
-
-            for (var i = 0; i < str.Length; i++)
+            if (bitBufferCount >= 8)
             {
-                bitBuffer = (bitBuffer << 5) | ValidChars.IndexOf(str[i]);
-                bitBufferCount += 5;
-
-                if (bitBufferCount >= 8)
-                {
-                    bitBufferCount -= 8;
-                    bytes[index++] = (byte)(bitBuffer >> bitBufferCount);
-                }
+                bitBufferCount -= 8;
+                bytes[index++] = (byte)(bitBuffer >> bitBufferCount);
             }
-
-            return bytes;
         }
+
+        return bytes;
     }
 }

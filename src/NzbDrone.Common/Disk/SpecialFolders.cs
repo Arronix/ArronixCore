@@ -4,8 +4,8 @@ namespace NzbDrone.Common.Disk;
 
 public static class SpecialFolders
 {
-    private static readonly HashSet<string> _specialFolders = new HashSet<string>
-    {
+    private static readonly HashSet<string> _specialFolders =
+    [
         // Windows
         "boot",
         "bootmgr",
@@ -33,7 +33,7 @@ public static class SpecialFolders
         // Synology
         "@eadir",
         "#recycle"
-    };
+    ];
 
     public static bool IsSpecialFolder(string folder)
     {

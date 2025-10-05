@@ -14,327 +14,313 @@ using NzbDrone.Common.Cache;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Http.Proxy;
 
-namespace NzbDrone.Common.Http.Dispatchers
+namespace NzbDrone.Common.Http.Dispatchers;
+
+public class ManagedHttpDispatcher(IHttpProxySettingsProvider proxySettingsProvider,
+    ICreateManagedWebProxy createManagedWebProxy,
+    ICertificateValidationService certificateValidationService,
+    IUserAgentBuilder userAgentBuilder,
+    ICacheManager cacheManager,
+    Logger logger) : IHttpDispatcher
 {
-    public class ManagedHttpDispatcher : IHttpDispatcher
+    private const string NO_PROXY_KEY = "no-proxy";
+
+    private const int connection_establish_timeout = 2000;
+    private static bool useIPv6 = Socket.OSSupportsIPv6;
+    private static bool hasResolvedIPv6Availability;
+
+    private readonly IHttpProxySettingsProvider _proxySettingsProvider = proxySettingsProvider;
+    private readonly ICreateManagedWebProxy _createManagedWebProxy = createManagedWebProxy;
+    private readonly ICertificateValidationService _certificateValidationService = certificateValidationService;
+    private readonly IUserAgentBuilder _userAgentBuilder = userAgentBuilder;
+    private readonly ICached<System.Net.Http.HttpClient> _httpClientCache = cacheManager.GetCache<System.Net.Http.HttpClient>(typeof(ManagedHttpDispatcher));
+    private readonly ICached<CredentialCache> _credentialCache = cacheManager.GetCache<CredentialCache>(typeof(ManagedHttpDispatcher), "credentialcache");
+
+    private readonly Logger _logger = logger;
+
+    public async Task<HttpResponse> GetResponseAsync(HttpRequest request, CookieContainer cookies)
     {
-        private const string NO_PROXY_KEY = "no-proxy";
-
-        private const int connection_establish_timeout = 2000;
-        private static bool useIPv6 = Socket.OSSupportsIPv6;
-        private static bool hasResolvedIPv6Availability;
-
-        private readonly IHttpProxySettingsProvider _proxySettingsProvider;
-        private readonly ICreateManagedWebProxy _createManagedWebProxy;
-        private readonly ICertificateValidationService _certificateValidationService;
-        private readonly IUserAgentBuilder _userAgentBuilder;
-        private readonly ICached<System.Net.Http.HttpClient> _httpClientCache;
-        private readonly ICached<CredentialCache> _credentialCache;
-
-        private readonly Logger _logger;
-
-        public ManagedHttpDispatcher(IHttpProxySettingsProvider proxySettingsProvider,
-            ICreateManagedWebProxy createManagedWebProxy,
-            ICertificateValidationService certificateValidationService,
-            IUserAgentBuilder userAgentBuilder,
-            ICacheManager cacheManager,
-            Logger logger)
+        var requestMessage = new HttpRequestMessage(request.Method, (Uri)request.Url)
         {
-            _proxySettingsProvider = proxySettingsProvider;
-            _createManagedWebProxy = createManagedWebProxy;
-            _certificateValidationService = certificateValidationService;
-            _userAgentBuilder = userAgentBuilder;
+            Version = HttpVersion.Version20,
+            VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+        };
+        requestMessage.Headers.UserAgent.ParseAdd(_userAgentBuilder.GetUserAgent(request.UseSimplifiedUserAgent));
+        requestMessage.Headers.ConnectionClose = !request.ConnectionKeepAlive;
 
-            _httpClientCache = cacheManager.GetCache<System.Net.Http.HttpClient>(typeof(ManagedHttpDispatcher));
-            _credentialCache = cacheManager.GetCache<CredentialCache>(typeof(ManagedHttpDispatcher), "credentialcache");
-
-            _logger = logger;
+        var cookieHeader = cookies.GetCookieHeader((Uri)request.Url);
+        if (cookieHeader.IsNotNullOrWhiteSpace())
+        {
+            requestMessage.Headers.Add("Cookie", cookieHeader);
         }
 
-        public async Task<HttpResponse> GetResponseAsync(HttpRequest request, CookieContainer cookies)
+        using var cts = new CancellationTokenSource();
+        if (request.RequestTimeout != TimeSpan.Zero)
         {
-            var requestMessage = new HttpRequestMessage(request.Method, (Uri)request.Url)
-            {
-                Version = HttpVersion.Version20,
-                VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-            };
-            requestMessage.Headers.UserAgent.ParseAdd(_userAgentBuilder.GetUserAgent(request.UseSimplifiedUserAgent));
-            requestMessage.Headers.ConnectionClose = !request.ConnectionKeepAlive;
-
-            var cookieHeader = cookies.GetCookieHeader((Uri)request.Url);
-            if (cookieHeader.IsNotNullOrWhiteSpace())
-            {
-                requestMessage.Headers.Add("Cookie", cookieHeader);
-            }
-
-            using var cts = new CancellationTokenSource();
-            if (request.RequestTimeout != TimeSpan.Zero)
-            {
-                cts.CancelAfter(request.RequestTimeout);
-            }
-            else
-            {
-                // The default for System.Net.Http.HttpClient
-                cts.CancelAfter(TimeSpan.FromSeconds(100));
-            }
-
-            if (request.Credentials != null)
-            {
-                if (request.Credentials is BasicNetworkCredential bc)
-                {
-                    // Manually set header to avoid initial challenge response
-                    var authInfo = bc.UserName + ":" + bc.Password;
-                    authInfo = Convert.ToBase64String(Encoding.GetEncoding("ISO-8859-1").GetBytes(authInfo));
-                    requestMessage.Headers.Add("Authorization", "Basic " + authInfo);
-                }
-                else if (request.Credentials is NetworkCredential nc)
-                {
-                    var creds = GetCredentialCache();
-                    foreach (var authtype in new[] { "Basic", "Digest" })
-                    {
-                        creds.Remove((Uri)request.Url, authtype);
-                        creds.Add((Uri)request.Url, authtype, nc);
-                    }
-                }
-            }
-
-            if (request.ContentData != null)
-            {
-                requestMessage.Content = new ByteArrayContent(request.ContentData);
-            }
-
-            if (request.Headers != null)
-            {
-                AddRequestHeaders(requestMessage, request.Headers);
-            }
-
-            var httpClient = GetClient(request.Url);
-
-            try
-            {
-                using var responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cts.Token);
-                {
-                    byte[] data = null;
-
-                    try
-                    {
-                        if (request.ResponseStream != null && responseMessage.StatusCode == HttpStatusCode.OK)
-                        {
-                            await responseMessage.Content.CopyToAsync(request.ResponseStream, null, cts.Token);
-                        }
-                        else
-                        {
-                            data = await responseMessage.Content.ReadAsByteArrayAsync(cts.Token);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        throw new WebException("Failed to read complete http response", ex, WebExceptionStatus.ReceiveFailure, null);
-                    }
-
-                    var headers = responseMessage.Headers.ToNameValueCollection();
-
-                    headers.Add(responseMessage.Content.Headers.ToNameValueCollection());
-
-                    return new HttpResponse(request, new HttpHeader(headers), data, responseMessage.StatusCode, responseMessage.Version);
-                }
-            }
-            catch (OperationCanceledException ex) when (cts.IsCancellationRequested)
-            {
-                throw new WebException("Http request timed out", ex, WebExceptionStatus.Timeout, null);
-            }
+            cts.CancelAfter(request.RequestTimeout);
+        }
+        else
+        {
+            // The default for System.Net.Http.HttpClient
+            cts.CancelAfter(TimeSpan.FromSeconds(100));
         }
 
-        protected virtual System.Net.Http.HttpClient GetClient(HttpUri uri)
+        if (request.Credentials != null)
         {
-            var proxySettings = _proxySettingsProvider.GetProxySettings(uri);
-
-            var key = proxySettings?.Key ?? NO_PROXY_KEY;
-
-            return _httpClientCache.Get(key, () => CreateHttpClient(proxySettings));
-        }
-
-        protected virtual System.Net.Http.HttpClient CreateHttpClient(HttpProxySettings proxySettings)
-        {
-            var handler = new SocketsHttpHandler()
+            if (request.Credentials is BasicNetworkCredential bc)
             {
-                AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Brotli,
-                UseCookies = false, // sic - we don't want to use a shared cookie container
-                AllowAutoRedirect = false,
-                Credentials = GetCredentialCache(),
-                PreAuthenticate = true,
-                MaxConnectionsPerServer = 12,
-                ConnectCallback = onConnect,
-                SslOptions = new SslClientAuthenticationOptions
-                {
-                    RemoteCertificateValidationCallback = _certificateValidationService.ShouldByPassValidationError
-                }
-            };
-
-            if (proxySettings != null)
-            {
-                handler.Proxy = _createManagedWebProxy.GetWebProxy(proxySettings);
+                // Manually set header to avoid initial challenge response
+                var authInfo = bc.UserName + ":" + bc.Password;
+                authInfo = Convert.ToBase64String(Encoding.GetEncoding("ISO-8859-1").GetBytes(authInfo));
+                requestMessage.Headers.Add("Authorization", "Basic " + authInfo);
             }
-
-            var client = new System.Net.Http.HttpClient(handler)
+            else if (request.Credentials is NetworkCredential nc)
             {
-                DefaultRequestVersion = HttpVersion.Version20,
-                DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
-                Timeout = Timeout.InfiniteTimeSpan
-            };
-
-            return client;
-        }
-
-        protected virtual void AddRequestHeaders(HttpRequestMessage webRequest, HttpHeader headers)
-        {
-            foreach (var header in headers)
-            {
-                switch (header.Key)
+                var creds = GetCredentialCache();
+                foreach (var authtype in new[] { "Basic", "Digest" })
                 {
-                    case "Accept":
-                        webRequest.Headers.Accept.ParseAdd(header.Value);
-                        break;
-                    case "Connection":
-                        webRequest.Headers.Connection.Clear();
-                        webRequest.Headers.Connection.Add(header.Value);
-                        break;
-                    case "Content-Length":
-                        AddContentHeader(webRequest, "Content-Length", header.Value);
-                        break;
-                    case "Content-Type":
-                        AddContentHeader(webRequest, "Content-Type", header.Value);
-                        break;
-                    case "Date":
-                        webRequest.Headers.Remove("Date");
-                        webRequest.Headers.Date = HttpHeader.ParseDateTime(header.Value);
-                        break;
-                    case "Expect":
-                        webRequest.Headers.Expect.ParseAdd(header.Value);
-                        break;
-                    case "Host":
-                        webRequest.Headers.Host = header.Value;
-                        break;
-                    case "If-Modified-Since":
-                        webRequest.Headers.IfModifiedSince = HttpHeader.ParseDateTime(header.Value);
-                        break;
-                    case "Range":
-                        throw new NotImplementedException();
-                    case "Referer":
-                        webRequest.Headers.Add("Referer", header.Value);
-                        break;
-                    case "Transfer-Encoding":
-                        webRequest.Headers.TransferEncoding.ParseAdd(header.Value);
-                        break;
-                    case "User-Agent":
-                        webRequest.Headers.UserAgent.ParseAdd(header.Value);
-                        break;
-                    case "Proxy-Connection":
-                        throw new NotImplementedException();
-                    default:
-                        webRequest.Headers.Add(header.Key, header.Value);
-                        break;
+                    creds.Remove((Uri)request.Url, authtype);
+                    creds.Add((Uri)request.Url, authtype, nc);
                 }
             }
         }
 
-        private static void AddContentHeader(HttpRequestMessage request, string header, string value)
+        if (request.ContentData != null)
         {
-            var headers = request.Content?.Headers;
-            if (headers == null)
-            {
-                return;
-            }
-
-            headers.Remove(header);
-            headers.Add(header, value);
+            requestMessage.Content = new ByteArrayContent(request.ContentData);
         }
 
-        private CredentialCache GetCredentialCache()
+        if (request.Headers != null)
         {
-            return _credentialCache.Get("credentialCache", () => new CredentialCache());
+            AddRequestHeaders(requestMessage, request.Headers);
         }
 
-        private bool HasRoutableIPv4Address()
-        {
-            // Get all IPv4 addresses from all interfaces and return true if there are any with non-loopback addresses
-            try
-            {
-                var networkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+        var httpClient = GetClient(request.Url);
 
-                return networkInterfaces.Any(ni =>
-                    ni.OperationalStatus == OperationalStatus.Up &&
-                    ni.GetIPProperties().UnicastAddresses.Any(ip =>
-                        ip.Address.AddressFamily == AddressFamily.InterNetwork &&
-                        !IPAddress.IsLoopback(ip.Address)));
-            }
-            catch (Exception e)
-            {
-                _logger.Debug(e, "Caught exception while GetAllNetworkInterfaces assuming IPv4 connectivity: {0}", e.Message);
-                return true;
-            }
-        }
-
-        private async ValueTask<Stream> onConnect(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+        try
         {
-            // Until .NET supports an implementation of Happy Eyeballs (https://tools.ietf.org/html/rfc8305#section-2), let's make IPv4 fallback work in a simple way.
-            // This issue is being tracked at https://github.com/dotnet/runtime/issues/26177 and expected to be fixed in .NET 6.
-            if (useIPv6)
+            using var responseMessage = await httpClient.SendAsync(requestMessage, HttpCompletionOption.ResponseHeadersRead, cts.Token);
             {
+                byte[] data = null;
+
                 try
                 {
-                    var localToken = cancellationToken;
-
-                    if (!hasResolvedIPv6Availability)
+                    if (request.ResponseStream != null && responseMessage.StatusCode == HttpStatusCode.OK)
                     {
-                        // to make things move fast, use a very low timeout for the initial ipv6 attempt.
-                        var quickFailCts = new CancellationTokenSource(connection_establish_timeout);
-                        var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quickFailCts.Token);
-
-                        localToken = linkedTokenSource.Token;
+                        await responseMessage.Content.CopyToAsync(request.ResponseStream, null, cts.Token);
                     }
+                    else
+                    {
+                        data = await responseMessage.Content.ReadAsByteArrayAsync(cts.Token);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    throw new WebException("Failed to read complete http response", ex, WebExceptionStatus.ReceiveFailure, null);
+                }
 
-                    return await attemptConnection(AddressFamily.InterNetworkV6, context, localToken);
-                }
-                catch
-                {
-                    // Do not retry IPv6 if a routable IPv4 address is available, otherwise continue to attempt IPv6 connections.
-                    var routableIPv4 = HasRoutableIPv4Address();
-                    _logger.Info("IPv4 is available: {0}, IPv6 will be {1}", routableIPv4, routableIPv4 ? "disabled" : "left enabled");
-                    useIPv6 = !routableIPv4;
-                }
-                finally
-                {
-                    hasResolvedIPv6Availability = true;
-                }
+                var headers = responseMessage.Headers.ToNameValueCollection();
+
+                headers.Add(responseMessage.Content.Headers.ToNameValueCollection());
+
+                return new HttpResponse(request, new HttpHeader(headers), data, responseMessage.StatusCode, responseMessage.Version);
             }
+        }
+        catch (OperationCanceledException ex) when (cts.IsCancellationRequested)
+        {
+            throw new WebException("Http request timed out", ex, WebExceptionStatus.Timeout, null);
+        }
+    }
 
-            // fallback to IPv4.
-            return await attemptConnection(AddressFamily.InterNetwork, context, cancellationToken);
+    protected virtual System.Net.Http.HttpClient GetClient(HttpUri uri)
+    {
+        var proxySettings = _proxySettingsProvider.GetProxySettings(uri);
+
+        var key = proxySettings?.Key ?? NO_PROXY_KEY;
+
+        return _httpClientCache.Get(key, () => CreateHttpClient(proxySettings));
+    }
+
+    protected virtual System.Net.Http.HttpClient CreateHttpClient(HttpProxySettings proxySettings)
+    {
+        var handler = new SocketsHttpHandler()
+        {
+            AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Brotli,
+            UseCookies = false, // sic - we don't want to use a shared cookie container
+            AllowAutoRedirect = false,
+            Credentials = GetCredentialCache(),
+            PreAuthenticate = true,
+            MaxConnectionsPerServer = 12,
+            ConnectCallback = onConnect,
+            SslOptions = new SslClientAuthenticationOptions
+            {
+                RemoteCertificateValidationCallback = _certificateValidationService.ShouldByPassValidationError
+            }
+        };
+
+        if (proxySettings != null)
+        {
+            handler.Proxy = _createManagedWebProxy.GetWebProxy(proxySettings);
         }
 
-        private static async ValueTask<Stream> attemptConnection(AddressFamily addressFamily, SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+        var client = new System.Net.Http.HttpClient(handler)
         {
-            // The following socket constructor will create a dual-mode socket on systems where IPV6 is available.
-            var socket = new Socket(addressFamily, SocketType.Stream, ProtocolType.Tcp)
-            {
-                // Turn off Nagle's algorithm since it degrades performance in most HttpClient scenarios.
-                NoDelay = true
-            };
+            DefaultRequestVersion = HttpVersion.Version20,
+            DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower,
+            Timeout = Timeout.InfiniteTimeSpan
+        };
 
+        return client;
+    }
+
+    protected virtual void AddRequestHeaders(HttpRequestMessage webRequest, HttpHeader headers)
+    {
+        foreach (var header in headers)
+        {
+            switch (header.Key)
+            {
+                case "Accept":
+                    webRequest.Headers.Accept.ParseAdd(header.Value);
+                    break;
+                case "Connection":
+                    webRequest.Headers.Connection.Clear();
+                    webRequest.Headers.Connection.Add(header.Value);
+                    break;
+                case "Content-Length":
+                    AddContentHeader(webRequest, "Content-Length", header.Value);
+                    break;
+                case "Content-Type":
+                    AddContentHeader(webRequest, "Content-Type", header.Value);
+                    break;
+                case "Date":
+                    webRequest.Headers.Remove("Date");
+                    webRequest.Headers.Date = HttpHeader.ParseDateTime(header.Value);
+                    break;
+                case "Expect":
+                    webRequest.Headers.Expect.ParseAdd(header.Value);
+                    break;
+                case "Host":
+                    webRequest.Headers.Host = header.Value;
+                    break;
+                case "If-Modified-Since":
+                    webRequest.Headers.IfModifiedSince = HttpHeader.ParseDateTime(header.Value);
+                    break;
+                case "Range":
+                    throw new NotImplementedException();
+                case "Referer":
+                    webRequest.Headers.Add("Referer", header.Value);
+                    break;
+                case "Transfer-Encoding":
+                    webRequest.Headers.TransferEncoding.ParseAdd(header.Value);
+                    break;
+                case "User-Agent":
+                    webRequest.Headers.UserAgent.ParseAdd(header.Value);
+                    break;
+                case "Proxy-Connection":
+                    throw new NotImplementedException();
+                default:
+                    webRequest.Headers.Add(header.Key, header.Value);
+                    break;
+            }
+        }
+    }
+
+    private static void AddContentHeader(HttpRequestMessage request, string header, string value)
+    {
+        var headers = request.Content?.Headers;
+        if (headers == null)
+        {
+            return;
+        }
+
+        headers.Remove(header);
+        headers.Add(header, value);
+    }
+
+    private CredentialCache GetCredentialCache()
+    {
+        return _credentialCache.Get("credentialCache", () => new CredentialCache());
+    }
+
+    private bool HasRoutableIPv4Address()
+    {
+        // Get all IPv4 addresses from all interfaces and return true if there are any with non-loopback addresses
+        try
+        {
+            var networkInterfaces = NetworkInterface.GetAllNetworkInterfaces();
+
+            return networkInterfaces.Any(ni =>
+                ni.OperationalStatus == OperationalStatus.Up &&
+                ni.GetIPProperties().UnicastAddresses.Any(ip =>
+                    ip.Address.AddressFamily == AddressFamily.InterNetwork &&
+                    !IPAddress.IsLoopback(ip.Address)));
+        }
+        catch (Exception e)
+        {
+            _logger.Debug(e, "Caught exception while GetAllNetworkInterfaces assuming IPv4 connectivity: {0}", e.Message);
+            return true;
+        }
+    }
+
+    private async ValueTask<Stream> onConnect(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    {
+        // Until .NET supports an implementation of Happy Eyeballs (https://tools.ietf.org/html/rfc8305#section-2), let's make IPv4 fallback work in a simple way.
+        // This issue is being tracked at https://github.com/dotnet/runtime/issues/26177 and expected to be fixed in .NET 6.
+        if (useIPv6)
+        {
             try
             {
-                await socket.ConnectAsync(context.DnsEndPoint, cancellationToken).ConfigureAwait(false);
+                var localToken = cancellationToken;
 
-                // The stream should take the ownership of the underlying socket,
-                // closing it when it's disposed.
-                return new NetworkStream(socket, ownsSocket: true);
+                if (!hasResolvedIPv6Availability)
+                {
+                    // to make things move fast, use a very low timeout for the initial ipv6 attempt.
+                    var quickFailCts = new CancellationTokenSource(connection_establish_timeout);
+                    var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, quickFailCts.Token);
+
+                    localToken = linkedTokenSource.Token;
+                }
+
+                return await attemptConnection(AddressFamily.InterNetworkV6, context, localToken);
             }
             catch
             {
-                socket.Dispose();
-                throw;
+                // Do not retry IPv6 if a routable IPv4 address is available, otherwise continue to attempt IPv6 connections.
+                var routableIPv4 = HasRoutableIPv4Address();
+                _logger.Info("IPv4 is available: {0}, IPv6 will be {1}", routableIPv4, routableIPv4 ? "disabled" : "left enabled");
+                useIPv6 = !routableIPv4;
             }
+            finally
+            {
+                hasResolvedIPv6Availability = true;
+            }
+        }
+
+        // fallback to IPv4.
+        return await attemptConnection(AddressFamily.InterNetwork, context, cancellationToken);
+    }
+
+    private static async ValueTask<Stream> attemptConnection(AddressFamily addressFamily, SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    {
+        // The following socket constructor will create a dual-mode socket on systems where IPV6 is available.
+        var socket = new Socket(addressFamily, SocketType.Stream, ProtocolType.Tcp)
+        {
+            // Turn off Nagle's algorithm since it degrades performance in most HttpClient scenarios.
+            NoDelay = true
+        };
+
+        try
+        {
+            await socket.ConnectAsync(context.DnsEndPoint, cancellationToken).ConfigureAwait(false);
+
+            // The stream should take the ownership of the underlying socket,
+            // closing it when it's disposed.
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
         }
     }
 }

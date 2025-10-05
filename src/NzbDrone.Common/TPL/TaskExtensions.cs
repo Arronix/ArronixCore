@@ -2,28 +2,27 @@ using System.Threading.Tasks;
 using NLog;
 using NzbDrone.Common.Instrumentation;
 
-namespace NzbDrone.Common.TPL
+namespace NzbDrone.Common.TPL;
+
+public static class TaskExtensions
 {
-    public static class TaskExtensions
+    private static readonly Logger Logger = NzbDroneLogger.GetLogger(typeof(TaskExtensions));
+
+    public static Task LogExceptions(this Task task)
     {
-        private static readonly Logger Logger = NzbDroneLogger.GetLogger(typeof(TaskExtensions));
-
-        public static Task LogExceptions(this Task task)
-        {
-            task.ContinueWith(t =>
+        task.ContinueWith(t =>
+            {
+                if (t.Exception != null)
                 {
-                    if (t.Exception != null)
+                    var aggregateException = t.Exception.Flatten();
+                    foreach (var exception in aggregateException.InnerExceptions)
                     {
-                        var aggregateException = t.Exception.Flatten();
-                        foreach (var exception in aggregateException.InnerExceptions)
-                        {
-                            Logger.Error(exception, "Task Error");
-                        }
+                        Logger.Error(exception, "Task Error");
                     }
-                },
-                TaskContinuationOptions.OnlyOnFaulted);
+                }
+            },
+            TaskContinuationOptions.OnlyOnFaulted);
 
-            return task;
-        }
+        return task;
     }
 }
