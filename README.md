@@ -125,11 +125,11 @@ More detailed setup and contribution guides will arrive as the architecture stab
 
 ## Initial Work Plan
 
-1. Core Abstractions & Contracts (#1)  
-2. Plugin Loader & Manifests (#2)  
-3. Extract TV into Plugin (#3)  
-4. Storage Model & Migration (#4)  
-5. Policy Pipelines (#5)
+1. #1
+2. #2
+3. #3
+4. #4
+5. #5
 
 ## Contributing
 
