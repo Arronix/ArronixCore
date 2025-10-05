@@ -123,22 +123,6 @@ dotnet run
 
 More detailed setup and contribution guides will arrive as the architecture stabilises.
 
-## Initial Work Plan
-
-1. #1
-2. #2
-3. #3
-4. #4
-5. #5
-
-## Contributing
-
-Arronix is an open-source community project.  
-Contributions are welcome across all areas—architecture, plugins, UI, documentation, and testing.
-
-> This repository currently tracks the refactor from Sonarr v5 (`sonarr-v5-develop` branch) toward the new modular core.  
-> Please open issues for architectural discussions or early plugin proposals.
-
 ## License & Acknowledgements
 
 - Licensed under the **GNU GPL v3**.  
