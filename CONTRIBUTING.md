@@ -1,52 +1,40 @@
 # How to Contribute
 
-We're always looking for people to help make Sonarr even better, there are a number of ways to contribute.
-
-## Documentation
-
-Setup guides, [FAQ](https://wiki.servarr.com/sonarr/faq), the more information we have on the [wiki](https://wiki.servarr.com/sonarr) the better.
-
 ## Development
 
 ### Tools required
 
-- Visual Studio 2019 or higher (https://www.visualstudio.com/vs/). The community version is free and works (https://www.visualstudio.com/downloads/).
-- HTML/Javascript editor of choice (VS Code/Sublime Text/Webstorm/Atom/etc)
-- [Git](https://git-scm.com/downloads)
-- [NodeJS](https://nodejs.org/en/download/) (Node 10.X.X or higher)
-- [Yarn](https://yarnpkg.com/)
+- **Visual Studio Code** - it will automatically prompt you to install the recommended extensions when you open the repository.
+- **Git** - for version control
+- **DotNet SDK** (see version in global.json)
 
 ### Getting started
 
-1. Fork Sonarr
-2. Clone the repository into your development machine. [_info_](https://docs.github.com/en/get-started/quickstart/fork-a-repo)
-3. Install the required Node Packages `yarn install`
-4. Start webpack to monitor your dev environment for any frontend changes that need post processing using `yarn start` command.
-5. Build the project in Visual Studio, Setting startup project to `Sonarr.Console` and framework to `x86`
-6. Debug the project in Visual Studio
-7. Open http://localhost:8989
+> TODO: This hasn't been updated for Arronix yet, it will be as the Sonarr refactor completes.
 
+1. Install node `yarn install`
+2. Start webpack to monitor your dev environment for any frontend changes that need post processing using `yarn start` command.
+3. Build the project in Visual Studio, Setting startup project to `Sonarr.Console` and framework to `x86`
+4. Debug the project in Visual Studio
+5. Open [Sonarr](http://localhost:8989)
+  
 ### Contributing Code
 
-- If you're adding a new, already requested feature, please comment on [Github Issues](https://github.com/Sonarr/Sonarr/issues "Github Issues") so work is not duplicated (If you want to add something not already on there, please talk to us first)
-- Rebase from Sonarr's `v5-develop` branch, don't merge
-- Make meaningful commits, or squash them
-- Feel free to make a pull request before work is complete, this will let us see where its at and make comments/suggest improvements
-- Reach out to us on our [forums](https://forums.sonarr.tv/), [subreddit](https://www.reddit.com/r/sonarr/), [discord](https://discord.gg/Ex7FmFK), or [IRC](https://web.libera.chat/?channels=#sonarr) if you have any questions
+- All PRs must be made against a [GitHub Arronix issue](https://github.com/Arronix/ArronixCore/issues).
 - Add tests (unit/integration)
-- Commit with *nix line endings for consistency (We checkout Windows and commit *nix)
-- One feature/bug fix per pull request to keep things clean and easy to understand
-- Use 4 spaces instead of tabs, this should be the default for VS 2019 and WebStorm
+- Commit with `LF` line endings
+- Use the Visual Studio Code `.editorconfig` to follow adopted coding styles
 
-### Pull Requesting
+### Branching and Pull Requests
 
-- Only make pull requests to the default branch (currently `v5-develop`), never `main`, if you make a PR to main we'll comment on it and close it
-- You're probably going to get some comments or questions from us, they will be to ensure consistency and maintainability
-- We'll try to respond to pull requests as soon as possible, if its been a day or two, please reach out to us, we may have missed it
-- Each PR should come from its own [feature branch](http://martinfowler.com/bliki/FeatureBranch.html) not develop in your fork, it should have a meaningful branch name (what is being added/fixed)
-  - new-feature (Good)
-  - fix-bug (Good)
-  - patch (Bad)
-  - develop (Bad)
+> The **default branch** is currently `dev`.
 
-If you have any questions about any of this, please let us know.
+- Always fork from the default branch as a feature branch using `feature/feature-name` naming convention
+- Only make pull requests back to the default branch
+
+### Definition of Done
+
+- Any contributions or changes to the architecture are documented with updates to [Architecture](./ARCHITECTURE.md) or [GLOSSARY](./GLOSSARY.md) as appropriate.
+- All tests pass
+- Additional tests are added for any new or changed functionality
+- Code has been reviewed and approved by at least one other contributor

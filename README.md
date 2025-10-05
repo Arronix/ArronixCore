@@ -16,6 +16,7 @@ This project is an architectural restructuring of the Sonarr v5 codebase, evolvi
 Links above cover the platform structure and shared terminology
 
 - [Architecture](./ARCHITECTURE.md)
+- [Contributing](./CONTRIBUTING.md)
 - [Glossary](./GLOSSARY.md)
 
 ## Why
