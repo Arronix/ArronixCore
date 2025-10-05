@@ -9,10 +9,10 @@ namespace Arronix.Abstractions.DTOs;
 public record ReleaseCandidate(
     ReleaseId ReleaseId,
     string Title,
-    string DownloadUrl,
+    Uri DownloadUrl,
     string IndexerId,
     MediaKindId MediaKind,
     long Size,
     DateTime PublishDate,
-    string? InfoUrl = null,
+    Uri? InfoUrl = null,
     IReadOnlyDictionary<string, string>? AdditionalData = null);

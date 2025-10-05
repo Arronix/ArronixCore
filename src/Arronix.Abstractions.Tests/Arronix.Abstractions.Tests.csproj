@@ -6,7 +6,7 @@
     <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- Override to mark as test project -->
     <TestProject>true</TestProject>
   </PropertyGroup>

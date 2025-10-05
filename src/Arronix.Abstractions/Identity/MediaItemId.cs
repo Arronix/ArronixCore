@@ -10,7 +10,7 @@ public readonly record struct MediaItemId(int Value)
     /// <summary>
     /// Gets the string representation of this media item identifier.
     /// </summary>
-    public override string ToString() => Value.ToString();
+    public override string ToString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Creates a MediaItemId from an integer value.
