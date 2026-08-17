@@ -682,3 +682,68 @@ Small, and all of it coverage of deleted features rather than of behaviour:
 **Two cases were un-parked**: `CapabilityDeclarationTests.ConfiguringTheExtensionRegistersSomething` and
 `NoCapabilityIsHeldOnlyBecauseAnotherImpliedIt` were excluded for Movies while it had no way to register.
 `AddMediaType` landed, the exclusion list is deleted, and both now run against all four extensions.
+
+---
+
+## Part 7 — Quality axes: critique outcome (2026-08-17)
+
+Design docs: `docs/design/quality-axes.md` (1,928 lines), `docs/design/clean-room-plan.md` (650 lines).
+Adversarial critique: session scratchpad `quality-axes-critique.md` (1,044 lines) — verdicts verified by
+the orchestrator against the critique's own hand-mapped evidence.
+
+**Verdicts.** Clean-room plan: *proceed with additive amendments, none blocking* (its inventory numbers all
+verify; it found a second copy of ported fixture data in `ParseEngineFixtures.cs`, and the critique added
+`ReleaseTagScanner.cs` + four more fixtures and re-sized the docs scrub — 566 `.cs:NN` citations in
+`docs/`, ~10× the plan's estimate). Quality axes: *proceed with amendments — three blocking, one headline
+retraction*.
+
+**R-A1, the blocking refutation (with proof).** The design celebrated that Remux→Bluray and WEBDL→WEBRip
+are "the same relationship" — one step on the `Generation` axis. The critique proved that is exactly what
+breaks it: with per-axis preferences only, **no policy can hold `WEBDL ≈ WEBRip` and `Bluray < Remux`
+simultaneously** — tying Generation {0,1} ties both pairs; ordering Generation strictly orders both pairs.
+The shipped default silently chose strict and lost the WEBDL≈WEBRip equivalence the design's own §2.1
+promised. Do not start implementation until this is answered; the answer decides whether `AxisPreference`
+needs a cross-axis mechanism, which changes contract + profile editor + defaults together.
+
+**The reality test: 30 real titles hand-mapped — 11 clean, 9 changed answers/labels, 10 unmappable**
+without unspecified material. The critique's summary is the honest frame: *"the axes model is better than
+the ladder over the clean cross-product (1440p, AV1, 1080p-from-anywhere all work; the ladder cannot
+express any of them) and worse over the messy residue — and the messy residue is precisely where the 101
+rung rules came from. A model that handles the cross-product and drops the residue has replaced the part of
+the ladder that was easy."* The 10 unmappable rows cluster: per-kind guards the family-level `Read` cannot
+consult (german-remux, anime-web), orphan-remux inference, container-evidence rows, conflicting same-source
+resolution claims, DV+HDR10+ dual dynamic range, REPACK2-style corrections, and labels the renderer refuses
+(`Remux-480p`).
+
+**Other SOUND findings, briefly:** S-A1 precedence has no *exchange rate* — the one thing scalar weights
+could do and real TRaSH-style profiles use (trade-off scores, not just ordering); S-A2
+`UnknownEvidence.Ignore` admits strict preference cycles (counterexample given) — the upgrade loop can
+oscillate; S-A3 comparison is provenance-blind, so a title that over-claims resolution is re-grabbed
+forever (needs `EvidenceSource` in the judgement); S-A5 `ReleaseEvidence` cannot supply 4 of 13 declared
+video axes and no work package builds the missing scanners; R-A7 "structurally unrepresentable"
+cross-family comparison is in fact a runtime `ArgumentException` — an overclaim to retract in the doc.
+
+**Clean-room amendments (additive):** budget the black-box oracle (it is an unbounded reconstruction
+channel that partly undoes source quarantine); the gatekeeper's similarity score is a hill-climbable
+gradient — report pass/fail only; corpus reduction currently loses the negative cases, which carry most of
+the corpus's value; spec sanitization is syntactic while the disputed material is semantic.
+
+**D-7 — RESOLVED (owner, 2026-08-17): Remux becomes its own `Origin` member.** The untouched-disc case
+is promoted out of `Generation`, so the disc pair separates strictly on `Origin` (Remux > HDDisc) while
+`Generation` stays tieable {0,1} for the web pair. Zero new policy mechanism; the per-axis profile UI
+survives; the ladder's separate Remux rung is revealed as having accidentally encoded this all along. The
+design's "same relationship" observation is retained as an insight but retracted as a modeling decision.
+
+**D-8 — RESOLVED (owner, 2026-08-17): precedence core + bounded facet scores.** The primary axes
+(Resolution, Origin, Generation, Corrections) remain strictly lexicographic — readable and cycle-free by
+construction. Beneath them an optional additive scoring tier over declared facets (dynamic range, audio,
+release-group tiers) consulted ONLY when the core judgement is a tie — the legitimate successor to custom
+formats, confined where it cannot destabilize or cycle the core ordering. S-A1 is thereby answered;
+S-A2's cycle risk must additionally be closed for the core tier itself (restrict `UnknownEvidence.Ignore`
+or prove acyclicity) as part of the amendment pass.
+
+**Q6 — RESOLVED (owner, 2026-08-17): truth over familiarity.** Sub-1080 Remux labels render what the
+evidence says (`Remux-480p`, `Remux-720p`); no collapse to `Bluray-*` for familiarity. Plausibility is the
+computed size gate's job, not the label's. **QA-j** (the "1080p Remux over 2160p WEB" shape migrating as a
+cutoff, not an ordering) was presented alongside and the owner proceeded — treated as accepted; reopen
+only with evidence from real profile usage.
