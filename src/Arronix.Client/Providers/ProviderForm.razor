@@ -1,0 +1,289 @@
+@{
+#pragma warning disable ARX0015 // Provider contracts are experimental; this form is built from them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; valence styling is read from them.
+}
+@inject ArronixApiClient Api
+@*
+    One form for every provider the platform will ever have.
+
+    Indexers, downloaders, notifiers, catalogers and curators all declare their
+    configuration the same way, so they all get the same form — which is the entire return on the settings
+    schema being a declaration rather than a screen. Sections and the advanced/ordinary split come from
+    the declaration too; nothing here knows what any particular provider is.
+*@
+
+<form class="provider-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
+    <header class="provider-form-head">
+        <h2>@Descriptor.Name</h2>
+        @if (!string.IsNullOrWhiteSpace(Descriptor.Description))
+        {
+            <p class="provider-form-detail">@Descriptor.Description</p>
+        }
+        @if (Descriptor.InfoLink is { } info)
+        {
+            <a href="@info" target="_blank" rel="noopener noreferrer">About this provider</a>
+        }
+    </header>
+
+    <label class="field">
+        <span class="field-name">Name<span class="field-required" aria-label="required">*</span></span>
+        <input class="editor editor-line" type="text" value="@_name"
+               @onchange="@(args => _name = args.Value?.ToString() ?? string.Empty)" aria-label="Name" />
+    </label>
+
+    <label class="field">
+        <span class="field-name">Enabled</span>
+        <input type="checkbox" checked="@_enabled" @onchange="@(args => _enabled = args.Value is true)" />
+    </label>
+
+    @foreach (var section in Sections)
+    {
+        <fieldset class="provider-section">
+            @if (section.Key.Length > 0)
+            {
+                <legend>@section.Key</legend>
+            }
+            @foreach (var setting in section)
+            {
+                <SettingsFieldEditor Field="setting"
+                                     Value="@ValueOf(setting)"
+                                     DefinitionId="@ExistingId"
+                                     ValueChanged="@(value => Set(setting.FieldId, value))" />
+            }
+        </fieldset>
+    }
+
+    @if (AdvancedFields.Count > 0)
+    {
+        <details class="provider-advanced" open="@_showAdvanced">
+            <summary @onclick="@(() => _showAdvanced = !_showAdvanced)">Advanced</summary>
+            @foreach (var setting in AdvancedFields)
+            {
+                <SettingsFieldEditor Field="setting"
+                                     Value="@ValueOf(setting)"
+                                     DefinitionId="@ExistingId"
+                                     ValueChanged="@(value => Set(setting.FieldId, value))" />
+            }
+        </details>
+    }
+
+    <ErrorNotice Message="@_error" OnDismiss="@(() => _error = null)" />
+
+    @if (_validation is { } validation && validation.Failures.Count > 0)
+    {
+        <ul class="provider-validation">
+            @foreach (var failure in validation.Failures)
+            {
+                <li class="@SeverityClass(failure.Severity)">
+                    <strong>@failure.FieldId</strong> @failure.Message
+                </li>
+            }
+        </ul>
+    }
+    else if (_validation is not null)
+    {
+        <p class="@ToneMap.ClassFor(StateTone.Positive)" role="status">That worked.</p>
+    }
+
+    <footer class="provider-form-commands">
+        <button type="submit" class="button button-strong" disabled="@_busy">Save</button>
+        <button type="button" class="button" disabled="@(_busy || ExistingId is null)" @onclick="TestAsync">
+            Test
+        </button>
+        @if (ExistingId is not null)
+        {
+            <button type="button" class="button emphasis-severe" disabled="@_busy" @onclick="DeleteAsync">
+                Delete
+            </button>
+        }
+        <button type="button" class="button button-quiet" @onclick="OnCanceled">Cancel</button>
+    </footer>
+</form>
+
+@code {
+    private readonly Dictionary<string, string> _settings = new(StringComparer.Ordinal);
+    private string _name = string.Empty;
+    private bool _enabled = true;
+    private bool _showAdvanced;
+    private bool _busy;
+    private string? _error;
+    private ValidationOutcome? _validation;
+    private int? _boundTo;
+
+    /// <summary>Gets or sets what the provider declared about itself.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ProviderDescriptor Descriptor { get; set; }
+
+    /// <summary>Gets or sets the provider's qualified identifier.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ProviderId Provider { get; set; }
+
+    /// <summary>Gets or sets the configuration being edited, or <see langword="null"/> for a new one.</summary>
+    [Parameter]
+    public ProviderDefinition? Definition { get; set; }
+
+    /// <summary>Gets or sets the callback raised once the configuration has been stored or removed.</summary>
+    [Parameter]
+    public EventCallback OnSaved { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user backs out.</summary>
+    [Parameter]
+    public EventCallback OnCanceled { get; set; }
+
+    private int? ExistingId => Definition is { Id: > 0 } definition ? definition.Id : null;
+
+    private IReadOnlyList<SettingsField> AdvancedFields
+        => Descriptor.Settings.Where(setting => setting.Advanced).ToList();
+
+    private IEnumerable<IGrouping<string, SettingsField>> Sections => Descriptor.Settings
+        .Where(setting => !setting.Advanced)
+        .GroupBy(setting => setting.Section ?? string.Empty, StringComparer.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        if (_boundTo == (Definition?.Id ?? 0) && _settings.Count > 0)
+        {
+            return;
+        }
+
+        _boundTo = Definition?.Id ?? 0;
+        _settings.Clear();
+
+        foreach (var field in Descriptor.Settings)
+        {
+            _settings[field.FieldId] = field.DefaultValue ?? string.Empty;
+        }
+
+        if (Definition is { } definition)
+        {
+            _name = definition.Name;
+            _enabled = definition.Enabled;
+
+            foreach (var (key, value) in definition.Settings)
+            {
+                _settings[key] = value;
+            }
+        }
+        else
+        {
+            _name = Descriptor.Name;
+            _enabled = true;
+        }
+    }
+
+    private string ValueOf(SettingsField field)
+        => _settings.TryGetValue(field.FieldId, out var value) ? value : string.Empty;
+
+    private void Set(string fieldId, string value) => _settings[fieldId] = value;
+
+    private static string SeverityClass(ValidationSeverity severity) => severity switch
+    {
+        ValidationSeverity.Warning => ToneMap.ClassFor(StateTone.Attention),
+        ValidationSeverity.Error => ToneMap.ClassFor(StateTone.Problem),
+    };
+
+    private ProviderDefinition Build() => new()
+    {
+        Id = Definition?.Id ?? 0,
+        Provider = Provider,
+        Family = Descriptor.Family,
+        Name = _name,
+        Enabled = _enabled,
+        Settings = new Dictionary<string, string>(_settings, StringComparer.Ordinal),
+        Tags = Definition?.Tags ?? [],
+        MediaKinds = Definition?.MediaKinds ?? [],
+        Priority = Definition?.Priority ?? 25,
+    };
+
+    private async Task SaveAsync()
+    {
+        _busy = true;
+        _error = null;
+        _validation = null;
+
+        try
+        {
+            if (ExistingId is null)
+            {
+                await Api.CreateProviderDefinitionAsync(Build());
+            }
+            else
+            {
+                await Api.UpdateProviderDefinitionAsync(Build());
+            }
+
+            await OnSaved.InvokeAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task TestAsync()
+    {
+        if (ExistingId is not { } definitionId)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            _validation = await Api.TestProviderDefinitionAsync(definitionId);
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (ExistingId is not { } definitionId)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            await Api.DeleteProviderDefinitionAsync(definitionId);
+            await OnSaved.InvokeAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

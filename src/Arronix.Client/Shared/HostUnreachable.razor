@@ -1,0 +1,84 @@
+@implements IDisposable
+@inject HostConnectivity Connectivity
+@*
+    The designed disconnected state.
+
+    An installed client whose server has gone away has nothing to show, because the server holds
+    everything. What it must not do is fail the way a web page fails: this shell is served from the cache,
+    so instead of a browser error the application stays up and says plainly what has happened, what it is
+    doing about it, and when it will next try.
+
+    Recovery is unattended. Someone who has just restarted their server should find the application
+    already back rather than have to reload it, so the countdown below is the client's own probe schedule
+    and the moment a probe succeeds every view reloads itself.
+*@
+
+<div class="offline" role="alertdialog" aria-live="assertive" aria-label="Server unreachable">
+    <div class="offline-card">
+        <p class="offline-mark" aria-hidden="true"></p>
+        <h1 class="offline-title">Can't reach the server</h1>
+        <p class="offline-detail">
+            The application is running from its cache. Everything it shows lives on the server, so there
+            is nothing to browse until it answers again.
+        </p>
+
+        <dl class="offline-facts">
+            <div>
+                <dt>Attempts</dt>
+                <dd>@Connectivity.ProbeAttempts</dd>
+            </div>
+            <div>
+                <dt>Next attempt</dt>
+                <dd>@NextAttemptText</dd>
+            </div>
+        </dl>
+
+        <div class="offline-commands">
+            <button type="button" class="button button-strong" @onclick="RetryNow">Try now</button>
+        </div>
+
+        <p class="offline-hint">
+            This will clear itself the moment the server answers. Nothing needs reloading.
+        </p>
+    </div>
+</div>
+
+@code {
+    private Timer? _tick;
+
+    protected override void OnInitialized()
+    {
+        Connectivity.StateChanged += OnStateChanged;
+
+        // The countdown is the only thing on this screen that changes without an event to hang off, so
+        // it gets the one timer in the application, and only while this screen is on it.
+        _tick = new Timer(_ => InvokeAsync(StateHasChanged), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Connectivity.StateChanged -= OnStateChanged;
+        _tick?.Dispose();
+    }
+
+    private void OnStateChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    private string NextAttemptText
+    {
+        get
+        {
+            if (Connectivity.NextProbeAt is not { } due)
+            {
+                return "now";
+            }
+
+            var remaining = due - DateTimeOffset.UtcNow;
+            return remaining <= TimeSpan.Zero
+                ? "now"
+                : string.Create(CultureInfo.CurrentCulture, $"in {(int)Math.Ceiling(remaining.TotalSeconds)}s");
+        }
+    }
+
+    private void RetryNow() => Connectivity.ProbeNow();
+}

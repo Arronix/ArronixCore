@@ -1,11 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
-using NzbDrone.Common.Cloud;
-using NzbDrone.Common.EnvironmentInfo;
-using NzbDrone.Common.Http;
-using NzbDrone.Core.Analytics;
-using NzbDrone.Core.Datastore;
 
 namespace NzbDrone.Core.Update
 {
@@ -15,77 +9,35 @@ namespace NzbDrone.Core.Update
         List<UpdatePackage> GetRecentUpdates(string branch, Version currentVersion, Version previousVersion = null);
     }
 
+    /// <summary>
+    /// Reports that no updates are available.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The upstream implementation queried the upstream project's update service on every check, sending this
+    /// installation's version, operating system, CPU architecture, .NET runtime version, database engine and —
+    /// when analytics were enabled — a liveness flag derived from whether the library had recent activity.
+    /// Inherited by a fork, that both reports deployment telemetry to an unrelated third party and offers
+    /// <em>that project's</em> binaries as upgrades for this one, which would replace an Arronix install with
+    /// an upstream build.
+    /// </para>
+    /// <para>
+    /// Arronix publishes no update feed, so "no update available" is the truthful answer and no request is
+    /// made. When an Arronix update service exists, restore the requests here against an Arronix-controlled
+    /// endpoint; send only what the endpoint needs to select a package (version, OS, architecture) and keep
+    /// any usage signal behind an explicit operator opt-in.
+    /// </para>
+    /// </remarks>
     public class UpdatePackageProvider : IUpdatePackageProvider
     {
-        private readonly IHttpClient _httpClient;
-        private readonly IHttpRequestBuilderFactory _requestBuilder;
-        private readonly IPlatformInfo _platformInfo;
-        private readonly IAnalyticsService _analyticsService;
-        private readonly IMainDatabase _mainDatabase;
-
-        public UpdatePackageProvider(IHttpClient httpClient, ISonarrCloudRequestBuilder requestBuilder, IAnalyticsService analyticsService, IPlatformInfo platformInfo, IMainDatabase mainDatabase)
-        {
-            _platformInfo = platformInfo;
-            _analyticsService = analyticsService;
-            _requestBuilder = requestBuilder.Services;
-            _httpClient = httpClient;
-            _mainDatabase = mainDatabase;
-        }
-
         public UpdatePackage GetLatestUpdate(string branch, Version currentVersion)
         {
-            var request = _requestBuilder.Create()
-                                         .Resource("/update/{branch}")
-                                         .AddQueryParam("version", currentVersion)
-                                         .AddQueryParam("os", OsInfo.Os.ToString().ToLowerInvariant())
-                                         .AddQueryParam("arch", RuntimeInformation.OSArchitecture)
-                                         .AddQueryParam("runtime", "netcore")
-                                         .AddQueryParam("runtimeVer", _platformInfo.Version)
-                                         .AddQueryParam("dbType", _mainDatabase.DatabaseType)
-                                         .AddQueryParam("includeMajorVersion", true)
-                                         .SetSegment("branch", branch);
-
-            if (_analyticsService.IsEnabled)
-            {
-                // Send if the system is active so we know which versions to deprecate/ignore
-                request.AddQueryParam("active", _analyticsService.InstallIsActive.ToString().ToLower());
-            }
-
-            var update = _httpClient.Get<UpdatePackageAvailable>(request.Build()).Resource;
-
-            if (!update.Available)
-            {
-                return null;
-            }
-
-            return update.UpdatePackage;
+            return null;
         }
 
-        public List<UpdatePackage> GetRecentUpdates(string branch, Version currentVersion, Version previousVersion)
+        public List<UpdatePackage> GetRecentUpdates(string branch, Version currentVersion, Version previousVersion = null)
         {
-            var request = _requestBuilder.Create()
-                                         .Resource("/update/{branch}/changes")
-                                         .AddQueryParam("version", currentVersion)
-                                         .AddQueryParam("os", OsInfo.Os.ToString().ToLowerInvariant())
-                                         .AddQueryParam("arch", RuntimeInformation.OSArchitecture)
-                                         .AddQueryParam("runtime", "netcore")
-                                         .AddQueryParam("runtimeVer", _platformInfo.Version)
-                                         .SetSegment("branch", branch);
-
-            if (previousVersion != null && previousVersion != currentVersion)
-            {
-                request.AddQueryParam("prevVersion", previousVersion);
-            }
-
-            if (_analyticsService.IsEnabled)
-            {
-                // Send if the system is active so we know which versions to deprecate/ignore
-                request.AddQueryParam("active", _analyticsService.InstallIsActive.ToString().ToLower());
-            }
-
-            var updates = _httpClient.Get<List<UpdatePackage>>(request.Build());
-
-            return updates.Resource;
+            return new List<UpdatePackage>();
         }
     }
 }

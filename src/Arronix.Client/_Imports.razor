@@ -1,0 +1,29 @@
+@* Namespaces every component in this project may use. A using is not a use, so nothing here triggers a
+   contract-stability diagnostic: each component opts in to the areas it actually touches with a pragma of
+   its own, at the top of its own file, exactly as the C# in this project does. *@
+
+@using System.Collections.Generic
+@using System.Globalization
+@using System.Linq
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+
+@using Arronix.Abstractions.DTOs
+@using Arronix.Abstractions.Health
+@using Arronix.Abstractions.Identity
+@using Arronix.Abstractions.Intent
+@using Arronix.Abstractions.Plugins
+@using Arronix.Abstractions.Providers
+@using Arronix.Abstractions.Shape
+@using Arronix.Abstractions.Wire
+
+@using Arronix.Client.Browse
+@using Arronix.Client.Browse.Presenters
+@using Arronix.Client.Configuration
+@using Arronix.Client.Layout
+@using Arronix.Client.Providers
+@using Arronix.Client.Rendering
+@using Arronix.Client.Services
+@using Arronix.Client.Shared
+@using Arronix.Client.Workbench

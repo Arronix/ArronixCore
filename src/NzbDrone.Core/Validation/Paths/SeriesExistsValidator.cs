@@ -1,11 +1,11 @@
-using System;
 using System.Linq;
+using FluentValidation;
 using FluentValidation.Validators;
 using NzbDrone.Core.Tv;
 
 namespace NzbDrone.Core.Validation.Paths
 {
-    public class SeriesExistsValidator : PropertyValidator
+    public class SeriesExistsValidator<T> : PropertyValidator<T, int>
     {
         private readonly ISeriesService _seriesService;
 
@@ -14,18 +14,13 @@ namespace NzbDrone.Core.Validation.Paths
             _seriesService = seriesService;
         }
 
-        protected override string GetDefaultMessageTemplate() => "This series has already been added";
+        public override string Name => "SeriesExistsValidator";
 
-        protected override bool IsValid(PropertyValidatorContext context)
+        public override bool IsValid(ValidationContext<T> context, int value)
         {
-            if (context.PropertyValue == null)
-            {
-                return true;
-            }
-
-            var tvdbId = Convert.ToInt32(context.PropertyValue.ToString());
-
-            return !_seriesService.AllSeriesTvdbIds().Any(s => s == tvdbId);
+            return !_seriesService.AllSeriesTvdbIds().Any(s => s == value);
         }
+
+        protected override string GetDefaultMessageTemplate(string errorCode) => "This series has already been added";
     }
 }

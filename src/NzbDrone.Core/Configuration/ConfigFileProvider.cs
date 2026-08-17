@@ -232,7 +232,10 @@ namespace NzbDrone.Core.Configuration
                 ? enumValue
                 : GetValueEnum("AuthenticationRequired", AuthenticationRequiredType.Enabled);
 
-        public bool AnalyticsEnabled => _logOptions.AnalyticsEnabled ?? GetValueBoolean("AnalyticsEnabled", true, persist: false);
+        // Defaults to FALSE. Upstream defaulted this to true, which opted every install into sending usage
+        // signals to the upstream project's services. Arronix operates no analytics endpoint, so there is
+        // nothing legitimate for this to enable by default; an operator must turn it on deliberately.
+        public bool AnalyticsEnabled => _logOptions.AnalyticsEnabled ?? GetValueBoolean("AnalyticsEnabled", false, persist: false);
 
         public string Branch => _updateOptions.Branch ?? GetValue("Branch", "main").ToLowerInvariant();
 

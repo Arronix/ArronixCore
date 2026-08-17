@@ -110,15 +110,21 @@
     <SentryAuthToken></SentryAuthToken> <!-- Use env var instead: SENTRY_AUTH_TOKEN -->
 
     <!-- Upload PDBs to Sentry, enabling stack traces with line numbers and file paths
-      without the need to deploy the application with PDBs -->
-    <SentryUploadSymbols>true</SentryUploadSymbols>
+      without the need to deploy the application with PDBs.
+
+      Gated on an auth token being present. Arronix has no Sentry organisation of its own, so with an empty
+      SentryAuthToken every Release build previously failed with 22 x "EXEC : error : Auth token is required
+      for this request" and Release could not be built at all. Set SENTRY_AUTH_TOKEN (or -p:SentryAuthToken=)
+      together with SentryOrg/SentryProject to re-enable upload. -->
+    <SentryUploadSymbols Condition="'$(SentryAuthToken)' != ''">true</SentryUploadSymbols>
+    <SentryUploadSymbols Condition="'$(SentryAuthToken)' == ''">false</SentryUploadSymbols>
 
     <!-- Source Link settings -->
     <!-- https://github.com/dotnet/sourcelink/blob/main/docs/README.md#publishrepositoryurl -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <!--  Embeds all source code in the respective PDB. This can make it a bit bigger but since it'll be uploaded
-      to Sentry and not distributed to run on the server, it helps debug crashes while making releases smaller -->
-    <EmbedAllSources>true</EmbedAllSources>
+    <!--  Embeds all source code in the respective PDB. Only worth the extra PDB size when the symbols are
+      actually being uploaded rather than shipped, so it follows the same gate. -->
+    <EmbedAllSources Condition="'$(SentryAuthToken)' != ''">true</EmbedAllSources>
   </PropertyGroup>
 
   <!-- Standard testing packages -->

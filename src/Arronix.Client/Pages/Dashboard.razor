@@ -1,0 +1,125 @@
+@page "/"
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; everything on this page is one.
+}
+@implements IDisposable
+@inject DescriptorCache Descriptors
+@inject ArronixApiClient Api
+@inject EventStream Events
+@inject HostConnectivity Connectivity
+@*
+    The first thing anyone sees: what libraries exist, what the platform is doing, and whether anything is
+    wrong. Every library tile is a media kind an extension registered, so this page grows a tile when an
+    extension is installed and needs no change to do it.
+*@
+
+<h1>Dashboard</h1>
+
+<ErrorNotice Message="@_error" OnRetry="LoadAsync" OnDismiss="@(() => _error = null)" />
+
+<section class="tiles">
+    @if (_kinds.Count == 0)
+    {
+        <EmptyState Title="No libraries yet"
+                    Detail="Media kinds arrive with extensions. Install one and it appears here." />
+    }
+    else
+    {
+        @foreach (var kind in _kinds)
+        {
+            <a class="tile" href="@($"kinds/{Uri.EscapeDataString(kind.Kind.Value)}")">
+                <span class="tile-name">@kind.PluralName</span>
+                <span class="tile-detail">@kind.Levels.Count level(s) · @kind.Intent.BrowseAxes.Count view(s)</span>
+                <span class="tile-plugin">@kind.Plugin.ToString()</span>
+            </a>
+        }
+    }
+</section>
+
+<div class="columns">
+    <section class="column">
+        <h2>Activity</h2>
+        <ProgressFeed Limit="12" />
+    </section>
+
+    <section class="column">
+        <HealthPanel Snapshot="_health" />
+
+        <section class="panel">
+            <header class="panel-head">
+                <h2>Queue</h2>
+                <span class="chip">@_queue.Count</span>
+            </header>
+            @if (_queue.Count == 0)
+            {
+                <EmptyState Title="Nothing queued" />
+            }
+            else
+            {
+                <ul class="queue-list">
+                    @foreach (var entry in _queue.Take(8))
+                    {
+                        <li class="queue-entry">
+                            <span class="queue-job">@entry.JobId</span>
+                            <span class="queue-owner">@entry.Owner</span>
+                            <span class="queue-attempt">attempt @entry.Attempt</span>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<MediaKindDescriptor> _kinds = [];
+    private IReadOnlyList<QueueEntryView> _queue = [];
+    private HealthSnapshotView? _health;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.Received += OnEvent;
+        Connectivity.Recovered += OnRecovered;
+        await LoadAsync();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Events.Received -= OnEvent;
+        Connectivity.Recovered -= OnRecovered;
+    }
+
+    private void OnEvent(object? sender, EventEnvelope envelope)
+    {
+        if (envelope.Kind is EventKind.QueueChanged or EventKind.HealthChanged or EventKind.PluginStateChanged)
+        {
+            InvokeAsync(LoadAsync);
+        }
+    }
+
+    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(LoadAsync);
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+
+        try
+        {
+            _kinds = await Descriptors.GetAllAsync();
+            _queue = await Api.GetQueueAsync();
+            _health = await Api.GetHealthAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+
+        StateHasChanged();
+    }
+}

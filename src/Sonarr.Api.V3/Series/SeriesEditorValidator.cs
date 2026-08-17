@@ -7,7 +7,7 @@ namespace Sonarr.Api.V3.Series
 {
     public class SeriesEditorValidator : AbstractValidator<NzbDrone.Core.Tv.Series>
     {
-        public SeriesEditorValidator(RootFolderExistsValidator rootFolderExistsValidator, QualityProfileExistsValidator qualityProfileExistsValidator)
+        public SeriesEditorValidator(RootFolderExistsValidator<NzbDrone.Core.Tv.Series> rootFolderExistsValidator, QualityProfileExistsValidator<NzbDrone.Core.Tv.Series> qualityProfileExistsValidator)
         {
             RuleFor(s => s.RootFolderPath).Cascade(CascadeMode.Stop)
                 .IsValidPath()

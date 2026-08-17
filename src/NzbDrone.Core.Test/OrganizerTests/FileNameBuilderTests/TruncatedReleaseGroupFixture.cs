@@ -72,7 +72,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.StandardEpisodeFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}-{ReleaseGroup:12}";
 
             var result = Subject.BuildFileName(_episodes, _series, _episodeFile, ".mkv");
-            result.Length.Should().BeLessOrEqualTo(255);
+            result.Length.Should().BeLessThanOrEqualTo(255);
             result.Should().Be("The Fantastic Life of Mr. Sisko - S01E01 - Episode Title 1 Bluray-1080p-IWishIWas....mkv");
         }
 
@@ -87,7 +87,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.StandardEpisodeFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}-{ReleaseGroup:-17}";
 
             var result = Subject.BuildFileName(_episodes, _series, _episodeFile, ".mkv");
-            result.Length.Should().BeLessOrEqualTo(255);
+            result.Length.Should().BeLessThanOrEqualTo(255);
             result.Should().Be("The Fantastic Life of Mr. Sisko - S01E01 - Episode Title 1 Bluray-1080p-...ASixFourImpala.mkv");
         }
     }

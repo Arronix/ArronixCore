@@ -36,11 +36,16 @@ public interface IBackgroundTaskRegistry
     /// Triggers a job to run immediately.
     /// </summary>
     /// <param name="jobId">The job identifier.</param>
-    /// <param name="parameters">Optional parameters for the job execution.</param>
+    /// <param name="parameters">Optional parameters specific to this job.</param>
+    /// <param name="correlationId">
+    /// The wider operation the run belongs to. One is minted when none is supplied, so a caller only
+    /// passes this when the run continues something that is already under way.
+    /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>True if the job was triggered; otherwise, false.</returns>
     Task<bool> TriggerJobAsync(
         string jobId,
         IReadOnlyDictionary<string, object>? parameters = null,
+        string? correlationId = null,
         CancellationToken cancellationToken = default);
 }

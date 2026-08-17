@@ -1,3 +1,6 @@
+using System;
+using System.Linq;
+using System.Reflection;
 using Arronix.Abstractions.Identity;
 
 namespace Arronix.Abstractions.Tests.Identity;
@@ -13,18 +16,15 @@ public class ReleaseIdTests
     }
 
     [Test]
-    public void ReleaseId_ImplicitlyConvertsToString()
+    public void ReleaseId_DoesNotConvertImplicitly()
     {
-        ReleaseId id = "guid-value";
-        string value = id;
-        Assert.That(value, Is.EqualTo("guid-value"));
-    }
-
-    [Test]
-    public void ReleaseId_ImplicitlyConvertsFromString()
-    {
-        ReleaseId id = "hash-value";
-        Assert.That(id.Value, Is.EqualTo("hash-value"));
+        // Uniform across the identity family: a release identifier and a media-kind identifier are both
+        // strings underneath, and nothing should let one be passed where the other is expected.
+        Assert.That(
+            typeof(ReleaseId)
+                .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Where(method => string.Equals(method.Name, "op_Implicit", StringComparison.Ordinal)),
+            Is.Empty);
     }
 
     [Test]

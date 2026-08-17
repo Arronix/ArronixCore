@@ -1,0 +1,145 @@
+@page "/kinds/{Kind}/items/{ItemId:int}"
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; the item's level comes from them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the item is one of them.
+}
+@implements IDisposable
+@inject DescriptorCache Descriptors
+@inject ArronixApiClient Api
+@inject ClientOptions Options
+@inject EventStream Events
+@inject HostConnectivity Connectivity
+@inject NavigationManager Navigation
+@*
+    One item, at its own address.
+
+    The address shape matches the relative deep link an extension puts in a rendered summary, so a
+    notification, an activity entry and a bookmark all lead to the same place without anything having to
+    translate between two ideas of where an item lives.
+*@
+
+<ErrorNotice Message="@_error" OnRetry="LoadAsync" OnDismiss="@(() => _error = null)" />
+
+@if (_busy)
+{
+    <LoadingIndicator Message="Reading the item…" />
+}
+else if (_descriptor is { } descriptor && _item is { } item && _level is { } level)
+{
+    <ItemDetailPanel Kind="descriptor"
+                     Level="level"
+                     Item="item"
+                     Children="_children"
+                     OnChanged="LoadAsync"
+                     OnOpenChild="OpenChild" />
+}
+else if (_missing)
+{
+    <EmptyState Title="No such item"
+                Detail="It may have been removed, or the extension that owns it may no longer be loaded." />
+}
+
+@code {
+    private MediaKindDescriptor? _descriptor;
+    private LevelPresentation? _level;
+    private ItemDetail? _item;
+    private IReadOnlyList<ItemDetail> _children = [];
+    private string? _error;
+    private bool _busy;
+    private bool _missing;
+    private int _loadedItemId = -1;
+
+    /// <summary>Gets or sets the media kind named in the address.</summary>
+    [Parameter]
+    public string? Kind { get; set; }
+
+    /// <summary>Gets or sets the item named in the address.</summary>
+    [Parameter]
+    public int ItemId { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Events.Received += OnEvent;
+        Connectivity.Recovered += OnRecovered;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Events.Received -= OnEvent;
+        Connectivity.Recovered -= OnRecovered;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedItemId == ItemId && _descriptor is not null)
+        {
+            return;
+        }
+
+        _loadedItemId = ItemId;
+        await LoadAsync();
+    }
+
+    private void OnEvent(object? sender, EventEnvelope envelope)
+    {
+        if (envelope.Kind is EventKind.ItemChanged && envelope.Item?.Id.Value == ItemId)
+        {
+            InvokeAsync(LoadAsync);
+        }
+    }
+
+    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(LoadAsync);
+
+    private void OpenChild(ItemDetail child)
+        => Navigation.NavigateTo(
+            $"kinds/{Uri.EscapeDataString(child.Item.Ref.Kind.Value)}/items/{child.Item.Ref.Id.Value.ToString(CultureInfo.InvariantCulture)}");
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Kind))
+        {
+            _missing = true;
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+        _missing = false;
+
+        try
+        {
+            var kindId = MediaKindId.FromString(Kind);
+            _descriptor = await Descriptors.GetAsync(kindId);
+            _item = await Api.GetItemAsync(kindId, MediaItemId.FromInt64(ItemId));
+
+            if (_descriptor is null || _item is null)
+            {
+                _missing = true;
+                return;
+            }
+
+            _level = ItemProjection.Level(_descriptor, _item.Item.Ref.Level);
+
+            _children = _item.Item.HasChildren
+                ? (await Api.GetChildrenAsync(
+                    kindId,
+                    _item.Item.Ref.Id,
+                    new ItemBrowseRequest { PageSize = Options.PageSize })).Items
+                : [];
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}

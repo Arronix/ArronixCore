@@ -1,0 +1,38 @@
+@{
+#pragma warning disable ARX0016 // Intent contracts are experimental; traversals are declared by them.
+}
+@*
+    The ways this kind can be traversed, offered exactly as declared. A kind that declares one traversal
+    gets no selector at all, because a choice of one is not a choice.
+*@
+
+@if (Axes.Count > 1)
+{
+    <div class="axis-selector" role="tablist" aria-label="Browse by">
+        @foreach (var axis in Axes)
+        {
+            <button type="button"
+                    role="tab"
+                    class="axis @(axis.AxisId == Selected?.AxisId ? "is-selected" : string.Empty)"
+                    aria-selected="@(axis.AxisId == Selected?.AxisId)"
+                    @onclick="@(() => SelectedChanged.InvokeAsync(axis))">
+                @axis.Name
+            </button>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Gets or sets the declared traversals.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required IReadOnlyList<BrowseAxis> Axes { get; set; }
+
+    /// <summary>Gets or sets the traversal in use.</summary>
+    [Parameter]
+    public BrowseAxis? Selected { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user chooses another traversal.</summary>
+    [Parameter]
+    public EventCallback<BrowseAxis> SelectedChanged { get; set; }
+}

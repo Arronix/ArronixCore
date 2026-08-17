@@ -10,29 +10,26 @@ namespace Sonarr.Api.V3.Config
 {
     public static class CertificateValidation
     {
-        public static IRuleBuilderOptions<T, string> IsValidCertificate<T>(this IRuleBuilder<T, string> ruleBuilder)
+        public static IRuleBuilderOptions<HostConfigResource, string> IsValidCertificate(this IRuleBuilder<HostConfigResource, string> ruleBuilder)
         {
             return ruleBuilder.SetValidator(new CertificateValidator());
         }
     }
 
-    public class CertificateValidator : PropertyValidator
+    public class CertificateValidator : PropertyValidator<HostConfigResource, string>
     {
-        protected override string GetDefaultMessageTemplate() => "Invalid SSL certificate file or {passwordOrKey}. {message}";
-
         private static readonly Logger Logger = NzbDroneLogger.GetLogger(typeof(CertificateValidator));
 
-        protected override bool IsValid(PropertyValidatorContext context)
+        public override string Name => "CertificateValidator";
+
+        public override bool IsValid(ValidationContext<HostConfigResource> context, string value)
         {
-            if (context.PropertyValue == null)
+            if (value == null)
             {
                 return false;
             }
 
-            if (context.InstanceToValidate is not HostConfigResource resource)
-            {
-                return true;
-            }
+            var resource = context.InstanceToValidate;
 
             var certPath = resource.SslCertPath;
             var keyPath = resource.SslKeyPath;
@@ -73,5 +70,7 @@ namespace Sonarr.Api.V3.Config
                 return false;
             }
         }
+
+        protected override string GetDefaultMessageTemplate(string errorCode) => "Invalid SSL certificate file or {passwordOrKey}. {message}";
     }
 }

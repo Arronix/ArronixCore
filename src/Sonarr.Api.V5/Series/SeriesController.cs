@@ -51,14 +51,14 @@ namespace Sonarr.Api.V5.Series
                             IMapCoversToLocal coverMapper,
                             IManageCommandQueue commandQueueManager,
                             IRootFolderService rootFolderService,
-                            RootFolderValidator rootFolderValidator,
-                            MappedNetworkDriveValidator mappedNetworkDriveValidator,
-                            SeriesPathValidator seriesPathValidator,
-                            SeriesExistsValidator seriesExistsValidator,
-                            SeriesAncestorValidator seriesAncestorValidator,
-                            SystemFolderValidator systemFolderValidator,
-                            QualityProfileExistsValidator qualityProfileExistsValidator,
-                            RootFolderExistsValidator rootFolderExistsValidator,
+                            RootFolderValidator<SeriesResource> rootFolderValidator,
+                            MappedNetworkDriveValidator<SeriesResource> mappedNetworkDriveValidator,
+                            SeriesPathValidator<SeriesResource> seriesPathValidator,
+                            SeriesExistsValidator<SeriesResource> seriesExistsValidator,
+                            SeriesAncestorValidator<SeriesResource> seriesAncestorValidator,
+                            SystemFolderValidator<SeriesResource> systemFolderValidator,
+                            QualityProfileExistsValidator<SeriesResource> qualityProfileExistsValidator,
+                            RootFolderExistsValidator<SeriesResource> rootFolderExistsValidator,
                             SeriesFolderAsRootFolderValidator seriesFolderAsRootFolderValidator)
             : base(signalRBroadcaster)
         {

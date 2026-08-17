@@ -1,3 +1,6 @@
+using System;
+using System.Linq;
+using System.Reflection;
 using Arronix.Abstractions.Identity;
 
 namespace Arronix.Abstractions.Tests.Identity;
@@ -13,18 +16,15 @@ public class MediaKindIdTests
     }
 
     [Test]
-    public void MediaKindId_ImplicitlyConvertsToString()
+    public void MediaKindId_DoesNotConvertImplicitly()
     {
-        MediaKindId id = "movies";
-        string value = id;
-        Assert.That(value, Is.EqualTo("movies"));
-    }
-
-    [Test]
-    public void MediaKindId_ImplicitlyConvertsFromString()
-    {
-        MediaKindId id = "music";
-        Assert.That(id.Value, Is.EqualTo("music"));
+        // Uniform across the identity family: a bare string can never stand in for a media kind, so a
+        // kind identifier and a level identifier are never mutually assignable through their values.
+        Assert.That(
+            typeof(MediaKindId)
+                .GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Where(method => string.Equals(method.Name, "op_Implicit", StringComparison.Ordinal)),
+            Is.Empty);
     }
 
     [Test]

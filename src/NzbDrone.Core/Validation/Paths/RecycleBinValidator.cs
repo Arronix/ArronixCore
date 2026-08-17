@@ -1,10 +1,11 @@
+using FluentValidation;
 using FluentValidation.Validators;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Core.Configuration;
 
 namespace NzbDrone.Core.Validation.Paths
 {
-    public class RecycleBinValidator : PropertyValidator
+    public class RecycleBinValidator<T> : PropertyValidator<T, string>
     {
         private readonly IConfigService _configService;
 
@@ -13,28 +14,27 @@ namespace NzbDrone.Core.Validation.Paths
             _configService = configService;
         }
 
-        protected override string GetDefaultMessageTemplate() => "Path '{path}' is {relationship} configured recycle bin folder";
+        public override string Name => "RecycleBinValidator";
 
-        protected override bool IsValid(PropertyValidatorContext context)
+        public override bool IsValid(ValidationContext<T> context, string value)
         {
             var recycleBin = _configService.RecycleBin;
 
-            if (context.PropertyValue == null || recycleBin.IsNullOrWhiteSpace())
+            if (value == null || recycleBin.IsNullOrWhiteSpace())
             {
                 return true;
             }
 
-            var folder = context.PropertyValue.ToString();
-            context.MessageFormatter.AppendArgument("path", folder);
+            context.MessageFormatter.AppendArgument("path", value);
 
-            if (recycleBin.PathEquals(folder))
+            if (recycleBin.PathEquals(value))
             {
                 context.MessageFormatter.AppendArgument("relationship", "set to");
 
                 return false;
             }
 
-            if (recycleBin.IsParentPath(folder))
+            if (recycleBin.IsParentPath(value))
             {
                 context.MessageFormatter.AppendArgument("relationship", "child of");
 
@@ -43,5 +43,7 @@ namespace NzbDrone.Core.Validation.Paths
 
             return true;
         }
+
+        protected override string GetDefaultMessageTemplate(string errorCode) => "Path '{path}' is {relationship} configured recycle bin folder";
     }
 }

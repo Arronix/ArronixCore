@@ -1,0 +1,185 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; monitor dimensions are declared by them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; the setting action is declared by one.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the item and its state are them.
+}
+@inject ActionDispatcher Dispatcher
+@*
+    Whether the user wants the item, expressed along whatever axes the shape declared.
+
+    A level may have several orthogonal answers to "do you want this" and each one declares its own
+    choices, so this control is built from the declaration rather than being a switch this client decided
+    on. The rolled-up state the host publishes is shown alongside, because a container is routinely wanted
+    in part and neither answer implies the other.
+
+    <b>A gap, stated.</b> Nothing in the contracts connects a monitor dimension to the action that sets
+    it. Where the declared action happens to take a parameter named after the dimension, the choice is
+    applied directly; where it does not, the choice falls back to the ordinary confirm-and-collect path.
+    That fallback is a symptom, not a design, and it is reported alongside this work.
+*@
+
+<div class="monitor">
+    <span class="monitor-state @StateClass">@StateLabel</span>
+
+    @foreach (var dimension in Dimensions)
+    {
+        <label class="monitor-dimension">
+            <span class="monitor-dimension-name">@dimension.Name</span>
+
+            @if (dimension.Kind is MonitorDimensionKind.Toggle)
+            {
+                <input type="checkbox"
+                       checked="@(ChoiceOf(dimension) == "true")"
+                       disabled="@(_busy || SetAction is null)"
+                       @onchange="@(args => ApplyAsync(dimension, args.Value is true ? "true" : "false"))" />
+            }
+            else
+            {
+                <select value="@ChoiceOf(dimension)"
+                        disabled="@(_busy || SetAction is null)"
+                        @onchange="@(args => ApplyAsync(dimension, args.Value?.ToString() ?? string.Empty))">
+                    @foreach (var choice in dimension.Choices)
+                    {
+                        <option value="@choice.Value" selected="@(choice.Value == ChoiceOf(dimension))">
+                            @choice.Name
+                        </option>
+                    }
+                </select>
+            }
+        </label>
+    }
+
+    @if (SetAction is null && Dimensions.Count > 0)
+    {
+        <span class="monitor-readonly" title="This media kind declares no action for changing it">
+            read only
+        </span>
+    }
+</div>
+
+<ErrorNotice Message="@_error" OnDismiss="@(() => _error = null)" />
+
+@if (_pending is { } pending)
+{
+    <ConsequencePrompt Action="pending"
+                       Policy="ActionDispatcher.PolicyFor(pending)"
+                       SubjectCount="1"
+                       OnCancel="@(() => _pending = null)"
+                       OnConfirm="@(values => RunAsync(pending, values))" />
+}
+
+@code {
+    private ActionDescriptor? _pending;
+    private string? _error;
+    private bool _busy;
+
+    /// <summary>Gets or sets the media kind's description.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the level's description.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required LevelPresentation Level { get; set; }
+
+    /// <summary>Gets or sets the item.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ItemDetail Item { get; set; }
+
+    /// <summary>Gets or sets the callback raised once a change has been accepted.</summary>
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    private IReadOnlyList<MonitorDimension> Dimensions => Kind.Shape.Levels
+        .FirstOrDefault(level => level.Id == Item.Item.Ref.Level)?
+        .MonitorDimensions ?? [];
+
+    private ActionDescriptor? SetAction
+        => ItemProjection.Action(Level, AffordanceMap.For(Affordance.Monitorable).ConventionalActionId);
+
+    private string ChoiceOf(MonitorDimension dimension)
+        => Item.MonitorChoices.TryGetValue(dimension.DimensionId, out var value)
+            ? value
+            : dimension.DefaultChoice ?? string.Empty;
+
+    // Closed vocabulary, every member listed, no fall-through arm.
+    private string StateLabel => Item.Monitor switch
+    {
+        MonitorState.Unmonitored => "Not wanted",
+        MonitorState.Monitored => "Wanted",
+        MonitorState.Partial => "Partly wanted",
+        MonitorState.NotApplicable => "—",
+    };
+
+    private string StateClass => Item.Monitor switch
+    {
+        MonitorState.Unmonitored => "tone-neutral",
+        MonitorState.Monitored => "tone-positive",
+        MonitorState.Partial => "tone-attention",
+        MonitorState.NotApplicable => "tone-neutral",
+    };
+
+    private async Task ApplyAsync(MonitorDimension dimension, string choice)
+    {
+        if (SetAction is not { } action)
+        {
+            return;
+        }
+
+        var direct = action.Parameters
+            .Any(parameter => string.Equals(parameter.ParameterId, dimension.DimensionId, StringComparison.Ordinal));
+
+        if (!direct)
+        {
+            _pending = action;
+            return;
+        }
+
+        await RunAsync(
+            action,
+            new Dictionary<string, string>(StringComparer.Ordinal) { [dimension.DimensionId] = choice });
+    }
+
+    private async Task RunAsync(ActionDescriptor action, IReadOnlyDictionary<string, string> values)
+    {
+        _pending = null;
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var result = await Dispatcher.InvokeAsync(
+                Kind.Kind,
+                action,
+                new ActionRequest
+                {
+                    Items = [Item.Item.Ref],
+                    Level = Item.Item.Ref.Level,
+                    Parameters = values,
+                });
+
+            if (result.Accepted)
+            {
+                await OnChanged.InvokeAsync();
+            }
+            else
+            {
+                _error = result.Message ?? "The platform did not take that on.";
+            }
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

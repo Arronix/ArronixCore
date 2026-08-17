@@ -1,0 +1,27 @@
+@*
+    Nothing to show, said out loud. Which words to use is the caller's business, because only the caller
+    knows whether the emptiness is expected.
+*@
+
+<div class="empty">
+    <p class="empty-title">@Title</p>
+    @if (!string.IsNullOrWhiteSpace(Detail))
+    {
+        <p class="empty-detail">@Detail</p>
+    }
+    @ChildContent
+</div>
+
+@code {
+    /// <summary>Gets or sets the headline.</summary>
+    [Parameter]
+    public string Title { get; set; } = "Nothing here yet";
+
+    /// <summary>Gets or sets the explanation.</summary>
+    [Parameter]
+    public string? Detail { get; set; }
+
+    /// <summary>Gets or sets anything the caller wants to offer instead.</summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

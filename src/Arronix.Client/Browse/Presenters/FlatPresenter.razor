@@ -1,0 +1,22 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the items are them.
+}
+@*
+    No division at all: one table, the level's most important fields as its columns. The default column
+    set is read from the same importance rank a card reads to decide what to put on its face, which is why
+    the contract carries a rank rather than a per-consumer list of field identifiers.
+*@
+
+<ItemCollection Kind="Context.Kind"
+                Level="Context.Level"
+                Items="Context.Items"
+                AsTable="true"
+                OnOpen="Context.OnOpen"
+                EmptyDetail="@($"No {Context.Level.PluralName.ToLowerInvariant()} match.")" />
+
+@code {
+    /// <summary>Gets or sets what is being drawn.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required PresenterContext Context { get; set; }
+}

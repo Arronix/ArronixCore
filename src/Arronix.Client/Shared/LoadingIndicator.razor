@@ -1,0 +1,15 @@
+@*
+    A stated wait. The alternative — an empty region — is indistinguishable from a library with nothing
+    in it, which is the single most misleading thing this application could show.
+*@
+
+<div class="loading" role="status" aria-live="polite">
+    <span class="loading-mark" aria-hidden="true"></span>
+    <span class="loading-text">@Message</span>
+</div>
+
+@code {
+    /// <summary>Gets or sets what is being waited for.</summary>
+    [Parameter]
+    public string Message { get; set; } = "Loading…";
+}

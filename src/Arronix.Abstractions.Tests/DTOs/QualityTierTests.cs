@@ -19,6 +19,20 @@ public class QualityTierTests
     }
 
     [Test]
+    public void QualityTier_EffectiveWeightDefaultsToRankAndYieldsToADeclaredWeight()
+    {
+        var unweighted = new QualityTier("Plain", Rank: 7);
+        var grouped = new QualityTier("Grouped", Rank: 8, Weight: 7);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(unweighted.EffectiveWeight, Is.EqualTo(7));
+            Assert.That(grouped.EffectiveWeight, Is.EqualTo(7));
+            Assert.That(unweighted.CompareTo(grouped), Is.Zero, "Equal effective weight is a quality group.");
+        });
+    }
+
+    [Test]
     public void QualityTier_CanHaveOptionalProperties()
     {
         var quality = new QualityTier(

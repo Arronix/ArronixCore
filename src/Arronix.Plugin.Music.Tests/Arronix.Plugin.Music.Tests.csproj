@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugin.Music.Tests</RootNamespace>
+    <AssemblyName>Arronix.Plugin.Music.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <!-- See the matching block in Arronix.Common.csproj for why the shared Release block is opted out of. -->
+  <PropertyGroup>
+    <SentryUploadSymbols>false</SentryUploadSymbols>
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <EmbedAllSources>false</EmbedAllSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Plugin.Music\Arronix.Plugin.Music.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,4 +1,5 @@
 using System.Linq;
+using FluentValidation;
 using FluentValidation.Validators;
 using NzbDrone.Common.Disk;
 using NzbDrone.Common.Extensions;
@@ -6,7 +7,7 @@ using NzbDrone.Core.Tv;
 
 namespace NzbDrone.Core.Validation.Paths
 {
-    public class SeriesPathValidator : PropertyValidator
+    public class SeriesPathValidator<T> : PropertyValidator<T, string>
     {
         private readonly ISeriesService _seriesService;
 
@@ -15,24 +16,26 @@ namespace NzbDrone.Core.Validation.Paths
             _seriesService = seriesService;
         }
 
-        protected override string GetDefaultMessageTemplate() => "Path '{path}' is already configured for another series";
+        public override string Name => "SeriesPathValidator";
 
-        protected override bool IsValid(PropertyValidatorContext context)
+        public override bool IsValid(ValidationContext<T> context, string value)
         {
-            if (context.PropertyValue == null)
+            if (value == null)
             {
                 return true;
             }
 
-            context.MessageFormatter.AppendArgument("path", context.PropertyValue.ToString());
+            context.MessageFormatter.AppendArgument("path", value);
 
-            dynamic instance = context.ParentContext.InstanceToValidate;
+            dynamic instance = context.InstanceToValidate;
             var instanceId = (int)instance.Id;
 
-            // Skip the path for this series and any invalid paths
+            // Skip the path for this series and any invalid paths
             return !_seriesService.GetAllSeriesPaths().Any(s => s.Key != instanceId &&
                                                                 s.Value.IsPathValid(PathValidationType.CurrentOs) &&
-                                                                s.Value.PathEquals(context.PropertyValue.ToString()));
+                                                                s.Value.PathEquals(value));
         }
+
+        protected override string GetDefaultMessageTemplate(string errorCode) => "Path '{path}' is already configured for another series";
     }
 }

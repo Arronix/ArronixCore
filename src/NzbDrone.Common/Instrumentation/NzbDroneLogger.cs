@@ -66,39 +66,51 @@ public static class NzbDroneLogger
         LogManager.ReconfigExistingLoggers();
     }
 
+    /// <summary>
+    /// Environment variable holding the Sentry DSN, matching the <c>Sonarr:Log</c> configuration section
+    /// bound in <c>Bootstrap</c>. Read directly from the environment because logging is registered before
+    /// configuration binding has run.
+    /// </summary>
+    private const string SentryDsnEnvironmentVariable = "SONARR__LOG__SENTRYDSN";
+
     private static void RegisterSentry(bool updateClient, IAppFolderInfo appFolderInfo)
     {
-        string dsn;
+        // Crash/error reporting is OPT-IN and defaults to sending nothing anywhere.
+        //
+        // Upstream Sonarr hardcoded four of its own sentry.sonarr.tv DSNs here. Inherited unchanged by a fork,
+        // that means this application's crash reports, stack traces and warning-level log events are delivered
+        // to the Sonarr project's Sentry — a third party with no relationship to this deployment's operator or
+        // users. Arronix runs no Sentry instance of its own, so the DSN is empty unless an operator explicitly
+        // supplies one they control, and with no DSN no SentryTarget is constructed at all.
+        //
+        // The logging rules below are still registered against a NullTarget so that rule ordering and the
+        // "Sentry" logger's Final rule behave identically whether or not reporting is configured.
+        var dsn = Environment.GetEnvironmentVariable(SentryDsnEnvironmentVariable);
 
-        if (updateClient)
+        Target target;
+
+        if (dsn.IsNullOrWhiteSpace())
         {
-            dsn = RuntimeInfo.IsProduction
-                ? "https://80777986b95f44a1a90d1eb2f3af1e36@sentry.sonarr.tv/11"
-                : "https://6168f0946aba4e60ac23e469ac08eac5@sentry.sonarr.tv/9";
+            target = new NullTarget();
         }
         else
         {
-            dsn = RuntimeInfo.IsProduction
-                ? "https://e2adcbe52caf46aeaebb6b1dcdfe10a1@sentry.sonarr.tv/8"
-                : "https://4ee3580e01d8407c96a7430fbc953512@sentry.sonarr.tv/10";
-        }
-
-        Target target;
-        try
-        {
-            target = new SentryTarget(dsn, appFolderInfo)
+            try
             {
-                Name = "sentryTarget",
-                Layout = "${message}"
-            };
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine("Failed to load dependency, may need an OS update: " + ex.ToString());
-            LogManager.GetLogger(nameof(NzbDroneLogger)).Debug(ex, "Failed to load dependency, may need an OS update");
+                target = new SentryTarget(dsn, appFolderInfo)
+                {
+                    Name = "sentryTarget",
+                    Layout = "${message}"
+                };
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Failed to load dependency, may need an OS update: " + ex.ToString());
+                LogManager.GetLogger(nameof(NzbDroneLogger)).Debug(ex, "Failed to load dependency, may need an OS update");
 
-            // We still need the logging rules, so use a null target.
-            target = new NullTarget();
+                // We still need the logging rules, so use a null target.
+                target = new NullTarget();
+            }
         }
 
         var loggingRule = new LoggingRule("*", updateClient ? LogLevel.Trace : LogLevel.Warn, target);

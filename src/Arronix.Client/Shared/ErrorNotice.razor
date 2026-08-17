@@ -1,0 +1,33 @@
+@*
+    Something the user asked for did not work. Distinct from the server being unreachable, which is a
+    state of the whole application rather than of one request.
+*@
+
+@if (!string.IsNullOrWhiteSpace(Message))
+{
+    <div class="notice notice-problem" role="alert">
+        <p class="notice-text">@Message</p>
+        @if (OnRetry.HasDelegate)
+        {
+            <button type="button" class="button" @onclick="OnRetry">Try again</button>
+        }
+        @if (OnDismiss.HasDelegate)
+        {
+            <button type="button" class="button button-quiet" @onclick="OnDismiss">Dismiss</button>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Gets or sets what went wrong.</summary>
+    [Parameter]
+    public string? Message { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user asks to try again.</summary>
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user dismisses the notice.</summary>
+    [Parameter]
+    public EventCallback OnDismiss { get; set; }
+}

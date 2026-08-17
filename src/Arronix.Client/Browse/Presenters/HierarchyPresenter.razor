@@ -1,0 +1,20 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the items are them.
+}
+@*
+    Descending the containment hierarchy: a run of items, each of which may be opened to show what it
+    contains. The plainest of the five, and the one every media kind gets for free.
+*@
+
+<ItemCollection Kind="Context.Kind"
+                Level="Context.Level"
+                Items="Context.Items"
+                OnOpen="Context.OnOpen"
+                EmptyDetail="@($"No {Context.Level.PluralName.ToLowerInvariant()} here.")" />
+
+@code {
+    /// <summary>Gets or sets what is being drawn.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required PresenterContext Context { get; set; }
+}

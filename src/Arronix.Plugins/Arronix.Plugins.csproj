@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugins</RootNamespace>
+    <AssemblyName>Arronix.Plugins</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>Host-side extension loading and isolation for the Arronix media platform. Manifest discovery and validation, contract-range compatibility, per-extension assembly load contexts, capability-gated admission control, scoping decorators and the runtime registry the host and the API query. Never referenced by an extension.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       src/Directory.Build.props applies a crash-reporting symbol-upload and full-source-embedding block to
+       every project under src/ whenever Configuration == Release. This assembly names no crash-reporting
+       vendor and must not inherit that block, so it opts out explicitly rather than the shared props file
+       being re-gated (which would silently withdraw symbol upload from the legacy tree).
+  -->
+  <PropertyGroup>
+    <SentryUploadSymbols>false</SentryUploadSymbols>
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <EmbedAllSources>false</EmbedAllSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Common\Arronix.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+
+  <!--
+       The published manifest schema is an editor aid, shipped beside the assembly so that a plugin author
+       can point their editor at it. It is never the runtime gate: validation is the reader plus the
+       validator, which cannot drift from the types the way a hand-maintained schema can.
+  -->
+  <ItemGroup>
+    <None Update="Manifest\plugin.schema.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

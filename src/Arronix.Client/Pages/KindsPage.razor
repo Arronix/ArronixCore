@@ -1,0 +1,89 @@
+@page "/kinds"
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the descriptors are them.
+}
+@inject DescriptorCache Descriptors
+@*
+    Every media kind the platform has registered, with what each one declared about itself. Useful mostly
+    as a diagnostic: it is the shortest way to see whether an extension's shape came through, how deep its
+    hierarchy is and which abilities the host derived for it.
+*@
+
+<h1>Media kinds</h1>
+
+<ErrorNotice Message="@_error" OnRetry="LoadAsync" OnDismiss="@(() => _error = null)" />
+
+@if (_kinds is null)
+{
+    <LoadingIndicator Message="Reading media kinds…" />
+}
+else if (_kinds.Count == 0)
+{
+    <EmptyState Title="None registered"
+                Detail="A media kind is contributed by an extension." />
+}
+else
+{
+    <div class="table-scroll">
+        <table class="item-table">
+            <thead>
+                <tr>
+                    <th scope="col">Kind</th>
+                    <th scope="col">Levels</th>
+                    <th scope="col">Views</th>
+                    <th scope="col">Actions</th>
+                    <th scope="col">Working surfaces</th>
+                    <th scope="col">Extension</th>
+                    <th scope="col">Capabilities</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var kind in _kinds)
+                {
+                    <tr>
+                        <th scope="row">
+                            <a href="@($"kinds/{Uri.EscapeDataString(kind.Kind.Value)}")">@kind.PluralName</a>
+                        </th>
+                        <td>@string.Join(" → ", kind.Levels.Select(level => level.Name))</td>
+                        <td>@kind.Intent.BrowseAxes.Count</td>
+                        <td>@kind.Intent.Actions.Count</td>
+                        <td>@kind.Intent.Workbenches.Count</td>
+                        <td>@kind.Plugin.ToString()</td>
+                        <td>
+                            @foreach (var capability in kind.Capabilities)
+                            {
+                                <span class="chip chip-quiet">@capability</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<MediaKindDescriptor>? _kinds;
+    private string? _error;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+
+        try
+        {
+            _kinds = await Descriptors.GetAllAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+            _kinds = [];
+        }
+    }
+}

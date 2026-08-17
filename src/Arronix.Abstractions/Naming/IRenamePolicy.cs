@@ -1,4 +1,8 @@
+// The file-facts record is an experimental shape contract until 1.0.
+#pragma warning disable ARX0013
+
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Naming;
 
@@ -17,11 +21,16 @@ public interface IRenamePolicy
     /// Generates a file name for a media item based on a naming template.
     /// </summary>
     /// <param name="itemId">The media item identifier.</param>
+    /// <param name="file">
+    /// The file being named, when one exists. Most naming tokens are file properties — quality, release
+    /// group, languages, technical facets — and resolve to nothing without it.
+    /// </param>
     /// <param name="namingTemplate">The naming template containing tokens.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The generated file name.</returns>
     Task<string> GenerateFileNameAsync(
         MediaItemId itemId,
+        MediaFileFacts? file,
         string namingTemplate,
         CancellationToken cancellationToken = default);
 

@@ -14,14 +14,14 @@ namespace Sonarr.Api.V3.Config
     public class MediaManagementConfigController : ConfigController<MediaManagementConfigResource>
     {
         public MediaManagementConfigController(IConfigService configService,
-                                           PathExistsValidator pathExistsValidator,
-                                           FolderChmodValidator folderChmodValidator,
-                                           FolderWritableValidator folderWritableValidator,
-                                           SeriesPathValidator seriesPathValidator,
-                                           StartupFolderValidator startupFolderValidator,
-                                           SystemFolderValidator systemFolderValidator,
-                                           RootFolderAncestorValidator rootFolderAncestorValidator,
-                                           RootFolderValidator rootFolderValidator)
+                                           PathExistsValidator<MediaManagementConfigResource> pathExistsValidator,
+                                           FolderChmodValidator<MediaManagementConfigResource> folderChmodValidator,
+                                           FolderWritableValidator<MediaManagementConfigResource> folderWritableValidator,
+                                           SeriesPathValidator<MediaManagementConfigResource> seriesPathValidator,
+                                           StartupFolderValidator<MediaManagementConfigResource> startupFolderValidator,
+                                           SystemFolderValidator<MediaManagementConfigResource> systemFolderValidator,
+                                           RootFolderAncestorValidator<MediaManagementConfigResource> rootFolderAncestorValidator,
+                                           RootFolderValidator<MediaManagementConfigResource> rootFolderValidator)
             : base(configService)
         {
             SharedValidator.RuleFor(c => c.RecycleBinCleanupDays).GreaterThanOrEqualTo(0);

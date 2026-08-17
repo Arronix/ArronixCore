@@ -24,14 +24,4 @@ public readonly record struct MediaKindId(string Value)
     /// </summary>
     /// <returns>The string value of this media kind identifier.</returns>
     public string ToMediaKindId() => Value;
-
-    /// <summary>
-    /// Implicitly converts a string to a MediaKindId.
-    /// </summary>
-    public static implicit operator string(MediaKindId id) => id.Value;
-
-    /// <summary>
-    /// Implicitly converts a MediaKindId to a string.
-    /// </summary>
-    public static implicit operator MediaKindId(string value) => new(value);
 }

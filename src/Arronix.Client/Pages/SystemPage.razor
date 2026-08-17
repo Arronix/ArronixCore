@@ -1,0 +1,107 @@
+@page "/system"
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; health and extension views are them.
+}
+@implements IDisposable
+@inject ArronixApiClient Api
+@inject EventStream Events
+@inject HostConnectivity Connectivity
+@*
+    The platform's own state: what is installed, what is healthy, and — when something is not running —
+    exactly why. That last part is the reason this page exists at all, because an extension that fails to
+    load is quarantined rather than shouted about, and quarantine is only humane if it is legible.
+*@
+
+<h1>System</h1>
+
+<ErrorNotice Message="@_error" OnRetry="LoadAsync" OnDismiss="@(() => _error = null)" />
+
+<div class="columns">
+    <section class="column">
+        <PluginStatusPanel Plugins="_plugins" />
+    </section>
+
+    <section class="column">
+        <HealthPanel Snapshot="_health" />
+
+        <section class="panel">
+            <header class="panel-head">
+                <h2>Connection</h2>
+                <span class="chip">@ConnectionLabel</span>
+            </header>
+            <p class="panel-detail">@ConnectionDetail</p>
+        </section>
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<PluginStatusView> _plugins = [];
+    private HealthSnapshotView? _health;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.Received += OnEvent;
+        Connectivity.StateChanged += OnStateChanged;
+        Connectivity.Recovered += OnStateChanged;
+        await LoadAsync();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Events.Received -= OnEvent;
+        Connectivity.StateChanged -= OnStateChanged;
+        Connectivity.Recovered -= OnStateChanged;
+    }
+
+    private void OnEvent(object? sender, EventEnvelope envelope)
+    {
+        if (envelope.Kind is EventKind.HealthChanged or EventKind.PluginStateChanged)
+        {
+            InvokeAsync(LoadAsync);
+        }
+    }
+
+    private void OnStateChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    // Closed vocabulary, every member listed, no fall-through arm.
+    private string ConnectionLabel => Connectivity.State switch
+    {
+        HostState.Unknown => "starting",
+        HostState.Online => "connected",
+        HostState.LiveConnectionLost => "no live updates",
+        HostState.Unreachable => "unreachable",
+    };
+
+    private string ConnectionDetail => Connectivity.State switch
+    {
+        HostState.Unknown => "Nothing has been asked of the server yet.",
+        HostState.Online => "Requests are answered and live events are arriving.",
+        HostState.LiveConnectionLost =>
+            "Requests are answered, but the live connection has dropped, so views will not update themselves.",
+        HostState.Unreachable =>
+            "The server is not answering. The client is retrying by itself and will recover without a reload.",
+    };
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+
+        try
+        {
+            _plugins = await Api.GetPluginsAsync();
+            _health = await Api.GetHealthAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+
+        StateHasChanged();
+    }
+}

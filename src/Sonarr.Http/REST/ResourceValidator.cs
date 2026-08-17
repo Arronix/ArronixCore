@@ -1,9 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using FluentValidation;
-using FluentValidation.Internal;
 using Sonarr.Http.ClientSchema;
 
 namespace Sonarr.Http.REST
@@ -12,12 +11,16 @@ namespace Sonarr.Http.REST
     {
         public IRuleBuilderInitial<TResource, TProperty> RuleForField<TProperty>(Expression<Func<TResource, IEnumerable<Field>>> fieldListAccessor, string fieldName)
         {
-            var rule = new PropertyRule(fieldListAccessor.GetMember(), c => GetValue(c, fieldListAccessor.Compile(), fieldName), null, () => CascadeMode.Continue, typeof(TProperty), typeof(TResource));
+            var accessor = fieldListAccessor.Compile();
+            var ruleBuilder = RuleFor(c => (TProperty)GetValue(c, accessor, fieldName));
+
+            // FluentValidation 12 no longer exposes PropertyRule/RuleBuilder publicly, so the rule that
+            // RuleFor just appended is retrieved from the validator itself to be named after the field.
+            var rule = this.Last();
             rule.PropertyName = fieldName;
             rule.SetDisplayName(fieldName);
 
-            AddRule(rule);
-            return new RuleBuilder<TResource, TProperty>(rule, this);
+            return ruleBuilder;
         }
 
         private static object GetValue(object container, Func<TResource, IEnumerable<Field>> fieldListAccessor, string fieldName)

@@ -4,8 +4,13 @@ namespace Arronix.Abstractions.Identity;
 /// Unique identifier for a specific media item within a media kind.
 /// This is a stable, internal identifier used to track media items across the system.
 /// </summary>
-/// <param name="Value">The integer identifier for the media item.</param>
-public readonly record struct MediaItemId(int Value)
+/// <param name="Value">The surrogate identifier for the media item.</param>
+/// <remarks>
+/// The width is 64-bit because the column that stores it is, and a narrower runtime type in front of a
+/// wider column is a truncation waiting to be discovered by the row that first exceeds it. The identifier
+/// is a host-minted surrogate, so nothing outside the platform chooses its value or its range.
+/// </remarks>
+public readonly record struct MediaItemId(long Value)
 {
     /// <summary>
     /// Gets the string representation of this media item identifier.
@@ -13,25 +18,15 @@ public readonly record struct MediaItemId(int Value)
     public override string ToString() => Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
-    /// Creates a MediaItemId from an integer value.
+    /// Creates a MediaItemId from a numeric value.
     /// </summary>
-    /// <param name="value">The integer identifier for the media item.</param>
+    /// <param name="value">The surrogate identifier for the media item.</param>
     /// <returns>A new MediaItemId instance.</returns>
-    public static MediaItemId FromInt(int value) => new(value);
+    public static MediaItemId FromInt64(long value) => new(value);
 
     /// <summary>
-    /// Converts this MediaItemId to its integer representation.
+    /// Converts this MediaItemId to its numeric representation.
     /// </summary>
-    /// <returns>The integer value of this media item identifier.</returns>
-    public int ToMediaItemId() => Value;
-
-    /// <summary>
-    /// Implicitly converts an integer to a MediaItemId.
-    /// </summary>
-    public static implicit operator int(MediaItemId id) => id.Value;
-
-    /// <summary>
-    /// Implicitly converts a MediaItemId to an integer.
-    /// </summary>
-    public static implicit operator MediaItemId(int value) => new(value);
+    /// <returns>The numeric value of this media item identifier.</returns>
+    public long ToInt64() => Value;
 }

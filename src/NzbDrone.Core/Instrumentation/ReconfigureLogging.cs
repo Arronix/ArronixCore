@@ -5,7 +5,6 @@ using NLog.Config;
 using NLog.Targets;
 using NLog.Targets.Syslog;
 using NLog.Targets.Syslog.Settings;
-using NzbDrone.Common.EnvironmentInfo;
 using NzbDrone.Common.Extensions;
 using NzbDrone.Common.Instrumentation;
 using NzbDrone.Common.Instrumentation.Sentry;
@@ -107,7 +106,11 @@ namespace NzbDrone.Core.Instrumentation
             var sentryTarget = LogManager.Configuration.AllTargets.OfType<SentryTarget>().FirstOrDefault();
             if (sentryTarget != null)
             {
-                sentryTarget.SentryEnabled = (RuntimeInfo.IsProduction && _configFileProvider.AnalyticsEnabled) || RuntimeInfo.IsDevelopment;
+                // A SentryTarget only exists when an operator supplied their own DSN (see NzbDroneLogger.RegisterSentry),
+                // so reaching here already means reporting was opted into. Upstream additionally forced it on with
+                // "|| RuntimeInfo.IsDevelopment", which sent every development build's events regardless of the
+                // operator's analytics setting; that override is deliberately gone.
+                sentryTarget.SentryEnabled = _configFileProvider.AnalyticsEnabled;
                 sentryTarget.FilterEvents = _configFileProvider.FilterSentryEvents;
             }
         }

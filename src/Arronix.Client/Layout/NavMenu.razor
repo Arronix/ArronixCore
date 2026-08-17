@@ -1,0 +1,85 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; nav entries come from the descriptors.
+}
+@implements IDisposable
+@inject DescriptorCache Descriptors
+@*
+    The navigation, half of which is contributed by extensions.
+
+    Every library entry below exists because an extension registered a media kind; its name, its plural
+    name and its very presence are read from the description the host published. Nothing in this file
+    names a media kind, and installing a fifth one adds a fifth entry without a line of this changing.
+*@
+
+<nav class="nav" aria-label="Primary">
+    <a class="nav-brand" href="">
+        <span class="nav-brand-mark" aria-hidden="true"></span>
+        <span class="nav-brand-name">Arronix</span>
+    </a>
+
+    <ul class="nav-list">
+        <li>
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
+        </li>
+    </ul>
+
+    <p class="nav-heading">Libraries</p>
+    @if (_kinds.Count == 0)
+    {
+        <p class="nav-empty">@_libraryHint</p>
+    }
+    else
+    {
+        <ul class="nav-list">
+            @foreach (var kind in _kinds)
+            {
+                <li>
+                    <NavLink class="nav-link" href="@($"kinds/{Uri.EscapeDataString(kind.Kind.Value)}")">
+                        @kind.PluralName
+                    </NavLink>
+                </li>
+            }
+        </ul>
+    }
+
+    <p class="nav-heading">Platform</p>
+    <ul class="nav-list">
+        <li><NavLink class="nav-link" href="activity">Activity</NavLink></li>
+        <li><NavLink class="nav-link" href="system">System</NavLink></li>
+        <li><NavLink class="nav-link" href="settings">Settings</NavLink></li>
+    </ul>
+</nav>
+
+@code {
+    private IReadOnlyList<MediaKindDescriptor> _kinds = [];
+    private string _libraryHint = "Loading…";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Descriptors.Invalidated += OnInvalidated;
+        await LoadAsync();
+    }
+
+    /// <inheritdoc />
+    public void Dispose() => Descriptors.Invalidated -= OnInvalidated;
+
+    private void OnInvalidated(object? sender, EventArgs args) => InvokeAsync(LoadAsync);
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            _kinds = await Descriptors.GetAllAsync();
+            _libraryHint = "No media kinds are registered.";
+        }
+        catch (Exception)
+        {
+            // The connectivity state and the banner already say what is wrong; navigation simply has
+            // nothing to offer until it is fixed.
+            _kinds = [];
+            _libraryHint = "Unavailable.";
+        }
+
+        StateHasChanged();
+    }
+}

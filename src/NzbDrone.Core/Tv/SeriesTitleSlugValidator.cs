@@ -1,10 +1,11 @@
-﻿using System.Linq;
+using System.Linq;
+using FluentValidation;
 using FluentValidation.Validators;
 using NzbDrone.Common.Extensions;
 
 namespace NzbDrone.Core.Tv
 {
-    public class SeriesTitleSlugValidator : PropertyValidator
+    public class SeriesTitleSlugValidator<T> : PropertyValidator<T, string>
     {
         private readonly ISeriesService _seriesService;
 
@@ -13,23 +14,21 @@ namespace NzbDrone.Core.Tv
             _seriesService = seriesService;
         }
 
-        protected override string GetDefaultMessageTemplate() =>
-            "Title slug '{slug}' is in use by series '{seriesTitle}'. Check the FAQ for more information";
+        public override string Name => "SeriesTitleSlugValidator";
 
-        protected override bool IsValid(PropertyValidatorContext context)
+        public override bool IsValid(ValidationContext<T> context, string value)
         {
-            if (context.PropertyValue == null)
+            if (value == null)
             {
                 return true;
             }
 
-            dynamic instance = context.ParentContext.InstanceToValidate;
+            dynamic instance = context.InstanceToValidate;
             var instanceId = (int)instance.Id;
-            var slug = context.PropertyValue.ToString();
 
             var conflictingSeries = _seriesService.GetAllSeries()
                                                   .FirstOrDefault(s => s.TitleSlug.IsNotNullOrWhiteSpace() &&
-                                                              s.TitleSlug.Equals(context.PropertyValue.ToString()) &&
+                                                              s.TitleSlug.Equals(value) &&
                                                               s.Id != instanceId);
 
             if (conflictingSeries == null)
@@ -37,10 +36,13 @@ namespace NzbDrone.Core.Tv
                 return true;
             }
 
-            context.MessageFormatter.AppendArgument("slug", slug);
+            context.MessageFormatter.AppendArgument("slug", value);
             context.MessageFormatter.AppendArgument("seriesTitle", conflictingSeries.Title);
 
             return false;
         }
+
+        protected override string GetDefaultMessageTemplate(string errorCode) =>
+            "Title slug '{slug}' is in use by series '{seriesTitle}'. Check the FAQ for more information";
     }
 }

@@ -1,56 +1,57 @@
 using System;
-using System.Linq;
 using FluentAssertions;
 using NUnit.Framework;
-using NzbDrone.Common.EnvironmentInfo;
-using NzbDrone.Common.Extensions;
+using NzbDrone.Common.Http;
 using NzbDrone.Core.Test.Framework;
 using NzbDrone.Core.Update;
 
 namespace NzbDrone.Core.Test.UpdateTests
 {
+    /// <summary>
+    /// These tests previously called the upstream project's live update service over real HTTP and asserted
+    /// that upstream packages were offered as upgrades — down to asserting the returned filenames matched
+    /// <c>Sonarr.{branch}.4.*</c>. Both the outbound call and the upstream binaries are deliberately gone
+    /// (see <see cref="UpdatePackageProvider"/>), so this fixture pins the replacement contract instead:
+    /// no updates are offered, and nothing reaches the network.
+    /// </summary>
     public class UpdatePackageProviderFixture : CoreTest<UpdatePackageProvider>
     {
-        [SetUp]
-        public void Setup()
-        {
-            Mocker.GetMock<IPlatformInfo>().SetupGet(c => c.Version).Returns(new Version("9.9.9"));
-        }
-
         [Test]
-        public void no_update_when_version_higher()
+        public void should_report_no_latest_update_regardless_of_current_version()
         {
-            UseRealHttp();
+            Subject.GetLatestUpdate("main", new Version(3, 0)).Should().BeNull();
             Subject.GetLatestUpdate("main", new Version(10, 0)).Should().BeNull();
         }
 
         [Test]
-        public void finds_update_when_version_lower()
+        public void should_report_no_latest_update_for_an_unknown_branch()
         {
-            UseRealHttp();
-            Subject.GetLatestUpdate("main", new Version(3, 0)).Should().NotBeNull();
+            Subject.GetLatestUpdate("invalid_branch", new Version(3, 0)).Should().BeNull();
         }
 
         [Test]
-        public void should_get_master_if_branch_doesnt_exit()
+        public void should_report_no_recent_updates()
         {
-            UseRealHttp();
-            Subject.GetLatestUpdate("invalid_branch", new Version(3, 0)).Should().NotBeNull();
+            Subject.GetRecentUpdates("main", new Version(4, 0), null).Should().BeEmpty();
         }
 
         [Test]
-        public void should_get_recent_updates()
+        public void should_report_no_recent_updates_when_a_previous_version_is_supplied()
         {
-            const string branch = "main";
-            UseRealHttp();
-            var recent = Subject.GetRecentUpdates(branch, new Version(4, 0), null);
+            Subject.GetRecentUpdates("main", new Version(4, 0), new Version(3, 0)).Should().BeEmpty();
+        }
 
-            recent.Should().NotBeEmpty();
-            recent.Should().OnlyContain(c => c.Hash.IsNotNullOrWhiteSpace());
-            recent.Should().OnlyContain(c => c.FileName.Contains($"Sonarr.{c.Branch}.4."));
-            recent.Should().OnlyContain(c => c.ReleaseDate.Year >= 2014);
-            recent.Where(c => c.Changes != null).Should().OnlyContain(c => c.Changes.New != null);
-            recent.Where(c => c.Changes != null).Should().OnlyContain(c => c.Changes.Fixed != null);
+        /// <summary>
+        /// The point of the change: checking for updates must not contact anyone. Any outbound request would
+        /// register as a call on the mocked HTTP client.
+        /// </summary>
+        [Test]
+        public void should_not_make_any_http_request()
+        {
+            Subject.GetLatestUpdate("main", new Version(3, 0));
+            Subject.GetRecentUpdates("main", new Version(4, 0), null);
+
+            Mocker.GetMock<IHttpClient>().VerifyNoOtherCalls();
         }
     }
 }

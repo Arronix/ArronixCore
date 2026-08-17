@@ -1,0 +1,79 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the status view is one of them.
+}
+@*
+    What is installed and what happened to it. A failed extension is quarantined rather than removed, so
+    this panel exists to answer the only question that matters when one is: why is it not running. Every
+    defect the loader found is listed, not merely the first, because a manifest usually has more than one
+    thing wrong with it and fixing them one build at a time is nobody's idea of a good afternoon.
+*@
+
+<section class="panel">
+    <header class="panel-head">
+        <h2>Extensions</h2>
+        <span class="chip">@Plugins.Count</span>
+    </header>
+
+    @if (Plugins.Count == 0)
+    {
+        <EmptyState Title="Nothing installed"
+                    Detail="Media kinds and providers arrive with extensions." />
+    }
+    else
+    {
+        <ul class="plugin-list">
+            @foreach (var plugin in Plugins.OrderBy(plugin => plugin.Name ?? plugin.Id, StringComparer.CurrentCultureIgnoreCase))
+            {
+                <li class="plugin @(IsRunning(plugin) ? "tone-positive" : "tone-problem")">
+                    <div class="plugin-head">
+                        <p class="plugin-name">@(plugin.Name ?? plugin.Id)</p>
+                        <span class="chip">@plugin.State</span>
+                        @if (plugin.Version is { Length: > 0 } version)
+                        {
+                            <span class="plugin-version">@version</span>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(plugin.Message))
+                    {
+                        <p class="plugin-message">@plugin.Message</p>
+                    }
+
+                    @if (plugin.Defects.Count > 0)
+                    {
+                        <ul class="plugin-defects">
+                            @foreach (var defect in plugin.Defects)
+                            {
+                                <li>@defect</li>
+                            }
+                        </ul>
+                    }
+
+                    @if (plugin.Capabilities.Count > 0)
+                    {
+                        <p class="plugin-capabilities">
+                            @foreach (var capability in plugin.Capabilities)
+                            {
+                                <span class="chip chip-quiet">@capability</span>
+                            }
+                        </p>
+                    }
+
+                    @if (plugin.ErrorCode is { } failureCode)
+                    {
+                        <p class="plugin-code">Error @failureCode</p>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    /// <summary>Gets or sets the installed extensions.</summary>
+    [Parameter]
+    public IReadOnlyList<PluginStatusView> Plugins { get; set; } = [];
+
+    private static bool IsRunning(PluginStatusView plugin)
+        => plugin.ErrorCode is null && plugin.Defects.Count == 0;
+}

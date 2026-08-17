@@ -1,0 +1,59 @@
+@page "/kinds/{Kind}"
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the descriptor and items are them.
+}
+@inject DescriptorCache Descriptors
+@inject NavigationManager Navigation
+@*
+    A library. The whole page is one component parameterized by a description the server sent, which is
+    why there is exactly one of these rather than one per media kind.
+*@
+
+@if (_descriptor is { } descriptor)
+{
+    <KindWorkspace Kind="descriptor" OnOpenItem="OpenAsync" />
+}
+else if (_missing)
+{
+    <EmptyState Title="No such library"
+                Detail="Nothing is registered under that name. An extension may have been removed." />
+}
+else
+{
+    <LoadingIndicator Message="Reading the library…" />
+}
+
+@code {
+    private MediaKindDescriptor? _descriptor;
+    private bool _missing;
+
+    /// <summary>Gets or sets the media kind named in the address.</summary>
+    [Parameter]
+    public string? Kind { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _missing = false;
+        _descriptor = null;
+
+        if (string.IsNullOrWhiteSpace(Kind))
+        {
+            _missing = true;
+            return;
+        }
+
+        try
+        {
+            _descriptor = await Descriptors.GetAsync(MediaKindId.FromString(Kind));
+            _missing = _descriptor is null;
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+    }
+
+    private void OpenAsync(ItemDetail item)
+        => Navigation.NavigateTo(
+            $"kinds/{Uri.EscapeDataString(item.Item.Ref.Kind.Value)}/items/{item.Item.Ref.Id.Value.ToString(CultureInfo.InvariantCulture)}");
+}

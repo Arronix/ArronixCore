@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugin.Movies.Tests</RootNamespace>
+    <AssemblyName>Arronix.Plugin.Movies.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <!-- See the matching block in Arronix.Common.csproj for why the shared Release block is opted out of. -->
+  <PropertyGroup>
+    <SentryUploadSymbols>false</SentryUploadSymbols>
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <EmbedAllSources>false</EmbedAllSources>
+  </PropertyGroup>
+
+  <!--
+       The extension under test, plus the host - for one reason only, and it is worth stating: the host owns
+       the gate a definition has to pass (ValidatedDefinition over HostVocabulary), and that gate is public.
+       Putting the real declaration through the real gate is the strongest assertion available from here.
+       The engines that EXECUTE a declaration are internal to Arronix.Host and shared only with its own
+       tests, so nothing in this project can run the release corpus; see the ignored fixtures for what that
+       costs. The rule this reference does not weaken is rule 1: the EXTENSION references Arronix.Abstractions
+       and nothing else, and MediaExtensionTopologyTests asserts that against the extension, not against its
+       test project.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj" />
+    <ProjectReference Include="..\Arronix.Host\Arronix.Host.csproj" />
+  </ItemGroup>
+</Project>

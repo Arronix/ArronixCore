@@ -14,7 +14,7 @@ namespace Sonarr.Api.V3.Indexers
 
         public IndexerController(IBroadcastSignalRMessage signalRBroadcaster,
             IndexerFactory indexerFactory,
-            DownloadClientExistsValidator downloadClientExistsValidator)
+            DownloadClientExistsValidator<IndexerResource> downloadClientExistsValidator)
             : base(signalRBroadcaster, indexerFactory, "indexer", ResourceMapper, BulkResourceMapper)
         {
             SharedValidator.RuleFor(c => c.Priority).InclusiveBetween(1, 50);

@@ -11,7 +11,7 @@ using NzbDrone.Test.Common;
 namespace NzbDrone.Core.Test.TvTests
 {
     [TestFixture]
-    public class SeriesTitleSlugValidatorFixture : CoreTest<SeriesTitleSlugValidator>
+    public class SeriesTitleSlugValidatorFixture : CoreTest<SeriesTitleSlugValidator<Series>>
     {
         private List<Series> _series;
         private TestValidator<Series> _validator;

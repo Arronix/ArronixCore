@@ -110,7 +110,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.StandardEpisodeFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}";
 
             var result = Subject.BuildFileName(_episodes, _series, _episodeFile, ".mkv");
-            result.Length.Should().BeLessOrEqualTo(255);
+            result.Length.Should().BeLessThanOrEqualTo(255);
             result.Should().Be("The Fantastic Life of Mr. Sisko - S02E18 - This title has to be 197 characters in length, combined with the series title, quality and episode number it becomes 254ish and the extension puts it above the 255 limit and triggers the trunc... Bluray-1080p.mkv");
         }
 
@@ -120,7 +120,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.StandardEpisodeFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}";
 
             var result = Subject.BuildFileName(_episodes, _series, _episodeFile);
-            result.Length.Should().BeLessOrEqualTo(255);
+            result.Length.Should().BeLessThanOrEqualTo(255);
             result.Should().Be("Series Title - S01E01-02-03-04-05-06-07 - Episode Title 1...A Really Really Really Really Long Episode Title HDTV-720p");
         }
 
@@ -131,7 +131,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.StandardEpisodeFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}";
 
             var result = Subject.BuildFileName(_episodes, _series, _episodeFile);
-            result.Length.Should().BeLessOrEqualTo(255);
+            result.Length.Should().BeLessThanOrEqualTo(255);
             result.Should().Be("Lorem ipsum dolor sit amet, consectetur adipiscing elit Maecenas et magna sem Morbi vitae volutpat quam, id porta arcu Orci varius natoque penatibus et magnis dis parturient montes - S01E01-02-03-04-05-06-07 - Episode Title 1... HDTV-720p");
         }
 
@@ -142,7 +142,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.StandardEpisodeFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}";
 
             var result = Subject.BuildFileName(new List<Episode> { _episodes.First() }, _series, _episodeFile);
-            result.Length.Should().BeLessOrEqualTo(255);
+            result.Length.Should().BeLessThanOrEqualTo(255);
             result.Should().Be("Lorem ipsum dolor sit amet, consectetur adipiscing elit Maecenas et magna sem Morbi vitae volutpat quam, id porta arcu Orci varius natoque penatibus et magnis dis parturient montes nascetur ridiculus musu Cras vestibulum - S01E01 - Episode Ti... HDTV-720p");
         }
 
@@ -153,7 +153,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _namingConfig.StandardEpisodeFormat = "{Series Title} - S{season:00}E{episode:00} - {Episode Title} {Quality Full}";
 
             var result = Subject.BuildFileName(new List<Episode> { _episodes.First() }, _series, _episodeFile);
-            result.GetByteCount().Should().BeLessOrEqualTo(255);
+            result.GetByteCount().Should().BeLessThanOrEqualTo(255);
 
             result.Should().Be("Lor\u00E9m ipsum dolor sit amet, consectetur adipiscing elit Maecenas et magna sem Morbi vitae volutpat quam, id porta arcu Orci varius natoque penatibus et magnis dis parturient montes nascetur ridiculus musu Cras vestibulum - S01E01 - Episode T... HDTV-720p");
         }
@@ -167,7 +167,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _episodes.First().Title = "Episod\u00E9 Title";
 
             var result = Subject.BuildFileName(new List<Episode> { _episodes.First() }, _series, _episodeFile);
-            result.GetByteCount().Should().BeLessOrEqualTo(255);
+            result.GetByteCount().Should().BeLessThanOrEqualTo(255);
 
             result.Should().Be("Lorem ipsum dolor sit amet, consectetur adipiscing elit Maecenas et magna sem Morbi vitae volutpat quam, id porta arcu Orci varius natoque penatibus et magnis dis parturient montes nascetur ridiculus musu Cras vestibulum - S01E01 - Episod\u00E9 T... HDTV-720p");
         }
@@ -181,7 +181,7 @@ namespace NzbDrone.Core.Test.OrganizerTests.FileNameBuilderTests
             _episodes.First().Title = "Episode T\u00E9tle";
 
             var result = Subject.BuildFileName(new List<Episode> { _episodes.First() }, _series, _episodeFile);
-            result.GetByteCount().Should().BeLessOrEqualTo(255);
+            result.GetByteCount().Should().BeLessThanOrEqualTo(255);
 
             result.Should().Be("Lorem ipsum dolor sit amet, consectetur adipiscing elit Maecenas et magna sem Morbi vitae volutpat quam, id porta arcu Orci varius natoque penatibus et magnis dis parturient montes nascetur ridiculus musu Cras vestibulum - S01E01 - Episode T... HDTV-720p");
         }

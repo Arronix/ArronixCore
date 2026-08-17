@@ -11,7 +11,7 @@ using NzbDrone.Test.Common;
 
 namespace NzbDrone.Core.Test.ValidationTests
 {
-    public class SystemFolderValidatorFixture : CoreTest<SystemFolderValidator>
+    public class SystemFolderValidatorFixture : CoreTest<SystemFolderValidator<Series>>
     {
         private TestValidator<Series> _validator;
 

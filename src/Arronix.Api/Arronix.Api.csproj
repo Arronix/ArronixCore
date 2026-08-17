@@ -1,0 +1,59 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Arronix.Api</RootNamespace>
+    <AssemblyName>Arronix.Api</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>The Arronix HTTP surface. A plain ASP.NET Core server — never Blazor — that hosts the Arronix runtime and publishes it as a media-agnostic REST API, a SignalR event stream and the static files of whichever client is deployed alongside it. Every route is driven by what extensions declared; nothing here names a media concept.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!--
+         The client is a separate project that may or may not have been published into this host's content
+         root. Nothing here consumes it at build time, so its absence is a runtime condition (an empty
+         library shell served with a diagnostic), never a build failure.
+    -->
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <!--
+       src/Directory.Build.props applies a crash-reporting symbol-upload and full-source-embedding block to
+       every project under src/ whenever Configuration == Release. This assembly names no crash-reporting
+       vendor and must not inherit that block, so it opts out explicitly rather than the shared props file
+       being re-gated (which would silently withdraw symbol upload from the legacy tree).
+  -->
+  <PropertyGroup>
+    <SentryUploadSymbols>false</SentryUploadSymbols>
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <EmbedAllSources>false</EmbedAllSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Common\Arronix.Common.csproj" />
+    <ProjectReference Include="..\Arronix.Plugins\Arronix.Plugins.csproj" />
+    <ProjectReference Include="..\Arronix.Host\Arronix.Host.csproj" />
+  </ItemGroup>
+
+  <!--
+       DELIBERATELY EMPTY, AND ASSERTED BY A TEST.
+
+       This project takes no package at all, and must never take one. Routing, minimal APIs, SignalR
+       (server), static files, configuration, options, logging and hosting all live in the
+       Microsoft.AspNetCore.App shared framework, so the whole HTTP surface costs nothing to reference. An
+       empty package set is the strongest mechanically checkable form of "Arronix.Api is not Blazor": a
+       Blazor server-side or WebAssembly-hosting package cannot arrive here without the assertion failing.
+
+       Arronix.Api.Tests asserts both halves of that (no .razor file anywhere under this project, and an
+       empty package set), so this comment is documentation of a checked fact rather than a request.
+
+       The word that names such an element is deliberately not written anywhere in this file, so that a test
+       which greps rather than parses cannot be fooled by a comment.
+  -->
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Arronix.Api.Tests" />
+  </ItemGroup>
+</Project>

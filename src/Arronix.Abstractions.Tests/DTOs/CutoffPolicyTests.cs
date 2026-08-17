@@ -43,4 +43,21 @@ public class CutoffPolicyTests
 
         Assert.That(policy.ShouldSearchForUpgrade(qualityAtCutoff), Is.False);
     }
+
+    [Test]
+    public void CutoffPolicy_AGroupedRungMeetsACutoffSetAtItsPeer()
+    {
+        // Two tiers in one quality group carry equal weight at distinct ranks. Either satisfies a cutoff
+        // set at the other — the answer the rank comparison used to get wrong.
+        var streamCopy = new QualityTier("StreamCopy-1080p", Rank: 21, Weight: 18, GroupName: "Stream 1080p");
+        var streamRip = new QualityTier("StreamRip-1080p", Rank: 20, Weight: 18, GroupName: "Stream 1080p");
+
+        var policy = new CutoffPolicy(streamCopy);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(policy.MeetsCutoff(streamRip), Is.True);
+            Assert.That(policy.ShouldSearchForUpgrade(streamRip), Is.False);
+        });
+    }
 }

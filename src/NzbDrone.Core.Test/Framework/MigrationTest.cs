@@ -33,7 +33,12 @@ namespace NzbDrone.Core.Test.Framework
 
         protected override void SetupLogging()
         {
-            Mocker.SetConstant<ILoggerProvider>(Mocker.Resolve<NLogLoggerProvider>());
+            // Construct the provider directly rather than via Mocker.Resolve: auto-wiring picks
+            // NLogLoggerProvider's greediest constructor, which pulls in NLog's LogFactory and in turn
+            // its internal ILoggingConfigurationLoader - an internal interface in a strong-named
+            // assembly that Castle/Moq cannot proxy. The parameterless constructor binds to
+            // LogManager.LogFactory, which is what these tests want anyway.
+            Mocker.SetConstant<ILoggerProvider>(new NLogLoggerProvider());
         }
 
         private ITestDatabase WithMigrationAction(Action<TMigration> beforeMigration = null)

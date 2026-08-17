@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Common.Tests</RootNamespace>
+    <AssemblyName>Arronix.Common.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <!-- See the matching block in Arronix.Common.csproj for why the shared Release block is opted out of. -->
+  <PropertyGroup>
+    <SentryUploadSymbols>false</SentryUploadSymbols>
+    <PublishRepositoryUrl>false</PublishRepositoryUrl>
+    <EmbedAllSources>false</EmbedAllSources>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Common\Arronix.Common.csproj" />
+  </ItemGroup>
+
+  <!--
+       The container and the configuration builder are host concerns: Arronix.Common takes only the
+       abstractions of both. The tests stand in for a host, so they take the implementations directly
+       rather than relying on them arriving transitively.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+</Project>
