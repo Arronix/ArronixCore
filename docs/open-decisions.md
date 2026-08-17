@@ -919,9 +919,26 @@ references Abstractions only.* Add family-vocabulary governance after relocation
 
 ### Next iteration queue (ordered)
 
-1. `NOTICE` file (MIT/Munkres) — cheap, overdue, independent of everything else
+1. ~~`NOTICE` file (MIT/Munkres)~~ — **DONE 2026-08-18**: root `NOTICE` + full MIT block in `MunkresSolver.cs` header (the attribution obligation is now met); P2-7's article-drift also closed (TV aligned to the space-less convention with a word-boundary check)
 2. Owner decision on P2-10 → family-assembly relocation pass
 3. Fresh quarantined implementer: NEG-18/NEG-14 fixes + the remaining 21 `MoviesParsing.cs` expressions
 4. Corpus-generator fix (the 706 mis-attachments) + replace `MoviesCorpus.cs`/fixture rows
 5. Step 0 retro-execution + citation scrub (53 src / 532 docs sites)
 6. Then, and only then: the license flip — owner's action
+
+**P2-10 extended (owner, 2026-08-18) — vocabulary openness, naming, and scope.** The owner's review of
+`EvidenceTokens.cs` established three additions to the relocation pass:
+1. **"Evidence" is the wrong name** — it names the pipeline, not the thing (the P2-6 error class). These
+   are scene release-naming vocabulary; rename for what they are.
+2. **Classify every vocabulary by openness**: closed-by-nature sets (packaging, dynamic-range kinds) →
+   typed family enums; standard-backed-but-growing sets (codecs — `h266` had to be added mid-pass,
+   proving a new codec currently costs a contract release) → family-owned recognition data;
+   **living vendor sets (distributors) → open recognition tables, never constants** — family ships
+   defaults, runtime-extensible, so a new streaming service is a data row, not a release. The shipped
+   `EvidenceDistributorTokens` (19 vendors in the contract assembly) is the exhibit; the governance
+   vendor-name rule was scoped to kind surfaces and missed core itself — widen it.
+3. **Dispositions**: file formats — extensions already family data; container recognition joins it.
+   Languages — the ISO-backed `Language` DTO stays core (external standard, media-agnostic); scene
+   spellings (`MULTi`, `VOSTFR`, `German.DL`) move to family recognition data.
+The owner's framing ("shouldn't distributors just be registration plugin based?") is treated as the
+decision on P2-10's direction: family assemblies + open registries. Relocation pass launched 2026-08-18.

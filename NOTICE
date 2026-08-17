@@ -1,0 +1,27 @@
+Arronix — third-party attributions
+==================================
+
+This file records material in this repository that is derived from third-party
+work and the license terms attached to it. It is maintained alongside the
+clean-room programme described in docs/design/clean-room-plan.md.
+
+1. Munkres (Hungarian) assignment algorithm
+-------------------------------------------
+File: src/Arronix.Host/Engines/Matching/MunkresSolver.cs
+
+Derived from the implementation of Robert A. Pilgrim, Murray State University,
+Dept. of Computer Science & Information Systems (as carried in Lidarr,
+src/NzbDrone.Core/MediaFiles/TrackImport/Identification/Munkres.cs).
+
+License: The MIT License (MIT), Copyright (c) 2000 Robert A. Pilgrim.
+The full license text is reproduced in the file's header comment.
+
+2. GPL-derived material pending clean-room replacement
+------------------------------------------------------
+Portions of the release-title parsing expressions, quality corpus rows and
+test fixtures in this repository are derived from GPL-3.0-licensed Radarr
+sources. The repository's LICENSE.md (GPL-3.0) remains in force while that
+material is present. The exact inventory and the replacement programme are
+recorded in docs/design/clean-room-plan.md and docs/open-decisions.md Part 8;
+this section is removed when that programme completes and the inventory is
+empty.

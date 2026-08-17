@@ -1,3 +1,34 @@
+/*
+    Derived from the Munkres (Hungarian) assignment implementation of Robert A. Pilgrim,
+    Murray State University, Dept. of Computer Science & Information Systems, as carried in
+    Lidarr (src/NzbDrone.Core/MediaFiles/TrackImport/Identification/Munkres.cs).
+
+    The MIT License (MIT)
+
+    Copyright (c) 2000 Robert A. Pilgrim
+                       Murray State University
+                       Dept. of Computer Science & Information Systems
+                       Murray, Kentucky
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.
+*/
+
 namespace Arronix.Host.Engines.Matching;
 
 /// <summary>
@@ -5,12 +36,10 @@ namespace Arronix.Host.Engines.Matching;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Ported from Lidarr's <c>Munkres</c>
-/// (<c>_reference/Lidarr/src/NzbDrone.Core/MediaFiles/TrackImport/Identification/Munkres.cs</c>, itself
-/// MIT-licensed work of Robert A. Pilgrim, Murray State University) — 504 generic lines with zero media
-/// nouns, which is the existence proof that the hardest surveyed matching case is data plus a generic
-/// solver. The port keeps the step structure and the rectangular padding; only spelling and array shape
-/// changed.
+/// A port of MIT-licensed work of Robert A. Pilgrim (see the license block above) — 504 generic lines
+/// with zero media nouns, which is the existence proof that the hardest surveyed matching case is data
+/// plus a generic solver. The port keeps the step structure and the rectangular padding; only spelling
+/// and array shape changed. Attribution also recorded in the repository-root <c>NOTICE</c> file.
 /// </para>
 /// </remarks>
 internal sealed class MunkresSolver

@@ -80,7 +80,10 @@ public enum TvReleaseKind
 /// </summary>
 public static partial class TvTitleNormalizer
 {
-    private static readonly string[] LeadingArticles = ["the ", "a ", "an "];
+    // Space-less, matching the convention Movies declares for the host normalizer, so the two kinds carry
+    // one encoding of one rule (the P2-7 drift finding). The word-boundary check lives at the match site:
+    // a bare StartsWith("the") would strip "theatre" to "atre".
+    private static readonly string[] LeadingArticles = ["the", "a", "an"];
 
     /// <summary>Normalizes a title for equality comparison.</summary>
     /// <param name="title">The raw title.</param>
@@ -105,9 +108,11 @@ public static partial class TvTitleNormalizer
 
         foreach (var article in LeadingArticles)
         {
-            if (lowered.StartsWith(article, StringComparison.Ordinal))
+            if (lowered.Length > article.Length
+                && lowered.StartsWith(article, StringComparison.Ordinal)
+                && lowered[article.Length] == ' ')
             {
-                return lowered[article.Length..];
+                return lowered[(article.Length + 1)..];
             }
         }
 
