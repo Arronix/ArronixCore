@@ -1,0 +1,238 @@
+using System.IO;
+using System.Linq;
+using Arronix.Abstractions.FileSystem;
+using Arronix.Abstractions.Health;
+using Arronix.Abstractions.Hosting;
+using Arronix.Abstractions.Scheduling;
+using Arronix.Host.Composition;
+using Arronix.Host.Health;
+using Arronix.Host.Intent;
+using Arronix.Host.Media;
+using Arronix.Host.Providers;
+using Arronix.Host.Runtime;
+using Arronix.Host.Scheduling;
+using Arronix.Host.Storage;
+using FluentAssertions;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+
+// File system, health and hosting contracts are experimental.
+#pragma warning disable ARX0005
+#pragma warning disable ARX0006
+#pragma warning disable ARX0007
+
+namespace Arronix.Host.Tests.Runtime;
+
+/// <summary>
+/// The composition root, resolved end to end.
+/// </summary>
+/// <remarks>
+/// The registration order in the composition root is load-bearing in two places, and a container that
+/// resolves proves both: the platform's own file system exists before anything that consumes it, and the
+/// extension bootstrapper can reach every registry it commits into. A composition that only compiles proves
+/// neither.
+/// </remarks>
+[TestFixture]
+internal sealed class HostCompositionTests
+{
+    private string _root = string.Empty;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _root = Path.Combine(Path.GetTempPath(), "arronix-host-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(_root);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        if (Directory.Exists(_root))
+        {
+            Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    private ServiceProvider Build()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Arronix:Host:ExtensionFolder"] = Path.Combine(_root, "extensions"),
+                ["Arronix:Plugins:RootFolder"] = Path.Combine(_root, "extensions"),
+                ["Arronix:Library:RootFolders:0"] = _root,
+            })
+            .Build();
+
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddArronixHost(configuration);
+
+        return services.BuildServiceProvider(new ServiceProviderOptions
+        {
+            ValidateOnBuild = true,
+            ValidateScopes = true,
+        });
+    }
+
+    [Test]
+    public void EverySubsystemTheCompositionRootNamesResolves()
+    {
+        using var provider = Build();
+
+        provider.GetRequiredService<IFileSystem>().Should().BeOfType<Arronix.Host.FileSystem.HostFileSystem>();
+        provider.GetRequiredService<IMediaKindRegistry>().Should().NotBeNull();
+        provider.GetRequiredService<IMediaStore>().Should().NotBeNull();
+        provider.GetRequiredService<IBackgroundTaskRegistry>().Should().NotBeNull();
+        provider.GetRequiredService<JobScheduler>().Should().NotBeNull();
+        provider.GetRequiredService<ConcurrencyGovernor>().Should().NotBeNull();
+        provider.GetRequiredService<FailureClassifier>().Should().NotBeNull();
+        provider.GetRequiredService<ProviderRegistry>().Should().NotBeNull();
+        provider.GetRequiredService<ProviderDefinitionStore>().Should().NotBeNull();
+        provider.GetRequiredService<ProviderStatusStore>().Should().NotBeNull();
+        provider.GetRequiredService<IndexerDispatcher>().Should().NotBeNull();
+        provider.GetRequiredService<NotificationDispatcher>().Should().NotBeNull();
+        provider.GetRequiredService<IHealthAggregator>().Should().NotBeNull();
+        provider.GetRequiredService<IIntentRegistry>().Should().NotBeNull();
+        provider.GetRequiredService<WorkbenchBroker>().Should().NotBeNull();
+        provider.GetRequiredService<CompletenessCalculator>().Should().NotBeNull();
+    }
+
+    [Test]
+    public void TheSharedPlatformAssemblyResolvesBecauseTheHostSuppliesTheFileSystemItNeeds()
+    {
+        using var provider = Build();
+
+        // The shared assembly consumes the file-system contract without shipping an implementation, so this
+        // resolution fails outright in a host that registers the shared assembly and nothing else.
+        provider.GetRequiredService<Arronix.Common.Hashing.IFileHasher>().Should().NotBeNull();
+    }
+
+    [Test]
+    public void TheSchedulerIsOneObjectWhetherResolvedDirectlyOrAsAHostedService()
+    {
+        using var provider = Build();
+
+        var direct = provider.GetRequiredService<JobScheduler>();
+        var hosted = provider.GetServices<IHostedService>().OfType<JobScheduler>().Single();
+
+        // Two instances would mean the bootstrapper released startup work on a scheduler that was not the
+        // one running.
+        hosted.Should().BeSameAs(direct);
+    }
+
+    [Test]
+    public void TheExtensionBootstrapperIsRegisteredAsAHostedService()
+    {
+        using var provider = Build();
+
+        provider.GetServices<IHostedService>().OfType<PluginBootstrapper>().Should().ContainSingle();
+    }
+
+    [Test]
+    public void TheHostsOwnHealthContributorsAreAllRegistered()
+    {
+        using var provider = Build();
+
+        provider.GetServices<IHealthContributor>().Select(contributor => contributor.ContributorId)
+            .Should().BeEquivalentTo("extensions", "scheduler", "providers");
+    }
+
+    [Test]
+    public void TheExtensionHealthContributorIsOneObjectSoTheBootstrapperCanAddToIt()
+    {
+        using var provider = Build();
+
+        var direct = provider.GetRequiredService<PluginHealthContributor>();
+        var enumerated = provider.GetServices<IHealthContributor>().OfType<PluginHealthContributor>().Single();
+
+        enumerated.Should().BeSameAs(direct);
+    }
+
+    [Test]
+    public async Task AHostWithNoExtensionsInstalledStartsAndServesAnEmptyCatalog()
+    {
+        using var provider = Build();
+
+        var bootstrapper = provider.GetServices<IHostedService>().OfType<PluginBootstrapper>().Single();
+
+        await bootstrapper.StartAsync(CancellationToken.None);
+
+        provider.GetRequiredService<IMediaKindRegistry>().All.Should().BeEmpty();
+        bootstrapper.States.Should().BeEmpty();
+
+        var snapshot = await provider.GetRequiredService<IHealthAggregator>().CollectAsync();
+
+        snapshot.Status.Should().Be(HealthStatus.Healthy);
+        snapshot.Checks.Should().Contain(check => check.CheckId == "extensions");
+    }
+
+    [Test]
+    public async Task StartupWorkIsHeldUntilTheBootstrapperHasFinished()
+    {
+        using var provider = Build();
+
+        var scheduler = provider.GetRequiredService<JobScheduler>();
+        var registry = provider.GetRequiredService<BackgroundTaskRegistry>();
+        var job = Support.FakeJob.Succeeding("startup-work");
+
+        registry.RegisterJob(job, "startup");
+
+        (await scheduler.TickAsync()).Should().Be(0);
+
+        await provider.GetServices<IHostedService>().OfType<PluginBootstrapper>().Single()
+            .StartAsync(CancellationToken.None);
+
+        (await scheduler.TickAsync()).Should().Be(1);
+    }
+
+    [Test]
+    public async Task StoppingWithdrawsEverythingAndLeavesTheHostServing()
+    {
+        using var provider = Build();
+
+        var bootstrapper = provider.GetServices<IHostedService>().OfType<PluginBootstrapper>().Single();
+
+        await bootstrapper.StartAsync(CancellationToken.None);
+        await bootstrapper.StopAsync(CancellationToken.None);
+
+        provider.GetRequiredService<IMediaKindRegistry>().All.Should().BeEmpty();
+        (await provider.GetRequiredService<IHealthAggregator>().CollectAsync()).Should().NotBeNull();
+    }
+
+    [Test]
+    public void TheClockIsSubstitutableWithOneRegistration()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+
+        services.AddLogging();
+        services.AddSingleton<TimeProvider>(
+            new Microsoft.Extensions.Time.Testing.FakeTimeProvider(DateTimeOffset.UnixEpoch));
+        services.AddArronixHost(configuration);
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<TimeProvider>().GetUtcNow().Should().Be(DateTimeOffset.UnixEpoch);
+    }
+
+    [Test]
+    public void EveryOptionsSectionBindsUnderTheOnePrefix()
+    {
+        using var provider = Build();
+
+        provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<Configuration.LibraryOptions>>()
+            .Value.RootFolders.Should().Contain(_root);
+    }
+
+    [Test]
+    public void TheHostRuntimeInformationExtensionsSeeIsNotRegisteredByThisAssembly()
+    {
+        using var provider = Build();
+
+        // Recorded rather than asserted away: the extension runtime's context needs this and the platform
+        // does not ship one yet, so an extension that reads it is the thing that will surface the gap.
+        provider.GetService<IHostRuntimeInfo>().Should().BeNull();
+    }
+}

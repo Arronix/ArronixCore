@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 0,
+  "id": "music",
+  "name": "Music",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.3 <0.4" },
+  "entryAssembly": "Arronix.Plugin.Music.dll",
+  "mediaKinds": ["music"],
+  "identifiers": ["musicbrainz", "discogs"],
+  "capabilities": [
+    "media-kind",
+    "parsing",
+    "matching",
+    "indexing",
+    "quality",
+    "renaming",
+    "metadata"
+  ],
+  "tokens": [
+    {
+      "name": "{Artist Name}",
+      "description": "The performer credited with the work.",
+      "exampleValue": "Radiohead",
+      "isRequired": true
+    },
+    {
+      "name": "{Artist Sort Name}",
+      "description": "The performer's sorting form.",
+      "exampleValue": "Radiohead",
+      "isRequired": false
+    },
+    {
+      "name": "{Album Title}",
+      "description": "The title of the work.",
+      "exampleValue": "OK Computer",
+      "isRequired": true
+    },
+    {
+      "name": "{Album Type}",
+      "description": "The work's primary classification.",
+      "exampleValue": "Album",
+      "isRequired": false
+    },
+    {
+      "name": "{Release Year}",
+      "description": "The year the work was first issued.",
+      "exampleValue": "1997",
+      "isRequired": false
+    },
+    {
+      "name": "{Medium Number}",
+      "description": "The carrier this recording sits on.",
+      "exampleValue": "1",
+      "isRequired": false
+    },
+    {
+      "name": "{Medium Format}",
+      "description": "How the pressing was carried.",
+      "exampleValue": "CD",
+      "isRequired": false
+    },
+    {
+      "name": "{Track Number}",
+      "description": "The recording's position on its carrier.",
+      "exampleValue": "05",
+      "isRequired": false
+    },
+    {
+      "name": "{Track Title}",
+      "description": "The title of the recording.",
+      "exampleValue": "Let Down",
+      "isRequired": true
+    },
+    {
+      "name": "{Track Artist}",
+      "description": "The performer credited on this recording.",
+      "exampleValue": "Radiohead",
+      "isRequired": false
+    }
+  ],
+  "policies": {
+    "parsing": ["CreditTitleSplit", "FormatTokens", "YearDisambiguation"],
+    "matching": ["ExternalIdentifierFirst", "PressingSelection", "CatalogScope"],
+    "quality": ["CodecTier", "BitDepth", "Cutoff"],
+    "import": ["RunningOrderAssignment", "VariantAutoSwitch", "UpgradeRules"],
+    "naming": ["SingleCarrierPattern", "MultiCarrierPattern", "CreditFallback"]
+  }
+}

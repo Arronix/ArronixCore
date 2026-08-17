@@ -1,0 +1,116 @@
+@page "/settings"
+@page "/settings/providers"
+@{
+#pragma warning disable ARX0015 // Provider contracts are experimental; this page configures them.
+}
+@inject ArronixApiClient Api
+@*
+    The settings shell.
+
+    Only one section exists in this milestone, and it is the one that proves the point: five families of
+    external service, all configured through one catalog, one list and one form, because each of them
+    declares its configuration in the same vocabulary. Adding a sixth family costs a name in one table.
+*@
+
+<h1>Settings</h1>
+
+<nav class="settings-nav" aria-label="Settings sections">
+    <span class="settings-section is-selected">Providers</span>
+</nav>
+
+<ErrorNotice Message="@_error" OnRetry="LoadAsync" OnDismiss="@(() => _error = null)" />
+
+@if (_editing is { } editing)
+{
+    <ProviderForm Descriptor="editing.Descriptor"
+                  Provider="editing.Provider"
+                  Definition="editing.Definition"
+                  OnSaved="OnSavedAsync"
+                  OnCanceled="@(() => _editing = null)" />
+}
+else
+{
+    <div class="columns">
+        <section class="column">
+            <h2>Configured</h2>
+            @if (_busy)
+            {
+                <LoadingIndicator Message="Reading providers…" />
+            }
+            else
+            {
+                <ProviderDefinitionList Definitions="_definitions" OnOpen="EditAsync" />
+            }
+        </section>
+
+        <section class="column">
+            <h2>Available</h2>
+            <ProviderCatalog Descriptors="_descriptors" OnAdd="AddAsync" />
+        </section>
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ProviderDescriptor> _descriptors = [];
+    private IReadOnlyList<ProviderDefinition> _definitions = [];
+    private Editing? _editing;
+    private string? _error;
+    private bool _busy;
+
+    protected override Task OnInitializedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            _descriptors = await Api.GetProvidersAsync();
+            _definitions = await Api.GetProviderDefinitionsAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private void AddAsync(ProviderCatalog.CatalogChoice choice)
+        => _editing = new Editing(choice.Descriptor, choice.Provider, null);
+
+    private void EditAsync(ProviderDefinition definition)
+    {
+        var descriptor = _descriptors.FirstOrDefault(candidate =>
+            string.Equals(candidate.LocalId, definition.Provider.Local, StringComparison.Ordinal)
+            || string.Equals(candidate.LocalId, definition.Provider.Value, StringComparison.Ordinal));
+
+        if (descriptor is null)
+        {
+            // The configuration outlived its implementation. The platform keeps it rather than deleting
+            // it, so the client says so rather than pretending it is not there.
+            _error = $"'{definition.Name}' is configured for a provider that is no longer installed.";
+            return;
+        }
+
+        _editing = new Editing(descriptor, definition.Provider, definition);
+    }
+
+    private async Task OnSavedAsync()
+    {
+        _editing = null;
+        await LoadAsync();
+    }
+
+    private sealed record Editing(
+        ProviderDescriptor Descriptor,
+        ProviderId Provider,
+        ProviderDefinition? Definition);
+}

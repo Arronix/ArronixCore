@@ -1,0 +1,340 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; levels and items are described by them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; traversals and actions are declared by them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; published items and pages are them.
+}
+@implements IDisposable
+@inject ArronixApiClient Api
+@inject ClientOptions Options
+@inject EventStream Events
+@inject HostConnectivity Connectivity
+@*
+    The generic-over-shape browser. This one component set renders every media kind the platform will
+    ever have, and it has no compile-time knowledge of a single one of them.
+
+    Everything it draws it looks up:
+
+      * which traversals exist, from the kind's declared browse axes;
+      * where a traversal's items come from, from that axis's declared kind;
+      * how the answer divides into sections, from the sequence axis or field the axis names;
+      * which level's description to draw an item through, from the item's own reference;
+      * what may be narrowed and ordered, from the declared filters and sorts;
+      * what may be done, from the actions the level declares.
+
+    There is no branch anywhere in this file on what sort of media is being browsed, and adding a fifth
+    kind requires no change to it whatsoever. That claim is the point of the whole design, and it is worth
+    stating in the one file where it would be easiest to break.
+*@
+
+<header class="workspace-head">
+    <div class="workspace-title">
+        <h1>@Kind.PluralName</h1>
+        @if (_page is { } counted)
+        {
+            <span class="chip">@counted.TotalCount</span>
+        }
+    </div>
+
+    <ActionMenu Kind="Kind.Kind"
+                Actions="Kind.Intent.Actions"
+                Scopes="KindScopes"
+                Level="_level?.Level"
+                OnCompleted="ReloadAsync" />
+
+    @if (Workbenches.Count > 0)
+    {
+        <div class="workspace-benches">
+            @foreach (var bench in Workbenches)
+            {
+                <a class="button"
+                   href="@($"kinds/{Uri.EscapeDataString(Kind.Kind.Value)}/workbenches/{Uri.EscapeDataString(bench.WorkbenchId)}")">
+                    @bench.Name
+                </a>
+            }
+        </div>
+    }
+</header>
+
+<AxisSelector Axes="Axes" Selected="_axis" SelectedChanged="ChangeAxisAsync" />
+
+<Breadcrumb RootLabel="@Kind.PluralName" Trail="_trail" OnNavigate="NavigateToAsync" />
+
+@if (_level is { } level)
+{
+    <FilterBar Level="level"
+               Sorts="Kind.Intent.Sorts"
+               Filters="Kind.Intent.Filters"
+               Text="@_filters.Text"
+               SortFieldId="@_filters.SortFieldId"
+               SortDescending="_filters.SortDescending"
+               Values="_filters.Values"
+               OnChanged="ApplyFiltersAsync" />
+}
+
+<ErrorNotice Message="@_error" OnRetry="ReloadAsync" OnDismiss="@(() => _error = null)" />
+
+@if (_busy)
+{
+    <LoadingIndicator Message="@($"Reading {Kind.PluralName.ToLowerInvariant()}…")" />
+}
+else if (_page is { } loaded && _axis is { } axis && _level is { } current)
+{
+    <DynamicComponent Type="IntentResolver.PresenterFor(axis.Kind)" Parameters="PresenterParameters(loaded, axis, current)" />
+
+    @if (loaded.TotalCount > loaded.PageSize)
+    {
+        <nav class="paging" aria-label="Pages">
+            <button type="button" class="button" disabled="@(loaded.Page <= 1)"
+                    @onclick="@(() => GoToPageAsync(loaded.Page - 1))">Previous</button>
+            <span class="paging-position">
+                Page @loaded.Page of @(Math.Max(1, (loaded.TotalCount + loaded.PageSize - 1) / loaded.PageSize))
+            </span>
+            <button type="button" class="button"
+                    disabled="@(loaded.Page * loaded.PageSize >= loaded.TotalCount)"
+                    @onclick="@(() => GoToPageAsync(loaded.Page + 1))">Next</button>
+        </nav>
+    }
+}
+
+@code {
+    private static readonly IReadOnlyList<ActionScope> KindScopes = [ActionScope.Kind, ActionScope.Level];
+
+    private readonly List<ItemDetail> _trail = [];
+    private BrowseAxis? _axis;
+    private LevelPresentation? _level;
+    private ItemDetailPage? _page;
+    private FilterBar.FilterState _filters = new(null, null, false, new Dictionary<string, string>(StringComparer.Ordinal));
+    private int _pageNumber = 1;
+    private bool _busy;
+    private string? _error;
+    private CancellationTokenSource? _inFlight;
+    private string? _boundKind;
+
+    /// <summary>Gets or sets the media kind's whole description.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user opens an item that contains nothing.</summary>
+    [Parameter]
+    public EventCallback<ItemDetail> OnOpenItem { get; set; }
+
+    private IReadOnlyList<BrowseAxis> Axes => Kind.Intent.BrowseAxes.Count > 0
+        ? Kind.Intent.BrowseAxes
+        : [DefaultAxis];
+
+    private BrowseAxis DefaultAxis => new()
+    {
+        AxisId = "all",
+        Name = Kind.PluralName,
+        Kind = BrowseAxisKind.Hierarchy,
+        LevelId = ItemProjection.RootLevel(Kind)?.Level,
+        IsDefault = true,
+    };
+
+    private IReadOnlyList<WorkbenchDescriptor> Workbenches => Kind.Intent.Workbenches;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // A change of media kind is a change of everything: the traversal, the level and the trail all
+        // belong to the kind that was being browsed, not to this component. Tracked by the kind itself
+        // rather than by whether the current traversal still resolves, because two kinds may perfectly
+        // reasonably name a traversal the same thing.
+        if (string.Equals(_boundKind, Kind.Kind.Value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        // The delivery group belongs to the kind, not to this component's lifetime: navigating from one
+        // library to another reuses the same component instance, so leaving the old group has to happen
+        // here rather than when the component goes away.
+        if (_boundKind is { } previous)
+        {
+            await Events.UnsubscribeAsync(MediaKindId.FromString(previous));
+        }
+
+        _boundKind = Kind.Kind.Value;
+        await Events.SubscribeAsync(Kind.Kind);
+
+        _trail.Clear();
+        _filters = new FilterBar.FilterState(null, null, false, new Dictionary<string, string>(StringComparer.Ordinal));
+        _axis = Axes.FirstOrDefault(axis => axis.IsDefault) ?? Axes[0];
+        _pageNumber = 1;
+        await ReloadAsync();
+    }
+
+    protected override void OnInitialized()
+    {
+        Events.Received += OnEvent;
+        Connectivity.Recovered += OnRecovered;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Events.Received -= OnEvent;
+        Connectivity.Recovered -= OnRecovered;
+
+        if (_boundKind is { } bound)
+        {
+            _ = Events.UnsubscribeAsync(MediaKindId.FromString(bound));
+        }
+
+        _inFlight?.Cancel();
+        _inFlight?.Dispose();
+    }
+
+    private void OnEvent(object? sender, EventEnvelope envelope)
+    {
+        if (envelope.Kind is EventKind.ItemChanged && envelope.MediaKind == Kind.Kind)
+        {
+            InvokeAsync(ReloadAsync);
+        }
+    }
+
+    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(ReloadAsync);
+
+    private Dictionary<string, object?> PresenterParameters(
+        ItemDetailPage page,
+        BrowseAxis axis,
+        LevelPresentation level)
+        => new(StringComparer.Ordinal)
+        {
+            ["Context"] = new PresenterContext
+            {
+                Kind = Kind,
+                Level = level,
+                Axis = axis,
+                Items = page.Items,
+                Parent = _trail.Count > 0 ? _trail[^1].Item.Ref : null,
+                OnOpen = EventCallback.Factory.Create<ItemDetail>(this, OpenAsync),
+                OnChanged = EventCallback.Factory.Create(this, ReloadAsync),
+            },
+        };
+
+    private async Task ChangeAxisAsync(BrowseAxis axis)
+    {
+        _axis = axis;
+        _trail.Clear();
+        _pageNumber = 1;
+        await ReloadAsync();
+    }
+
+    private async Task ApplyFiltersAsync(FilterBar.FilterState state)
+    {
+        _filters = state;
+        _pageNumber = 1;
+        await ReloadAsync();
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _pageNumber = Math.Max(1, page);
+        await ReloadAsync();
+    }
+
+    private async Task NavigateToAsync(int index)
+    {
+        // Minus one is the root; anything else is a step in the trail, and everything below it goes.
+        while (_trail.Count > index + 1)
+        {
+            _trail.RemoveAt(_trail.Count - 1);
+        }
+
+        _pageNumber = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OpenAsync(ItemDetail item)
+    {
+        var childLevel = ItemProjection.ChildLevel(Kind, item.Item.Ref.Level);
+
+        if (childLevel is not null && item.Item.HasChildren)
+        {
+            _trail.Add(item);
+            _pageNumber = 1;
+            await ReloadAsync();
+            return;
+        }
+
+        await OnOpenItem.InvokeAsync(item);
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (_axis is not { } axis)
+        {
+            return;
+        }
+
+        _inFlight?.Cancel();
+        _inFlight?.Dispose();
+        _inFlight = new CancellationTokenSource();
+        var token = _inFlight.Token;
+
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+
+        try
+        {
+            var request = new ItemBrowseRequest
+            {
+                AxisId = axis.AxisId,
+                Text = _filters.Text,
+                Filters = _filters.Values,
+                SortFieldId = _filters.SortFieldId,
+                SortDescending = _filters.SortDescending,
+                Page = _pageNumber,
+                PageSize = Options.PageSize,
+                Parent = _trail.Count > 0 ? _trail[^1].Item.Ref : null,
+            };
+
+            if (_trail.Count > 0)
+            {
+                var parent = _trail[^1];
+                _level = ItemProjection.ChildLevel(Kind, parent.Item.Ref.Level) ?? _level;
+                _page = await Api.GetChildrenAsync(Kind.Kind, parent.Item.Ref.Id, request, token);
+            }
+            else if (BrowsePlan.SourceFor(axis.Kind) is BrowseSource.Groups
+                && axis.GroupingAxisId is { Length: > 0 } groupingAxisId)
+            {
+                _level = LevelForAxis(axis);
+                _page = await Api.GetGroupsAsync(Kind.Kind, groupingAxisId, request, token);
+            }
+            else
+            {
+                _level = LevelForAxis(axis);
+
+                if (_level is { } level)
+                {
+                    _page = await Api.GetItemsAsync(Kind.Kind, level.Level, request, token);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell, for the whole application.
+            _page = null;
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+            _page = null;
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private LevelPresentation? LevelForAxis(BrowseAxis axis)
+        => axis.LevelId is { } levelId
+            ? ItemProjection.Level(Kind, levelId) ?? ItemProjection.RootLevel(Kind)
+            : ItemProjection.RootLevel(Kind);
+}

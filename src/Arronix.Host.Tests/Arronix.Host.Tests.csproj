@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Host.Tests</RootNamespace>
+    <AssemblyName>Arronix.Host.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Host\Arronix.Host.csproj" />
+  </ItemGroup>
+
+  <!--
+       The four reference media kinds, so that the shape gate is proved against the declarations it was
+       designed from rather than only against fixtures written alongside it. A fixture agrees with the
+       validator by construction; a real declaration written by someone else does not.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Plugin.Books\Arronix.Plugin.Books.csproj" />
+    <ProjectReference Include="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj" />
+    <ProjectReference Include="..\Arronix.Plugin.Music\Arronix.Plugin.Music.csproj" />
+    <ProjectReference Include="..\Arronix.Plugin.Tv\Arronix.Plugin.Tv.csproj" />
+  </ItemGroup>
+
+  <!--
+       The container, the configuration builder and the logger are host concerns the tested assembly takes
+       only the abstractions of. These tests stand in for a host, so they take the implementations directly.
+       The controllable clock is what makes the scheduler's ladders and the health aggregator's timeouts
+       assertable without waiting for real time to pass.
+  -->
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+</Project>

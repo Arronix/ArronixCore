@@ -1,0 +1,43 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; coordinates come from them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the items are them.
+}
+@*
+    Running along a declared sequence: the ordinal component of a coordinate space, or a date field.
+
+    Positions that mean something other than "the nth one" are labeled from the sequence's declared
+    exceptions, which is what replaces every hard-coded test for a reserved position. An item with no
+    reading in the space is placed in its own section rather than silently dropped.
+*@
+
+@foreach (var section in Sections)
+{
+    <section class="run">
+        @if (section.Label.Length > 0)
+        {
+            <h3 class="run-title">
+                @section.Label
+                <span class="run-count">@section.Items.Count</span>
+            </h3>
+        }
+        <ItemCollection Kind="Context.Kind"
+                        Level="Context.Level"
+                        Items="section.Items"
+                        AsTable="true"
+                        OnOpen="Context.OnOpen" />
+    </section>
+}
+
+@if (Sections.Count == 0)
+{
+    <EmptyState Title="Nothing in this sequence" />
+}
+
+@code {
+    /// <summary>Gets or sets what is being drawn.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required PresenterContext Context { get; set; }
+
+    private IReadOnlyList<BrowseSection> Sections => BrowsePlan.Divide(Context);
+}

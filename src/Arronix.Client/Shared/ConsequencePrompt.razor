@@ -1,0 +1,148 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; parameter shapes come from them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; the declaration being honored is one.
+}
+@*
+    Asking before acting, driven entirely by what the action declared it costs and how sure the user must
+    be. The words are the extension's; the decision to ask at all, and how hard, is this client's, and it
+    is taken in exactly one place so that no view can forget it.
+
+    The same component collects the values the action declared it needs, because an action with parameters
+    has to stop and ask whether or not its consequence would have required it.
+*@
+
+<div class="prompt-backdrop" @onclick="Cancel">
+    <div class="prompt @Policy.EmphasisClass" role="dialog" aria-modal="true" aria-label="@Action.Name"
+         @onclick:stopPropagation="true">
+        <h2 class="prompt-title">@Action.Name</h2>
+
+        @if (!string.IsNullOrWhiteSpace(Action.ConsequenceStatement))
+        {
+            <p class="prompt-consequence">@Action.ConsequenceStatement</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(Action.Description))
+        {
+            <p class="prompt-consequence">@Action.Description</p>
+        }
+
+        @if (SubjectCount > 0)
+        {
+            <p class="prompt-subjects">@SubjectCount item(s) affected.</p>
+        }
+
+        @if (Action.Parameters.Count > 0)
+        {
+            <div class="prompt-parameters">
+                @foreach (var parameter in Action.Parameters)
+                {
+                    <label class="field">
+                        <span class="field-name">
+                            @parameter.Name
+                            @if (parameter.Required)
+                            {
+                                <span class="field-required" aria-label="required">*</span>
+                            }
+                        </span>
+                        <FieldValueEditor Descriptor="DescriptorFor(parameter)"
+                                          Value="@ValueOf(parameter)"
+                                          Required="parameter.Required"
+                                          ValueChanged="@(text => Set(parameter.ParameterId, text))" />
+                    </label>
+                }
+            </div>
+        }
+
+        @if (Policy.RequiresPhrase)
+        {
+            <label class="field">
+                <span class="field-name">Type <code>@Phrase</code> to confirm</span>
+                <input class="editor editor-line" type="text" value="@_typed"
+                       @onchange="@(args => _typed = args.Value?.ToString() ?? string.Empty)"
+                       aria-label="Confirmation phrase" />
+            </label>
+        }
+
+        <div class="prompt-commands">
+            <button type="button" class="button button-quiet" @onclick="Cancel">Cancel</button>
+            <button type="button" class="button button-strong" disabled="@(!CanProceed)" @onclick="Confirm">
+                @Action.Name
+            </button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private readonly Dictionary<string, string> _values = new(StringComparer.Ordinal);
+    private string _typed = string.Empty;
+
+    /// <summary>Gets or sets the action being asked about.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ActionDescriptor Action { get; set; }
+
+    /// <summary>Gets or sets how hard to ask.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ConfirmationPolicy Policy { get; set; }
+
+    /// <summary>Gets or sets how many items the action would affect.</summary>
+    [Parameter]
+    public int SubjectCount { get; set; }
+
+    /// <summary>Gets or sets the callback raised with the collected values when the user proceeds.</summary>
+    [Parameter]
+    public EventCallback<IReadOnlyDictionary<string, string>> OnConfirm { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user backs out.</summary>
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string Phrase => ConsequenceMap.PhraseFor(Action.Name);
+
+    private bool CanProceed
+    {
+        get
+        {
+            if (Policy.RequiresPhrase
+                && !string.Equals(_typed.Trim(), Phrase, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return Action.Parameters
+                .Where(parameter => parameter.Required)
+                .All(parameter => !string.IsNullOrWhiteSpace(ValueOf(parameter)));
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        foreach (var parameter in Action.Parameters)
+        {
+            if (!_values.ContainsKey(parameter.ParameterId) && parameter.DefaultValue is { } value)
+            {
+                _values[parameter.ParameterId] = value;
+            }
+        }
+    }
+
+    private static FieldDescriptor DescriptorFor(ActionParameter parameter) => new()
+    {
+        FieldId = parameter.ParameterId,
+        Name = parameter.Name,
+        ValueKind = parameter.ValueKind,
+        Choices = parameter.Choices,
+        Editable = true,
+    };
+
+    private string ValueOf(ActionParameter parameter)
+        => _values.TryGetValue(parameter.ParameterId, out var value) ? value : string.Empty;
+
+    private void Set(string parameterId, string value) => _values[parameterId] = value;
+
+    private Task Cancel() => OnCancel.InvokeAsync();
+
+    private Task Confirm() => CanProceed
+        ? OnConfirm.InvokeAsync(new Dictionary<string, string>(_values, StringComparer.Ordinal))
+        : Task.CompletedTask;
+}

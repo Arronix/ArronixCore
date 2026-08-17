@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugins</RootNamespace>
+    <AssemblyName>Arronix.Plugins</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>Host-side extension loading and isolation for the Arronix media platform. Manifest discovery and validation, contract-range compatibility, per-extension assembly load contexts, capability-gated admission control, scoping decorators and the runtime registry the host and the API query. Never referenced by an extension.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Common\Arronix.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+  </ItemGroup>
+
+  <!--
+       The published manifest schema is an editor aid, shipped beside the assembly so that a plugin author
+       can point their editor at it. It is never the runtime gate: validation is the reader plus the
+       validator, which cannot drift from the types the way a hand-maintained schema can.
+  -->
+  <ItemGroup>
+    <None Update="Manifest\plugin.schema.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

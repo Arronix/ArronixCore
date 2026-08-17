@@ -1,0 +1,68 @@
+/*
+    The disconnected state. Deliberately a designed screen rather than a browser error: it is drawn from
+    the cached shell, so it is the one thing this application can still show when the server is gone.
+*/
+
+.offline {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 1.5rem;
+    background: color-mix(in srgb, var(--surface-0) 92%, transparent);
+    backdrop-filter: blur(3px);
+    z-index: 100;
+}
+
+.offline-card {
+    width: min(30rem, 100%);
+    text-align: center;
+    background: var(--surface-1);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    padding: 2rem 1.75rem;
+}
+
+.offline-mark {
+    width: 3rem;
+    height: 3rem;
+    margin: 0 auto 1rem;
+    border-radius: 50%;
+    border: 2px solid var(--attention);
+    position: relative;
+}
+
+.offline-mark::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    width: 2px;
+    height: 3.4rem;
+    background: var(--attention);
+    transform: rotate(45deg);
+    transform-origin: center;
+}
+
+.offline-title { font-size: 1.3rem; margin-bottom: 0.5rem; }
+.offline-detail { color: var(--text-quiet); }
+
+.offline-facts {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    margin: 1.25rem 0;
+}
+
+.offline-facts dt {
+    color: var(--text-faint);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.offline-facts dd { margin: 0; font-weight: 600; }
+
+.offline-commands { display: flex; justify-content: center; gap: 0.5rem; }
+.offline-hint { margin-top: 1rem; color: var(--text-faint); font-size: 0.8rem; }

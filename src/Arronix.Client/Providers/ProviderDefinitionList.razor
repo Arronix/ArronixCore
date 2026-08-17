@@ -1,0 +1,66 @@
+@{
+#pragma warning disable ARX0015 // Provider contracts are experimental; configurations are them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; valence styling is read from them.
+}
+@*
+    What is configured now.
+
+    A configuration whose implementation has gone missing is shown as quarantined rather than being
+    hidden or removed: under an extension model, deleting configuration whose code is absent means
+    uninstalling an extension destroys the user's settings.
+*@
+
+@if (Definitions.Count == 0)
+{
+    <EmptyState Title="Nothing configured yet" Detail="Add a provider to get started." />
+}
+else
+{
+    <ul class="definition-list">
+        @foreach (var definition in Definitions.OrderBy(definition => definition.Family).ThenBy(definition => definition.Name, StringComparer.CurrentCultureIgnoreCase))
+        {
+            <li class="definition @(definition.Enabled ? string.Empty : "is-disabled")">
+                <button type="button" class="definition-open" @onclick="@(() => OnOpen.InvokeAsync(definition))">
+                    <span class="definition-name">@definition.Name</span>
+                    <span class="definition-provider">@definition.Provider.ToString()</span>
+                </button>
+
+                <span class="chip @StateClass(definition.State)">@StateName(definition.State)</span>
+
+                @if (definition.Message is { } message)
+                {
+                    <span class="definition-message @SeverityClass(message.Severity)">@message.Text</span>
+                }
+            </li>
+        }
+    </ul>
+}
+
+@code {
+    /// <summary>Gets or sets the configured providers.</summary>
+    [Parameter]
+    public IReadOnlyList<ProviderDefinition> Definitions { get; set; } = [];
+
+    /// <summary>Gets or sets the callback raised when the user opens one.</summary>
+    [Parameter]
+    public EventCallback<ProviderDefinition> OnOpen { get; set; }
+
+    private static string StateName(DefinitionState state) => state switch
+    {
+        DefinitionState.Active => "active",
+        DefinitionState.Orphaned => "orphaned",
+    };
+
+    private static string StateClass(DefinitionState state) => state switch
+    {
+        DefinitionState.Active => ToneMap.ClassFor(StateTone.Positive),
+        DefinitionState.Orphaned => ToneMap.ClassFor(StateTone.Problem),
+    };
+
+    private static string SeverityClass(ProviderMessageSeverity severity) => severity switch
+    {
+        ProviderMessageSeverity.Info => ToneMap.ClassFor(StateTone.Neutral),
+        ProviderMessageSeverity.Warning => ToneMap.ClassFor(StateTone.Attention),
+        ProviderMessageSeverity.Error => ToneMap.ClassFor(StateTone.Problem),
+    };
+}

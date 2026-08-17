@@ -1,0 +1,161 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; editing their values is this component's job.
+}
+@*
+    The other half of the field-shape table. The value is carried as text throughout, because text is
+    what the platform accepts for every value a user supplies — an action's parameters and a provider's
+    settings are both string maps — and because a half-typed number must be allowed to exist.
+*@
+
+@if (Choices.Count > 0)
+{
+    <select class="editor editor-choice" value="@Value" disabled="@Disabled"
+            @onchange="OnTextChanged" aria-label="@Descriptor.Name">
+        @if (!Required)
+        {
+            <option value="">—</option>
+        }
+        @foreach (var choice in Choices)
+        {
+            <option value="@choice.Value" selected="@(choice.Value == Value)">@choice.Name</option>
+        }
+    </select>
+}
+else
+{
+    @switch (Editor)
+    {
+        case EditorShape.Switch:
+            <label class="editor editor-switch">
+                <input type="checkbox" checked="@IsOn" disabled="@Disabled" @onchange="OnFlagChanged" />
+                <span>@(IsOn ? "Yes" : "No")</span>
+            </label>
+            break;
+
+        case EditorShape.Paragraph:
+            <textarea class="editor editor-paragraph" rows="4" disabled="@Disabled"
+                      value="@Value" @onchange="OnTextChanged" aria-label="@Descriptor.Name"></textarea>
+            break;
+
+        case EditorShape.Number:
+            <input class="editor editor-number" type="number" step="any" disabled="@Disabled"
+                   value="@Value" @onchange="OnTextChanged" aria-label="@Descriptor.Name" />
+            break;
+
+        case EditorShape.Date:
+            <input class="editor editor-date" type="date" disabled="@Disabled"
+                   value="@Value" @onchange="OnTextChanged" aria-label="@Descriptor.Name" />
+            break;
+
+        case EditorShape.Instant:
+            <input class="editor editor-instant" type="datetime-local" disabled="@Disabled"
+                   value="@Value" @onchange="OnTextChanged" aria-label="@Descriptor.Name" />
+            break;
+
+        case EditorShape.Address:
+            <input class="editor editor-address" type="url" disabled="@Disabled"
+                   value="@Value" @onchange="OnTextChanged" aria-label="@Descriptor.Name" />
+            break;
+
+        case EditorShape.Secret:
+            <input class="editor editor-secret" type="password" autocomplete="off" disabled="@Disabled"
+                   value="@Value" @onchange="OnTextChanged" aria-label="@Descriptor.Name" />
+            break;
+
+        case EditorShape.Line:
+            <input class="editor editor-line" type="text" disabled="@Disabled"
+                   value="@Value" @onchange="OnTextChanged" aria-label="@Descriptor.Name" />
+            break;
+
+        case EditorShape.ReadOnly:
+            <span class="editor editor-readonly" title="This value is chosen, not typed">@Value</span>
+            break;
+    }
+}
+
+@code {
+    /// <summary>Gets or sets what the field is.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required FieldDescriptor Descriptor { get; set; }
+
+    /// <summary>Gets or sets the value, as text.</summary>
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the callback raised when the user changes the value.</summary>
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>Gets or sets values supplied by the platform, which replace the field's own choices.</summary>
+    [Parameter]
+    public IReadOnlyList<FacetValue>? Options { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the value must be supplied.</summary>
+    [Parameter]
+    public bool Required { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the value must be hidden as it is typed.</summary>
+    [Parameter]
+    public bool Sensitive { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the value may not be changed.</summary>
+    [Parameter]
+    public bool Disabled { get; set; }
+
+    private IReadOnlyList<FacetValue> Choices => Options ?? Descriptor.Choices;
+
+    private bool IsOn => string.Equals(Value, "true", StringComparison.OrdinalIgnoreCase);
+
+    private Task OnTextChanged(ChangeEventArgs args)
+        => ValueChanged.InvokeAsync(args.Value?.ToString() ?? string.Empty);
+
+    private Task OnFlagChanged(ChangeEventArgs args)
+        => ValueChanged.InvokeAsync(args.Value is true ? "true" : "false");
+
+    // The editing half of the field-shape table. Same rule as the display half: every declared shape is
+    // listed and there is no fall-through arm.
+    private EditorShape Editor => Sensitive
+        ? EditorShape.Secret
+        : Descriptor.ValueKind switch
+        {
+            FieldValueKind.Text => EditorShape.Line,
+            FieldValueKind.MultilineText => EditorShape.Paragraph,
+            FieldValueKind.Integer => EditorShape.Number,
+            FieldValueKind.Decimal => EditorShape.Number,
+            FieldValueKind.Boolean => EditorShape.Switch,
+            FieldValueKind.Date => EditorShape.Date,
+            FieldValueKind.Instant => EditorShape.Instant,
+            FieldValueKind.Duration => EditorShape.Line,
+            FieldValueKind.ByteSize => EditorShape.Number,
+            FieldValueKind.Ratio => EditorShape.Number,
+            FieldValueKind.Ordinal => EditorShape.Line,
+            FieldValueKind.Enumerated => EditorShape.Line,
+            // A composite is a tuple of declared components (a translation is language + title + overview).
+            // It is edited through its components, never as one control, so the single-field editor shows
+            // it read-only — the same call Reference makes.
+            FieldValueKind.Composite => EditorShape.ReadOnly,
+            FieldValueKind.Reference => EditorShape.ReadOnly,
+            FieldValueKind.ExternalIdentifier => EditorShape.Line,
+            FieldValueKind.Link => EditorShape.Address,
+            FieldValueKind.FilePath => EditorShape.Line,
+            FieldValueKind.Language => EditorShape.Line,
+            FieldValueKind.Quality => EditorShape.Line,
+            FieldValueKind.Artwork => EditorShape.Address,
+            FieldValueKind.Count => EditorShape.Number,
+        };
+
+    /// <summary>The handful of inputs this client offers, once a value's declared shape has been read.</summary>
+    private enum EditorShape
+    {
+        Line = 0,
+        Paragraph = 1,
+        Number = 2,
+        Switch = 3,
+        Date = 4,
+        Instant = 5,
+        Address = 6,
+        Secret = 7,
+        ReadOnly = 8
+    }
+}

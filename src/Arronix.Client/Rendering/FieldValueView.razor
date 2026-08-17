@@ -1,0 +1,119 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; drawing their values is this component's job.
+}
+@*
+    One of the two halves of the field-shape table: twenty declared value shapes, six drawings.
+    Nothing here knows what the field means — only what shape its values take, which is the whole
+    difference between a client that renders any media kind and one that renders four.
+*@
+
+@if (Value is null || Value.IsAbsent)
+{
+    <span class="value value-absent" title="No value">—</span>
+}
+else if (Value.Items is { Count: > 0 } items)
+{
+    <span class="value value-list">
+        @foreach (var (item, index) in items.Select((item, index) => (item, index)))
+        {
+            @if (index > 0)
+            {
+                <span class="value-separator">, </span>
+            }
+            <FieldValueView Descriptor="Descriptor" Value="item" Compact="Compact" />
+        }
+    </span>
+}
+else
+{
+    @switch (Presentation)
+    {
+        case ValuePresentation.Image:
+            @if (Value.Link is { } image)
+            {
+                <img class="value value-image" src="@image" alt="@Descriptor.Name" loading="lazy" />
+            }
+            break;
+
+        case ValuePresentation.Address:
+            @if (Value.Link is { } address)
+            {
+                <a class="value value-address" href="@address" target="_blank" rel="noopener noreferrer">@Text</a>
+            }
+            break;
+
+        case ValuePresentation.Flag:
+            <span class="value value-flag @(Value.Flag == true ? "is-on" : "is-off")">@Text</span>
+            break;
+
+        case ValuePresentation.Proportion:
+            <span class="value value-meter" title="@Text">
+                <span class="meter-rail">
+                    <span class="meter-fill" style="width: @(Percent)%"></span>
+                </span>
+                <span class="meter-text">@Text</span>
+            </span>
+            break;
+
+        case ValuePresentation.Paragraph:
+            <p class="value value-paragraph">@Text</p>
+            break;
+
+        case ValuePresentation.Verbatim:
+            <span class="value value-verbatim">@Text</span>
+            break;
+
+        case ValuePresentation.Text:
+            <span class="value value-text">@Text</span>
+            break;
+    }
+}
+
+@code {
+    /// <summary>Gets or sets what the field is.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required FieldDescriptor Descriptor { get; set; }
+
+    /// <summary>Gets or sets the value, which may be absent.</summary>
+    [Parameter]
+    public FieldValue? Value { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the value is drawn in a tight space.</summary>
+    [Parameter]
+    public bool Compact { get; set; }
+
+    private string Text => FieldValueFormatter.Format(Descriptor, Value);
+
+    private int Percent => Value?.Real is { } ratio ? (int)Math.Round(Math.Clamp(ratio, 0d, 1d) * 100) : 0;
+
+    // The table. Twenty rows, no fall-through arm: a value shape added to the contract fails this build
+    // until someone decides how it is drawn, which is the property that makes "renders any media kind" a
+    // checkable claim rather than an aspiration.
+    private ValuePresentation Presentation => Descriptor.ValueKind switch
+    {
+        FieldValueKind.Text => ValuePresentation.Text,
+        FieldValueKind.MultilineText => ValuePresentation.Paragraph,
+        FieldValueKind.Integer => ValuePresentation.Text,
+        FieldValueKind.Decimal => ValuePresentation.Text,
+        FieldValueKind.Boolean => ValuePresentation.Flag,
+        FieldValueKind.Date => ValuePresentation.Text,
+        FieldValueKind.Instant => ValuePresentation.Text,
+        FieldValueKind.Duration => ValuePresentation.Text,
+        FieldValueKind.ByteSize => ValuePresentation.Text,
+        FieldValueKind.Ratio => ValuePresentation.Proportion,
+        FieldValueKind.Ordinal => ValuePresentation.Verbatim,
+        FieldValueKind.Enumerated => ValuePresentation.Text,
+        // Components are joined by the formatter before they reach a presentation, so a composite draws as
+        // its rendered parts.
+        FieldValueKind.Composite => ValuePresentation.Verbatim,
+        FieldValueKind.Reference => ValuePresentation.Verbatim,
+        FieldValueKind.ExternalIdentifier => ValuePresentation.Verbatim,
+        FieldValueKind.Link => ValuePresentation.Address,
+        FieldValueKind.FilePath => ValuePresentation.Verbatim,
+        FieldValueKind.Language => ValuePresentation.Text,
+        FieldValueKind.Quality => ValuePresentation.Text,
+        FieldValueKind.Artwork => Compact ? ValuePresentation.Address : ValuePresentation.Image,
+        FieldValueKind.Count => ValuePresentation.Text,
+    };
+}

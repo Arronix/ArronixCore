@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>Arronix</title>
+    <base href="/" />
+
+    <!--
+        The loading screen below is plain markup rather than a component on purpose: it has to be visible
+        before a single byte of the application has been fetched, let alone started.
+    -->
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="stylesheet" href="Arronix.Client.styles.css" />
+
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon-180.png" />
+    <meta name="theme-color" content="#0d1014" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f6f8fa" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Arronix" />
+    <meta name="description" content="Arronix media platform" />
+</head>
+<body>
+    <div id="app">
+        <div class="boot">
+            <div class="boot-mark"></div>
+            <p class="boot-text">Starting Arronix…</p>
+        </div>
+    </div>
+
+    <!--
+        The framework's own failure banner. It is the last resort for an error the application cannot
+        recover from; an unreachable server is NOT one of those and is handled inside the application,
+        which is the whole point of caching the shell.
+    -->
+    <div id="blazor-error-ui">
+        Something went wrong. Reloading may fix it.
+        <a href="." class="reload">Reload</a>
+        <span class="dismiss">🗙</span>
+    </div>
+
+    <style>
+        .boot {
+            position: fixed;
+            inset: 0;
+            display: grid;
+            place-items: center;
+            align-content: center;
+            gap: 1rem;
+            background: #0d1014;
+            color: #9aa8b8;
+            font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        }
+
+        .boot-mark {
+            width: 3rem;
+            height: 3rem;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #4c9aff 0%, #56c271 100%);
+        }
+
+        .boot-text { margin: 0; font-size: 0.9rem; }
+
+        @media (prefers-color-scheme: light) {
+            .boot { background: #f6f8fa; color: #4d5c6b; }
+        }
+
+        #blazor-error-ui {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 0.7rem 1.2rem;
+            background: #e0a83a;
+            color: #1a1400;
+            box-shadow: 0 -1px 2px rgb(0 0 0 / 30%);
+        }
+
+        #blazor-error-ui .dismiss {
+            cursor: pointer;
+            position: absolute;
+            right: 0.75rem;
+            top: 0.5rem;
+        }
+    </style>
+
+    <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        // Registered from the app root so the worker's scope covers the whole origin, which is what makes
+        // a deep link into a library work offline as well as the entry page does.
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('service-worker.js');
+            });
+        }
+    </script>
+</body>
+</html>

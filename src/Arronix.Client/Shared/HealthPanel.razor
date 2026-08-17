@@ -1,0 +1,71 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the snapshot is one of them.
+}
+@*
+    The platform's own account of itself. The overall status is drawn as the text the server sent rather
+    than matched against a set this client knows, which is deliberate: a health endpoint that fails to
+    render because it reported a status from a newer server is the last thing that should break.
+*@
+
+<section class="panel">
+    <header class="panel-head">
+        <h2>Health</h2>
+        @if (Snapshot is { } snapshot)
+        {
+            <span class="chip @StatusClass(snapshot.Status)">@snapshot.Status</span>
+            <time class="panel-time" datetime="@snapshot.CheckedAt.ToString("O", CultureInfo.InvariantCulture)">
+                checked @snapshot.CheckedAt.ToLocalTime().ToString("t", CultureInfo.CurrentCulture)
+            </time>
+        }
+    </header>
+
+    @if (Snapshot is null)
+    {
+        <LoadingIndicator Message="Reading health…" />
+    }
+    else if (Snapshot.Checks.Count == 0)
+    {
+        <EmptyState Title="No checks reported" Detail="Nothing has registered a health check." />
+    }
+    else
+    {
+        <ul class="check-list">
+            @foreach (var check in Snapshot.Checks.OrderByDescending(check => check.Severity))
+            {
+                <li class="check @ToneMap.ClassFor(check.Status)">
+                    <span class="check-marker" aria-hidden="true">@Marker(check.Status)</span>
+                    <div class="check-body">
+                        <p class="check-name">@check.Name</p>
+                        @if (!string.IsNullOrWhiteSpace(check.Message))
+                        {
+                            <p class="check-message">@check.Message</p>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(check.RemediationHint))
+                        {
+                            <p class="check-remedy">@check.RemediationHint</p>
+                        }
+                    </div>
+                    <span class="chip @ToneMap.ClassFor(check.Severity)">@check.Severity</span>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@code {
+    /// <summary>Gets or sets the platform's health, or <see langword="null"/> while it is being read.</summary>
+    [Parameter]
+    public HealthSnapshotView? Snapshot { get; set; }
+
+    private static string Marker(HealthStatus status) => status switch
+    {
+        HealthStatus.Healthy => "✓",
+        HealthStatus.Degraded => "!",
+        HealthStatus.Unhealthy => "×",
+    };
+
+    private static string StatusClass(string status)
+        => Enum.TryParse<HealthStatus>(status, ignoreCase: true, out var parsed)
+            ? ToneMap.ClassFor(parsed)
+            : "tone-neutral";
+}

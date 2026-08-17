@@ -1,0 +1,21 @@
+@*
+    Routing. Every route in this application is a platform route: a dashboard, a library, an item, a
+    working surface, the platform's own state. None of them names a media kind — the kind is a segment,
+    resolved at run time from the descriptors the host published.
+*@
+
+<Router AppAssembly="@typeof(App).Assembly">
+    <Found Context="route">
+        <RouteView RouteData="@route" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@route" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <section class="notice">
+                <h1>Nothing here</h1>
+                <p>That address does not name anything this client knows about.</p>
+                <a class="button" href="">Back to the dashboard</a>
+            </section>
+        </LayoutView>
+    </NotFound>
+</Router>

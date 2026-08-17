@@ -1,0 +1,106 @@
+{
+  "schemaVersion": 0,
+  "id": "books",
+  "name": "Books",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.3 <0.4" },
+  "entryAssembly": "Arronix.Plugin.Books.dll",
+  "mediaKinds": ["books"],
+  "identifiers": ["goodreads", "isbn13", "asin"],
+  "capabilities": [
+    "media-kind",
+    "parsing",
+    "matching",
+    "indexing",
+    "quality",
+    "renaming",
+    "metadata"
+  ],
+  "tokens": [
+    {
+      "name": "{Author Name}",
+      "description": "The writer credited with the work.",
+      "exampleValue": "Ursula K. Le Guin",
+      "isRequired": true
+    },
+    {
+      "name": "{Author Sort Name}",
+      "description": "The writer's shelving form.",
+      "exampleValue": "Le Guin, Ursula K.",
+      "isRequired": false
+    },
+    {
+      "name": "{Book Title}",
+      "description": "The full title of the work.",
+      "exampleValue": "The Left Hand of Darkness",
+      "isRequired": true
+    },
+    {
+      "name": "{Book TitleNoSub}",
+      "description": "The title with the subtitle removed.",
+      "exampleValue": "The Dispossessed",
+      "isRequired": false
+    },
+    {
+      "name": "{Book Subtitle}",
+      "description": "The part of the title after the colon.",
+      "exampleValue": "An Ambiguous Utopia",
+      "isRequired": false
+    },
+    {
+      "name": "{Book Series}",
+      "description": "The collection the work belongs to.",
+      "exampleValue": "Hainish Cycle",
+      "isRequired": false
+    },
+    {
+      "name": "{Book SeriesPosition}",
+      "description": "Its label within that collection.",
+      "exampleValue": "4",
+      "isRequired": false
+    },
+    {
+      "name": "{Edition Title}",
+      "description": "The manifestation's own title.",
+      "exampleValue": "The Left Hand of Darkness",
+      "isRequired": false
+    },
+    {
+      "name": "{Edition Format}",
+      "description": "How the manifestation is carried.",
+      "exampleValue": "EPUB",
+      "isRequired": false
+    },
+    {
+      "name": "{Release Year}",
+      "description": "The year the work was first published.",
+      "exampleValue": "1969",
+      "isRequired": false
+    },
+    {
+      "name": "{Edition Year}",
+      "description": "The year this manifestation was issued.",
+      "exampleValue": "2017",
+      "isRequired": false
+    },
+    {
+      "name": "{Part Number}",
+      "description": "Which part of the manifestation a file carries.",
+      "exampleValue": "03",
+      "isRequired": false
+    },
+    {
+      "name": "{Part Count}",
+      "description": "How many parts the manifestation is spread over.",
+      "exampleValue": "12",
+      "isRequired": false
+    }
+  ],
+  "policies": {
+    "parsing": ["CreatorTitleSplit", "SubtitleStrip", "FlavorTokens", "BookNumberExtraction"],
+    "matching": ["BookNumberFirst", "CollectionTitleSynthesis", "FlavorGuard", "CreatorNameVariants"],
+    "quality": ["FamilyLadder", "CrossFamilyGuard", "Cutoff"],
+    "import": ["PartOrdinalAssignment", "FamilyConsistency", "UpgradeRules"],
+    "naming": ["SinglePartPattern", "MultiPartPattern", "CollectedPattern", "PrimaryMembership"]
+  }
+}

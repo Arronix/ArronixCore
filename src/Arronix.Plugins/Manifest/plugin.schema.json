@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Arronix/ArronixCore/blob/main/src/Arronix.Plugins/Manifest/plugin.schema.json",
+  "title": "Arronix extension manifest",
+  "description": "EDITOR AID ONLY. The runtime gate is Arronix.Plugins.Manifest.PluginManifestReader plus PluginManifestValidator, which read into required members with unmapped members disallowed. This document exists so an editor can offer completion; it is never consulted at load time and must not be treated as authoritative if the two ever disagree.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name", "version", "contracts", "entryAssembly", "capabilities"],
+  "properties": {
+    "schemaVersion": {
+      "description": "The version of this manifest format. Only 0 is understood today.",
+      "type": "integer",
+      "const": 0
+    },
+    "id": {
+      "description": "Lower-case alphanumeric segments separated by dots, starting with a letter.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9]+)*$"
+    },
+    "name": {
+      "description": "The name shown to an operator.",
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "description": "The extension's own version, in Semantic Versioning 2.0.0 form.",
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+){0,2}(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"
+    },
+    "description": {
+      "description": "An optional sentence describing what the extension is for.",
+      "type": "string"
+    },
+    "contracts": {
+      "description": "The contract versions the extension declares it works against.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["arronix"],
+      "properties": {
+        "arronix": {
+          "description": "A range in a documented subset of npm/yarn syntax: comparison operators, whitespace conjunction, '||' alternation and partial versions. Caret, tilde, wildcards and hyphen ranges are rejected. An extension depending on experimental contracts must bound the range at or below the host's next minor, for example '>=0.3 <0.4'.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "entryAssembly": {
+      "description": "The bare file name of the assembly holding the single IPluginModule. Resolved inside the extension's own folder; separators and parent-directory segments are rejected.",
+      "type": "string",
+      "pattern": "^[^\\\\/:]+\\.(dll|DLL)$"
+    },
+    "capabilities": {
+      "description": "The privileges the extension declares. Enforcement is bidirectional: a declared capability must have a matching registration, and a gated registration must have a declared capability.",
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "indexing",
+          "metadata",
+          "parsing",
+          "matching",
+          "quality",
+          "renaming",
+          "import",
+          "download",
+          "notification",
+          "media-kind",
+          "curation",
+          "network",
+          "storage",
+          "telemetry-sink"
+        ]
+      }
+    },
+    "mediaKinds": {
+      "description": "The media kinds the extension claims. Requires the 'media-kind' capability, and that capability requires at least one entry here.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "identifiers": {
+      "description": "The external identifier schemes the extension understands.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "tokens": {
+      "description": "The naming tokens the extension declares. A bare string is accepted and widened to a descriptor with an empty description.",
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "pattern": "^\\{[^{}]+\\}$"
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string", "pattern": "^\\{[^{}]+\\}$" },
+              "description": { "type": "string" },
+              "exampleValue": { "type": "string" },
+              "isRequired": { "type": "boolean" }
+            }
+          }
+        ]
+      }
+    },
+    "policies": {
+      "description": "The ordered policy identifiers the extension declares, by category. The five categories are closed; a sixth key is a load failure.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "parsing": { "$ref": "#/$defs/policyList" },
+        "matching": { "$ref": "#/$defs/policyList" },
+        "quality": { "$ref": "#/$defs/policyList" },
+        "import": { "$ref": "#/$defs/policyList" },
+        "naming": { "$ref": "#/$defs/policyList" }
+      }
+    }
+  },
+  "$defs": {
+    "policyList": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

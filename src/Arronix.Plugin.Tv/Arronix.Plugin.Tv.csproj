@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugin.Tv</RootNamespace>
+    <AssemblyName>Arronix.Plugin.Tv</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>Reference media extension for episodic television. Declares a two-level shape with five coordinate spaces, a sequence axis carrying a policy record and an exception, a span constraint, and a one-file-to-many-units binding, and supplies the release parser, matcher, query planner, quality ladder, naming policy and catalog projection for it. References Arronix.Abstractions and nothing else.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       Invariant 2: an extension references Arronix.Abstractions and NOTHING else - no Common, no Host, no
+       Plugins, no Api - and takes zero package references. Both halves are asserted mechanically by
+       ProjectTopologyTests, and again at load time by the static reference-graph check.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

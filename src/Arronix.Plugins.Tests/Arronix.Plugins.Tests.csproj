@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugins.Tests</RootNamespace>
+    <AssemblyName>Arronix.Plugins.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Plugins\Arronix.Plugins.csproj" />
+  </ItemGroup>
+
+  <!--
+       The container, the configuration builder and a controllable clock are host concerns: Arronix.Plugins
+       takes only the abstractions of the first two and the framework's clock for the third. The tests stand
+       in for a host, so they take the implementations directly rather than relying on them arriving
+       transitively.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Configuration" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+</Project>

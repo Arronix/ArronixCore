@@ -1,0 +1,181 @@
+@page "/activity"
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; queue and job views are them.
+}
+@implements IDisposable
+@inject ArronixApiClient Api
+@inject EventStream Events
+@inject HostConnectivity Connectivity
+@*
+    What the platform is doing and what it is about to do.
+
+    The queue publishes both the attempt count and the earliest a piece of work may run, because between
+    them those two are the whole story about work that is not progressing: how often it has failed and
+    when it will next be tried.
+*@
+
+<h1>Activity</h1>
+
+<ErrorNotice Message="@_error" OnRetry="LoadAsync" OnDismiss="@(() => _error = null)" />
+
+<div class="columns">
+    <section class="column">
+        <h2>Live</h2>
+        <ProgressFeed Limit="60" />
+    </section>
+
+    <section class="column">
+        <section class="panel">
+            <header class="panel-head">
+                <h2>Queue</h2>
+                <span class="chip">@_queue.Count</span>
+            </header>
+
+            @if (_queue.Count == 0)
+            {
+                <EmptyState Title="Nothing queued" />
+            }
+            else
+            {
+                <div class="table-scroll">
+                    <table class="item-table">
+                        <thead>
+                            <tr>
+                                <th scope="col">Job</th>
+                                <th scope="col">Owner</th>
+                                <th scope="col">Attempt</th>
+                                <th scope="col">Not before</th>
+                                <th scope="col">Kind</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in _queue)
+                            {
+                                <tr>
+                                    <th scope="row">@entry.JobId</th>
+                                    <td>@entry.Owner</td>
+                                    <td>@entry.Attempt</td>
+                                    <td>@entry.NotBefore.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)</td>
+                                    <td>@(entry.MediaKind ?? "—")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+
+        <section class="panel">
+            <header class="panel-head">
+                <h2>Scheduled jobs</h2>
+                <span class="chip">@_jobs.Count</span>
+            </header>
+
+            @if (_jobs.Count == 0)
+            {
+                <EmptyState Title="Nothing registered" />
+            }
+            else
+            {
+                <ul class="job-list">
+                    @foreach (var job in _jobs.OrderBy(job => job.Name, StringComparer.CurrentCultureIgnoreCase))
+                    {
+                        <li class="job @(job.LastSucceeded ? "tone-positive" : "tone-attention")">
+                            <div class="job-body">
+                                <p class="job-name">@job.Name</p>
+                                <p class="job-detail">@job.Description</p>
+                                <p class="job-schedule">
+                                    <code>@job.Schedule</code>
+                                    @if (job.NextRun is { } next)
+                                    {
+                                        <span> · next @next.ToLocalTime().ToString("g", CultureInfo.CurrentCulture)</span>
+                                    }
+                                </p>
+                            </div>
+                            <button type="button" class="button" disabled="@_busy"
+                                    @onclick="@(() => TriggerAsync(job))">
+                                Run now
+                            </button>
+                        </li>
+                    }
+                </ul>
+            }
+        </section>
+    </section>
+</div>
+
+@code {
+    private IReadOnlyList<QueueEntryView> _queue = [];
+    private IReadOnlyList<JobView> _jobs = [];
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Events.Received += OnEvent;
+        Connectivity.Recovered += OnRecovered;
+        await LoadAsync();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Events.Received -= OnEvent;
+        Connectivity.Recovered -= OnRecovered;
+    }
+
+    private void OnEvent(object? sender, EventEnvelope envelope)
+    {
+        if (envelope.Kind is EventKind.QueueChanged or EventKind.JobCompleted)
+        {
+            InvokeAsync(LoadAsync);
+        }
+    }
+
+    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(LoadAsync);
+
+    private async Task LoadAsync()
+    {
+        _error = null;
+
+        try
+        {
+            _queue = await Api.GetQueueAsync();
+            _jobs = await Api.GetJobsAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+
+        StateHasChanged();
+    }
+
+    private async Task TriggerAsync(JobView job)
+    {
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            await Api.TriggerJobAsync(job.JobId);
+            await LoadAsync();
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

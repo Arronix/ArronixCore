@@ -1,0 +1,112 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; cell values are declared by them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; the surface is declared by them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the kind description is one.
+}
+@*
+    The declared grid: the columns the surface declared, over the rows the extension proposed.
+
+    A real table with real headers, because that is what makes this work for a screen reader as well as
+    for a pointer — and because the same declaration read by a command line prints exactly these columns.
+    The extension's own confidence in each row is shown, so a guess is visibly a guess rather than being
+    applied silently.
+*@
+
+<div class="table-scroll">
+    <table class="bench">
+        <thead>
+            <tr>
+                @if (Context.Descriptor.AllowsRowExclusion)
+                {
+                    <th scope="col"><span class="visually-hidden">Include</span></th>
+                }
+                @foreach (var column in Context.Descriptor.Columns)
+                {
+                    <th scope="col">@column.Field.Name</th>
+                }
+                <th scope="col">Confidence</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in Context.Rows)
+            {
+                <tr class="@(IsExcluded(row) ? "is-excluded" : string.Empty)">
+                    @if (Context.Descriptor.AllowsRowExclusion)
+                    {
+                        <td>
+                            <input type="checkbox"
+                                   checked="@(!IsExcluded(row))"
+                                   aria-label="Include this row"
+                                   @onchange="@(() => Context.OnRowToggled.InvokeAsync(row.RowId))" />
+                        </td>
+                    }
+
+                    @foreach (var column in Context.Descriptor.Columns)
+                    {
+                        <td>
+                            <WorkbenchCell Kind="Context.Kind"
+                                           WorkbenchId="@Context.Descriptor.WorkbenchId"
+                                           Column="column"
+                                           RowId="@row.RowId"
+                                           Value="@ValueOf(row, column)"
+                                           ValueChanged="@(value => SetAsync(row, column, value))" />
+                        </td>
+                    }
+
+                    <td>
+                        <span class="chip @ConfidenceClass(row.Confidence)">@row.Confidence</span>
+                    </td>
+                </tr>
+
+                @if (row.Issues.Count > 0)
+                {
+                    <tr class="bench-issues">
+                        <td colspan="@ColumnCount">
+                            <ul>
+                                @foreach (var issue in row.Issues)
+                                {
+                                    <li class="@ToneMap.ClassFor(StateTone.Attention)">@issue.Message</li>
+                                }
+                            </ul>
+                        </td>
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    /// <summary>Gets or sets what is being edited.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required WorkbenchContext Context { get; set; }
+
+    private int ColumnCount => Context.Descriptor.Columns.Count
+        + 1
+        + (Context.Descriptor.AllowsRowExclusion ? 1 : 0);
+
+    private bool IsExcluded(WorkbenchRow row) => Context.ExcludedRowIds.Contains(row.RowId);
+
+    private static FieldValue? ValueOf(WorkbenchRow row, WorkbenchColumn column)
+        => row.Values.TryGetValue(column.Field.FieldId, out var value) ? value : null;
+
+    private Task SetAsync(WorkbenchRow row, WorkbenchColumn column, FieldValue value)
+    {
+        var values = new Dictionary<string, FieldValue>(row.Values, StringComparer.Ordinal)
+        {
+            [column.Field.FieldId] = value,
+        };
+
+        return Context.OnRowChanged.InvokeAsync(row with { Values = values });
+    }
+
+    private static string ConfidenceClass(MatchConfidence confidence) => confidence switch
+    {
+        MatchConfidence.None => ToneMap.ClassFor(StateTone.Problem),
+        MatchConfidence.Low => ToneMap.ClassFor(StateTone.Attention),
+        MatchConfidence.Medium => ToneMap.ClassFor(StateTone.Attention),
+        MatchConfidence.High => ToneMap.ClassFor(StateTone.Positive),
+        MatchConfidence.Exact => ToneMap.ClassFor(StateTone.Positive),
+    };
+}

@@ -1,0 +1,35 @@
+@implements IDisposable
+@inject HostConnectivity Connectivity
+@inject EventStream Events
+@*
+    A quiet line for the failure that is not worth a full-page notice: requests still work, but live
+    updates have stopped, so what is on screen will go stale without saying so. Conflating that with an
+    unreachable server would put a blocking notice in front of someone whose library is perfectly usable.
+*@
+
+@if (Connectivity.State is HostState.LiveConnectionLost)
+{
+    <div class="banner banner-attention" role="status">
+        <span>Live updates have stopped. What you see may be out of date.</span>
+        <button type="button" class="button button-quiet" @onclick="ReconnectAsync">Reconnect</button>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Connectivity.StateChanged += OnChanged;
+        Events.ConnectionChanged += OnChanged;
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Connectivity.StateChanged -= OnChanged;
+        Events.ConnectionChanged -= OnChanged;
+    }
+
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    private Task ReconnectAsync() => Events.StartAsync();
+}

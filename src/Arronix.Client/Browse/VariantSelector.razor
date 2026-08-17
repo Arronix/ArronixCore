@@ -1,0 +1,136 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; the variant axis is declared by them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; the selecting action is declared by one.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the items are them.
+}
+@inject ActionDispatcher Dispatcher
+@*
+    Choosing among an item's competing manifestations.
+
+    The shape declares that a level is a variant axis and that at most one of its items is selected at a
+    time; the host enforces that invariant and publishes which one it is. What this control adds is the
+    one thing a declaration cannot: telling the user, before they choose, that the platform may change
+    the choice again by itself when files arrive — which is a surprise every surveyed application has and
+    none of them announces.
+*@
+
+<div class="variants">
+    <label class="variants-label" for="variant-choice">@(VariantLevel?.Name ?? "Version")</label>
+
+    <select id="variant-choice"
+            value="@SelectedId"
+            disabled="@(_busy || SelectAction is null || Variants.Count == 0)"
+            @onchange="OnChosenAsync">
+        @foreach (var variant in Variants)
+        {
+            <option value="@variant.Item.Ref.Id.Value.ToString(CultureInfo.InvariantCulture)"
+                    selected="@(variant.Item.Ref == Item.SelectedVariant)">
+                @variant.Item.Title
+            </option>
+        }
+    </select>
+
+    @if (AutoSwitches)
+    {
+        <p class="variants-note">
+            The platform may change this by itself when files are imported.
+        </p>
+    }
+</div>
+
+<ErrorNotice Message="@_error" OnDismiss="@(() => _error = null)" />
+
+@code {
+    private string? _error;
+    private bool _busy;
+
+    /// <summary>Gets or sets the media kind's description.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the level the item belongs to.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required LevelPresentation Level { get; set; }
+
+    /// <summary>Gets or sets the item whose manifestations are being chosen among.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ItemDetail Item { get; set; }
+
+    /// <summary>Gets or sets the manifestations.</summary>
+    [Parameter]
+    public IReadOnlyList<ItemDetail> Variants { get; set; } = [];
+
+    /// <summary>Gets or sets the callback raised once a choice has been accepted.</summary>
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    private MediaLevel? VariantLevel => Kind.Shape.Levels
+        .FirstOrDefault(level => level.Roles.HasFlag(MediaLevelRoles.VariantAxis));
+
+    private bool AutoSwitches => VariantLevel?.Variant is { } variant
+        && variant.AutoSwitchByDefault
+        && variant.Triggers.HasFlag(SelectionTrigger.OnImport);
+
+    private ActionDescriptor? SelectAction
+        => ItemProjection.Action(Level, AffordanceMap.For(Affordance.Selectable).ConventionalActionId);
+
+    private string SelectedId => Item.SelectedVariant is { } selected
+        ? selected.Id.Value.ToString(CultureInfo.InvariantCulture)
+        : string.Empty;
+
+    private async Task OnChosenAsync(ChangeEventArgs args)
+    {
+        if (SelectAction is not { } action
+            || args.Value?.ToString() is not { Length: > 0 } chosen)
+        {
+            return;
+        }
+
+        var variant = Variants.FirstOrDefault(candidate =>
+            candidate.Item.Ref.Id.Value.ToString(CultureInfo.InvariantCulture) == chosen);
+
+        if (variant is null)
+        {
+            return;
+        }
+
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var result = await Dispatcher.InvokeAsync(
+                Kind.Kind,
+                action,
+                new ActionRequest
+                {
+                    Items = [variant.Item.Ref],
+                    Level = variant.Item.Ref.Level,
+                });
+
+            if (result.Accepted)
+            {
+                await OnChanged.InvokeAsync();
+            }
+            else
+            {
+                _error = result.Message ?? "The platform did not take that on.";
+            }
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

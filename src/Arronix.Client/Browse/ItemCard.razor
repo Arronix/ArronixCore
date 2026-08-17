@@ -1,0 +1,100 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; fields and prominence come from them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the item is one of them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; declared states are drawn here.
+}
+@*
+    One item, drawn without knowing what it is.
+
+    The picture comes from whichever field the level marks as artwork; the headline from whichever field
+    it marks as the title; the lines underneath from whichever fields it ranks as important enough. The
+    conditions come from the kind's declared states and the progress from what the host counted. There is
+    no branch anywhere below on what sort of thing the item is, and that is the entire point of the card.
+*@
+
+<article class="card @(Item.Monitor is MonitorState.Unmonitored ? "is-unmonitored" : string.Empty)">
+    <button type="button" class="card-open" @onclick="OpenAsync" disabled="@(!CanOpen)">
+        <span class="card-art">
+            @if (Artwork is { } art)
+            {
+                <img src="@art" alt="" loading="lazy" />
+            }
+            else
+            {
+                <span class="card-art-empty" aria-hidden="true">@Initial</span>
+            }
+        </span>
+
+        <span class="card-text">
+            <span class="card-title">@Item.Item.Title</span>
+
+            @if (Level is { } level)
+            {
+                <span class="card-fields">
+                    @foreach (var field in ItemProjection.FieldsUpTo(level, Prominence.Secondary).Take(3))
+                    {
+                        <span class="card-field">
+                            <span class="card-field-name">@field.Name</span>
+                            <FieldValueView Descriptor="field" Value="@ValueOf(field.FieldId)" Compact="true" />
+                        </span>
+                    }
+                </span>
+            }
+        </span>
+    </button>
+
+    <footer class="card-foot">
+        <StateIndicator States="States" />
+
+        @if (ItemProjection.Completion(Item.Progress) is { } completion)
+        {
+            <span class="card-progress" title="@ProgressTitle">
+                <span class="meter-rail">
+                    <span class="meter-fill" style="width: @(((int)Math.Round(completion * 100)))%"></span>
+                </span>
+            </span>
+        }
+
+        @if (Item.SizeOnDisk > 0)
+        {
+            <span class="card-size">@FieldValueFormatter.FormatBytes(Item.SizeOnDisk)</span>
+        }
+    </footer>
+</article>
+
+@code {
+    /// <summary>Gets or sets the media kind's description.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the item.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ItemDetail Item { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user opens the item.</summary>
+    [Parameter]
+    public EventCallback<ItemDetail> OnOpen { get; set; }
+
+    private LevelPresentation? Level => ItemProjection.Level(Kind, Item.Item.Ref.Level);
+
+    private Uri? Artwork => Level is { } level ? ItemProjection.Artwork(level, Item) : null;
+
+    private IReadOnlyList<StateDescriptor> States => ItemProjection.States(Kind.Intent, Item);
+
+    private bool CanOpen => OnOpen.HasDelegate;
+
+    private string Initial => Item.Item.Title is { Length: > 0 } title
+        ? title[..1].ToUpperInvariant()
+        : "·";
+
+    private string ProgressTitle => Item.Progress is { } progress
+        ? string.Create(CultureInfo.CurrentCulture, $"{progress.Have} of {progress.Want} wanted, {progress.Total} in total")
+        : string.Empty;
+
+    private FieldValue? ValueOf(string fieldId)
+        => Item.Item.Fields.TryGetValue(fieldId, out var value) ? value : null;
+
+    private Task OpenAsync() => CanOpen ? OnOpen.InvokeAsync(Item) : Task.CompletedTask;
+}

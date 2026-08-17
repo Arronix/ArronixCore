@@ -1,0 +1,71 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Client</RootNamespace>
+    <AssemblyName>Arronix.Client</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>The Arronix web client: an installable Blazor WebAssembly application that renders any media kind from the descriptors the host publishes. References Arronix.Abstractions only, exactly as an extension does, so no host-side implementation assembly can ever reach the browser.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       src/Directory.Build.props assigns a RuntimeIdentifier of the BUILD HOST's RID whenever one is not
+       specified, and its RuntimeIdentifiers list does not contain browser-wasm. Both must be overridden
+       here or the WebAssembly build resolves the wrong runtime pack: the identifier is pinned to
+       browser-wasm and the inherited list is cleared so nothing tries to cross-publish this project for
+       nine desktop RIDs.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifier>browser-wasm</RuntimeIdentifier>
+    <RuntimeIdentifiers></RuntimeIdentifiers>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <!--
+       TreatWarningsAsErrors is on repo-wide and AnalysisLevel is 6.0-all, both of which also apply to the
+       C# the Razor compiler generates from .razor files. Each identifier below is suppressed for a stated
+       reason and nothing else is; in particular no ARXnnnn contract-stability identifier is ever listed
+       here, because opting in to an experimental contract area is a per-file pragma by policy.
+
+       CS1591  Missing XML comment. Razor-generated component partials are public and cannot be documented.
+       CA1812  Uninstantiated internal class. Components are instantiated by the renderer, not by name.
+       CA1848  Use LoggerMessage delegates. No compile-time logging source generator runs in this project.
+       CA2007  ConfigureAwait. There is one synchronization context in a browser and awaiting it is correct.
+       CA1031  Catch general exception. The client's whole failure story is degrading to a stated message
+               rather than propagating an exception into a render tree that has no way to show it.
+       CS8524  Switch expression does not handle an UNNAMED enum value. Every discriminant this project
+               switches on is a closed vocabulary, and each switch lists every declared member with no
+               discard arm on purpose: that is what makes CS8509 — a NAMED member going unhandled — a
+               build failure the day a contract gains one. CS8524 is the unavoidable consequence of an
+               enum being an integer at runtime, and suppressing it is what keeps CS8509 meaningful.
+               CS8509 is emphatically NOT suppressed.
+  -->
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);CS1591;CA1812;CA1848;CA2007;CA1031;CS8524</NoWarn>
+  </PropertyGroup>
+
+  <!--
+       Progressive-web-app assets. The service worker is inert during development and replaced by the
+       caching implementation on publish, which is the SDK's own arrangement: a worker that caches the
+       shell would otherwise serve yesterday's build to a developer on every reload.
+  -->
+  <PropertyGroup>
+    <ServiceWorkerAssetsManifest>service-worker-assets.js</ServiceWorkerAssetsManifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" />
+  </ItemGroup>
+</Project>

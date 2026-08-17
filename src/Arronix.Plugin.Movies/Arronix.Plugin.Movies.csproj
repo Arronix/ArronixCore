@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugin.Movies</RootNamespace>
+    <AssemblyName>Arronix.Plugin.Movies</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>Reference media extension for feature films, declared as typed C#. A Movie entity and a Collection group carry the schema as properties and attributes; the Movies type states what an attribute cannot - how files bind, what groups and policies exist, how releases are matched, queried, named and summarized - and the host derives the structure, the intent surface and the naming tokens from both. The release models, the quality ladder and the catalog mapping remain data. References Arronix.Abstractions and nothing else.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       Invariant 2: an extension references Arronix.Abstractions and NOTHING else - no Common, no Host, no
+       Plugins, no Api - and takes zero package references. Both halves are asserted mechanically by
+       ProjectTopologyTests, and again at load time by the static reference-graph check.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

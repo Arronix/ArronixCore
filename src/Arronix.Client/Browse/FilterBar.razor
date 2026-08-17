@@ -1,0 +1,143 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; fields come from them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; sorts and filters are declared by them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the level description is one.
+}
+@*
+    Narrowing and ordering, both offered exactly as declared.
+
+    A field is only offered as a filter because the extension said its source can answer that comparison,
+    and only offered as a sort because the extension said which end of it is the useful one. Neither is
+    inferred from the field's value shape: a source can perfectly well hold a date it cannot answer range
+    queries against, and no client can know that from the type.
+*@
+
+<div class="filter-bar">
+    <label class="filter-search">
+        <span class="visually-hidden">Search</span>
+        <input type="search" placeholder="Search…" value="@Text"
+               @onchange="OnTextChanged" aria-label="Search" />
+    </label>
+
+    @if (Sorts.Count > 0)
+    {
+        <label class="filter-sort">
+            <span class="visually-hidden">Sort by</span>
+            <select value="@SortFieldId" @onchange="OnSortChanged" aria-label="Sort by">
+                <option value="">Default order</option>
+                @foreach (var sort in Sorts)
+                {
+                    <option value="@sort.FieldId" selected="@(sort.FieldId == SortFieldId)">@sort.Name</option>
+                }
+            </select>
+        </label>
+
+        <button type="button" class="button button-quiet" @onclick="ToggleDirectionAsync"
+                title="@(SortDescending ? "Descending" : "Ascending")">
+            @(SortDescending ? "▼" : "▲")
+        </button>
+    }
+
+    @foreach (var filter in Filters.Where(filter => FieldFor(filter) is not null))
+    {
+        var field = FieldFor(filter)!;
+        <label class="filter-field">
+            <span class="filter-field-name">@filter.Name</span>
+            <FieldValueEditor Descriptor="field"
+                              Value="@ValueOf(filter.FieldId)"
+                              ValueChanged="@(value => SetFilterAsync(filter.FieldId, value))" />
+        </label>
+    }
+
+    @if (ActiveCount > 0)
+    {
+        <button type="button" class="button button-quiet" @onclick="ClearAsync">Clear (@ActiveCount)</button>
+    }
+</div>
+
+@code {
+    /// <summary>Gets or sets the level whose fields the filters name.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required LevelPresentation Level { get; set; }
+
+    /// <summary>Gets or sets the declared orderings.</summary>
+    [Parameter]
+    public IReadOnlyList<SortOption> Sorts { get; set; } = [];
+
+    /// <summary>Gets or sets the declared narrowings.</summary>
+    [Parameter]
+    public IReadOnlyList<FilterOption> Filters { get; set; } = [];
+
+    /// <summary>Gets or sets the free-text narrowing.</summary>
+    [Parameter]
+    public string? Text { get; set; }
+
+    /// <summary>Gets or sets the field the page is ordered by.</summary>
+    [Parameter]
+    public string? SortFieldId { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the ordering runs from greatest to least.</summary>
+    [Parameter]
+    public bool SortDescending { get; set; }
+
+    /// <summary>Gets or sets the field narrowings in force.</summary>
+    [Parameter]
+    public IReadOnlyDictionary<string, string> Values { get; set; }
+        = new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>Gets or sets the callback raised whenever the narrowing or ordering changes.</summary>
+    [Parameter]
+    public EventCallback<FilterState> OnChanged { get; set; }
+
+    private int ActiveCount => Values.Count + (string.IsNullOrWhiteSpace(Text) ? 0 : 1);
+
+    private FieldDescriptor? FieldFor(FilterOption filter) => Level.Fields
+        .FirstOrDefault(field => string.Equals(field.FieldId, filter.FieldId, StringComparison.Ordinal));
+
+    private string ValueOf(string fieldId) => Values.TryGetValue(fieldId, out var value) ? value : string.Empty;
+
+    private Task OnTextChanged(ChangeEventArgs args)
+        => RaiseAsync(Current with { Text = args.Value?.ToString() });
+
+    private Task OnSortChanged(ChangeEventArgs args)
+        => RaiseAsync(Current with { SortFieldId = NullIfEmpty(args.Value?.ToString()) });
+
+    private Task ToggleDirectionAsync() => RaiseAsync(Current with { SortDescending = !SortDescending });
+
+    private Task SetFilterAsync(string fieldId, string value)
+    {
+        var next = new Dictionary<string, string>(Values, StringComparer.Ordinal);
+
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            next.Remove(fieldId);
+        }
+        else
+        {
+            next[fieldId] = value;
+        }
+
+        return RaiseAsync(Current with { Values = next });
+    }
+
+    private Task ClearAsync()
+        => RaiseAsync(new FilterState(null, SortFieldId, SortDescending, new Dictionary<string, string>(StringComparer.Ordinal)));
+
+    private FilterState Current => new(Text, SortFieldId, SortDescending, Values);
+
+    private Task RaiseAsync(FilterState state) => OnChanged.InvokeAsync(state);
+
+    private static string? NullIfEmpty(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    /// <summary>How a page is narrowed and ordered.</summary>
+    /// <param name="Text">The free-text narrowing.</param>
+    /// <param name="SortFieldId">The field ordered by.</param>
+    /// <param name="SortDescending">Whether the ordering runs from greatest to least.</param>
+    /// <param name="Values">The field narrowings.</param>
+    public sealed record FilterState(
+        string? Text,
+        string? SortFieldId,
+        bool SortDescending,
+        IReadOnlyDictionary<string, string> Values);
+}

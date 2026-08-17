@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Architecture.Tests</RootNamespace>
+    <AssemblyName>Arronix.Architecture.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <!--
+       DELIBERATELY SHORT, AND THE SHORTNESS IS THE POINT.
+
+       This fixture asserts the platform's enforcement topology. Most of what it asserts is read from the
+       repository - project files, source files and manifests - rather than from compiled references, so
+       that a rule keeps being checked even while a project it is about is mid-rewrite and does not build.
+       Two projects are referenced because two rules genuinely need running code:
+
+         Arronix.Abstractions  - the experimental-marking rule reflects over the contract surface.
+         Arronix.Plugins       - the bidirectional capability rule drives the REAL admission gate and the
+                                 REAL registration ledger. A re-implementation of either here would assert
+                                 that this fixture agrees with itself.
+
+       The four media extensions are referenced for the same reason: the capability rule is asserted by
+       configuring the actual extensions against the actual registry, not by configuring a fixture written
+       to pass. Nothing else is referenced - in particular not Arronix.Host, Arronix.Api or Arronix.Client,
+       whose rules are all read from the repository, so this project cannot be broken by their build state.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Plugins\Arronix.Plugins.csproj" />
+    <ProjectReference Include="..\Arronix.Host\Arronix.Host.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Plugin.Books\Arronix.Plugin.Books.csproj" />
+    <ProjectReference Include="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj" />
+    <ProjectReference Include="..\Arronix.Plugin.Music\Arronix.Plugin.Music.csproj" />
+    <ProjectReference Include="..\Arronix.Plugin.Tv\Arronix.Plugin.Tv.csproj" />
+  </ItemGroup>
+</Project>

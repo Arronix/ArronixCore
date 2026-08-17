@@ -1,0 +1,116 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; a setting's value shape is one.
+#pragma warning disable ARX0015 // Provider contracts are experimental; settings are declared by them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; valence styling is read from them.
+}
+@inject ArronixApiClient Api
+@*
+    One provider setting, drawn from its declaration.
+
+    The declaration says what a setting means — an address, a path, a quantity, a credential — and never
+    how it should look, so this component reuses the same value editor the rest of the application uses
+    and adds only what the semantics require: hiding a secret as it is typed, and fetching permitted
+    values from the platform when the setting says its values are not known in advance.
+
+    A secret is never sent back by the server. It arrives as a placeholder and, if the user does not touch
+    it, the placeholder is what goes back — which is the whole of "unchanged" on the wire, derived from
+    the same declaration that drives redaction.
+*@
+
+<label class="field @(Field.Advanced ? "is-advanced" : string.Empty)">
+    <span class="field-name">
+        @Field.Name
+        @if (Field.Required)
+        {
+            <span class="field-required" aria-label="required">*</span>
+        }
+    </span>
+
+    <FieldValueEditor Descriptor="AsField"
+                      Value="@Value"
+                      Options="_options"
+                      Required="Field.Required"
+                      Sensitive="IsSecret"
+                      ValueChanged="ValueChanged" />
+
+    @if (!string.IsNullOrWhiteSpace(Field.HelpText))
+    {
+        <span class="field-help">@Field.HelpText</span>
+    }
+
+    @if (!string.IsNullOrWhiteSpace(Field.HelpWarning))
+    {
+        <span class="field-help @ToneMap.ClassFor(StateTone.Attention)">@Field.HelpWarning</span>
+    }
+
+    @if (Field.HelpLink is { } link)
+    {
+        <a class="field-help" href="@link" target="_blank" rel="noopener noreferrer">More about this</a>
+    }
+</label>
+
+@code {
+    private IReadOnlyList<FacetValue>? _options;
+    private string? _loadedFor;
+
+    /// <summary>Gets or sets the setting's declaration.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required SettingsField Field { get; set; }
+
+    /// <summary>Gets or sets the value, as text.</summary>
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    /// <summary>Gets or sets the callback raised when the user changes the value.</summary>
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    /// <summary>
+    /// Gets or sets the configured provider whose permitted values are fetched, when there is one. A
+    /// provider that has not been saved yet has no identifier to fetch against.
+    /// </summary>
+    [Parameter]
+    public int? DefinitionId { get; set; }
+
+    private bool IsSecret => Field.Sensitivity is SettingSensitivity.Credential or SettingSensitivity.Secret;
+
+    private FieldDescriptor AsField => new()
+    {
+        FieldId = Field.FieldId,
+        Name = Field.Name,
+        ValueKind = Field.ValueKind,
+        Choices = Field.Choices,
+        Multivalued = Field.Multivalued,
+        Unit = Field.Unit,
+        Editable = true,
+        Description = Field.HelpText,
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Field.OptionSourceId is not { Length: > 0 } sourceId || DefinitionId is not { } definitionId)
+        {
+            return;
+        }
+
+        var key = $"{definitionId} {sourceId}";
+
+        if (string.Equals(_loadedFor, key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _loadedFor = key;
+
+        try
+        {
+            _options = await Api.GetProviderOptionsAsync(definitionId, sourceId);
+        }
+        catch (Exception)
+        {
+            // A setting whose choices cannot be read stays typeable rather than becoming an empty list.
+            _options = null;
+        }
+    }
+}

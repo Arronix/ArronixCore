@@ -1,0 +1,283 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; inputs and values are declared by them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; the surface is declared by them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the kind description is one.
+}
+@inject ArronixApiClient Api
+@*
+    The escape hatch, driven end to end from declarations.
+
+    The rest of the intent vocabulary honestly could not express this workflow — assigning a set of files
+    to the items they satisfy, starting from a proposal only the extension can compute — and expressing it
+    as an action with a collection parameter of triples would not have been a user interface. So the
+    surface is declared: its inputs, its columns, what committing costs and how sure the user must be.
+
+    Everything below is generic. The extension supplies the proposal and the platform applies it; the
+    entire contribution of this component is collect, present, amend, confirm, commit.
+*@
+
+<section class="bench-view">
+    <header class="bench-head">
+        <h1>@Descriptor.Name</h1>
+        @if (!string.IsNullOrWhiteSpace(Descriptor.Description))
+        {
+            <p class="bench-detail">@Descriptor.Description</p>
+        }
+    </header>
+
+    @if (Descriptor.Inputs.Count > 0)
+    {
+        <div class="bench-inputs">
+            @foreach (var input in Descriptor.Inputs)
+            {
+                <label class="field">
+                    <span class="field-name">
+                        @input.Name
+                        @if (input.Required)
+                        {
+                            <span class="field-required" aria-label="required">*</span>
+                        }
+                    </span>
+                    <FieldValueEditor Descriptor="DescriptorFor(input)"
+                                      Value="@InputValue(input)"
+                                      Required="input.Required"
+                                      ValueChanged="@(value => SetInput(input.ParameterId, value))" />
+                </label>
+            }
+            <button type="button" class="button button-strong" disabled="@(_busy || !InputsSatisfied)"
+                    @onclick="ProposeAsync">
+                Propose
+            </button>
+        </div>
+    }
+    else
+    {
+        <button type="button" class="button button-strong" disabled="@_busy" @onclick="ProposeAsync">
+            Propose
+        </button>
+    }
+
+    <ErrorNotice Message="@_error" OnRetry="ProposeAsync" OnDismiss="@(() => _error = null)" />
+
+    @if (_busy)
+    {
+        <LoadingIndicator Message="Working out a proposal…" />
+    }
+    else if (_proposal is { } proposal)
+    {
+        @if (proposal.Issues.Count > 0)
+        {
+            <ul class="bench-problems">
+                @foreach (var issue in proposal.Issues)
+                {
+                    <li class="@ToneMap.ClassFor(StateTone.Attention)">@issue.Message</li>
+                }
+            </ul>
+        }
+
+        @if (_rows.Count == 0)
+        {
+            <EmptyState Title="Nothing to decide"
+                        Detail="The extension had no proposal to make for those inputs." />
+        }
+        else
+        {
+            <DynamicComponent Type="IntentResolver.WorkbenchFor(Descriptor.Subject)" Parameters="GridParameters" />
+
+            <footer class="bench-commit">
+                <span class="bench-count">@IncludedCount of @_rows.Count rows will be applied.</span>
+                <button type="button" class="button @CommitPolicy.EmphasisClass" disabled="@(_busy || IncludedCount == 0)"
+                        @onclick="BeginCommitAsync">
+                    @Descriptor.CommitLabel
+                </button>
+            </footer>
+        }
+    }
+
+    @if (_outcome is { } outcome)
+    {
+        <p class="bench-outcome" role="status">@(outcome.Message ?? (outcome.Accepted ? "Applied." : "Not applied."))</p>
+    }
+</section>
+
+@if (_confirming)
+{
+    <ConsequencePrompt Action="CommitAction"
+                       Policy="CommitPolicy"
+                       SubjectCount="IncludedCount"
+                       OnCancel="@(() => _confirming = false)"
+                       OnConfirm="@(_ => CommitAsync())" />
+}
+
+@code {
+    private readonly Dictionary<string, string> _inputs = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _excluded = new(StringComparer.Ordinal);
+    private List<WorkbenchRow> _rows = [];
+    private WorkbenchProposal? _proposal;
+    private ActionResult? _outcome;
+    private string? _error;
+    private bool _busy;
+    private bool _confirming;
+
+    /// <summary>Gets or sets the media kind the surface belongs to.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets what the surface declared about itself.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required WorkbenchDescriptor Descriptor { get; set; }
+
+    private ConfirmationPolicy CommitPolicy
+        => ConsequenceMap.For(Descriptor.CommitConsequence, Descriptor.CommitConfirmation);
+
+    // The commit is asked about with the same component that asks about an action, because from the
+    // user's point of view it is one: a named thing, with a cost and a certainty requirement.
+    private ActionDescriptor CommitAction => new()
+    {
+        ActionId = Descriptor.WorkbenchId,
+        Name = Descriptor.CommitLabel,
+        Scope = ActionScope.Selection,
+        Consequence = Descriptor.CommitConsequence,
+        Confirmation = Descriptor.CommitConfirmation,
+        Description = Descriptor.Description,
+    };
+
+    private int IncludedCount => _rows.Count(row => !_excluded.Contains(row.RowId));
+
+    private bool InputsSatisfied => Descriptor.Inputs
+        .Where(input => input.Required)
+        .All(input => !string.IsNullOrWhiteSpace(InputValue(input)));
+
+    private Dictionary<string, object?> GridParameters => new(StringComparer.Ordinal)
+    {
+        ["Context"] = new WorkbenchContext
+        {
+            Kind = Kind,
+            Descriptor = Descriptor,
+            Rows = _rows,
+            ExcludedRowIds = _excluded,
+            OnRowChanged = EventCallback.Factory.Create<WorkbenchRow>(this, Replace),
+            OnRowToggled = EventCallback.Factory.Create<string>(this, Toggle),
+        },
+    };
+
+    private static FieldDescriptor DescriptorFor(ActionParameter parameter) => new()
+    {
+        FieldId = parameter.ParameterId,
+        Name = parameter.Name,
+        ValueKind = parameter.ValueKind,
+        Choices = parameter.Choices,
+        Editable = true,
+    };
+
+    private string InputValue(ActionParameter parameter)
+        => _inputs.TryGetValue(parameter.ParameterId, out var value)
+            ? value
+            : parameter.DefaultValue ?? string.Empty;
+
+    private void SetInput(string parameterId, string value) => _inputs[parameterId] = value;
+
+    private void Replace(WorkbenchRow row)
+    {
+        var index = _rows.FindIndex(candidate => string.Equals(candidate.RowId, row.RowId, StringComparison.Ordinal));
+
+        if (index >= 0)
+        {
+            _rows[index] = row;
+        }
+    }
+
+    private void Toggle(string rowId)
+    {
+        if (!_excluded.Remove(rowId))
+        {
+            _excluded.Add(rowId);
+        }
+    }
+
+    private async Task ProposeAsync()
+    {
+        _busy = true;
+        _error = null;
+        _outcome = null;
+
+        try
+        {
+            var collected = Descriptor.Inputs.ToDictionary(
+                input => input.ParameterId,
+                InputValue,
+                StringComparer.Ordinal);
+
+            _proposal = await Api.GetWorkbenchProposalAsync(Kind.Kind, Descriptor.WorkbenchId, collected);
+            _rows = _proposal?.Rows.ToList() ?? [];
+
+            _excluded.Clear();
+
+            foreach (var row in _rows.Where(row => !row.IncludedByDefault))
+            {
+                _excluded.Add(row.RowId);
+            }
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private Task BeginCommitAsync()
+    {
+        if (CommitPolicy.RequiresPrompt)
+        {
+            _confirming = true;
+            return Task.CompletedTask;
+        }
+
+        return CommitAsync();
+    }
+
+    private async Task CommitAsync()
+    {
+        _confirming = false;
+        _busy = true;
+        _error = null;
+
+        try
+        {
+            var commit = new WorkbenchCommit(
+                Descriptor.WorkbenchId,
+                _rows.Where(row => !_excluded.Contains(row.RowId)).ToList(),
+                _excluded.ToList());
+
+            _outcome = await Api.CommitWorkbenchAsync(Kind.Kind, commit);
+
+            if (_outcome.Accepted)
+            {
+                _proposal = null;
+                _rows = [];
+                _excluded.Clear();
+            }
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once, by the shell.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

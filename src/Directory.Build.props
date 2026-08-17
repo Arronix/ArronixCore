@@ -1,0 +1,67 @@
+<Project>
+
+  <!-- Common to every Arronix project. -->
+  <PropertyGroup>
+    <AnalysisLevel>6.0-all</AnalysisLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+
+    <!-- XML documentation comments are needed to enforce IDE0005 on build.
+         CS1591 (missing comment on a public member) stays off: documentation is expected on contracts,
+         not mandated on every member. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+
+    <Configuration Condition="'$(Configuration)'==''">Release</Configuration>
+    <DebugSymbols>true</DebugSymbols>
+  </PropertyGroup>
+
+  <!--
+       Test projects are named '<Project>.Tests', plural. The inherited convention keyed on '.Test'
+       singular, which silently matched nothing here and forced every Arronix test project to add the
+       test SDK packages by hand.
+  -->
+  <PropertyGroup>
+    <TestProject>false</TestProject>
+    <TestProject Condition="$(MSBuildProjectName.EndsWith('.Tests'))">true</TestProject>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TestProject)'=='true'">
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit3TestAdapter" />
+    <PackageReference Include="NunitXml.TestLogger" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(TestProject)'=='true'">
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <!-- Assembly identity. -->
+  <PropertyGroup>
+    <Product>Arronix</Product>
+    <Company>Arronix</Company>
+    <Copyright>Copyright $([System.DateTime]::Now.ToString('yyyy')) Arronix</Copyright>
+    <NeutralLanguage>en</NeutralLanguage>
+    <PathMap>$(MSBuildThisFileDirectory)=./</PathMap>
+  </PropertyGroup>
+
+  <!--
+       Deliberately NOT set here, and each of these is a removal rather than an omission:
+
+       * No RuntimeIdentifier defaulting. The inherited props assigned the host RID to every project that
+         did not name one, which is wrong for Arronix.Client: a Blazor WebAssembly project must build for
+         'browser-wasm', and inheriting 'osx-arm64' produced a quietly incorrect build. Projects that need
+         a RID declare it themselves.
+       * No centralized _output/_temp/_tests paths. Standard bin/obj per project is enough for a solution
+         with no self-contained packaging step, and the shared output directory existed to assemble one.
+       * No crash-reporting symbol-upload block. It named a vendor no part of this platform uses, and every
+         Arronix project carried three lines opting out of it.
+  -->
+
+</Project>

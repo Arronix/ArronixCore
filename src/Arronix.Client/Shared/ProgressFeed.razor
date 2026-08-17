@@ -1,0 +1,115 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the feed is made of them.
+}
+@implements IDisposable
+@inject ActivityLog Log
+@*
+    What the platform is doing, as it does it. Every entry is an event envelope and every envelope is
+    drawn from its own fields: an extension's rendered summary when there is one, the message when there
+    is not, and the completed fraction when the work can measure itself.
+
+    Nothing here recognizes a media kind. The summary was rendered by whoever owns the item, which is the
+    entire reason that contract exists.
+*@
+
+<section class="feed">
+    @if (Entries.Count == 0)
+    {
+        <EmptyState Title="Nothing has happened yet"
+                    Detail="Activity appears here as the platform works." />
+    }
+    else
+    {
+        <ol class="feed-list">
+            @foreach (var entry in Entries)
+            {
+                <li class="feed-entry feed-@KindClass(entry.Kind)">
+                    <time class="feed-time" datetime="@entry.At.ToString("O", CultureInfo.InvariantCulture)">
+                        @entry.At.ToLocalTime().ToString("t", CultureInfo.CurrentCulture)
+                    </time>
+                    <div class="feed-body">
+                        <p class="feed-title">@Headline(entry)</p>
+                        @if (entry.Summary?.Subtitle is { Length: > 0 } subtitle)
+                        {
+                            <p class="feed-subtitle">@subtitle</p>
+                        }
+                        @if (entry.CompletedFraction is { } fraction)
+                        {
+                            <span class="meter-rail">
+                                <span class="meter-fill"
+                                      style="width: @(((int)Math.Round(Math.Clamp(fraction, 0d, 1d) * 100)))%"></span>
+                            </span>
+                        }
+                        @if (entry.Summary?.DeepLink is { Length: > 0 } link)
+                        {
+                            <a class="feed-link" href="@link.TrimStart('/')">Open</a>
+                        }
+                    </div>
+                </li>
+            }
+        </ol>
+    }
+</section>
+
+@code {
+    /// <summary>Gets or sets the greatest number of entries drawn.</summary>
+    [Parameter]
+    public int Limit { get; set; } = 50;
+
+    /// <summary>Gets or sets the media kind to narrow the feed to.</summary>
+    [Parameter]
+    public MediaKindId? Kind { get; set; }
+
+    private IReadOnlyList<EventEnvelope> Entries => Log.Entries
+        .Where(entry => Kind is null || entry.MediaKind == Kind)
+        .Take(Limit)
+        .ToList();
+
+    protected override void OnInitialized() => Log.Changed += OnChanged;
+
+    /// <inheritdoc />
+    public void Dispose() => Log.Changed -= OnChanged;
+
+    private void OnChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    private static string Headline(EventEnvelope entry)
+    {
+        if (entry.Summary?.Title is { Length: > 0 } title)
+        {
+            return title;
+        }
+
+        if (entry.Message is { Length: > 0 } message)
+        {
+            return message;
+        }
+
+        return Describe(entry.Kind);
+    }
+
+    // Closed vocabulary, every member listed, no fall-through arm: an event kind added to the contract
+    // fails this build rather than arriving in a feed as a blank line.
+    private static string Describe(EventKind kind) => kind switch
+    {
+        EventKind.ItemChanged => "An item changed",
+        EventKind.JobProgress => "A job is running",
+        EventKind.JobCompleted => "A job finished",
+        EventKind.HealthChanged => "Health changed",
+        EventKind.QueueChanged => "The queue changed",
+        EventKind.ActivityRaised => "Something happened",
+        EventKind.PluginStateChanged => "An extension changed state",
+        EventKind.ProviderStatusChanged => "A provider changed state",
+    };
+
+    private static string KindClass(EventKind kind) => kind switch
+    {
+        EventKind.ItemChanged => "item",
+        EventKind.JobProgress => "progress",
+        EventKind.JobCompleted => "completed",
+        EventKind.HealthChanged => "health",
+        EventKind.QueueChanged => "queue",
+        EventKind.ActivityRaised => "activity",
+        EventKind.PluginStateChanged => "plugin",
+        EventKind.ProviderStatusChanged => "provider",
+    };
+}

@@ -1,0 +1,233 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; fields and levels come from them.
+#pragma warning disable ARX0016 // Intent contracts are experimental; actions and surfaces are declared by them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; the item is one of them.
+}
+@*
+    One item, at length.
+
+    Every region below is present only because something was declared: the fields because the level
+    declares them, the conditions because the kind declares them, the monitoring control because the host
+    derived that the level can be wanted, the version chooser because it derived that the level's contents
+    compete, and the external links because the extension declared addresses it does not host here.
+
+    Named ItemDetailPanel rather than ItemDetail because the contract layer already has a type by that
+    name, and a component sharing it would make every reference to either one ambiguous.
+*@
+
+<article class="detail">
+    <header class="detail-head">
+        @if (Artwork is { } art)
+        {
+            <img class="detail-art" src="@art" alt="" />
+        }
+
+        <div class="detail-headline">
+            <p class="detail-level">@Level.Name</p>
+            <h1>@Item.Item.Title</h1>
+            <StateIndicator States="States" />
+
+            @if (Item.Progress is { } progress)
+            {
+                <p class="detail-progress">
+                    @progress.Have of @progress.Want wanted · @progress.Total in total
+                    @if (progress.SizeOnDisk > 0)
+                    {
+                        <span> · @FieldValueFormatter.FormatBytes(progress.SizeOnDisk)</span>
+                    }
+                </p>
+            }
+        </div>
+    </header>
+
+    <section class="detail-controls">
+        @if (Item.Affordances.Contains(Affordance.Monitorable))
+        {
+            <MonitorControl Kind="Kind" Level="Level" Item="Item" OnChanged="OnChanged" />
+        }
+
+        @if (Item.Affordances.Contains(Affordance.Selectable))
+        {
+            <VariantSelector Kind="Kind" Level="Level" Item="Item" Variants="Children" OnChanged="OnChanged" />
+        }
+
+        <ActionMenu Kind="Kind.Kind"
+                    Actions="OrderedActions"
+                    Items="[Item.Item.Ref]"
+                    Subject="Item"
+                    Level="Item.Item.Ref.Level"
+                    OnCompleted="OnChanged" />
+    </section>
+
+    @if (ExternalSurfaces.Count > 0)
+    {
+        <section class="detail-external">
+            <h2>Elsewhere</h2>
+            <ul class="detail-links">
+                @foreach (var surface in ExternalSurfaces)
+                {
+                    var address = Resolve(surface);
+                    @if (address is not null)
+                    {
+                        <li>
+                            <a href="@address" target="_blank" rel="noopener noreferrer">@surface.Name</a>
+                        </li>
+                    }
+                }
+            </ul>
+        </section>
+    }
+
+    <section class="detail-fields">
+        <h2>Details</h2>
+        <dl class="field-list">
+            @foreach (var field in DetailFields)
+            {
+                <div class="field-row">
+                    <dt>@field.Name</dt>
+                    <dd>
+                        <FieldValueView Descriptor="field"
+                                        Value="@(Item.Item.Fields.TryGetValue(field.FieldId, out var value) ? value : null)" />
+                    </dd>
+                </div>
+            }
+
+            @if (Item.Item.ExternalIds.Count > 0)
+            {
+                <div class="field-row">
+                    <dt>Known as</dt>
+                    <dd>
+                        @foreach (var external in Item.Item.ExternalIds)
+                        {
+                            <span class="chip chip-quiet">@external.ToString()</span>
+                        }
+                    </dd>
+                </div>
+            }
+
+            @if (Item.Item.Coordinates.Readings.Count > 0)
+            {
+                <div class="field-row">
+                    <dt>Position</dt>
+                    <dd>
+                        @foreach (var reading in Item.Item.Coordinates.Readings)
+                        {
+                            <span class="chip chip-quiet" title="@reading.Confidence.ToString()">
+                                @SpaceName(reading.SpaceId): @reading.Value.ToString()
+                            </span>
+                        }
+                    </dd>
+                </div>
+            }
+        </dl>
+    </section>
+
+    @if (ChildLevel is { } childLevel && Children.Count > 0)
+    {
+        <section class="detail-children">
+            <h2>@childLevel.PluralName</h2>
+            <ItemCollection Kind="Kind"
+                            Level="childLevel"
+                            Items="Children"
+                            AsTable="true"
+                            OnOpen="OnOpenChild" />
+        </section>
+    }
+</article>
+
+@code {
+    /// <summary>Gets or sets the media kind's description.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the level the item belongs to.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required LevelPresentation Level { get; set; }
+
+    /// <summary>Gets or sets the item.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required ItemDetail Item { get; set; }
+
+    /// <summary>Gets or sets what the item contains.</summary>
+    [Parameter]
+    public IReadOnlyList<ItemDetail> Children { get; set; } = [];
+
+    /// <summary>Gets or sets the callback raised when something has changed.</summary>
+    [Parameter]
+    public EventCallback OnChanged { get; set; }
+
+    /// <summary>Gets or sets the callback raised when the user opens one of the contained items.</summary>
+    [Parameter]
+    public EventCallback<ItemDetail> OnOpenChild { get; set; }
+
+    private Uri? Artwork => ItemProjection.Artwork(Level, Item);
+
+    private IReadOnlyList<StateDescriptor> States => ItemProjection.States(Kind.Intent, Item);
+
+    private LevelPresentation? ChildLevel => ItemProjection.ChildLevel(Kind, Item.Item.Ref.Level);
+
+    private IReadOnlyList<FieldDescriptor> DetailFields
+        => ItemProjection.FieldsUpTo(Level, Prominence.Detail);
+
+    private IReadOnlyList<ExternalSurfaceDescriptor> ExternalSurfaces => Kind.Intent.ExternalSurfaces
+        .Where(surface => surface.LevelId == Item.Item.Ref.Level)
+        .ToList();
+
+    // The derived-ability table decides what comes first. An ability the host derived but for which the
+    // level declares no matching action simply contributes nothing, which is why an ability is never
+    // offered as a control that would fail when used.
+    private IReadOnlyList<ActionDescriptor> OrderedActions
+    {
+        get
+        {
+            var byAffordance = Item.Affordances
+                .Select(AffordanceMap.For)
+                .Where(binding => binding.Control is AffordanceControl.Command)
+                .Select(binding => ItemProjection.Action(Level, binding.ConventionalActionId))
+                .OfType<ActionDescriptor>()
+                .ToList();
+
+            var rest = Level.Actions
+                .Where(action => action.Scope is ActionScope.Item)
+                .Where(action => !byAffordance.Any(known => known.ActionId == action.ActionId))
+                .ToList();
+
+            return [.. byAffordance.Where(action => action.Scope is ActionScope.Item), .. rest];
+        }
+    }
+
+    private string SpaceName(string spaceId) => Kind.Shape.CoordinateSpaces
+        .FirstOrDefault(space => string.Equals(space.SpaceId, spaceId, StringComparison.Ordinal))?
+        .Name ?? spaceId;
+
+    private string? Resolve(ExternalSurfaceDescriptor surface)
+    {
+        var address = surface.UriTemplate;
+
+        foreach (var (fieldId, value) in Item.Item.Fields)
+        {
+            var placeholder = $"{{{fieldId}}}";
+
+            if (!address.Contains(placeholder, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var text = FieldValueText.ToEditText(value);
+
+            if (text.Length == 0)
+            {
+                return null;
+            }
+
+            address = address.Replace(placeholder, Uri.EscapeDataString(text), StringComparison.Ordinal);
+        }
+
+        // A template with a placeholder the item has no value for is not offered at all, rather than
+        // being offered as an address that leads nowhere.
+        return address.Contains('{', StringComparison.Ordinal) ? null : address;
+    }
+}

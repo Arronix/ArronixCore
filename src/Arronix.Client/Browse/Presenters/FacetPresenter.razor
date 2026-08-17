@@ -1,0 +1,36 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the items are them.
+}
+@*
+    Partitioning by the values of a field the shape marks groupable. The sections come from the data
+    rather than from a declaration, because the set of values a field actually takes is not something a
+    shape can state in advance.
+*@
+
+@foreach (var section in Sections)
+{
+    <section class="run">
+        <h3 class="run-title">
+            @(section.Label.Length > 0 ? section.Label : "Unspecified")
+            <span class="run-count">@section.Items.Count</span>
+        </h3>
+        <ItemCollection Kind="Context.Kind"
+                        Level="Context.Level"
+                        Items="section.Items"
+                        OnOpen="Context.OnOpen" />
+    </section>
+}
+
+@if (Sections.Count == 0)
+{
+    <EmptyState Title="Nothing to partition" />
+}
+
+@code {
+    /// <summary>Gets or sets what is being drawn.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required PresenterContext Context { get; set; }
+
+    private IReadOnlyList<BrowseSection> Sections => BrowsePlan.Divide(Context);
+}

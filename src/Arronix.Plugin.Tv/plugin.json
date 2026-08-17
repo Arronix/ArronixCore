@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 0,
+  "id": "tv",
+  "name": "Television",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.3 <0.4" },
+  "entryAssembly": "Arronix.Plugin.Tv.dll",
+  "mediaKinds": ["tv"],
+  "identifiers": ["tvdb", "tmdb", "imdb"],
+  "capabilities": [
+    "media-kind",
+    "parsing",
+    "matching",
+    "indexing",
+    "quality",
+    "renaming",
+    "metadata"
+  ],
+  "tokens": [
+    { "name": "{Series Title}", "description": "The library entry's title", "exampleValue": "The Expanse", "isRequired": true },
+    { "name": "{Series CleanTitle}", "description": "The title with punctuation removed", "exampleValue": "The Expanse" },
+    { "name": "{Series TitleYear}", "description": "The title with its year", "exampleValue": "The Expanse (2015)" },
+    { "name": "{Series TitleThe}", "description": "The title with a leading article moved to the end", "exampleValue": "Expanse, The" },
+    { "name": "{season}", "description": "The outer ordinal", "exampleValue": "1" },
+    { "name": "{season:00}", "description": "The outer ordinal, zero-padded to two digits", "exampleValue": "01" },
+    { "name": "{episode}", "description": "The inner ordinal", "exampleValue": "4" },
+    { "name": "{episode:00}", "description": "The inner ordinal, zero-padded to two digits", "exampleValue": "04" },
+    { "name": "{absolute:000}", "description": "The flat ordinal, zero-padded to three digits", "exampleValue": "017" },
+    { "name": "{Air-Date}", "description": "The transmission date", "exampleValue": "2015-12-14" },
+    { "name": "{Episode Title}", "description": "The unit's title", "exampleValue": "CQB", "isRequired": true },
+    { "name": "{Episode CleanTitle}", "description": "The unit's title with punctuation removed", "exampleValue": "CQB" },
+    { "name": "{Season Title}", "description": "The sequence policy record's title", "exampleValue": "Season 1" },
+    { "name": "{Quality Full}", "description": "Quality with its revision", "exampleValue": "WEBDL-1080p Proper" },
+    { "name": "{Quality Title}", "description": "Quality without its revision", "exampleValue": "WEBDL-1080p" },
+    { "name": "{MediaInfo Simple}", "description": "Video codec and audio channels", "exampleValue": "x264 5.1" },
+    { "name": "{MediaInfo Full}", "description": "Video codec, audio codec, channels and languages", "exampleValue": "x264 DTS 5.1 [EN]" },
+    { "name": "{Release Group}", "description": "The group that produced the release", "exampleValue": "NTb" },
+    { "name": "{Custom Formats}", "description": "Custom formats the release matched", "exampleValue": "Dolby Vision" },
+    { "name": "{TvdbId}", "description": "TheTVDB identifier", "exampleValue": "280619" },
+    { "name": "{ImdbId}", "description": "IMDb identifier", "exampleValue": "tt3230854" },
+    { "name": "{Original Filename}", "description": "The file name as it arrived", "exampleValue": "the.expanse.s01e04.1080p.mkv" }
+  ],
+  "policies": {
+    "parsing": ["OrdinalPair", "CalendarDate", "FlatOrdinal", "MultiUnit", "WholeRun", "YearDisambiguation"],
+    "matching": ["ExternalIdentifier", "ExactTitleMatch", "CoordinateResolution", "AliasOverlay", "SpanConstraint"],
+    "quality": ["SourceTier", "ResolutionTier", "RemuxTier", "Cutoff"],
+    "naming": ["OrdinalPattern", "CalendarPattern", "FlatPattern", "MultiUnitStyle", "SequenceFolder"]
+  }
+}

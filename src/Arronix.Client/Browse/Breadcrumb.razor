@@ -1,0 +1,48 @@
+@{
+#pragma warning disable ARX0017 // Wire contracts are experimental; the trail is made of items.
+}
+@*
+    Where the traversal has got to. The root's name is the kind's own plural name and every step after it
+    is an item's title, so the trail reads correctly for a hierarchy nobody wrote this component for.
+*@
+
+<nav class="crumbs" aria-label="Breadcrumb">
+    <ol>
+        <li>
+            <button type="button" class="link" @onclick="@(() => OnNavigate.InvokeAsync(-1))">@RootLabel</button>
+        </li>
+        @foreach (var (item, index) in Trail.Select((item, index) => (item, index)))
+        {
+            <li>
+                <span class="crumb-separator" aria-hidden="true">/</span>
+                @if (index == Trail.Count - 1)
+                {
+                    <span aria-current="page">@item.Item.Title</span>
+                }
+                else
+                {
+                    <button type="button" class="link" @onclick="@(() => OnNavigate.InvokeAsync(index))">
+                        @item.Item.Title
+                    </button>
+                }
+            </li>
+        }
+    </ol>
+</nav>
+
+@code {
+    /// <summary>Gets or sets what the root of the traversal is called.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required string RootLabel { get; set; }
+
+    /// <summary>Gets or sets the items descended into, outermost first.</summary>
+    [Parameter]
+    public IReadOnlyList<ItemDetail> Trail { get; set; } = [];
+
+    /// <summary>
+    /// Gets or sets the callback raised with the index to return to, where minus one is the root.
+    /// </summary>
+    [Parameter]
+    public EventCallback<int> OnNavigate { get; set; }
+}

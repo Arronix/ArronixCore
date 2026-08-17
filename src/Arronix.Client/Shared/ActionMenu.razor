@@ -1,0 +1,157 @@
+@{
+#pragma warning disable ARX0013 // Shape contracts are experimental; subjects are item references.
+#pragma warning disable ARX0016 // Intent contracts are experimental; actions are declared by them.
+#pragma warning disable ARX0017 // Wire contracts are experimental; items and outcomes are them.
+}
+@inject ActionDispatcher Dispatcher
+@*
+    Every command a user can give, drawn from what the level declared and nothing else. An action that is
+    gated on a field the item does not satisfy is not offered; an action that costs something is not run
+    without asking. Both rules live here rather than in each view, because the actions worth asking about
+    are exactly the ones nobody remembers to ask about.
+*@
+
+@if (Offered.Count > 0)
+{
+    <div class="actions">
+        @foreach (var action in Offered)
+        {
+            <button type="button"
+                    class="button @Dispatcher_PolicyClass(action)"
+                    title="@(action.Description ?? action.Name)"
+                    disabled="@_busy"
+                    @onclick="@(() => BeginAsync(action))">
+                @action.Name
+            </button>
+        }
+    </div>
+}
+
+<ErrorNotice Message="@_error" OnDismiss="@(() => _error = null)" />
+
+@if (_outcome is { } outcome)
+{
+    <p class="action-outcome" role="status">@Describe(outcome)</p>
+}
+
+@if (_pending is { } pending)
+{
+    <ConsequencePrompt Action="pending"
+                       Policy="ActionDispatcher.PolicyFor(pending)"
+                       SubjectCount="Items.Count"
+                       OnCancel="@(() => _pending = null)"
+                       OnConfirm="@(values => RunAsync(pending, values))" />
+}
+
+@code {
+    private ActionDescriptor? _pending;
+    private ActionResult? _outcome;
+    private string? _error;
+    private bool _busy;
+
+    /// <summary>Gets or sets the media kind the actions belong to.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindId Kind { get; set; }
+
+    /// <summary>Gets or sets the actions declared for this subject.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required IReadOnlyList<ActionDescriptor> Actions { get; set; }
+
+    /// <summary>Gets or sets the items the actions would be done to.</summary>
+    [Parameter]
+    public IReadOnlyList<MediaItemRef> Items { get; set; } = [];
+
+    /// <summary>Gets or sets the single item whose fields gate action availability.</summary>
+    [Parameter]
+    public ItemDetail? Subject { get; set; }
+
+    /// <summary>Gets or sets the level the actions apply at.</summary>
+    [Parameter]
+    public MediaLevelId? Level { get; set; }
+
+    /// <summary>Gets or sets which scopes are offered here.</summary>
+    [Parameter]
+    public IReadOnlyList<ActionScope> Scopes { get; set; } = [ActionScope.Item];
+
+    /// <summary>Gets or sets the callback raised after an action has been accepted.</summary>
+    [Parameter]
+    public EventCallback OnCompleted { get; set; }
+
+    private IReadOnlyList<ActionDescriptor> Offered => Actions
+        .Where(action => Scopes.Contains(action.Scope))
+        .Where(action => ItemProjection.IsAvailable(action, Subject))
+        .ToList();
+
+    private static string Dispatcher_PolicyClass(ActionDescriptor action)
+        => ActionDispatcher.PolicyFor(action).EmphasisClass;
+
+    private async Task BeginAsync(ActionDescriptor action)
+    {
+        var policy = ActionDispatcher.PolicyFor(action);
+
+        if (policy.RequiresPrompt || action.Parameters.Count > 0)
+        {
+            _pending = action;
+            return;
+        }
+
+        await RunAsync(action, new Dictionary<string, string>(StringComparer.Ordinal));
+    }
+
+    private async Task RunAsync(ActionDescriptor action, IReadOnlyDictionary<string, string> values)
+    {
+        _pending = null;
+        _busy = true;
+        _error = null;
+        _outcome = null;
+
+        try
+        {
+            var request = new ActionRequest
+            {
+                Items = Items,
+                Level = Level,
+                Parameters = values,
+            };
+
+            _outcome = await Dispatcher.InvokeAsync(Kind, action, request);
+
+            if (_outcome.Accepted)
+            {
+                await OnCompleted.InvokeAsync();
+            }
+        }
+        catch (HostUnreachableException)
+        {
+            // The connectivity state now says so across the whole application; saying it again here
+            // would be a second, quieter copy of the same message.
+        }
+        catch (Exception failure)
+        {
+            _error = failure.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private static string Describe(ActionResult outcome)
+    {
+        if (!string.IsNullOrWhiteSpace(outcome.Message))
+        {
+            return outcome.Message;
+        }
+
+        if (!outcome.Accepted)
+        {
+            return "The platform did not take that on.";
+        }
+
+        return outcome.CorrelationId is { Length: > 0 }
+            ? "Accepted. It is running now."
+            : "Done.";
+    }
+}

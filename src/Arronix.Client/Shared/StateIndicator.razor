@@ -1,0 +1,29 @@
+@{
+#pragma warning disable ARX0016 // Intent contracts are experimental; states are declared by them.
+}
+@*
+    Draws a condition this client has never heard the name of. Everything visible comes from the
+    declaration: the name from the extension, the styling from the valence it declared, and the
+    explanation from its own description. Removing the valence would force this component to recognize
+    particular state names, which is exactly the compile-time knowledge of a media kind the design forbids.
+*@
+
+@if (States.Count > 0)
+{
+    <span class="states">
+        @foreach (var state in States)
+        {
+            <span class="state @ToneMap.ClassFor(state.Tone)" title="@(state.Description ?? state.Name)">
+                <span class="state-marker" aria-hidden="true">@ToneMap.MarkerFor(state.Tone)</span>
+                <span class="state-name">@state.Name</span>
+            </span>
+        }
+    </span>
+}
+
+@code {
+    /// <summary>Gets or sets the conditions the subject is in.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required IReadOnlyList<StateDescriptor> States { get; set; }
+}

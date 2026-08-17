@@ -1,0 +1,33 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject HostConnectivity Connectivity
+@*
+    The shell. It is the part of the application that is cached and therefore the part that survives the
+    server going away — which is why the disconnected state is drawn here, over everything, rather than
+    being left to each view to discover for itself.
+*@
+
+<div class="shell">
+    <NavMenu />
+
+    <div class="shell-body">
+        <ConnectionBanner />
+        <main class="shell-main">
+            @Body
+        </main>
+    </div>
+</div>
+
+@if (Connectivity.State is HostState.Unreachable)
+{
+    <HostUnreachable />
+}
+
+@code {
+    protected override void OnInitialized() => Connectivity.StateChanged += OnStateChanged;
+
+    /// <inheritdoc />
+    public void Dispose() => Connectivity.StateChanged -= OnStateChanged;
+
+    private void OnStateChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+}

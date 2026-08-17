@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Host</RootNamespace>
+    <AssemblyName>Arronix.Host</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>The Arronix unified host runtime. Composition root, extension lifecycle, the single scheduler and job queue, health aggregation, the media-kind registry and the storage seam. Never referenced by extensions.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Common\Arronix.Common.csproj" />
+    <ProjectReference Include="..\Arronix.Plugins\Arronix.Plugins.csproj" />
+  </ItemGroup>
+
+  <!--
+       The storage seam deliberately exposes only its interface and its records, so the implementation this
+       milestone ships can be replaced wholesale without any caller moving. Its invariants still have to be
+       asserted, and asserting them through the interface alone would mean the tests could not construct the
+       implementation they are about. This is the narrow, single-assembly exception that keeps the type
+       internal to every consumer that is not its own test suite.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Arronix.Host.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Diagnostics.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" />
+    <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
+    <PackageReference Include="System.Threading.RateLimiting" />
+  </ItemGroup>
+</Project>

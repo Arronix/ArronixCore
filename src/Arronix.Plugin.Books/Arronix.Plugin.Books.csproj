@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Arronix.Plugin.Books</RootNamespace>
+    <AssemblyName>Arronix.Plugin.Books</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>Reference media extension for books. Declares a three-level shape in which the variant level is also the acquisition and file-bearing level, two format families carry independent quality ladders, and a many-to-many grouping axis cuts across the hierarchy. References Arronix.Abstractions and nothing else.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       Invariant 2: a media extension references Arronix.Abstractions and nothing else - no Common, no
+       Host, no Plugins, no Api - and takes no package references at all. Both halves are asserted
+       mechanically by the governance tests, so this file is the declaration they read.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
