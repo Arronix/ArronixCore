@@ -942,3 +942,95 @@ references Abstractions only.* Add family-vocabulary governance after relocation
    spellings (`MULTi`, `VOSTFR`, `German.DL`) move to family recognition data.
 The owner's framing ("shouldn't distributors just be registration plugin based?") is treated as the
 decision on P2-10's direction: family assemblies + open registries. Relocation pass launched 2026-08-18.
+
+---
+
+## Part 9 — Master backlog (2026-08-18)
+
+> The owner's finding: decisions agreed in conversation were being recorded selectively — the register
+> tracked what recent workflows touched, while earlier agreed directions lived only in chat. This part is
+> the reconciliation: **everything agreed in the session thread that is not yet applied**, in one place.
+> Items marked 🆕 were tracked nowhere before this entry. Nothing below is new design — every line was
+> agreed in-thread; citations are to the design docs where they exist.
+
+### A · Catalogers and identifiers (the P2-1 completion — 🆕 all)
+- A1 `ICataloger<TItem> where TItem : IMediaItem` + non-generic host handle (the typed-generic design)
+- A2 `Arronix.Plugin.Catalogers.Tmdb`: vendor base (shared rate limiter per API key, auth, /configuration
+  fetch) + `TmdbMovies`/`TmdbTv` bindings
+- A3 Per-kind binding assemblies inside one plugin package; manifest schema carries bindings; partial
+  install works by construction (no `ReflectionTypeLoadException` class)
+- A4 Role-based reference rule in governance: an integration plugin may reference the media-type
+  assemblies of kinds it declares — and nothing else
+- A5 `IdentifierOrder` as host configuration over installed catalogers — NOTE: the old plugin constant was
+  deleted in the quality migration and nothing replaced it; identifier precedence currently exists nowhere
+- A6 Kind-side stubs are already shipped and dangling: `IdentifierRole`, `BoundIdentifierScheme`,
+  `LevelIdentity.RequiredRoles`, Movies' empty `ExternalIds` "composed by the host from the installed
+  catalogers" — A1–A5 are what they wait for
+- A7 Further vendors (IMDb, TVDB) once the pattern exists; typed catalog mappings replace the JSONPath
+  rows in `MoviesCatalogDeclaration.cs`, which itself moves into the TMDb plugin
+
+### B · Security items dropped from tracking (🆕 all)
+- B1 T-02: `TelemetryEvent.Exception` → typed `ExceptionSummary`; gate `ITelemetryEnricher`/
+  `ITelemetryEventFilter` (currently ungated, process-wide); a filter may not suppress ≥ Error
+- B2 T-01 mitigation: metadata deny-list (`TypeRef`/`MemberRef`/`ImplMap`) at plugin discovery; plus the
+  ARCHITECTURE §11 honesty amendment (in-process gating is defense-in-depth, not a sandbox)
+- B3 `SecretRedactionFilter` fails OPEN for orphaned provider definitions (unloaded plugin → descriptor
+  missing → `SensitiveFieldIds` empty → API keys in plaintext). Fix must change `Redact`/`Merge`/
+  `CarriesSentinel` symmetrically or editing an orphaned definition overwrites its credential
+
+### C · Designed programmes with no implementation (each has a full doc — 🆕 as backlog entries)
+- C1 Acquisition pipeline (`docs/design/acquisition-pipeline.md`): decision engine + `IAcquisitionPolicy`,
+  structured rejection reasons, pending/delay, blocklist, failed→re-search loop, grab idempotency
+- C2 File management (`docs/design/file-management.md`): place-before-displace journal, transfer decision
+  matrix, probed volume-sameness, recycle-bin default-on, self-diagnosing remote path mapping, PUID/PGID
+- C3 Import seam limbo: `IImportPlanner` ruled the only import seam and never built — import currently has
+  no live seam at all
+- C4 Authentication (`docs/design/authentication.md`): identity model, reverse-proxy header trust, API
+  keys, WASM token storage, anonymous manifest assets
+- C5 Observability (`docs/design/observability.md`): support bundles with verified redaction, end-to-end
+  correlation, the concrete redaction rule set, health-notification dedup
+- C6 Plugin distribution (`docs/design/plugin-distribution.md`): package format, ECDSA signing as
+  reconciled, static registry index, the honest unload decision, update feed with `abstractionsVersion`
+- C7 Indexer connectors + Cardigann engine: implement the definition schema, configurable feed, never
+  redistribute the unlicensed definitions; host indexer subsystem (per-indexer health/stats/rate-limit,
+  manual cross-indexer search) — the Prowlarr dissolution made real
+
+### D · Client/runtime consequences of the typed model (🆕 all)
+- D1 Per-kind lazy assembly loading (`BlazorWebAssemblyLazyLoad` keyed off installed kinds)
+- D2 Trimmer rule: definition assemblies published untrimmed or fully rooted — nothing statically
+  references them, so the trimmer is CORRECT to strip them; build-time rule, not annotation
+- D3 Version-skew assertion: client must load the exact definition build the server serves
+- D4 Deliberate prompted reload on kind install/removal (WASM has one ALC, no unload)
+- D5 Upgrade detection: `X-Arronix-Build` on every response + `HostUpgraded` hub message +
+  minimum-compatible-client blocking modal
+- D6 `descriptorSetHash` runtime-tier invalidation (plugin set changes without a new service worker)
+- D7 Consolidate the duplicated `ApiJsonOptions` (Api + Client hand-maintained copies; the health-view
+  drift already happened once) — canonical options live beside the wire DTOs
+
+### E · PWA programme specifics (🆕 as distinct entries)
+- E1 Disconnected/host-unreachable experience FIRST (WP-P04) — works on plain HTTP, fixes the NAS-reboot
+  case for everyone, before service worker and TLS
+- E2 TLS documentation work item: user-supplied certs terminated by Arronix, no ACME client, blessed paths
+  (reverse proxy DNS-01 wildcard, Tailscale Serve), recommend against self-signed (worst on iOS)
+- E3 Icon/asset production: maskable composition, no-alpha apple-touch, 96×96 monochrome badge
+- E4 Web Push BCL-only crypto (~250 lines, RFC 8291 §5 worked example as the unit-test vector) — ships
+  inside `Arronix.Plugin.WebPush` per the de-reservation; register/unregister ride the action seam
+
+### F · Process and preservation (🆕 all)
+- F1 **Scratchpad artifacts the register cites will vanish with the session** — the adversarial critiques,
+  D/E/R audits, typed exhibits, back-compat audit and *arr ORM-history reports live under the session
+  scratchpad. Copy the load-bearing ones into `docs/` (e.g. `docs/history/`) before they are lost
+- F2 Roslyn analyzers for naming/reference rules — offered, deferred "until remediation lands", never
+  revisited; decide adopt-or-drop
+- F3 Doc-provenance convention — "owner decision (date)" vs "working assumption" markers; stated as a rule
+  after the EF Core drift, recorded nowhere until now; adopt in contributor instructions
+- F4 Back-compat audit residual — the non-blocking rows the remediation left; the verify agent's re-audit
+  table names them; sweep and disposition each
+- F5 Naming/tokens design reconciliation — the modifier vocabulary, template-validation diagnostics and
+  truncation elasticity vs what the typed model actually shipped; reconcile the doc or schedule the gap
+
+### G · Already tracked elsewhere (pointer, not duplication)
+P2-6, P2-7 remainder, P2-10 + vocabulary openness (Part 8 extension), TV/Music/Books typed conversion,
+Music/Books quality types, clean-room remainder + LICENSE flip (Part 8), platform services /
+`ApplicationName` default / action seam / storage milestone / QA-16 / CI (previous session list),
+client-as-plugin, web-push-as-plugin, connector plugins, taxonomy docs (Part 4).
