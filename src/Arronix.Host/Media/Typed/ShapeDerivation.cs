@@ -146,11 +146,10 @@ internal static class ShapeDerivation
             FamilyId = draft.FamilyId,
             Name = draft.Name,
             FileExtensions = draft.Extensions,
-            Ladder = draft.Ladder,
-            Unknown = draft.Unknown
+            Quality = draft.Quality
                 ?? throw new InvalidOperationException(
-                    $"The format family '{draft.FamilyId}' declared no ladder, so a file whose quality "
-                    + "cannot be determined has no rung to land on."),
+                    $"The format family '{draft.FamilyId}' declared no quality model, so nothing can read "
+                    + "what one of its files is."),
             CoexistsWithOtherFamilies = draft.CoexistsWithOtherFamilies,
             SupportsEmbeddedMetadata = draft.SupportsEmbeddedMetadata,
             TechnicalFacets = draft.Facets

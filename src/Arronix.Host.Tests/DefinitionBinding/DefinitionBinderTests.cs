@@ -168,7 +168,7 @@ internal sealed class DefinitionBinderTests
 
         var faulty = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
         {
-            RungResolution = parsing.RungResolution with { UnknownTierId = "nope" },
+            RungResolution = parsing.RungResolution! with { UnknownTierId = "nope" },
         });
 
         Register(binder, faulty, out _, out var defects).Should().BeFalse();

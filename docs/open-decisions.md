@@ -747,3 +747,181 @@ evidence says (`Remux-480p`, `Remux-720p`); no collapse to `Bluray-*` for famili
 computed size gate's job, not the label's. **QA-j** (the "1080p Remux over 2160p WEB" shape migrating as a
 cutoff, not an ordering) was presented alongside and the owner proceeded — treated as accepted; reopen
 only with evidence from real profile usage.
+
+---
+
+## Part 7 (continued) — Quality axes: what landed, what did not (gatekeeper closeout, 2026-08-17)
+
+> **Verified against the working tree, not against any session's report.** Where a report and the tree
+> disagree, the tree is recorded. Build 0 warnings / 0 errors; **2,738 passing, 333 skipped, 0 failing**
+> across eight assemblies (Common 420, Host 937, Movies 587 +332 skipped, Plugins 296, Abstractions 177,
+> Architecture 171 +1 skipped, Tv 84, Music 66).
+>
+> The gatekeeper artifacts are new and live under `docs/provenance/`: `differential-report.md` (the oracle
+> ledger), `gate-results.md` (the textual-derivation gate) and `quarantine-manifest.md` (the residual
+> inventory). The first two are **not readable by any implementer session** — one carries per-case oracle
+> answers, the other carries similarity values.
+
+### Work packages, verified
+
+| WP | State | Evidence in the tree |
+|---|---|---|
+| QA-1 Framework core | **landed** | `Abstractions/Quality/` — 46 public types, all `[Experimental(ARX0021)]` |
+| QA-2 Attributes + derivation | **landed** | `AxisAttribute.cs`; `Host/Engines/Quality/QualityAxisReader.cs` |
+| QA-3 Type seams | **landed** | `IQualityFacts`, `IQualityType{,OfT}`, `IQualityTypeBuilder`, `ReleaseEvidence`, `MediaProbe` |
+| QA-4 Policy core tier | **landed** | `QualityPolicy.For/Compare/Admits/IsGoodEnough/Decide` implemented, not merely declared |
+| QA-5 Policy prose renderer | **partial** | `QualityPolicy.Describe()` exists; the separate `QualityPolicyDescription.cs` does not. **Carries a known defect** — see below |
+| QA-6 Size model | **landed** | `SizeExpectation.cs`, `Families/VideoSizeModel.cs`, all five §4 cross-checks re-run as assertions |
+| QA-7 Video family | **landed** | `Families/{VideoQuality,VideoQualityType,VideoLabels,VideoDefaults}.cs` — 12 axes, §7's 16-row table, §5.1's policy |
+| QA-8 Audio / written / spoken families | **not started** | `Families/` holds video only |
+| QA-9 Builder surgery | **landed** | `Ladder` → `Quality<>`/`RefinedBy<>`; `FormatFamily.Quality` added, "a ladder or a model, never both and never neither" enforced |
+| QA-10 Host evaluator | **landed** | `Host/Engines/Quality/` — 11 files |
+| QA-11 Parity harness | **NOT as specified** | `Host.Tests/Quality/LadderAxisParityTests.cs` and `docs/design/quality-divergences.md` **do not exist**. What exists is `Movies.Tests/Quality/QualityDivergenceRegister.cs` — 23 of 220 rows, capped at 30 and ceilinged at 15% |
+| QA-12 Movies switch | **landed** | `MoviesLadder.cs` deleted; `MoviesParsing.cs` 472 → 261; `MoviesVideoRefinement.cs` added |
+| QA-13 Token binding | **not started** | `ShapeTokenDeriver.cs` still reads `file.Quality` and `QualityRevision` |
+| QA-14 User axes | **not started** | no `UserAxis.cs` |
+| QA-15 Analyzer rules | **substituted** | no `Arronix.Analyzers` project. Replaced by tests — see below |
+| QA-16 Old surface deletion | **not started, correctly** | Stage E; every ladder type still has consumers |
+| QA-17 Host scanner additions | **landed, by rewrite rather than by edit** | new `Host/Engines/Parsing/Evidence/` (14 files, 252 tests). The three files QA-17 named for editing were **left in place** |
+| QA-18 Live preview + profile editor | **not started** | no `QualityPreview.cs` |
+| QA-19 Facet tier | **landed** | `FacetScoring.cs`, `FacetScore.cs`, bounded at 10 facets |
+| QA-20 Per-kind refinement | **landed** | `IQualityRefinement.cs`, `MoviesVideoRefinement.cs` |
+| QA-21 Language axis wiring | **partial** | `LanguageClaim.cs` and `EvidenceLanguageScanner.cs` land; the §2.1 `Languages` **axis** does not compile — see D-9 |
+
+### Two sequencing violations, recorded because both were gates
+
+**QA-11 was the gate on QA-12 and it was not built.** Its own note reads *"Stage C, and the gate on
+deleting anything."* `MoviesLadder.cs` and the 101 rung rows were deleted without a parity harness ever
+running. The substitute — a 23-row divergence register with a cap and a percentage ceiling — is a genuine
+and well-argued instrument, but it measures the new model against the *corpus*, not against the ladder,
+which is what parity meant. **Nothing is proposed to undo here**: the ladder is gone and rebuilding it to
+measure it would be worse. Recorded so the register is not later read as evidence that parity was checked.
+
+**QA-15 was scheduled to ship before QA-7 and shipped after it.** Its note reads *"Ships before QA-7, or
+the guarantees are load-time again."* QA-7 landed first, so `ARXQ001`–`ARXQ004` were load-time-only for
+the whole period. Closed now, partially — see the next section.
+
+### D-9 · Two declared axes do not compile — needs an owner decision
+
+`quality-axes.md` §2.1 declares a `Distributor` axis and a `Languages` axis. Neither can exist:
+
+- **`Distributor`** would be `Evidence<Distributor>` over a wrapper struct. That satisfies the
+  `TValue : struct` constraint but is absent from §1.3's derivation table (enum / `int` / `double` /
+  `EvidenceSet<TEnum>`), so it has no `AxisForm` and no members. The wrapper solves the *constraint*
+  problem and not the *derivation* problem.
+- **`Languages`** would be `EvidenceSet<Language>`, and `EvidenceSet<T>` requires `struct, Enum` while
+  `Arronix.Abstractions.DTOs.Language` is a **class**.
+
+**Consequence.** "Prefer a German dub" and "refuse a dub" have no home in any profile. The German-remux
+rule still works, because `ReleaseEvidence.Languages` is readable inside `Read` — which is where §6.3 puts
+it — but that is a family rule, not a user-facing axis. **Options:** (a) add an open-vocabulary axis form
+to §1.3; (b) make `Language` an enum-backed value for axis purposes; (c) drop both axes from §2.1 and say
+so. Confirmed independently by three sessions (R16/R17 and the migration pass).
+
+### Defects recorded against the tree
+
+| # | Defect | Where |
+|---|---|---|
+| 1 | **`QualityPolicy.Describe()` renders raw magnitudes on a descending axis** — *"the richest generation, and beyond 1 re-encodes it stops mattering"* — which is exactly what §3.2's honest-prose note forbids | QA-5's, pinned only at the level it currently reaches |
+| 2 | **§7 row 12 over-fires.** `CameraCapture` + `Audio ≥ LossyStereo` → `TELESYNC`; nothing emits `AudioPresentation.RoomCapture`, so *any* camera capture stating any audio codec renders `TELESYNC` | registered against corpus row q005 |
+| 3 | **`ReleaseEvidence` cannot tell a codec named as a *format* from one named as an *encoder***, so a dubbed disc naming `x265` and one naming `HEVC` are indistinguishable before `Read` sees them | the only one of the 23 registered divergences that is a finding about the model rather than about scanner coverage (q110, q120) |
+| 4 | **`ResolutionClaimForm` has no "not stated" member.** `LineCount` is 0, so a record with `StatedResolution == null` reads as claiming `LineCount` | `ReleaseEvidence.StatedResolutionForm` |
+| 5 | **The rewritten evidence scanner reads fewer spellings than the tag scanner it replaces** — it was built against a 30-row sample and the Movies corpus is 220 | 21 of the 23 registered divergences; each closes by adding a phrase to `EvidenceVocabulary` |
+| 6 | **`Host.Tests/Engines/QualityAxisFixtures.cs` is a second declaration of the video taxonomy.** Its own doc says its assertions are re-pointable at the real family without rewriting an expectation — that is now possible | 94 tests would move onto the shipped `VideoQualityType` and the fixture would delete |
+| 7 | **`IQualityBuilder<TItem>` has no production consumer** — only a `Host.Tests` fixture. It *produces* `TierDefault`/`RungFallback`, which QA-16 owns | recommend it dies with them, not before |
+
+### New this pass — the two negative-gate failures
+
+The clean-room plan's step 6a sets a **100% hard gate** on negative cases. It **fails**, on four cases
+across two spec rules. Full detail in `docs/provenance/differential-report.md` §4.
+
+- **NEG-18 — `EvidencePackagingScanner` over-claims disc-image packaging.** `COMPLETE.BluRay.BDRip`,
+  `…BRRip`, `…HDDVDRip` each claim `disc-image` even though the same title states a re-encode. Three of
+  four cases fail. Over-claiming is the failure direction §3.3 singles out as the worse one: a false
+  disc-image claim promotes a re-encode into the library as an untouched disc.
+- **NEG-14 — `EvidenceSourceScanner` claims a source from a title word.** `Bluray Morning 1977 AVC`. One
+  of six cases.
+
+**Neither was fixed here, and the reason is a rule rather than a preference.** `clean-room-plan.md` §3.1
+states that no session holds two roles, and the gatekeeper session has read the quarantined originals and
+executed the oracle. Writing into `Engines/Parsing/Evidence/` from here would put dirty-side authorship
+inside the rewritten artifact. What crosses back is what §3.1 control 5(b) and §4.3 prescribe — a boolean
+and a spec-paragraph id.
+
+### Governance added, and which mechanism was chosen
+
+`ARXQ001`–`ARXQ006` were scheduled as Roslyn analyzer rules (QA-15). **Tests were chosen over an
+analyzer**, and the reason is constraint rather than judgment: an analyzer needs an `Arronix.Analyzers`
+project, and adding a project means editing `Arronix.sln`, which this pass may not do.
+
+| New fixture | Rules | Scope |
+|---|---|---|
+| `Architecture.Tests/Contracts/QualityAxisDeclarationTests.cs` | `ARXQ001`–`ARXQ004` | reflects over every quality-facts type in the contract assembly. New coverage: the host's `QualityAxisReader` restates these rules **at load time**, so a family nobody registers was checked by nothing |
+| `Host.Tests/Engines/QualityPolicyGovernanceTests.cs` | `ARXQ005`, `ARXQ006`, plus the facet bound | constructs every shipped family's **real** default policy. New coverage: `QualityPolicy.For` only fires when somebody calls it |
+
+Both sweeps carry a non-vacuity guard, because a reflection sweep that finds nothing passes every rule
+under it. 9 tests, all green. `ARXQ005` and `ARXQ006` were already pinned against a *fixture* in
+`Abstractions.Tests/Quality/QualityPolicyDeclarationTests.cs`; what was missing was any check on the
+family that ships.
+
+**The gap an analyzer would close and these tests do not: a family compiled in somebody else's plugin.**
+Recorded rather than papered over.
+
+---
+
+## Part 8 — Quality axes implementation: closeout (2026-08-18)
+
+**Verified by the orchestrator:** build 0/0; **2,738 passing, 333 skipped, 0 failing** (skips DOWN from
+336 — the migration retired D-1's two ignored tests and the corpus pin, superseded by the policy model).
+The quality-axes model is SHIPPED: 46 contract types (ARX0021), policy engine with the provenance clamp,
+evidence pipeline, Movies migrated, ladder and rung table deleted. D-1 is closed by supersession.
+
+**Oracle discipline held: 1 of 12 budgeted runs used**, logged in `docs/provenance/differential-report.md`.
+Candidate ahead of the superseded scanner on every dimension (codec 99.39% vs 50.76%). Textual-derivation
+gate PASSES for the rewritten expressions (longest 34 chars; no fingerprint match) —
+`docs/provenance/gate-results.md`.
+
+**A moment worth recording: the gatekeeper refused to fix its own findings.** The negative gate fails on
+four cases (one scanner over-claim class, one corpus-generator mis-attachment affecting 706 rows), and the
+gatekeeper — having read the quarantined originals and executed the oracle — declined to write into the
+rewritten scanners, because that would put dirty-side authorship inside the clean-room artifact. What
+crosses back is a boolean and spec-paragraph ids. The discipline worked exactly as designed, at the cost
+of a follow-up: **a fresh quarantined implementer fixes NEG-18/NEG-14 from spec ids alone.**
+
+**License flip: BLOCKED — precise remainder recorded by the gatekeeper:**
+- `src/`: 17 class-(c) files — `ParseEngineFixtures.cs` (a complete untouched second copy of the ladder,
+  rung table and 16 expressions), `MoviesParsing.cs` still carrying 21 expressions incl. the ~442-char
+  edition alternation and ~491-char disc probe, `MoviesCorpus.cs` 249 rows, six ported fixtures (three
+  containing the literal `RADARR`), 53 citation sites.
+- `docs/`: 532 citation sites across 17 documents.
+- **Step 0 (source quarantine relocation) was never executed** — discipline was enforced by instruction +
+  output testing, not removal; SHA-256 manifest now at `docs/provenance/quarantine-manifest.md`.
+- **`NOTICE` missing: the Munkres MIT attribution obligation is unmet TODAY, independent of the GPL
+  question.** This is the single most urgent licensing item.
+- QA-11 (parity harness) never ran though it was styled "the gate on deleting anything" — what exists is a
+  23-row divergence register; do not later read it as parity.
+
+### P2-10 · Format-family vocabulary landed in the core (owner finding, 2026-08-18)
+
+`Arronix.Abstractions/Quality/Families/` contains the entire video family (`VideoQuality`,
+`VideoQualityType`, `VideoDefaults`, `VideoLabels`), and `Arronix.Host/Engines/Parsing/Evidence/` carries
+video token vocabularies; `ReleaseEvidence` itself has video-only members (`ScanType`). Root cause is a
+genuine bind: "the family type is shared by Movies and TV" + "plugins reference Abstractions only" forced
+family types INTO Abstractions — compounded by an orchestrator brief mislabeling the scanners
+"media-agnostic" (the survey's quality-parsing-is-identical observation was family-internal, wrongly
+generalized). Governance never caught it: `MediaVocabulary.cs` polices media nouns, not family terms.
+
+**Proposed fix (awaiting owner decision): family assemblies** — `Arronix.Family.Video` owning the quality
+type, defaults, labels and scanner vocabularies; host keeps the agnostic lexer/merge; `ReleaseEvidence`
+loses video members to family-extensible evidence. Requires the third role-based reference-rule extension:
+*a media-kind plugin may reference the family assemblies of the families it declares; a family assembly
+references Abstractions only.* Add family-vocabulary governance after relocation.
+
+### Next iteration queue (ordered)
+
+1. `NOTICE` file (MIT/Munkres) — cheap, overdue, independent of everything else
+2. Owner decision on P2-10 → family-assembly relocation pass
+3. Fresh quarantined implementer: NEG-18/NEG-14 fixes + the remaining 21 `MoviesParsing.cs` expressions
+4. Corpus-generator fix (the 706 mis-attachments) + replace `MoviesCorpus.cs`/fixture rows
+5. Step 0 retro-execution + citation scrub (53 src / 532 docs sites)
+6. Then, and only then: the license flip — owner's action

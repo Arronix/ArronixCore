@@ -137,7 +137,7 @@ internal sealed class ParseEnginePredicateTests
         var parsing = ParseEngineFixtures.Parsing();
         var broken = parsing with
         {
-            RungResolution = parsing.RungResolution with
+            RungResolution = parsing.RungResolution! with
             {
                 Rules =
                 [
@@ -157,7 +157,7 @@ internal sealed class ParseEnginePredicateTests
         var parsing = ParseEngineFixtures.Parsing();
         var broken = parsing with
         {
-            RungResolution = parsing.RungResolution with
+            RungResolution = parsing.RungResolution! with
             {
                 Rules = [ParseEngineFixtures.R("dangling", "No-Such-Tier")],
             },
@@ -189,7 +189,7 @@ internal sealed class ParseEnginePredicateTests
         var parsing = ParseEngineFixtures.Parsing();
         var broken = parsing with
         {
-            RungResolution = parsing.RungResolution with
+            RungResolution = parsing.RungResolution! with
             {
                 Rules =
                 [
@@ -212,7 +212,7 @@ internal sealed class ParseEnginePredicateTests
         var parsing = ParseEngineFixtures.Parsing();
         var broken = parsing with
         {
-            RungResolution = parsing.RungResolution with
+            RungResolution = parsing.RungResolution! with
             {
                 Rules =
                 [

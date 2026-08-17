@@ -2,11 +2,13 @@
 #pragma warning disable ARX0016 // Intent contracts are experimental; a media extension is their intended implementer.
 #pragma warning disable ARX0019 // Definition contracts are experimental; a media extension is their intended declarer.
 #pragma warning disable ARX0020 // Media contracts are experimental; a media extension is their intended implementer.
+#pragma warning disable ARX0021 // Quality contracts are experimental; a media extension is their intended declarer.
 
 using System.Linq;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Quality.Families;
 using Arronix.Abstractions.Shape;
 using Arronix.Plugin.Movies.Definition;
 
@@ -56,12 +58,17 @@ public sealed class Movies : IMediaType<Movie>
         b.Files.OnePerItem();
 
         // -- format family -----------------------------------------------------------------------------
-        // Movies are video and nothing else, so neither coexistence nor embedded metadata is stated.
+        // Movies are video and nothing else, so neither coexistence nor embedded metadata is stated. The
+        // quality model belongs to the family rather than to this kind: a stream download at 1080 lines is
+        // the same thing whether the work is a film or an episode, so television shares this exact model
+        // and the two cannot drift. What a movie release says that no other kind's does is one refinement
+        // class, and it is the second call rather than a paragraph of this one.
         b.Format("video", "Video")
          .Extensions(
              ".mkv", ".mp4", ".avi", ".m4v", ".mpg", ".mpeg", ".mov", ".wmv", ".ts", ".m2ts", ".webm",
              ".divx", ".flv", ".vob", ".ogv", ".ogm", ".rmvb", ".m4p", ".mk3d", ".iso", ".img")
-         .Ladder(MoviesLadder.Tiers, MoviesLadder.Unknown)
+         .Quality<VideoQuality, VideoQualityType>()
+         .RefinedBy<VideoQuality, MoviesVideoRefinement>()
 
          // An edition is a property of a FILE that only a movie has: not a property of a movie, because a
          // file is not an item, and not host-general, because an edition is a movie noun. It rides as an
@@ -294,13 +301,6 @@ public sealed class Movies : IMediaType<Movie>
          .Subject(WorkbenchSubject.LibraryItems)
          .Input("collection", "Collection")
          .Commit("Add", Consequence.Safe);
-
-        // -- quality beyond the ladder -----------------------------------------------------------------
-        // The pre-release sources and the bare disc rung have no resolution axis at all, so a stated
-        // resolution is a claim about the camera rather than about the film.
-        b.Quality
-         .IgnoreStatedResolutionFor("cam", "ts", "tc", "wp", "dvd")
-         .FallbackRoundUp();
 
         // -- recomputations ----------------------------------------------------------------------------
         // Two miniature expression grammars, their parsers and their validation rules cease to exist.

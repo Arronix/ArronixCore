@@ -94,4 +94,12 @@ internal static class ExperimentalContracts
     /// above, so this area takes the next free identifier.
     /// </summary>
     internal const string Media = "ARX0020";
+
+    /// <summary>
+    /// Quality-axes contracts (<c>Arronix.Abstractions.Quality</c>): typed evidence, the axis vocabulary,
+    /// the family's quality type and its builder, the kind-blind point, and the user-owned policy that
+    /// ranks, admits and decides over it. The 0.1.0 <c>IQualityModel</c> shares the namespace and is not
+    /// part of this area: it is stable, unmarked, and superseded rather than amended.
+    /// </summary>
+    internal const string Quality = "ARX0021";
 }

@@ -374,7 +374,7 @@ public sealed class TvShapeDeclarationTests
                 family.Ladder.Select(tier => tier.Rank).Distinct().Count(),
                 Is.EqualTo(family.Ladder.Count));
             Assert.That(
-                family.Ladder.Any(tier => tier.Name == family.Unknown.Name),
+                family.Ladder.Any(tier => tier.Name == family.Unknown!.Name),
                 Is.False,
                 "the unknown tier must not be a rung on the ladder");
             Assert.That(family.FileExtensions, Does.Contain(".mkv"));

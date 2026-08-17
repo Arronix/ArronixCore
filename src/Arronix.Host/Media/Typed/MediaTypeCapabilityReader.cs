@@ -1,8 +1,14 @@
+using System.Linq;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Plugins;
+using Arronix.Abstractions.Shape;
 using Arronix.Plugins.Registration;
 
-// The typed media surface is experimental; this file is the host's side of pricing one.
+// The typed media and quality surfaces are experimental; this file is the host's side of pricing one.
+#pragma warning disable ARX0013
+#pragma warning disable ARX0014
 #pragma warning disable ARX0020
+#pragma warning disable ARX0021
 
 namespace Arronix.Host.Media.Typed;
 
@@ -21,19 +27,39 @@ namespace Arronix.Host.Media.Typed;
 /// the model would be checking a guess.
 /// </para>
 /// </remarks>
-public sealed class MediaTypeCapabilityReader : IMediaTypeCapabilityReader, IMediaTypeBinder<MediaKindModel>
+public sealed class MediaTypeCapabilityReader : IMediaTypeCapabilityReader, IMediaTypeBinder<IMediaType>
 {
     /// <inheritdoc />
+    /// <remarks>
+    /// The sections price themselves; the one demand that does not live in a section is quality, because a
+    /// family that reads its files onto typed axes declares its model on the <i>structure</i> rather than in
+    /// an engine-input section. Pricing it from the section alone would let a kind ship a whole quality
+    /// model against a manifest that never asked for the privilege.
+    /// </remarks>
     public IReadOnlyList<DefinitionSectionRequirement> Requirements(IMediaTypeRegistration registration)
     {
         ArgumentNullException.ThrowIfNull(registration);
 
-        return DefinitionCapabilityRules.Requirements(registration.Bind(this));
+        var media = registration.Bind(this);
+        var requirements = DefinitionCapabilityRules.Requirements(media.Model).ToList();
+
+        var declaresAModel = media.Shape.FormatFamilies.Any(family => family.Quality is not null);
+        var alreadyPriced = requirements.Any(
+            requirement => requirement.Capability == Capability.Quality);
+
+        if (declaresAModel && !alreadyPriced)
+        {
+            requirements.Add(new DefinitionSectionRequirement(
+                Capability.Quality,
+                $"{nameof(MediaShape)}.{nameof(MediaShape.FormatFamilies)}.Quality"));
+        }
+
+        return requirements;
     }
 
     /// <inheritdoc />
-    public MediaKindModel Bind<TItem, TType>()
+    public IMediaType Bind<TItem, TType>()
         where TItem : IMediaItem
         where TType : IMediaType<TItem>
-        => MediaTypeModelFactory.Build<TItem, TType>().Model;
+        => MediaTypeModelFactory.Build<TItem, TType>();
 }

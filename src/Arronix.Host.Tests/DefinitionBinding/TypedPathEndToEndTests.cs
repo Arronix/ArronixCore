@@ -230,8 +230,14 @@ internal sealed class TypedPathEndToEndTests
         registered.Parser!.MediaKind.Should().Be(Movies.Kind);
         registered.Matcher!.MediaKind.Should().Be(Movies.Kind);
         registered.QueryPlanner!.MediaKind.Should().Be(Movies.Kind);
-        registered.Quality!.MediaKind.Should().Be(Movies.Kind);
         registered.Naming!.MediaKind.Should().Be(Movies.Kind);
+
+        // The rung-shaped quality seam is deliberately empty here, and its absence is the assertion. This
+        // kind's family reads its files onto typed axes, and a seam whose whole vocabulary is a rung name
+        // cannot serve one — so the host declines to build it rather than building one that answers wrongly.
+        // What reads quality for this kind is the family's own model, hanging off the derived structure.
+        registered.Quality.Should().BeNull();
+        registered.Shape.Declaration.FormatFamilies.Should().OnlyContain(family => family.Quality != null);
     }
 
     /// <summary>

@@ -1,6 +1,6 @@
 # Arronix.Abstractions API Stability Policy
 
-## Version: 0.3.0
+## Version: 0.8.0
 
 This document defines the stability guarantees and versioning policies for the `Arronix.Abstractions` contract layer.
 
@@ -145,11 +145,18 @@ identifier is never reused for something else.
 | `ARX0017` | Wire contracts | `Arronix.Abstractions.Wire` |
 | `ARX0019` | Declarative media kinds | `Arronix.Abstractions.Definition` |
 | `ARX0020` | Typed media model | `Arronix.Abstractions.Media` |
+| `ARX0021` | Quality axes | `Arronix.Abstractions.Quality` |
 
 `ARX0018` is unassigned: two in-flight designs contend for it and neither has landed, so the
 declarative-media-kind area took the next uncontended identifier rather than racing for the contested
 one. Identifiers are permanent either way; `ARX0018` remains available to whichever contender lands
 first.
+
+`ARX0021` shares the `Arronix.Abstractions.Quality` namespace with the 0.1.0 `IQualityModel`, which is
+**not** part of the area: it is stable, unmarked, and superseded rather than amended. Its successors are
+`IQualityType` — what a format family detects — and `QualityPolicy` — what a user prefers. Those are
+different questions, and keeping one interface that answered both is what made every ranking decision the
+kind's rather than the user's. `IQualityModel` is removed when its last implementer converts, not before.
 
 `ARX0015` covers the whole provider namespace. The seven v0.2.0 provider contracts that once shared it
 with the experimental surface were **deleted** — see the 0.4.0 entry below — so every type in
@@ -236,6 +243,107 @@ SemVer 2.0.0 §4. Below 1.0.0 the list above is a description of what to write d
 not a list of what to avoid.
 
 ## Version History
+
+### 0.8.0
+
+**Released**: [Current]
+
+**The first format family lands on the axes model, and the ladder leaves the movie kind.** `ARX0021` gains
+`Arronix.Abstractions.Quality.Families` — the same contract area, because a consumer that opts in to the
+axes model opts in to the families it ships with, and splitting the identifier would make one opt-in into
+two for no boundary anybody can point at.
+
+- **The video family**: `VideoQuality` (twelve axes), `VideoQualityType` (how evidence becomes typed
+  readings), `VideoLabels` (the community's words for a point), `VideoDefaults` (the opinion this platform
+  ships), `VideoSizeModel` (what a file at one point should weigh, computed rather than tabulated), and the
+  closed axes `VideoOrigin`, `DynamicRange`, `AudioPresentation`, `VideoCodec`, `Repackaging`, `Packaging`,
+  `VideoFlaw`. It belongs to a format family rather than to a media kind because quality is a property of a
+  *file* and a file belongs to a family: every kind whose files are video shares this one model and the two
+  therefore cannot drift.
+- **The shared token vocabulary** moves into the contract assembly: `EvidenceSourceTokens`,
+  `EvidenceVideoCodecTokens`, `EvidenceAudioTokens`, `EvidenceDynamicRangeTokens`, `EvidenceFlawTokens`,
+  `EvidencePackagingTokens`, `EvidenceDistributorTokens`. A scan produces these and a family's `Read`
+  interprets them, so they are a contract between the two halves and not one half's private detail — two
+  copies of a vocabulary is exactly the silent-divergence failure this project keeps refusing.
+- **The two reconciliation rules** move with it: `EvidenceMerge` and `EvidenceClaim<TValue>`. Between
+  sources the stronger wins; within one source the most specific claim wins and the lowest among equals.
+  `Read` owns both, and `Read` is in this assembly.
+
+**Breaking, within the experimental areas:**
+
+- `ReleaseEvidence.DynamicRangeToken` becomes `ReleaseEvidence.DynamicRangeTokens`, a list. A release
+  genuinely carries two dynamic-range formats at once and the axis that consumes them is set-valued; a
+  single slot forced the scan to pick a winner and discarded the other before anything could read it.
+- `FormatFamily.Ladder` and `FormatFamily.Unknown` stop being required and `FormatFamily.Quality` arrives.
+  A family declares a quality model **or** a ladder, never both and never neither. A sentinel "unknown"
+  rung exists only because a ladder has nowhere else to put "we do not know"; an axis reading carries its
+  own typed absence, so a family with a model declares no sentinel at all.
+- `IFormatFamilyBuilder.Ladder` is replaced by `Quality<TFacts, TType>` and `RefinedBy<TFacts, TRefinement>`.
+- `ParseDeclaration.RungResolution` becomes optional. Its whole job was to collapse evidence into one of a
+  fixed set of names before anything could reason about it; where there is nothing to collapse evidence
+  *to*, there is no table.
+- `CorpusCase.ExpectedTierId` becomes `CorpusCase.ExpectedQuality`. It states a rung name for a kind that
+  still ranks by a ladder and the family's own rendering for a kind that reads onto axes — the same string
+  in the community's vocabulary, differing in whether it was chosen from a fixed list or derived from the
+  evidence.
+- `DefinitionEngineCatalog.Quality` may answer `null` for a definition it has nothing to say about, which
+  is what a kind whose families read onto typed axes gets: a rung-shaped seam cannot serve one, and saying
+  "nothing here" is better than an evaluator that answers wrongly.
+
+### 0.7.0
+
+**Released**: 0.7.0
+
+**New contract area — Quality axes** (`ARX0021`, `Arronix.Abstractions.Quality`), per
+`docs/design/quality-axes.md`. Quality stops being a rung on a ladder and becomes a point in a small space
+of typed, orderable **axes**: the format family declares the axes and reads evidence onto them, the **user**
+owns a policy that says which axes matter and in what order, and every ranking, cutoff, upgrade,
+equivalence and label is a function of those two. The single most important line in the area is a member
+that is *absent*: `IQualityType` cannot compare two points, because that question has no answer without a
+policy.
+
+- **Evidence**: `Evidence<TValue>`, `EvidenceSet<TValue>`, `EvidenceSource`. Not `TValue?`, because a
+  nullable carries no provenance — and provenance decides trust — and because a nullable makes "absent"
+  comparable by accident. An empty set and an absent set are different claims: "we looked and found
+  nothing" versus "we did not look".
+- **Axis declaration**: `[Axis]`, `AxisOrdering`, `AxisForm`, `QualityAxis`, `QualityAxisId`,
+  `FormatFamilyId`. The attribute states a fact about one property in isolation and never takes an
+  identifier string; anything relating two axes is on a builder or in a policy.
+- **The kind-blind value**: `AxisValue`, `AxisReading`, `QualityPoint`. A point carries no rank, no weight
+  and no name — a name is a rendering and a rank is a policy's opinion. An `AxisValue` is identified by the
+  point it names, never by how it is spelled.
+- **Seams**: `IQualityFacts`, `IQualityType<TFacts>` (static-abstract authoring seam),
+  `IQualityType` (the runtime model the host and client hold), `IQualityTypeBuilder<TFacts>`,
+  `IQualityRefinement<TFacts>` (a media kind's own dialect, contributed after the family has read).
+- **Evidence input**: `ReleaseEvidence`, `MediaProbe`, `ResolutionClaimForm`, `ScanType`, `LanguageClaim`.
+  Strings enter `Read` and typed axes come out; that is the whole of the parse boundary.
+- **Policy**: `QualityPolicy`, `IQualityPolicyBuilder` with `IAxisPreferenceBuilder`,
+  `IFacetScoreBuilder` and `IAxisRequirementBuilder`; `AxisPreference`, `PreferenceUnknown`,
+  `PreferenceUnknownMode`, `AxisRequirement`, `RequirementMode`, `UnknownEvidence`, `UnknownEvidenceMode`,
+  `CutoffPredicate`, `AxisFloor`, `FacetScoring`, `FacetScore`, `QualityJudgment`, `Eligibility`,
+  `GrabDecision`, `GrabVerdict`.
+- **Rendering and size**: `QualityLabelRule`, `QualityLabelDetail`, `SizeExpectation`, `SizeVerdict`.
+
+Three guarantees the area is built around, each with a test that would go red if it were lost:
+
+1. **A preference cannot cycle.** `PreferenceUnknown` offers `Lowest` and `Assume` and nothing else. A
+   third mode that let a preference *skip* an axis would make comparison lexicographic-with-skipping, which
+   is not transitive — three points silent on three different axes produce a strict preference cycle, and
+   because a grab happens whenever the comparison says "better", a cycle is an unbounded download loop.
+   `UnknownEvidence` keeps all four modes, because a requirement and a floor order nothing.
+2. **A claim never outranks a measurement.** The provenance rule lives on `QualityPolicy.Decide` and not on
+   `Compare`: it is pairwise and asymmetric, so folding it into the ordering would destroy the transitivity
+   everything else rests on. Without it, a title over-claiming a resolution we have since measured is
+   re-grabbed on every pass, forever.
+3. **A bonus can never overturn an ordering.** `FacetScoring` is consulted only when the precedence list
+   leaves a tie, cannot refuse anything, and is bounded — which is what replaces token scoring and its
+   magic rejection value.
+
+**Not breaking.** Everything in this entry is an addition. `IQualityModel`, `QualityTier`, `CutoffPolicy`,
+`QualityRevision`, `ProperHandling`, `QualityDeclaration`, `RungFallback`, `TierDefault` and
+`CrossFamilyRule` are untouched and remain the live path: each still has consumers in the host and in the
+media extensions, and under the pre-1.0 policy a contract is deleted when its last consumer converts, which
+is a later milestone and not this one.
 
 ### 0.6.0
 

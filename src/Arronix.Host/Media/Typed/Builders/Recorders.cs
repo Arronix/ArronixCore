@@ -1,16 +1,18 @@
 using System.Linq;
 using System.Linq.Expressions;
 using Arronix.Abstractions.Definition;
-using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Engines.Quality;
 
 // The derivation reads and produces experimental contracts throughout.
 #pragma warning disable ARX0013
 #pragma warning disable ARX0016
 #pragma warning disable ARX0019
 #pragma warning disable ARX0020
+#pragma warning disable ARX0021
 
 namespace Arronix.Host.Media.Typed.Builders;
 
@@ -43,10 +45,40 @@ internal sealed class FormatFamilyRecorder<TItem>(FormatFamilyDraft draft)
     }
 
     /// <inheritdoc />
-    public IFormatFamilyBuilder<TItem> Ladder(IReadOnlyList<QualityTier> tiers, QualityTier unknown)
+    /// <remarks>
+    /// The model is compiled here rather than recorded as a pair of types: a family that mis-states a
+    /// rendering rule or a default policy then fails where its author is standing, not on the first
+    /// release that happens to exercise the rule.
+    /// </remarks>
+    public IFormatFamilyBuilder<TItem> Quality<TFacts, TType>()
+        where TFacts : IQualityFacts
+        where TType : IQualityType<TFacts>
     {
-        draft.Ladder = tiers;
-        draft.Unknown = unknown;
+        draft.Quality = QualityTypeFactory.Create<TFacts, TType>();
+        return this;
+    }
+
+    /// <inheritdoc />
+    public IFormatFamilyBuilder<TItem> RefinedBy<TFacts, TRefinement>()
+        where TFacts : IQualityFacts
+        where TRefinement : IQualityRefinement<TFacts>
+    {
+        if (draft.Quality is null)
+        {
+            throw new InvalidOperationException(
+                $"The format family '{draft.FamilyId}' declared a refinement before it declared a quality "
+                + "model. A kind contributes to a family that is already declared; it does not bring one "
+                + "into existence by refining it.");
+        }
+
+        if (draft.Quality is not HostQualityType<TFacts> host)
+        {
+            throw new InvalidOperationException(
+                $"The format family '{draft.FamilyId}' reads '{draft.Quality.FactsType.Name}' and the "
+                + $"refinement contributes '{typeof(TFacts).Name}'.");
+        }
+
+        host.RefinedBy(TRefinement.Refine);
         return this;
     }
 

@@ -52,9 +52,17 @@ public sealed record ParseDeclaration
     public IReadOnlyList<TokenTable> TokenTables { get; init; } = [];
 
     /// <summary>
-    /// Gets the ordered decision table resolving tag evidence to a ladder rung.
+    /// Gets the ordered decision table resolving tag evidence to a ladder rung, when the kind's families
+    /// still rank their files by a ladder.
     /// </summary>
-    public required RungResolutionTable RungResolution { get; init; }
+    /// <remarks>
+    /// Absent for a kind whose families declare an axis-based quality model instead. The table's entire
+    /// job is to collapse evidence into one of a fixed set of rung names — a lossy projection performed
+    /// before anything can reason about the evidence — and every row of it is a small ranking decision
+    /// sitting inside a declaration that is supposed to be about reading text. Where there is nothing to
+    /// collapse evidence <i>to</i>, there is no table.
+    /// </remarks>
+    public RungResolutionTable? RungResolution { get; init; }
 
     /// <summary>
     /// Gets the identifiers of the kind's budgeted per-kind code escapes. Registering any reclassifies

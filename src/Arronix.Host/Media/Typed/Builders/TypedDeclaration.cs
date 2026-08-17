@@ -1,8 +1,8 @@
 using System.Reflection;
 using Arronix.Abstractions.Definition;
-using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 
 // The derivation reads and produces experimental contracts throughout.
@@ -10,6 +10,7 @@ using Arronix.Abstractions.Shape;
 #pragma warning disable ARX0016
 #pragma warning disable ARX0019
 #pragma warning disable ARX0020
+#pragma warning disable ARX0021
 
 namespace Arronix.Host.Media.Typed.Builders;
 
@@ -112,9 +113,7 @@ internal sealed class FormatFamilyDraft(string familyId, string name)
 
     internal List<string> Extensions { get; } = [];
 
-    internal IReadOnlyList<QualityTier> Ladder { get; set; } = [];
-
-    internal QualityTier? Unknown { get; set; }
+    internal IQualityType? Quality { get; set; }
 
     internal List<TechnicalFacet> Facets { get; } = [];
 

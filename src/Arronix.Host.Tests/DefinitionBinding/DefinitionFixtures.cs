@@ -173,7 +173,7 @@ internal static class DefinitionFixtures
                 CaseId = "plain-title",
                 Input = "Something 1x02",
                 ExpectedPatternId = "coordinate",
-                ExpectedTierId = "Low",
+                ExpectedQuality = "Low",
             },
         ],
     };

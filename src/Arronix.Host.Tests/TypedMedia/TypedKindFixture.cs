@@ -4,6 +4,7 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Quality.Families;
 using Arronix.Abstractions.Shape;
 
 // Every contract the fixture is written against is experimental.
@@ -11,6 +12,7 @@ using Arronix.Abstractions.Shape;
 #pragma warning disable ARX0016
 #pragma warning disable ARX0019
 #pragma warning disable ARX0020
+#pragma warning disable ARX0021
 
 namespace Arronix.Host.Tests.TypedMedia;
 
@@ -168,7 +170,7 @@ internal sealed class Works : IMediaType<Work>
 
         b.Format("video", "Video")
             .Extensions(".mkv", ".mp4")
-            .Ladder(Ladder, Unknown)
+            .Quality<VideoQuality, VideoQualityType>()
             .Facet("edition", "Edition", TechnicalFacetCase.TitleCaseWithExceptions, ["IMAX"], true);
 
         b.Identity(w => w.ExternalIds)
@@ -300,14 +302,6 @@ internal sealed class Works : IMediaType<Work>
             : work.PreviewedOn is not null ? WorkStage.Previewing : WorkStage.Rumored;
     }
 
-    internal static IReadOnlyList<QualityTier> Ladder { get; } =
-    [
-        new QualityTier("SD", 1),
-        new QualityTier("HD", 2)
-    ];
-
-    internal static QualityTier Unknown { get; } = new("Unknown", 0);
-
     private static ParseDeclaration Parsing { get; } = new()
     {
         TitlePatterns =
@@ -319,6 +313,6 @@ internal sealed class Works : IMediaType<Work>
                 Captures = []
             }
         ],
-        RungResolution = new RungResolutionTable { Rules = [], UnknownTierId = "Unknown" }
+        RungResolution = null
     };
 }

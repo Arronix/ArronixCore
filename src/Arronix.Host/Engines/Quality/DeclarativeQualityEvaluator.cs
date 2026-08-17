@@ -69,10 +69,21 @@ internal sealed class DeclarativeQualityEvaluator : IQualityModel
                 }
             }
 
-            _tiersByName.TryAdd(family.Unknown.Name, (family.Unknown, family.FamilyId));
+            if (family.Unknown is { } sentinel)
+            {
+                _tiersByName.TryAdd(sentinel.Name, (sentinel, family.FamilyId));
+            }
         }
 
-        _unknown = shape.FormatFamilies[0].Unknown;
+        // A ladder-derived evaluator over a family that declares no ladder has nothing to evaluate, and
+        // there is no honest sentinel to invent: the axis model represents an absent reading as a typed
+        // absence, and collapsing that back onto a rung is the mechanism this evaluator is being replaced
+        // for. A kind whose families read their files onto axes is served by the axis evaluator instead.
+        _unknown = shape.FormatFamilies[0].Unknown
+            ?? throw new ArgumentException(
+                $"The format family '{shape.FormatFamilies[0].FamilyId}' declares no ladder, so a "
+                + "ladder-derived quality evaluator has no rung to fall back to.",
+                nameof(shape));
     }
 
     /// <inheritdoc />

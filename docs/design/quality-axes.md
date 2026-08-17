@@ -3222,3 +3222,111 @@ needs — a within-source precedence rule, an inference for orphan tokens, typed
 per-kind seam for genuine dialect — rather than by hoping `Read` would absorb it. **Whether those four are
 enough is a question the full 249-row corpus answers and thirty hand-mapped rows cannot.** That run is
 QA-11, and it is the gate on deleting anything.
+
+---
+
+## Part 11 — Implemented versus deferred (gatekeeper closeout, 2026-08-17)
+
+> **Appended, not woven in.** Everything above is the design as amended and remains the specification.
+> This part records what of it exists in the tree, measured against the tree on 2026-08-17 rather than
+> taken from any implementing session's report. The full work-package table with its evidence, the
+> sequencing violations and the defect register are in `docs/open-decisions.md` Part 7 (continued); this
+> part states the design consequences.
+
+### 11.1 What shipped
+
+The model exists end to end for one family. `Arronix.Abstractions.Quality` carries 46 public types under
+`ARX0021`; `Arronix.Host/Engines/Quality/` carries the reader, the projection, the label renderer, the
+refinement pipeline and the evaluator; `Arronix.Abstractions.Quality.Families` carries the video family —
+12 axes, §7's 16-row rendering table, §5.1's shipped policy, §4's computed size model. `Arronix.Plugin.Movies`
+declares `.Quality<VideoQuality, VideoQualityType>()`, and `MoviesLadder.cs` is deleted.
+
+Four of §5.1's behaviours are green on the shipped default: the stream pair ties, the disc pair separates,
+a rip of a rip is worse, and the broadcast pair separates. A1, A3 and the eight `Decide` rows are pinned.
+Q6's truthful labels render as themselves — `Remux-480p`, `Remux-720p`, `WEBDL-540p`, `2160p`, `1440p` —
+and round-trip.
+
+The claim the design makes for itself over the clean cross-product is met and measured. Against the
+generated corpus of 8,099 cases, the axes path reads resolution correctly on 90.47% and codec on 99.39%
+where the ladder's bucket cascade reaches 71.90% and 50.76%; **3,169 resolution cases and 1,934 codec cases
+are values the ladder has no spelling for at all** — 540, 576, 360, `h266`, `vp9`. That is S-A5's
+un-bucketing, measured rather than argued.
+
+### 11.2 What did not ship, and what each absence costs
+
+| Not shipped | Cost while it is absent |
+|---|---|
+| **QA-8** — audio, written and spoken families | §2.2 and §2.3 are unimplemented. Tv, Music and Books still declare ladders, so §6.2's Stage E cannot begin |
+| **QA-11** — the parity harness | **This was the gate on deleting anything, and the deletion happened first.** See below |
+| **QA-13** — token binding | §7's labels do not reach the naming engine; `ShapeTokenDeriver` still reads `QualityRevision` |
+| **QA-14** — user axes | §3.6 is unimplemented; a user cannot declare an axis of their own |
+| **QA-18** — live preview and the profile editor | §3.5's whole purpose. The policy can be described in prose but nobody can see a profile's effect before saving it |
+| **QA-16** — old-surface deletion | Correct: Stage E, and every ladder type still has consumers |
+
+### 11.3 The three places the design is wrong, not merely unbuilt
+
+**§2.1 declares two axes that cannot compile.** `Distributor` is `Evidence<T>` over a wrapper struct, which
+satisfies the type constraint but has no entry in §1.3's derivation table and therefore no `AxisForm` and
+no members. `Languages` is `EvidenceSet<Language>`, and `EvidenceSet<T>` requires `struct, Enum` while
+`Language` is a class. The consequence is not cosmetic: **"prefer a German dub" and "refuse a dub" have no
+home in any profile.** The German-remux behaviour survives only because `Read` may consult
+`ReleaseEvidence.Languages` directly, which makes it a family rule rather than a user preference. Recorded
+as **D-9**; §2.1 should not be read as implementable until it is answered.
+
+**§7 row 12 over-fires.** `CameraCapture` + `Audio ≥ LossyStereo` → `TELESYNC` was written assuming
+`AudioPresentation.RoomCapture` distinguishes a true cam. Nothing emits `RoomCapture`, so every camera
+capture that states any audio codec at all renders `TELESYNC`. The row needs either a different
+discriminator or a scanner that can produce one.
+
+**§3.5's honest-prose requirement is not met by the renderer that implements it.** `Describe()` renders raw
+magnitudes on a descending axis — *"the richest generation, and beyond 1 re-encodes it stops mattering"* —
+which is the exact register §3.2 forbids.
+
+### 11.4 QA-11, stated plainly
+
+QA-11's note reads *"Stage C, and the gate on deleting anything"*, and §10's closing sentence — the last
+line before this part — reads *"whether those four are enough is a question the full 249-row corpus answers
+and thirty hand-mapped rows cannot. That run is QA-11, and it is the gate on deleting anything."*
+
+**The run was never made.** `Host.Tests/Quality/LadderAxisParityTests.cs` and
+`docs/design/quality-divergences.md` do not exist. The ladder was deleted first.
+
+What exists instead is `Movies.Tests/Quality/QualityDivergenceRegister.cs`: every corpus row whose answer
+moved, with its class and its reason, asserted identical-or-registered, capped at 30 entries and ceilinged
+at 15%. It currently holds 23 of 220 rows — 21 of them evidence-scanner coverage gaps that each close by
+adding a phrase to a vocabulary, and 2 a genuine modelling limit (a dubbed disc naming an *encoder* has
+been re-encoded; one naming the disc's own *codec format* may not have been, and the scan folds `x265` and
+`HEVC` onto one token before `Read` can tell).
+
+That instrument is defensible and in some ways better than what QA-11 specified — it measures the model
+against the corpus rather than against the ladder, and the ladder was never the authority. **But it is not
+parity, and the difference should not be blurred by calling it that.** Nothing is proposed to undo:
+rebuilding the ladder in order to measure it would be a worse trade than accepting the gap. What is
+proposed is that §6.2's Stage E gate be re-stated against the register rather than against a harness that
+will now never be built.
+
+### 11.5 The two open behavioural failures
+
+The clean-room programme's step 6a sets a 100% hard gate on negative cases — titles that must **not** be
+read a particular way. It fails on four, across two rules, both in the rewritten evidence scanner:
+
+- **NEG-18** — a disc medium name beside a re-encode token still claims disc-image packaging
+  (`COMPLETE.BluRay.BDRip` and two siblings). Over-claiming packaging promotes a re-encode into the library
+  as an untouched disc, which is the failure direction the corpus design singles out as the worse one.
+- **NEG-14** — source vocabulary as the leading word of a work title is claimed as a source
+  (`Bluray Morning 1977 AVC`).
+
+Detail, triage and the ledger are in `docs/provenance/differential-report.md`. Neither was fixed by the
+gatekeeper session, because that session had read the superseded implementation and writing into the
+rewritten artifact from there would forfeit its provenance.
+
+### 11.6 Analyzer rules
+
+`ARXQ001`–`ARXQ006` (§1.3, §3.2, §3.7) ship as **tests, not as an analyzer** — an analyzer needs an
+`Arronix.Analyzers` project and therefore a solution edit. `ARXQ001`–`ARXQ004` are swept over every
+quality-facts type in the contract assembly; `ARXQ005`, `ARXQ006` and the facet bound are swept over every
+shipped family's real default policy. Both sweeps carry a non-vacuity guard.
+
+QA-15's note — *"Ships before QA-7, or the guarantees are load-time again"* — was not honoured: QA-7 landed
+first. The guarantees were load-time-only until now, and one gap remains that only an analyzer can close —
+a family compiled in a third-party plugin is governed by neither sweep.

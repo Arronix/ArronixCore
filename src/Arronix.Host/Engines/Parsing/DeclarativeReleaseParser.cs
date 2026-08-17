@@ -1,6 +1,8 @@
-// Consumes the experimental definition (ARX0019) and shape (ARX0013) contracts.
+// Consumes the experimental definition (ARX0019), shape (ARX0013) and quality (ARX0021) contracts.
 #pragma warning disable ARX0019
 #pragma warning disable ARX0013
+#pragma warning disable ARX0021
+#pragma warning disable ARX0020 // The typed media surface is experimental; this file consumes it.
 
 using System.Globalization;
 using System.Linq;
@@ -9,11 +11,11 @@ using System.Text.RegularExpressions;
 using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
-using Arronix.Abstractions.Parsing;
-using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Media;
-
-#pragma warning disable ARX0020 // The typed media surface is experimental; this file consumes it.
+using Arronix.Abstractions.Parsing;
+using Arronix.Abstractions.Quality;
+using Arronix.Abstractions.Shape;
+using Arronix.Host.Engines.Parsing.Evidence;
 
 namespace Arronix.Host.Engines.Parsing;
 
@@ -40,7 +42,8 @@ namespace Arronix.Host.Engines.Parsing;
 internal sealed class DeclarativeReleaseParser : IReleaseParser
 {
     private readonly CompiledParseDeclaration _declaration;
-    private readonly RungResolver _rungResolver;
+    private readonly RungResolver? _rungResolver;
+    private readonly IQualityType? _quality;
 
     /// <summary>Initializes a new instance of the <see cref="DeclarativeReleaseParser"/> class.</summary>
     /// <param name="shape">The kind's derived structure; the ladders the rung rows resolve against live on it.</param>
@@ -51,7 +54,13 @@ internal sealed class DeclarativeReleaseParser : IReleaseParser
         ArgumentNullException.ThrowIfNull(shape);
         MediaKind = shape.Kind;
         _declaration = new CompiledParseDeclaration(shape, model);
-        _rungResolver = new RungResolver(_declaration);
+        _rungResolver = _declaration.RungResolution is null ? null : new RungResolver(_declaration);
+
+        // A family that reads its files onto typed axes needs no rung table and gets no rung; what the
+        // parse publishes for it is the family's own rendering of the point it read, which is the same
+        // community word a rung name carried and is derived from the evidence rather than chosen from a
+        // fixed list.
+        _quality = shape.FormatFamilies.Count > 0 ? shape.FormatFamilies[0].Quality : null;
     }
 
     /// <inheritdoc />
@@ -101,13 +110,52 @@ internal sealed class DeclarativeReleaseParser : IReleaseParser
         };
 
         var context = new ParsePredicateContext(raw, working, tags, captures, [], _declaration.Guards);
-        var rung = _rungResolver.Resolve(context, raw);
+        var rung = _rungResolver?.Resolve(context, raw);
 
-        return Project(pattern, captures, tags, rung, context);
+        return Project(pattern, captures, tags, rung, ReadQuality(raw, working, extraTags), context);
     }
 
     /// <inheritdoc />
     public bool CanParse(string releaseTitle) => Parse(releaseTitle) is not null;
+
+    /// <summary>Reads one release onto its family's axes and renders the point.</summary>
+    /// <param name="raw">The release title as it arrived.</param>
+    /// <param name="working">The separator-normalized form the guards read.</param>
+    /// <param name="tags">The per-kind tags this kind's own patterns captured.</param>
+    /// <returns>The rendered label, or <see langword="null"/> when the family declares no axis model.</returns>
+    /// <remarks>
+    /// The whole of the boundary, in one place: the host's scanners produce evidence, this kind's guards
+    /// and tags ride along as the per-kind residue, and the family turns both into typed readings. Nothing
+    /// between the two collapses evidence into a name, and the name that comes out the far end is a
+    /// rendering of what was read rather than a row somebody chose.
+    /// </remarks>
+    private string? ReadQuality(string raw, string working, IReadOnlyDictionary<string, string> tags)
+    {
+        if (_quality is null)
+        {
+            return null;
+        }
+
+        var matched = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var guardId in _declaration.Guards.Ids)
+        {
+            if (_declaration.Guards.Matches(guardId, raw, working))
+            {
+                matched.Add(guardId);
+            }
+        }
+
+        var evidence = ReleaseEvidenceScanner.Scan(new EvidenceScanRequest
+        {
+            Title = raw,
+            ReleaseGroup = ReleaseGroupScanner.Scan(working),
+            Guards = matched,
+            Tags = tags,
+        });
+
+        return _quality.Label(_quality.Read(evidence), QualityLabelDetail.Standard);
+    }
 
     private string ApplyPreRewrites(string working)
     {
@@ -345,7 +393,8 @@ internal sealed class DeclarativeReleaseParser : IReleaseParser
         CompiledTitlePattern pattern,
         Dictionary<string, string> captures,
         ScannedReleaseTags tags,
-        RungOutcome rung,
+        RungOutcome? rung,
+        string? renderedQuality,
         ParsePredicateContext context)
     {
         TitleOf(pattern, captures, out var rawTitle);
@@ -418,15 +467,14 @@ internal sealed class DeclarativeReleaseParser : IReleaseParser
 
         WriteExpansion(pattern.Declaration.Expansion, captures, metadata);
 
-        var effectiveResolution = rung.CarriedResolution > 0
-            ? rung.CarriedResolution
-            : context.StatedResolution;
+        var carried = rung?.CarriedResolution ?? 0;
+        var effectiveResolution = carried > 0 ? carried : context.StatedResolution;
 
         return new ParsedRelease(
             MediaKind,
             CleanTitle(rawTitle),
             year,
-            rung.TierId,
+            renderedQuality ?? rung?.TierId,
             tags.VideoCodec,
             tags.AudioCodec,
             effectiveResolution > 0 ? ResolutionToken(effectiveResolution) : null,

@@ -2,11 +2,13 @@
 #pragma warning disable ARX0015 // Provider contracts are experimental; these tests exercise the derived model.
 #pragma warning disable ARX0019 // Definition contracts are experimental; these tests exercise the derived model.
 #pragma warning disable ARX0020 // Media contracts are experimental; these tests exercise the typed surface.
+#pragma warning disable ARX0021 // Quality contracts are experimental; these tests exercise the axes model.
 
 using System.Linq;
 using System.Text.RegularExpressions;
 using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Quality.Families;
 using Arronix.Abstractions.Shape;
 using Arronix.Plugin.Movies.Definition;
 using Arronix.Plugin.Movies.Tests.Support;
@@ -44,7 +46,7 @@ public class DeclarationSectionTests
     /// <b>The named-strategy mechanism is gone, and this is what dissolving it looks like.</b> A role
     /// identifier, a strategy identifier, a parameter dictionary, a requirement row, a host vocabulary
     /// entry and a load-time resolution rule existed so that an inert declaration could reach host
-    /// behaviour. A typed kind has methods, so the behaviour is a method — and it is testable directly,
+    /// behavior. A typed kind has methods, so the behavior is a method — and it is testable directly,
     /// which the parameter dictionary never was.
     /// </summary>
     [TestCase("S.W.A.T", "S.W.A.T")]
@@ -104,115 +106,110 @@ public class DeclarationSectionTests
         }
     }
 
+    /// <summary>
+    /// <b>The rung-resolution table is gone, and this is what its absence has to look like.</b> A hundred
+    /// and one rows plus a seven-row container fallback used to collapse tag evidence into one of thirty
+    /// names before anything could reason about it. There is nothing left to collapse evidence to, so the
+    /// declaration carries no table at all — not an empty one, which would still be a slot somebody could
+    /// refill.
+    /// </summary>
     [Test]
-    public void ResolvesEveryGuardEveryRungRowReferences()
+    public void CarriesNoRungResolutionTableAtAll()
+        => Assert.That(
+            MoviesDeclaration.Parsing.RungResolution,
+            Is.Null,
+            "A quality model that reads evidence onto typed axes has nothing for a rung table to resolve.");
+
+    /// <summary>
+    /// The family declares a quality model instead, and it is the shared video one rather than a movie's
+    /// own — which is the whole placement decision: a stream download at 1080 lines is the same thing
+    /// whether the work is a film or an episode.
+    /// </summary>
+    [Test]
+    public void DeclaresTheSharedVideoQualityModelRatherThanALadder()
+        => Assert.Multiple(() =>
+        {
+            Assert.That(MoviesDeclaration.Video.Ladder, Is.Empty);
+            Assert.That(MoviesDeclaration.Video.Unknown, Is.Null, "An axis reading carries its own absence.");
+            Assert.That(MoviesDeclaration.Quality.Family, Is.EqualTo(VideoQualityType.Family));
+            Assert.That(MoviesDeclaration.Quality.FactsType, Is.EqualTo(typeof(VideoQuality)));
+        });
+
+    /// <summary>
+    /// Every axis the shared family declares, in declaration order. Listed rather than derived: an axis set
+    /// that checked itself against itself would pass while missing an axis.
+    /// </summary>
+    [Test]
+    public void ReadsTwelveAxesOffTheSharedFactsType()
+        => Assert.That(
+            MoviesDeclaration.Quality.Axes.Select(static axis => axis.Id.Value),
+            Is.EqualTo(new[]
+            {
+                "Origin", "Generation", "Resolution", "DynamicRange", "Audio", "Codec", "FrameRate",
+                "Packaging", "Flaws", "Corrections", "Mislabels", "Repacked",
+            }));
+
+    /// <summary>
+    /// <b>Four guard classes left the per-kind residue upwards rather than sideways.</b> Each used to be a
+    /// movie identifier standing in for a fact about video, and each is now read from typed evidence by a
+    /// family every kind shares. A refinement seam that absorbed them instead would have moved the strings
+    /// rather than removed them.
+    /// </summary>
+    [TestCase("german-remux", TestName = "the dual-language disc rule reads the typed language claims")]
+    [TestCase("mpeg2", TestName = "the transport-stream rule reads the typed codec")]
+    [TestCase("container-web", TestName = "the stream-container rule reads the typed container")]
+    [TestCase("container-disc", TestName = "the disc-container rule reads the typed container")]
+    [TestCase("container-dvd", TestName = "the program-stream rule reads the typed container")]
+    [TestCase("px-848x480", TestName = "a pixel raster is a resolution claim the host scanner reads")]
+    [TestCase("px-1280x720", TestName = "a pixel raster is a resolution claim the host scanner reads")]
+    [TestCase("px-1920x1080", TestName = "a pixel raster is a resolution claim the host scanner reads")]
+    public void DeclaresNoGuardForAFactTheSharedFamilyNowReads(string guardId)
+        => Assert.That(
+            MoviesDeclaration.Parsing.Guards.Select(static guard => guard.GuardId),
+            Does.Not.Contain(guardId));
+
+    /// <summary>
+    /// What is left is the dialect, and only the dialect: bracketed fan-subtitling conventions, the scene's
+    /// whole-disc naming habit, a legacy widescreen spelling, the resolution words a bracketed title puts
+    /// outside the shared scan's reach, and the edition alternation that is not a quality guard at all.
+    /// </summary>
+    [Test]
+    public void KeepsOnlyTheGuardsThatAreGenuinelyAMovieNamingDialect()
+        => Assert.That(
+            MoviesDeclaration.Parsing.Guards.Select(static guard => guard.GuardId),
+            Is.EqualTo(new[]
+            {
+                MoviesVideoRefinement.WholeDiscGuard,
+                MoviesVideoRefinement.AnimeDiscGuard,
+                MoviesVideoRefinement.AnimeStreamGuard,
+                MoviesVideoRefinement.HighResolutionWidescreenGuard,
+                "text-480p", "text-720p", "text-1080p", "text-2160p",
+                "edition",
+            }));
+
+    /// <summary>
+    /// The refinement reads no guard the declaration does not declare, and the declaration declares no
+    /// quality guard the refinement does not read. Naming them through constants is what makes the two
+    /// halves fail to build rather than fail silently.
+    /// </summary>
+    [Test]
+    public void ReadsEveryQualityGuardTheDeclarationDeclares()
     {
         var declared = MoviesDeclaration.Parsing.Guards
             .Select(static guard => guard.GuardId)
-            .ToHashSet(StringComparer.Ordinal);
-
-        var referenced = MoviesDeclaration.Parsing.RungResolution.Rules
-            .SelectMany(static rule => rule.When.All)
-            .Where(static atom => atom.Subject.StartsWith("guard:", StringComparison.Ordinal))
-            .Select(static atom => atom.Subject["guard:".Length..])
-            .Distinct(StringComparer.Ordinal)
+            .Where(static id => !string.Equals(id, "edition", StringComparison.Ordinal))
             .ToArray();
 
-        Assert.Multiple(() =>
+        var read = new HashSet<string>(StringComparer.Ordinal)
         {
-            Assert.That(referenced, Is.SubsetOf(declared));
-            Assert.That(referenced, Is.Not.Empty);
-        });
-    }
+            MoviesVideoRefinement.WholeDiscGuard,
+            MoviesVideoRefinement.AnimeDiscGuard,
+            MoviesVideoRefinement.AnimeStreamGuard,
+            MoviesVideoRefinement.HighResolutionWidescreenGuard,
+            "text-480p", "text-720p", "text-1080p", "text-2160p",
+        };
 
-    [Test]
-    public void ResolvesEveryRungRowOntoTheDeclaredLadder()
-    {
-        var table = MoviesDeclaration.Parsing.RungResolution;
-
-        Assert.Multiple(() =>
-        {
-            foreach (var rule in table.Rules)
-            {
-                Assert.That(MoviesDeclaration.Tiers, Does.ContainKey(rule.TierId), rule.RuleId);
-            }
-
-            foreach (var fallback in table.ContainerFallbacks)
-            {
-                Assert.That(MoviesDeclaration.Tiers, Does.ContainKey(fallback.TierId), fallback.Extension);
-            }
-
-            Assert.That(MoviesDeclaration.Tiers, Does.ContainKey(table.UnknownTierId));
-        });
-    }
-
-    [Test]
-    public void GivesEveryRungRowAnIdentifierOfItsOwn()
-        => Assert.That(
-            MoviesDeclaration.Parsing.RungResolution.Rules.Select(static rule => rule.RuleId),
-            Is.Unique);
-
-    /// <summary>
-    /// Declared order is the algorithm. A whole disc outranks every rip and a weak signal is consulted
-    /// last, so the row that reads a disc image must precede every disc row and the pixel-form rows must
-    /// follow every source row.
-    /// </summary>
-    [Test]
-    public void OrdersTheRungTableFromStrongestEvidenceToWeakest()
-    {
-        var ids = MoviesDeclaration.Parsing.RungResolution.Rules
-            .Select(static rule => rule.RuleId)
-            .ToList();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(ids.IndexOf("rawhd"), Is.Zero, "A raw stream outranks everything but a whole disc.");
-            Assert.That(ids.IndexOf("bluray-disk"), Is.LessThan(ids.IndexOf("bluray-1080")));
-            Assert.That(ids.IndexOf("bluray-1080-remux"), Is.LessThan(ids.IndexOf("bluray-1080")));
-            Assert.That(ids.IndexOf("res-alone-1080"), Is.LessThan(ids.IndexOf("weak-1920x1080")));
-            Assert.That(ids.IndexOf("res-web-1080"), Is.LessThan(ids.IndexOf("res-alone-1080")));
-            Assert.That(ids.IndexOf("weak-x264"), Is.GreaterThan(ids.IndexOf("res-alone-sd")));
-        });
-    }
-
-    /// <summary>
-    /// The bracketed literals are case-sensitive and read the raw text, because normalization would flatten
-    /// the very distinction they exist to make.
-    /// </summary>
-    [TestCase("bracket-webdl")]
-    [TestCase("bracket-hdtv")]
-    public void ReadsABracketedLiteralFromTheRawTextCaseSensitively(string guardId)
-    {
-        var guard = MoviesDeclaration.Guard(guardId);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(guard.Input, Is.EqualTo(GuardInput.Raw));
-            Assert.That(guard.CaseSensitive, Is.True);
-        });
-    }
-
-    /// <summary>
-    /// A German dual-language disc encode is a remux that never spells the word, so the shared remux scan
-    /// cannot see it. Each of the three remux rows therefore carries a twin keyed on the German guard.
-    /// </summary>
-    [TestCase("bluray-2160-remux", "bluray-2160-remux-german")]
-    [TestCase("bluray-1080-remux", "bluray-1080-remux-german")]
-    [TestCase("bluray-remux-nores", "bluray-remux-nores-german")]
-    public void PairsEveryRemuxRowWithItsGermanTwin(string remuxRow, string germanRow)
-    {
-        var rules = MoviesDeclaration.Parsing.RungResolution.Rules;
-        var left = rules.Single(rule => rule.RuleId == remuxRow);
-        var right = rules.Single(rule => rule.RuleId == germanRow);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(right.TierId, Is.EqualTo(left.TierId));
-            Assert.That(
-                rules.ToList().IndexOf(right),
-                Is.EqualTo(rules.ToList().IndexOf(left) + 1),
-                "The twin sits immediately after the row it widens.");
-        });
+        Assert.That(declared, Is.SubsetOf(read));
     }
 
     // ---- matching -------------------------------------------------------------------------------
@@ -420,7 +417,7 @@ public class DeclarationSectionTests
 
     /// <summary>
     /// <b>Host search policy has left the media kind.</b> How many results an origin is worth is the same
-    /// question for every kind, and answering it per kind made behaviour differ between kinds for no reason
+    /// question for every kind, and answering it per kind made behavior differ between kinds for no reason
     /// anybody could name — three of the four reference kinds answered it not at all.
     /// </summary>
     [Test]

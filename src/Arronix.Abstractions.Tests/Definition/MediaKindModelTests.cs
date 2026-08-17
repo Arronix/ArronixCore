@@ -68,7 +68,7 @@ public class MediaKindModelTests
         Assert.Multiple(() =>
         {
             Assert.That(sparse.ExpectedPatternId, Is.Null);
-            Assert.That(sparse.ExpectedTierId, Is.Null);
+            Assert.That(sparse.ExpectedQuality, Is.Null);
             Assert.That(sparse.ExpectedTitle, Is.Null);
         });
     }

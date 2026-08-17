@@ -55,10 +55,11 @@ public sealed class DefinitionEngineCatalog
 
     /// <summary>
     /// Gets or sets the quality evaluator, surfaced through the quality seam while imperative kinds still
-    /// hold it open (row E4). Optional: a definition whose quality section is the ladder-derived default is
-    /// fully served by the ladder itself.
+    /// hold it open (row E4). Optional in two ways: the slot may be unset, and a factory that is set may
+    /// answer <see langword="null"/> for a definition it has nothing to say about — which is what a kind
+    /// whose families read their files onto typed axes gets, since a rung-shaped seam cannot serve it.
     /// </summary>
-    public Func<ValidatedDefinition, IQualityModel>? Quality { get; set; }
+    public Func<ValidatedDefinition, IQualityModel?>? Quality { get; set; }
 
     /// <summary>
     /// Gets or sets the naming renderer, surfaced through the rename-policy seam while imperative kinds

@@ -1,5 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
-using Arronix.Abstractions.DTOs;
+using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Media;
@@ -27,7 +27,7 @@ public interface IFileBindingBuilder<TItem>
 }
 
 /// <summary>
-/// Declares one family of file formats and the quality ladder that ranks them.
+/// Declares one family of file formats and the quality model that reads its files.
 /// </summary>
 /// <typeparam name="TItem">The kind's item type.</typeparam>
 [Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
@@ -42,12 +42,35 @@ public interface IFormatFamilyBuilder<TItem>
     IFormatFamilyBuilder<TItem> Extensions(params string[] extensions);
 
     /// <summary>
-    /// Declares the family's ordered quality ladder.
+    /// Declares the family's quality model.
     /// </summary>
-    /// <param name="tiers">The rungs, worst first.</param>
-    /// <param name="unknown">The rung a file of undetermined quality lands on. Not a member of the ladder.</param>
+    /// <typeparam name="TFacts">The family's quality-facts type.</typeparam>
+    /// <typeparam name="TType">The type declaring it.</typeparam>
     /// <returns>This builder, for chaining.</returns>
-    IFormatFamilyBuilder<TItem> Ladder(IReadOnlyList<QualityTier> tiers, QualityTier unknown);
+    /// <remarks>
+    /// One call, where an ordered ladder was a hand-written table of every source crossed with every
+    /// resolution. A quality model reads evidence onto typed axes and has no opinion at all about which of
+    /// two files is better — that question belongs to the user's policy, and separating the two is the
+    /// whole point of the model this replaces.
+    /// </remarks>
+    IFormatFamilyBuilder<TItem> Quality<TFacts, TType>()
+        where TFacts : IQualityFacts
+        where TType : IQualityType<TFacts>;
+
+    /// <summary>
+    /// Declares this media kind's own contribution to the family's axes.
+    /// </summary>
+    /// <typeparam name="TFacts">The family's quality-facts type.</typeparam>
+    /// <typeparam name="TRefinement">The kind's refinement.</typeparam>
+    /// <returns>This builder, for chaining.</returns>
+    /// <remarks>
+    /// Optional. A kind whose releases carry no naming dialect of its own declares nothing and gets the
+    /// family's reading unchanged. A refinement may only turn absence into presence or raise a reading's
+    /// provenance, so a kind's heuristic can complete a reading and can never overwrite a measurement.
+    /// </remarks>
+    IFormatFamilyBuilder<TItem> RefinedBy<TFacts, TRefinement>()
+        where TFacts : IQualityFacts
+        where TRefinement : IQualityRefinement<TFacts>;
 
     /// <summary>
     /// Declares a per-file, kind-meaningful fact files of this family may carry.

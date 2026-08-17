@@ -1,4 +1,5 @@
 #pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
+#pragma warning disable ARX0021 // Quality contracts are experimental; these tests exercise the axes model.
 
 using System.Linq;
 using Arronix.Abstractions.Shape;
@@ -92,11 +93,14 @@ public class FileBindingTests
     }
 
     /// <summary>
-    /// A disc image is a container a movie legitimately arrives in, and the ladder has a rung for it. If
-    /// the family did not claim the extension the file would have no family and therefore no quality.
+    /// A disc image is a container a movie legitimately arrives in, so the family claims the extension: a
+    /// file with no family has no quality at all, and "we refuse this" is a policy answer that needs the
+    /// file to have been read first. Refusing it is the shipped policy's business and not the shape's,
+    /// which is the separation a ladder could not make — the ladder ranked a whole disc near the top while
+    /// its own comment said most users do not want one.
     /// </summary>
     [Test]
-    public void ClaimsTheDiscImageExtensionTheLadderHasARungFor()
+    public void ClaimsTheDiscImageExtensionSoThePolicyCanRefuseIt()
     {
         var family = MoviesDeclaration.Shape.FormatFamilies[0];
 
@@ -104,8 +108,8 @@ public class FileBindingTests
         {
             Assert.That(family.FileExtensions, Does.Contain(".iso"));
             Assert.That(
-                family.Ladder.Select(static tier => tier.Name),
-                Does.Contain("BR-DISK"));
+                MoviesDeclaration.Policy.Requirements.Select(requirement => requirement.Axis.Value),
+                Does.Contain("Packaging"));
         });
     }
 

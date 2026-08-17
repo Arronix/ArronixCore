@@ -1,17 +1,18 @@
 using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
+using Arronix.Abstractions.Quality;
 
 namespace Arronix.Abstractions.Shape;
 
 /// <summary>
-/// A family of file formats with a quality ladder of its own.
+/// A family of file formats with a quality model of its own.
 /// </summary>
 /// <remarks>
 /// <para>
 /// One surveyed application needed two incomparable format dimensions, did not have them, and simulated
 /// the second with reserved bands inside a single ordered ladder — with two "unknown" sentinels
 /// interleaved. The consequence is that any file of the second kind ranks as an upgrade over any file of
-/// the first. One ladder per family makes that unrepresentable.
+/// the first. One quality model per family makes that unrepresentable.
 /// </para>
 /// <para>
 /// The extension set is the declared discriminator because it is empirically what every implementation
@@ -39,16 +40,36 @@ public sealed record FormatFamily
     public required IReadOnlyList<string> FileExtensions { get; init; }
 
     /// <summary>
-    /// Gets the ordered quality ladder for this family. Reuses the stable quality tier, so cutoff
-    /// policies and quality models keep working unchanged.
+    /// Gets the ordered quality ladder for this family, when the family still ranks its files by one.
     /// </summary>
-    public required IReadOnlyList<QualityTier> Ladder { get; init; }
+    /// <remarks>
+    /// Empty for a family that declares <see cref="Quality"/> instead, which is the direction of travel: a
+    /// ladder is a single total order over several independent dimensions, so most of its cross-product
+    /// has no rung and the engine has to invent one. A family declares one or the other and never both.
+    /// </remarks>
+    public IReadOnlyList<QualityTier> Ladder { get; init; } = [];
 
     /// <summary>
     /// Gets the tier assigned to a file whose quality could not be determined. Not a member of
     /// <see cref="Ladder"/>.
     /// </summary>
-    public required QualityTier Unknown { get; init; }
+    /// <remarks>
+    /// Absent for a family that declares <see cref="Quality"/>. A sentinel rung exists only because a
+    /// ladder has nowhere else to put "we do not know"; an axis reading carries its own typed absence, and
+    /// the policy — not the data — decides what an absent reading is worth.
+    /// </remarks>
+    public QualityTier? Unknown { get; init; }
+
+    /// <summary>
+    /// Gets the family's axis-based quality model, when it declares one.
+    /// </summary>
+    /// <remarks>
+    /// Held by the family rather than by the media kind because quality is a property of a <i>file</i> and
+    /// a file belongs to a family: two kinds whose files are the same family share one model and therefore
+    /// cannot drift. The model reads evidence onto typed axes and cannot rank anything, which is what
+    /// separates what the kind detects from what the user prefers.
+    /// </remarks>
+    public IQualityType? Quality { get; init; }
 
     /// <summary>
     /// Gets a value indicating whether an item may hold files of this family and of another at the same

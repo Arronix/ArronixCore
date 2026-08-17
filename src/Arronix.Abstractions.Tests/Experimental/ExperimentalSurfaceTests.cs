@@ -146,7 +146,13 @@ public class ExperimentalSurfaceTests
             ["Arronix.Abstractions.Intent"] = "ARX0016",
             ["Arronix.Abstractions.Wire"] = "ARX0017",
             ["Arronix.Abstractions.Definition"] = "ARX0019",
-            ["Arronix.Abstractions.Media"] = "ARX0020"
+            ["Arronix.Abstractions.Media"] = "ARX0020",
+            ["Arronix.Abstractions.Quality"] = "ARX0021",
+
+            // A family's own types are the same contract area as the framework that reads them: a consumer
+            // that opts in to the axes model opts in to the families it ships with, and splitting the
+            // identifier would make one opt-in into two for no boundary anybody can point at.
+            ["Arronix.Abstractions.Quality.Families"] = "ARX0021"
         };
 
         var mismatched = ExportedTypes

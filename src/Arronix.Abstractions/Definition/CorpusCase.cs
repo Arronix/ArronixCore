@@ -9,7 +9,7 @@ namespace Arronix.Abstractions.Definition;
 /// <remarks>
 /// A host upgrade changes engine behavior for every kind at once, so a definition states the readings it
 /// depends on and the host's parity gate keeps them green across engine upgrades. Expectations are
-/// asserted only where stated; a case may pin the pattern, the tier, the title, or any combination.
+/// asserted only where stated; a case may pin the pattern, the quality, the title, or any combination.
 /// </remarks>
 [Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record CorpusCase
@@ -35,9 +35,15 @@ public sealed record CorpusCase
     public string? ExpectedPatternId { get; init; }
 
     /// <summary>
-    /// Gets the ladder tier expected to resolve, by name, when the case pins one.
+    /// Gets the quality expected to be read, when the case pins one.
     /// </summary>
-    public string? ExpectedTierId { get; init; }
+    /// <remarks>
+    /// A rung name for a kind whose families still rank their files by a ladder, and the family's own
+    /// rendering of the point it read for a kind whose families read their files onto typed axes. The two
+    /// are the same string in the community's vocabulary; what differs is whether it was chosen from a
+    /// fixed list or derived from the evidence.
+    /// </remarks>
+    public string? ExpectedQuality { get; init; }
 
     /// <summary>
     /// Gets the title text expected to be read, when the case pins one.

@@ -127,6 +127,29 @@ ever shipped against them, so there was nothing to preserve. Every type in the n
 **Everything in 0.3.0 and 0.4.0 is experimental**, so a plugin that uses any of it declares
 `"arronix": ">=0.3 <0.4"` and re-declares at each MINOR. See the stability policy for why.
 
+### The model areas (0.5.0 onward)
+
+Added after the platform seams and missing from the table above until now.
+
+| Area | Id | What it is |
+|---|---|---|
+| `Definition` | `ARX0019` | The declarative aggregate a definition-mode extension once registered, and the vocabularies its sections are written in |
+| `Media` | `ARX0020` | The typed media model: the entity and group markers, the authoring seam and its builder, the property attribute vocabulary, and the runtime model the host derives from all of them |
+| `Quality` | `ARX0021` | The quality-axes model: typed `Evidence<TValue>` and `EvidenceSet<TValue>` with their provenance, the `[Axis]` vocabulary, `IQualityType` (what a family detects) and `QualityPolicy` (what a user prefers), the kind-blind `QualityPoint` they meet on, the size and rendering contracts over it, the normalized token vocabulary a scan and a family's reading share, and the standard families under `Quality.Families` |
+
+**`Quality.Families` is the same area rather than one of its own.** The standard families are what the
+framework is for, a consumer that opts in to the model opts in to the families it ships with, and a second
+identifier would make one opt-in into two for no boundary anybody can point at. They live in the contract
+assembly because the client references only this assembly and has to render a quality label and a policy
+editor, so the label rules and the axis descriptors must be reachable from here.
+
+**`ARX0021` shares its namespace with the 0.1.0 `IQualityModel`, which is not part of the area.** That
+interface answered two questions with one type — what a file's quality *is*, and which of two is *better* —
+and answering them together is what made every ranking decision the media kind's rather than the user's.
+The successors separate them: `IQualityType` reads evidence and cannot compare anything, and
+`QualityPolicy` compares and knows nothing about parsing. `IQualityModel` stays until its last implementer
+converts, and is then deleted rather than deprecated.
+
 To consume one, opt in at the top of the file that needs it, naming only the area it needs:
 
 ```csharp

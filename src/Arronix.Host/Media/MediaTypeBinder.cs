@@ -162,7 +162,7 @@ public sealed class MediaTypeBinder
     }
 
     private static TSeam? Build<TSeam>(
-        Func<ValidatedDefinition, TSeam>? factory,
+        Func<ValidatedDefinition, TSeam?>? factory,
         ValidatedDefinition definition,
         string path,
         string engineName,

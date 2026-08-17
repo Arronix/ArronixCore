@@ -64,6 +64,9 @@ internal sealed class CompiledGuardSet
         }
     }
 
+    /// <summary>Gets every declared guard identifier, in declaration order.</summary>
+    internal IReadOnlyCollection<string> Ids => _guards.Keys;
+
     /// <summary>Determines whether a guard identifier is declared.</summary>
     /// <param name="guardId">The identifier.</param>
     /// <returns>Whether it resolves.</returns>

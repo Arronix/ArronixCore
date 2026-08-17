@@ -1,376 +1,444 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests exercise the declaration.
-#pragma warning disable ARX0019 // Definition contracts are experimental; these tests exercise the declaration.
+#pragma warning disable ARX0021 // Quality contracts are experimental; these tests exercise the axes model.
 
 using System.Linq;
-using Arronix.Abstractions.DTOs;
-using Arronix.Abstractions.Definition;
-using Arronix.Abstractions.Shape;
+using Arronix.Abstractions.Quality;
+using Arronix.Abstractions.Quality.Families;
 using Arronix.Plugin.Movies.Tests.Support;
 
 namespace Arronix.Plugin.Movies.Tests.Quality;
 
 /// <summary>
-/// The grab decision: upgrades, cutoffs and the revision axis.
+/// The grab decision under the policy the video family ships.
 /// </summary>
 /// <remarks>
 /// <para>
-/// These rules used to be an eight-hundred-line per-kind model. They are now pure functions of the
-/// declared ladder over three typed slots — weight, group and revision — so the assertions below are made
-/// directly against the declaration and the contract's own comparison members. That is the honest
-/// re-pointing: the behavior did not move to a place these tests cannot see, it moved onto data they can
-/// read.
+/// <b>Every assertion here is now a statement about a policy rather than about data.</b> Under a ladder the
+/// ordering was baked into a weight somebody wrote down beside each rung, so a test could only ever check
+/// that the numbers were the surveyed numbers — which proves the copy is faithful and proves nothing about
+/// whether the behavior is right. Under this model the ordering is a policy, the policy is the family's
+/// stated opinion, and a user who disagrees with any line of it moves one chip. So what is asserted is the
+/// opinion, and each failure names the axis that produced it.
 /// </para>
 /// <para>
-/// The revision <i>reading</i> — how many PROPERs and REALs a release title claims — is host scanning
-/// vocabulary now, identical for every kind, and is asserted in the host's own engine tests. What is
-/// asserted here is the ordering rule the surveyed application applies to the result, which the contract
-/// carries as <see cref="QualityRevision"/>.
+/// <b>Two ignored tests are superseded rather than deleted quietly, and this note is the record.</b> They
+/// asserted that a mislabel fix outranks any number of corrections, and that a repack is the same revision
+/// as the correction it replaces — and they were ignored because the contract's own comparison ordered the
+/// correction count first and let repack-ness break the residual tie, which is the opposite. That
+/// divergence was never a contract question. It is two lines of a precedence list: the surveyed rule is
+/// mislabel fixes above corrections with repack absent, the contract's rule was the reverse. The type
+/// system has stopped having an opinion, the shipped policy states the surveyed one on its merits — a
+/// mislabel fix says the previous file was the wrong content, a correction says it was a worse encode of
+/// the right one — and <see cref="RanksAMislabelFixAboveAnyNumberOfCorrections"/> and
+/// <see cref="TreatsARepackAsNoUpgradeAtAll"/> below assert exactly what the ignored pair asserted, now
+/// green. The third live test that asserted the contract's opposite ordering dies with the contract's
+/// comparison, and that is a decision rather than a casualty.
 /// </para>
 /// </remarks>
 [TestFixture]
 public class UpgradeDecisionTests
 {
     /// <summary>
-    /// The surveyed application's revision ordering, verbatim: a real dominates a proper count, and the
-    /// repack flag takes no part in ordering at all.
+    /// <b>The pair a single ordered axis cannot hold at once.</b> A direct download and a re-encode of the
+    /// same service's stream are interchangeable; a disc's own bitstream is a real upgrade over an encode
+    /// of that disc. Both steps are one lossy re-encode, so a model that puts the step on one axis must
+    /// choose which of the two to get wrong. Here the cliff sits on the origin axis and the equivalence is
+    /// a ceiling on the generation axis: two independent controls for two independent facts, and no
+    /// per-title rule anywhere.
     /// </summary>
-    /// <remarks>
-    /// This is the one behavioral divergence the conversion turned up. See the ignore reason.
-    /// </remarks>
     [Test]
-    [Ignore("A REAL DIVERGENCE, not a test problem. QualityRevision.CompareTo orders version first, then the mislabel count, then repack-ness; the surveyed application orders the mislabel count FIRST and gives repack-ness no part in ordering at all. The assertion below states the surveyed rule verbatim and fails against the contract as landed, so it is marked rather than weakened: weakening it would convert a contract defect into a silently accepted behavior change.")]
-    public void OrdersARealAboveAnyProperCount()
+    public void HoldsTheStreamEquivalenceAndTheDiscCliffOnOnePolicy()
         => Assert.Multiple(() =>
         {
             Assert.That(
-                new QualityRevision(1, 1, false).CompareTo(new QualityRevision(9, 0, false)),
-                Is.GreaterThan(0));
+                Compare(Point("WEBRip-1080p"), Point("WEBDL-1080p")),
+                Is.EqualTo(QualityJudgment.Same),
+                "A direct download is not an upgrade over a re-encode of the same stream.");
 
             Assert.That(
-                new QualityRevision(2, 0, false).CompareTo(QualityRevision.Initial),
-                Is.GreaterThan(0));
+                Compare(Point("WEBDL-1080p"), Point("WEBRip-1080p")),
+                Is.EqualTo(QualityJudgment.Same),
+                "And it is not a downgrade either.");
 
             Assert.That(
-                new QualityRevision(2, 0, true).CompareTo(new QualityRevision(2, 0, false)),
-                Is.Zero,
-                "A repack is the same revision as the proper it replaces; the flag breaks a tie, "
-                + "it does not order.");
+                Compare(Point("Bluray-1080p"), Point("Remux-1080p")),
+                Is.EqualTo(QualityJudgment.Better),
+                "A disc's own bitstream is a real upgrade over an encode of that disc.");
         });
-
-    [TestCase("SDTV", "Bluray-1080p", true)]
-    [TestCase("Bluray-1080p", "SDTV", false)]
-    [TestCase("Bluray-1080p", "Bluray-1080p", false)]
-    [TestCase("WEBRip-1080p", "WEBDL-1080p", false)]
-    [TestCase("WEBDL-1080p", "WEBRip-1080p", false)]
-    [TestCase("WEBDL-1080p", "Bluray-1080p", true)]
-    [TestCase("Bluray-1080p", "Remux-1080p", true)]
-    public void DecidesWhetherARungIsAnUpgrade(string held, string candidate, bool expected)
-        => Assert.That(IsUpgrade(Held(held), Held(candidate)), Is.EqualTo(expected));
 
     /// <summary>
-    /// The revision half of the upgrade rule: the same quality again is not an upgrade, and a PROPER of it
-    /// is.
+    /// What is left to the generation axis once the cliff has moved off it: the step that is a real drop
+    /// rather than a rounding difference, which is a re-encode of an existing rip.
     /// </summary>
     [Test]
-    public void TreatsAProperOfTheHeldQualityAsAnUpgrade()
-    {
-        var held = Held("Bluray-1080p");
-        var proper = held with { Revision = new QualityRevision(2, 0, false) };
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(IsUpgrade(held, proper), Is.True);
-            Assert.That(IsUpgrade(proper, held), Is.False);
-            Assert.That(IsUpgrade(proper, proper), Is.False);
-        });
-    }
-
-    [Test]
-    [Ignore("A REAL DIVERGENCE, not a test problem. QualityRevision.CompareTo orders version first, then the mislabel count, then repack-ness; the surveyed application orders the mislabel count FIRST and gives repack-ness no part in ordering at all. The assertion below states the surveyed rule verbatim and fails against the contract as landed, so it is marked rather than weakened: weakening it would convert a contract defect into a silently accepted behavior change.")]
-    public void TreatsARealOfTheHeldQualityAsAnUpgradeOverAProper()
-    {
-        var held = Held("Bluray-1080p");
-        var proper = held with { Revision = new QualityRevision(2, 0, false) };
-        var real = held with { Revision = new QualityRevision(1, 1, false) };
-
-        Assert.That(IsUpgrade(proper, real), Is.True);
-    }
+    public void StillSeparatesAReEncodeOfARipFromTheRipItself()
+        => Assert.That(
+            Compare(Point("Bluray-1080p"), Point("BRRip-1080p")),
+            Is.EqualTo(QualityJudgment.Worse));
 
     /// <summary>
-    /// A better rung wins whatever the revision says. A PROPER of a worse quality is still a worse quality.
+    /// The orderings a ladder has and a model that puts the master-against-encode step on one axis loses:
+    /// an untouched transport stream above a broadcast capture, and a disc's own program stream above a rip
+    /// of it.
+    /// </summary>
+    [TestCase("HDTV-1080p", "Raw-HD", QualityJudgment.Better)]
+    [TestCase("DVDRip", "DVD", QualityJudgment.Better)]
+    [TestCase("SDTV", "Bluray-1080p", QualityJudgment.Better)]
+    [TestCase("Bluray-1080p", "SDTV", QualityJudgment.Worse)]
+    [TestCase("Bluray-1080p", "Bluray-1080p", QualityJudgment.Same)]
+    [TestCase("WEBDL-1080p", "Bluray-1080p", QualityJudgment.Better)]
+    public void RanksTheMasterSignalSecond(string held, string candidate, QualityJudgment expected)
+        => Assert.That(Compare(Point(held), Point(candidate)), Is.EqualTo(expected));
+
+    /// <summary>
+    /// <b>What the first of the two superseded tests asserted, now green.</b> A mislabel fix says the
+    /// previous file was the wrong content; a correction says it was a worse encode of the right content.
+    /// Wrong content dominates, whatever the correction counts are.
     /// </summary>
     [Test]
-    public void PrefersABetterRungOverARevisionOfAWorseOne()
+    public void RanksAMislabelFixAboveAnyNumberOfCorrections()
     {
-        var heldProper = Held("HDTV-720p") with { Revision = new QualityRevision(3, 1, false) };
-        var candidate = Held("Bluray-1080p");
+        var manyCorrections = Point("Bluray-1080p", corrections: 8);
+        var oneMislabelFix = Point("Bluray-1080p", mislabels: 1);
 
         Assert.Multiple(() =>
         {
-            Assert.That(IsUpgrade(heldProper, candidate), Is.True);
-            Assert.That(IsUpgrade(candidate, heldProper), Is.False);
-        });
-    }
-
-    [Test]
-    public void MeetsACutoffOnWeightAndIgnoresTheRevision()
-    {
-        var cutoff = new CutoffPolicy(Held("Bluray-1080p"));
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(cutoff.MeetsCutoff(Held("Bluray-1080p")), Is.True);
-            Assert.That(cutoff.MeetsCutoff(Held("HDTV-1080p")), Is.False);
-            Assert.That(cutoff.MeetsCutoff(Held("Remux-2160p")), Is.True, "A rung above the cutoff meets it.");
-            Assert.That(
-                cutoff.MeetsCutoff(Held("Bluray-1080p") with { Revision = new QualityRevision(2, 0, false) }),
-                Is.True,
-                "A file that is good enough does not stop being good enough because a PROPER of it exists.");
-        });
-    }
-
-    [Test]
-    public void StopsSearchingOnceTheCutoffIsMet()
-    {
-        var cutoff = new CutoffPolicy(Held("WEBDL-1080p"));
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(cutoff.ShouldSearchForUpgrade(Held("Bluray-1080p")), Is.False);
-            Assert.That(cutoff.ShouldSearchForUpgrade(Held("HDTV-720p")), Is.True);
+            Assert.That(Compare(manyCorrections, oneMislabelFix), Is.EqualTo(QualityJudgment.Better));
+            Assert.That(Compare(oneMislabelFix, manyCorrections), Is.EqualTo(QualityJudgment.Worse));
         });
     }
 
     /// <summary>
-    /// What the contract's revision ordering actually does, stated so the divergence above is measured
-    /// rather than merely asserted: version dominates, and repack-ness breaks the residual tie.
+    /// <b>What the second of the two superseded tests asserted, now green.</b> A repack is the same encode
+    /// packaged again. It is not a fidelity change, so it is absent from the shipped order entirely and
+    /// re-downloading for one is something this platform will not do.
     /// </summary>
     [Test]
-    public void OrdersTheRevisionAxisTheWayTheContractStatesIt()
+    public void TreatsARepackAsNoUpgradeAtAll()
+    {
+        var original = Point("Bluray-1080p", corrections: 1);
+        var repack = Point("Bluray-1080p", corrections: 1, repacked: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Compare(original, repack), Is.EqualTo(QualityJudgment.Same));
+            Assert.That(
+                MoviesDeclaration.Policy.Precedence.Select(entry => entry.Axis.Value),
+                Does.Not.Contain(nameof(VideoQuality.Repacked)));
+        });
+    }
+
+    /// <summary>
+    /// A correction of the held quality is an upgrade, and a better master with no correction still beats a
+    /// correction of a worse one — because the correction counts sit beneath the master signal rather than
+    /// beside it.
+    /// </summary>
+    [Test]
+    public void PrefersABetterSignalOverACorrectionOfAWorseOne()
+    {
+        var correctedBroadcast = Point("HDTV-720p", corrections: 3, mislabels: 1);
+        var disc = Point("Bluray-1080p");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Compare(correctedBroadcast, disc), Is.EqualTo(QualityJudgment.Better));
+            Assert.That(Compare(disc, correctedBroadcast), Is.EqualTo(QualityJudgment.Worse));
+            Assert.That(
+                Compare(Point("Bluray-1080p"), Point("Bluray-1080p", corrections: 1)),
+                Is.EqualTo(QualityJudgment.Better));
+        });
+    }
+
+    /// <summary>
+    /// The shipped order, stated so that a change to it is a decision somebody made rather than a diff
+    /// nobody read.
+    /// </summary>
+    [Test]
+    public void OrdersFiveAxesAndSaysWhichFirst()
+        => Assert.That(
+            MoviesDeclaration.Policy.Precedence.Select(entry => entry.Axis.Value),
+            Is.EqualTo(new[]
+            {
+                nameof(VideoQuality.Resolution),
+                nameof(VideoQuality.Origin),
+                nameof(VideoQuality.Generation),
+                nameof(VideoQuality.Mislabels),
+                nameof(VideoQuality.Corrections),
+            }));
+
+    /// <summary>
+    /// <b>The cutoff is a conjunction over axes, not one cell of a cross-product.</b> "Good enough at 1080
+    /// lines with at most one re-encode" is two independent floors, and it is a sentence a ladder cannot
+    /// say at all: naming one of thirty rungs as a cutoff silently also decides something about every other
+    /// source at that resolution.
+    /// </summary>
+    [Test]
+    public void StopsSearchingAtTwoIndependentFloors()
         => Assert.Multiple(() =>
         {
+            Assert.That(MoviesDeclaration.Policy.IsGoodEnough(Point("WEBDL-1080p")), Is.True);
+            Assert.That(MoviesDeclaration.Policy.IsGoodEnough(Point("Bluray-1080p")), Is.True);
+            Assert.That(MoviesDeclaration.Policy.IsGoodEnough(Point("HDTV-720p")), Is.False);
             Assert.That(
-                new QualityRevision(9, 0, false).CompareTo(new QualityRevision(1, 1, false)),
-                Is.GreaterThan(0),
-                "Version dominates; the surveyed application says the mislabel count does.");
-
-            Assert.That(
-                new QualityRevision(2, 0, true).CompareTo(new QualityRevision(2, 0, false)),
-                Is.GreaterThan(0),
-                "Repack-ness orders; the surveyed application says it only breaks a preference tie.");
+                MoviesDeclaration.Policy.IsGoodEnough(Point("BRRip-1080p")),
+                Is.False,
+                "Enough lines, one re-encode too many.");
         });
-
-    [Test]
-    public void TreatsASidewaysMoveWithinAGroupAsNoUpgrade()
-        => Assert.That(IsUpgrade(Held("WEBDL-1080p"), Held("WEBRip-1080p")), Is.False);
-
-    /// <summary>
-    /// The subject the derivation writes for a source-group predicate.
-    /// </summary>
-    /// <remarks>
-    /// <b>Not the subject the host answers, and that is a defect this fixture pins rather than hides.</b>
-    /// The host's release-tag vocabulary resolves <c>tags.SourceGroup</c>, matched with ordinal string
-    /// comparison; the derivation writes the camel-cased <c>tags.sourceGroup</c> it derives every other
-    /// identifier with. The five rows below are therefore declared correctly and can never fire, so a
-    /// release that states a resolution it cannot have keeps the claim. Fixing it is a one-word change in
-    /// the host's builder, and the assertion is written against what the derivation emits so that the fix
-    /// shows up here as a failure rather than passing silently.
-    /// </remarks>
-    private const string DerivedSourceGroupSubject = "tags.sourceGroup";
-
-    /// <summary>
-    /// The five rows the declaration still needs for quality, and the reason there are only five: every
-    /// resolution decision the surveyed model made in a second pass is made once, directly, by the rung
-    /// table. Repeating them here would double-apply and silently promote a disc that stated no
-    /// resolution.
-    /// </summary>
-    [Test]
-    public void DiscardsAStatedResolutionOnlyForTheRungsThatHaveNoResolutionAxis()
-    {
-        var declared = MoviesDeclaration.Carried.Quality;
-
-        var sources = declared.Defaults
-            .SelectMany(static row => row.When.All)
-            .Where(static atom => string.Equals(atom.Subject, DerivedSourceGroupSubject, StringComparison.Ordinal))
-            .SelectMany(static atom => atom.Values)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(sources, Is.EqualTo(new[] { "cam", "dvd", "tc", "ts", "wp" }));
-            Assert.That(
-                declared.Defaults.All(static row => row.IgnoreStatedResolution),
-                Is.True,
-                "Every row discards; none asserts a resolution, or the rung table would be overridden.");
-            Assert.That(
-                declared.Defaults.All(static row => row.Resolution is null && row.SourceGroup is null),
-                Is.True);
-            Assert.That(declared.Fallback, Is.EqualTo(RungFallback.RoundUp));
-            Assert.That(declared.CrossFamily, Is.EqualTo(CrossFamilyRule.NeverCompare));
-        });
-    }
-
-    [Test]
-    public void DeclaresTheMediaKindItAnswersFor()
-        => Assert.That(MoviesDeclaration.Shape.Kind, Is.EqualTo(Movies.Kind));
-
-    [TestCase("Movie Title 2018 REPACK 720p HDTV x264 aAF",true,2,0)]
-    [TestCase("Movie.Title.2018.REPACK.720p.HDTV.x264-aAF",true,2,0)]
-    [TestCase("Movie.Title.2018.REPACK2.720p.HDTV.x264-aAF",true,3,0)]
-    [TestCase("Movie.Title.2018.PROPER.720p.HDTV.x264-aAF",false,2,0)]
-    [TestCase("Movie.Title.2018.RERIP.720p.BluRay.x264-DEMAND",true,2,0)]
-    [TestCase("Movie.Title.2018.RERIP2.720p.BluRay.x264-DEMAND",true,3,0)]
-    [TestCase("Movie.Title.2018.REAL.PROPER.720p.HDTV.x264-aAF",false,2,1)]
-    [TestCase("Movie.Title.2018.720p.HDTV.x264-aAF",false,1,0)]
-    public void ReadsTheRevisionFromTheReleaseTitle(string releaseTitle, bool isRepack, int version, int real)
-    {
-        var read = MoviesEngines.Revision(releaseTitle);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(read.Version, Is.EqualTo(version));
-            Assert.That(read.Real, Is.EqualTo(real));
-            Assert.That(read.IsRepack, Is.EqualTo(isRepack));
-        });
-    }
-
-    /// <summary>
-    /// REAL is read case-sensitively and the rest is not, because "real" is an ordinary English word that
-    /// appears in film titles and PROPER is not.
-    /// </summary>
-    [Test]
-    public void MatchesTheRealTagCaseSensitivelyAndTheRestNot()
-        => Assert.Multiple(() =>
-        {
-            Assert.That(
-                MoviesEngines.Revision("Movie.Title.2018.REAL.PROPER.720p.HDTV.x264-aAF").Real,
-                Is.EqualTo(1));
-
-            Assert.That(
-                MoviesEngines.Revision("Movie.Title.2018.Real.PROPER.720p.HDTV.x264-aAF").Real,
-                Is.Zero,
-                "A lower-case 'Real' is a word in a title, not a claim about the release.");
-
-            Assert.That(
-                MoviesEngines.Revision("Movie.Title.2018.proper.720p.HDTV.x264-aAF").Version,
-                Is.EqualTo(2),
-                "PROPER is read whatever its casing.");
-        });
-
-    /// <summary>
-    /// The revision survives the rung resolution: an evaluated quality carries the claim the title made.
-    /// </summary>
-    [Test]
-    public void CarriesTheRevisionThroughTheEvaluatedQuality()
-    {
-        var parsed = MoviesEngines.Parse("Movie.Title.2018.REAL.PROPER.720p.HDTV.x264-aAF");
-        var evaluated = MoviesEngines.Kind.Quality!.EvaluateQuality(parsed!);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(evaluated.Name, Is.EqualTo("HDTV-720p"));
-            Assert.That(evaluated.Revision, Is.Not.Null);
-            Assert.That(evaluated.Revision!.Value.Version, Is.EqualTo(2));
-            Assert.That(evaluated.Revision!.Value.Real, Is.EqualTo(1));
-        });
-    }
-
-    /// <summary>
-    /// The stable release DTO carries a rung name and no revision, so the detail is only reachable through
-    /// the parse metadata or the evaluated tier. Worth pinning: a caller that reads
-    /// <see cref="ParsedRelease.Quality"/> alone cannot tell a PROPER from the release it supersedes.
-    /// </summary>
-    [Test]
-    public void LosesTheRevisionDetailAtTheParsedReleaseBoundary()
-    {
-        var plain = MoviesEngines.Parse("Movie.Title.2018.720p.HDTV.x264-aAF");
-        var proper = MoviesEngines.Parse("Movie.Title.2018.PROPER.720p.HDTV.x264-aAF");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(proper!.Quality, Is.EqualTo(plain!.Quality));
-            Assert.That(MoviesEngines.Revision("Movie.Title.2018.PROPER.720p.HDTV.x264-aAF").Version, Is.EqualTo(2));
-            Assert.That(MoviesEngines.Revision("Movie.Title.2018.720p.HDTV.x264-aAF").Version, Is.EqualTo(1));
-        });
-    }
 
     [Test]
     public void GrabsAnythingWhenNothingIsHeld()
-        => Assert.That(ShouldGrab(null, Held("SDTV"), new CutoffPolicy(Held("Bluray-1080p"))), Is.True);
+        => Assert.That(
+            MoviesDeclaration.Policy.Decide(null, Point("SDTV")).Verdict,
+            Is.EqualTo(GrabVerdict.Grab));
 
+    /// <summary>
+    /// Once the held file satisfies the cutoff, a genuine upgrade is still declined — and the decision says
+    /// so in its own words rather than pretending the candidate was worse.
+    /// </summary>
     [Test]
-    public void StopsGrabbingOnceTheCutoffIsMet()
+    public void DeclinesAGenuineUpgradeOnceTheHeldFileIsGoodEnough()
     {
-        var cutoff = new CutoffPolicy(Held("WEBDL-1080p"));
+        var decision = MoviesDeclaration.Policy.Decide(Point("Bluray-1080p"), Point("Remux-1080p"));
 
-        Assert.That(
-            ShouldGrab(Held("Bluray-1080p"), Held("Remux-2160p"), cutoff),
-            Is.False,
-            "The held file already meets the cutoff, so a better one is not wanted.");
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                Compare(Point("Bluray-1080p"), Point("Remux-1080p")),
+                Is.EqualTo(QualityJudgment.Better),
+                "It is an upgrade.");
+            Assert.That(decision.Verdict, Is.EqualTo(GrabVerdict.AlreadyGoodEnough), "And it is not taken.");
+        });
     }
 
     [Test]
     public void GrabsAnUpgradeBelowTheCutoff()
-    {
-        var cutoff = new CutoffPolicy(Held("Bluray-1080p"));
-
-        Assert.Multiple(() =>
+        => Assert.Multiple(() =>
         {
-            Assert.That(ShouldGrab(Held("HDTV-720p"), Held("WEBDL-1080p"), cutoff), Is.True);
             Assert.That(
-                ShouldGrab(Held("WEBDL-1080p"), Held("WEBRip-1080p"), cutoff),
-                Is.False,
-                "A sideways move within a group is not an upgrade.");
+                MoviesDeclaration.Policy.Decide(Point("HDTV-720p"), Point("WEBDL-1080p")).Verdict,
+                Is.EqualTo(GrabVerdict.Grab));
+
+            Assert.That(
+                MoviesDeclaration.Policy.Decide(Point("HDTV-720p"), Point("WEBRip-1080p")).Verdict,
+                Is.EqualTo(GrabVerdict.Grab),
+                "A broadcast capture is below a stream capture, so more lines and a better master is both.");
+
+            Assert.That(
+                MoviesDeclaration.Policy.Decide(Point("WEBDL-720p"), Point("WEBRip-720p")).Verdict,
+                Is.EqualTo(GrabVerdict.NotAnUpgrade),
+                "A sideways move within the stream equivalence is not an upgrade.");
         });
-    }
 
     /// <summary>
-    /// The gap the surveyed application fills with a proper-handling setting: with the cutoff met, a
-    /// corrected issue of the held file is an upgrade and is still not taken under the default policy.
+    /// <b>A claim never outranks a measurement, and this is the loop that rule exists to close.</b> Import a
+    /// release claiming a raster, measure something smaller, and the identical release reappears on the next
+    /// sweep — under provenance-blind comparison it is an upgrade every time, forever. Asserted over
+    /// several passes because "it terminates" is the claim, and one pass cannot show termination.
     /// </summary>
     [Test]
-    public void CannotBeAskedForAProperOnceTheCutoffIsMet()
+    public void NeverReDownloadsOnAClaimItHasAlreadyMeasured()
     {
-        var cutoff = new CutoffPolicy(Held("Bluray-1080p"));
-        var held = Held("Bluray-1080p");
-        var proper = held with { Revision = new QualityRevision(2, 0, false) };
+        var candidate = MoviesDeclaration.Quality.Read(new ReleaseEvidence
+        {
+            Title = "Movie.Name.2019.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTG",
+            SourceToken = EvidenceSourceTokens.WebDownload,
+            StatedResolution = 1080,
+        });
+
+        var imported = MoviesDeclaration.Quality.Read(new ReleaseEvidence
+        {
+            Title = "Movie.Name.2019.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTG",
+            SourceToken = EvidenceSourceTokens.WebDownload,
+            StatedResolution = 1080,
+            Probe = new MediaProbe { Height = 720 },
+        });
 
         Assert.Multiple(() =>
         {
-            Assert.That(IsUpgrade(held, proper), Is.True, "It is an upgrade.");
-            Assert.That(ShouldGrab(held, proper, cutoff), Is.False, "And it is not grabbed.");
+            Assert.That(
+                MoviesDeclaration.Policy.Compare(imported, candidate),
+                Is.EqualTo(QualityJudgment.Better),
+                "The ordering is provenance-blind on purpose; folding the rule into it would break transitivity.");
+
+            for (var pass = 1; pass <= 5; pass++)
+            {
+                Assert.That(
+                    MoviesDeclaration.Policy.Decide(imported, candidate).Verdict,
+                    Is.EqualTo(GrabVerdict.NotAnUpgrade),
+                    $"pass {pass}");
+            }
         });
     }
 
     /// <summary>
-    /// Whether a candidate is worth taking over what is held, stated once: nothing held takes anything;
-    /// otherwise the cutoff has to be unmet and the candidate has to be an upgrade.
+    /// A camera recording of a projection and an unfinished edit are not the film, and the refusal names
+    /// the axis that produced it rather than reporting a rung number nobody can act on.
     /// </summary>
-    /// <param name="current">The quality already held, or null when nothing is.</param>
-    /// <param name="candidate">The candidate quality.</param>
-    /// <param name="cutoff">The cutoff in force.</param>
-    /// <returns>Whether the candidate should be taken.</returns>
-    private static bool ShouldGrab(QualityTier? current, QualityTier candidate, CutoffPolicy cutoff)
-        => current is null || (!cutoff.MeetsCutoff(current) && IsUpgrade(current, candidate));
+    [TestCase("CAM")]
+    [TestCase("WORKPRINT")]
+    public void RefusesWhatIsNotTheFilm(string spelling)
+    {
+        var decision = MoviesDeclaration.Policy.Decide(null, Point(spelling));
 
-    private static QualityTier Held(string rung) => MoviesDeclaration.Tier(rung);
+        Assert.Multiple(() =>
+        {
+            Assert.That(decision.Verdict, Is.EqualTo(GrabVerdict.Refused));
+            Assert.That(
+                decision.Reason,
+                Is.EqualTo("A camera recording of a projection and an unfinished edit are not the film."),
+                "A refusal says why in the words whoever wrote the requirement chose, not in an axis name.");
+        });
+    }
 
     /// <summary>
-    /// The upgrade rule, stated once: weight first, revision second. This is the rule the host evaluator
-    /// applies, expressed here over the contract members it applies it to.
+    /// The one place a preference this platform holds is written down for a person to read, rendered from
+    /// the policy rather than maintained beside it.
     /// </summary>
-    /// <param name="current">The quality already held.</param>
-    /// <param name="candidate">The candidate quality.</param>
-    /// <returns>Whether the candidate is an upgrade.</returns>
-    private static bool IsUpgrade(QualityTier current, QualityTier candidate)
+    [Test]
+    public void SaysWhatItPrefersInWordsAPersonCanRead()
     {
-        if (candidate.EffectiveWeight != current.EffectiveWeight)
-        {
-            return candidate.EffectiveWeight > current.EffectiveWeight;
-        }
+        var description = MoviesDeclaration.Policy.Describe();
 
-        return (candidate.Revision ?? QualityRevision.Initial)
-            .CompareTo(current.Revision ?? QualityRevision.Initial) > 0;
+        Assert.Multiple(() =>
+        {
+            Assert.That(description, Does.Contain("resolution"), "It names the axis that leads.");
+            Assert.That(description, Does.Contain("2160 lines"), "And where that axis stops mattering.");
+            Assert.That(description, Does.Contain("origin"), "And what decides next.");
+            Assert.That(
+                description,
+                Does.Contain("Never re-download on a claim we have already measured"),
+                "Including the one behavior a user would otherwise have to discover.");
+        });
     }
+
+    private static QualityJudgment Compare(QualityPoint held, QualityPoint candidate) =>
+        MoviesDeclaration.Policy.Compare(held, candidate);
+
+    /// <summary>
+    /// Builds a point from the community's own word for it, so a test row reads the way a user would say
+    /// it. The word is parsed back into a point by the family's own renderer, which is the one place a
+    /// rendered string is ever read — and what it produces is a claim of release-title strength, never a
+    /// measurement.
+    /// </summary>
+    /// <param name="label">The community's word.</param>
+    /// <param name="corrections">How many corrections to add.</param>
+    /// <param name="mislabels">How many mislabel fixes to add.</param>
+    /// <param name="repacked">Whether the issue is a repack of the same encode.</param>
+    /// <returns>The point.</returns>
+    private static QualityPoint Point(
+        string label,
+        int corrections = 0,
+        int mislabels = 0,
+        bool repacked = false)
+    {
+        var facts = Facts(label);
+
+        return MoviesDeclaration.Quality.Project(new VideoQuality
+        {
+            Origin = facts.Origin,
+            Generation = facts.Generation,
+            Resolution = facts.Resolution,
+            DynamicRange = facts.DynamicRange,
+            Audio = facts.Audio,
+            Codec = facts.Codec,
+            FrameRate = facts.FrameRate,
+            Packaging = facts.Packaging,
+            Flaws = facts.Flaws,
+            Corrections = Evidence<int>.From(corrections, EvidenceSource.ReleaseTitle),
+            Mislabels = Evidence<int>.From(mislabels, EvidenceSource.ReleaseTitle),
+            Repacked = Evidence<Repackaging>.From(
+                repacked ? Repackaging.Repacked : Repackaging.Original,
+                EvidenceSource.ReleaseTitle),
+        });
+    }
+
+    private static VideoQuality Facts(string label) => label switch
+    {
+        "SDTV" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.Broadcast),
+            Generation = Count(1),
+            Resolution = Count(480),
+        },
+        "HDTV-720p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.Broadcast),
+            Generation = Count(1),
+            Resolution = Count(720),
+        },
+        "HDTV-1080p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.Broadcast),
+            Generation = Count(1),
+            Resolution = Count(1080),
+        },
+        "Raw-HD" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.BroadcastBitstream),
+            Generation = Count(0),
+            Resolution = Count(1080),
+        },
+        "WEBDL-1080p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.Stream),
+            Generation = Count(0),
+            Resolution = Count(1080),
+        },
+        "WEBRip-1080p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.Stream),
+            Generation = Count(1),
+            Resolution = Count(1080),
+        },
+        "WEBDL-720p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.Stream),
+            Generation = Count(0),
+            Resolution = Count(720),
+        },
+        "WEBRip-720p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.Stream),
+            Generation = Count(1),
+            Resolution = Count(720),
+        },
+        "Bluray-1080p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.HighDefinitionDisc),
+            Generation = Count(1),
+            Resolution = Count(1080),
+        },
+        "BRRip-1080p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.HighDefinitionDisc),
+            Generation = Count(2),
+            Resolution = Count(1080),
+        },
+        "Remux-1080p" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.HighDefinitionDiscBitstream),
+            Generation = Count(0),
+            Resolution = Count(1080),
+        },
+        "DVD" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.StandardDefinitionDiscBitstream),
+            Generation = Count(0),
+            Resolution = Count(480),
+        },
+        "DVDRip" => new VideoQuality
+        {
+            Origin = Origin(VideoOrigin.StandardDefinitionDisc),
+            Generation = Count(1),
+            Resolution = Count(480),
+        },
+        "CAM" => new VideoQuality { Origin = Origin(VideoOrigin.CameraCapture), Generation = Count(1) },
+        "WORKPRINT" => new VideoQuality { Origin = Origin(VideoOrigin.Workprint) },
+        _ => throw new ArgumentOutOfRangeException(nameof(label), label, "No fixture point spells that."),
+    };
+
+    private static Evidence<VideoOrigin> Origin(VideoOrigin origin) =>
+        Evidence<VideoOrigin>.From(origin, EvidenceSource.ReleaseTitle);
+
+    private static Evidence<int> Count(int value) =>
+        Evidence<int>.From(value, EvidenceSource.ReleaseTitle);
 }

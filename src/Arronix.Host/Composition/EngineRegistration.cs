@@ -71,7 +71,12 @@ internal static class EngineRegistration
                     definition.Model.Querying,
                     definition.Shape.Declaration.SearchKinds,
                     new ItemSourceQueryReader(ItemsOf(definition))),
-                Quality = definition => new DeclarativeQualityEvaluator(definition.Shape.Declaration),
+                // A kind whose families read their files onto axes is served by the axis evaluator and
+                // gets no ladder-derived seam at all. The slot is optional precisely so that saying
+                // "nothing here" is expressible rather than requiring an evaluator that answers wrongly.
+                Quality = definition => definition.Shape.Declaration.FormatFamilies[0].Unknown is null
+                    ? null
+                    : new DeclarativeQualityEvaluator(definition.Shape.Declaration),
                 Naming = definition => new DeclarativeRenamePolicy(
                     definition.Kind,
                     definition.Shape.Declaration,

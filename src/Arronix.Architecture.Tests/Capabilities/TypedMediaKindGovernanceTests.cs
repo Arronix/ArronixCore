@@ -237,6 +237,12 @@ public class TypedMediaKindGovernanceTests
                 found.Add((path, text));
                 return;
 
+            // A reflection handle is metadata about a type, not something a media kind declared. Walking
+            // into one reaches the whole assembly graph — its attributes, its source-link address, the
+            // runtime's own — and every string down there is somebody else's.
+            case Type or MemberInfo or Assembly or Module:
+                return;
+
             case IEnumerable sequence and not string:
                 var index = 0;
 

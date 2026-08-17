@@ -303,7 +303,7 @@ internal sealed class ShapeDerivationTests
     }
 
     [Test]
-    public void TheFormatFamilyCarriesItsLadderAndItsPerFileFacet()
+    public void TheFormatFamilyCarriesItsQualityModelAndItsPerFileFacet()
     {
         var family = Shape.FormatFamilies.Should().ContainSingle().Subject;
 
@@ -311,8 +311,13 @@ internal sealed class ShapeDerivationTests
         {
             family.FamilyId.Should().Be("video");
             family.FileExtensions.Should().Equal(".mkv", ".mp4");
-            family.Ladder.Should().Equal(Works.Ladder);
-            family.Unknown.Should().Be(Works.Unknown);
+            // The family declares a quality model rather than a ladder, so it carries no rungs and no
+            // sentinel: an axis reading represents its own absence and needs neither.
+            family.Ladder.Should().BeEmpty();
+            family.Unknown.Should().BeNull();
+            family.Quality.Should().NotBeNull();
+            family.Quality!.Family.Value.Should().Be("video");
+            family.Quality.Axes.Should().NotBeEmpty();
 
             // Defaults, unstated by the kind and therefore unwritten.
             family.CoexistsWithOtherFamilies.Should().BeFalse();

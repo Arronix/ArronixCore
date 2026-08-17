@@ -2,12 +2,13 @@
 #pragma warning disable ARX0016 // Intent contracts are experimental; these tests exercise the declaration.
 #pragma warning disable ARX0019 // Definition contracts are experimental; these tests exercise the declaration.
 #pragma warning disable ARX0020 // Media contracts are experimental; these tests exercise the typed surface.
+#pragma warning disable ARX0021 // Quality contracts are experimental; these tests exercise the axes model.
 
 using System.Linq;
 using Arronix.Abstractions.Definition;
-using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Media.Typed;
 
@@ -72,25 +73,17 @@ internal static class MoviesDeclaration
     internal static IReadOnlyDictionary<string, FieldDescriptor> Fields { get; } =
         Level.Fields.ToDictionary(static field => field.FieldId, StringComparer.Ordinal);
 
-    /// <summary>Every declared rung by name, the unknown rung included.</summary>
-    internal static IReadOnlyDictionary<string, QualityTier> Tiers { get; } = BuildTiers();
-
-    /// <summary>Every corpus case that pins a rung, by input text.</summary>
-    internal static IReadOnlyDictionary<string, string> ExpectedTiers { get; } =
+    /// <summary>Every corpus case that pins a quality, by input text.</summary>
+    internal static IReadOnlyDictionary<string, string> ExpectedQualities { get; } =
         Carried.Corpus
-            .Where(static row => row.ExpectedTierId is not null)
-            .ToDictionary(static row => row.Input, static row => row.ExpectedTierId!, StringComparer.Ordinal);
+            .Where(static row => row.ExpectedQuality is not null)
+            .ToDictionary(static row => row.Input, static row => row.ExpectedQuality!, StringComparer.Ordinal);
 
     /// <summary>Every corpus case that pins a title, by input text.</summary>
     internal static IReadOnlyDictionary<string, string> ExpectedTitles { get; } =
         Carried.Corpus
             .Where(static row => row.ExpectedTitle is not null)
             .ToDictionary(static row => row.Input, static row => row.ExpectedTitle!, StringComparer.Ordinal);
-
-    /// <summary>Looks a rung up by the name the ladder publishes it under.</summary>
-    /// <param name="name">The rung name.</param>
-    /// <returns>The tier.</returns>
-    internal static QualityTier Tier(string name) => Tiers[name];
 
     /// <summary>Finds a declared guard by identifier.</summary>
     /// <param name="guardId">The identifier.</param>
@@ -105,27 +98,15 @@ internal static class MoviesDeclaration
         Parsing.TitlePatterns.Single(
             pattern => string.Equals(pattern.PatternId, patternId, StringComparison.Ordinal));
 
-    /// <summary>Every rung rule that resolves to one tier.</summary>
-    /// <param name="tierId">The tier name.</param>
-    /// <returns>The rules, in declared order.</returns>
-    internal static IReadOnlyList<RungRule> RulesFor(string tierId) =>
-        [.. Parsing.RungResolution.Rules.Where(
-            rule => string.Equals(rule.TierId, tierId, StringComparison.Ordinal))];
+    /// <summary>The video family's quality model, as the host compiled it from the declaration.</summary>
+    internal static IQualityType Quality =>
+        Video.Quality ?? throw new InvalidOperationException("The video family declared no quality model.");
 
-    private static Dictionary<string, QualityTier> BuildTiers()
-    {
-        var tiers = new Dictionary<string, QualityTier>(StringComparer.Ordinal);
+    /// <summary>The policy in force over the video family until a user states one of their own.</summary>
+    internal static QualityPolicy Policy => Quality.DefaultPolicy;
 
-        foreach (var family in Shape.FormatFamilies)
-        {
-            foreach (var tier in family.Ladder)
-            {
-                tiers[tier.Name] = tier;
-            }
-
-            tiers[family.Unknown.Name] = family.Unknown;
-        }
-
-        return tiers;
-    }
+    /// <summary>Names one of the video family's axes.</summary>
+    /// <param name="property">The property that declares it.</param>
+    /// <returns>The identity.</returns>
+    internal static QualityAxisId Axis(string property) => QualityAxisId.FromProperty(property);
 }

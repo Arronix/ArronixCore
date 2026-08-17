@@ -33,7 +33,11 @@ public sealed class MusicQualityModel : IQualityModel
         MusicShape.Declaration.FormatFamilies[0].Ladder;
 
     /// <summary>Gets the tier meaning "recognized as audio, but not placed on the ladder".</summary>
-    public static QualityTier Unknown { get; } = MusicShape.Declaration.FormatFamilies[0].Unknown;
+    /// <remarks>
+    /// Present because this family still declares a ladder. A family that reads its files onto typed axes
+    /// declares no sentinel at all, because an axis reading carries its own typed absence.
+    /// </remarks>
+    public static QualityTier Unknown { get; } = MusicShape.Declaration.FormatFamilies[0].Unknown!;
 
     /// <inheritdoc />
     public QualityTier EvaluateQuality(ParsedRelease parsedRelease)

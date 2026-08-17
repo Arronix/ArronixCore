@@ -465,7 +465,7 @@ internal static class ShapeValidationRules
         {
             defects.Add(new ShapeDefect(
                 "formatFamilies",
-                "A shape declares at least one format family, because a file with no family has no quality ladder.",
+                "A shape declares at least one format family, because a file with no family has no quality model.",
                 CoreErrorCode.PluginShapeInvalid));
         }
 
@@ -490,12 +490,28 @@ internal static class ShapeValidationRules
                 }
             }
 
-            if (family.Ladder.Count == 0)
+            // A family says how its files are read exactly once. Declaring both a ladder and an axis
+            // model is two answers to one question, and declaring neither leaves nothing able to say what
+            // one of its files is.
+            if (family.Ladder.Count == 0 && family.Quality is null)
             {
                 defects.Add(new ShapeDefect(
-                    $"formatFamilies[{family.FamilyId}].ladder",
-                    "A format family declares a non-empty quality ladder.",
+                    $"formatFamilies[{family.FamilyId}].quality",
+                    "A format family declares a quality model or a non-empty quality ladder.",
                     CoreErrorCode.PluginShapeInvalid));
+                continue;
+            }
+
+            if (family.Ladder.Count > 0 && family.Quality is not null)
+            {
+                defects.Add(new ShapeDefect(
+                    $"formatFamilies[{family.FamilyId}].quality",
+                    "A format family declares a quality model or a ladder, never both: two ways of saying what a file is are two answers to one question.",
+                    CoreErrorCode.PluginShapeInvalid));
+            }
+
+            if (family.Ladder.Count == 0)
+            {
                 continue;
             }
 

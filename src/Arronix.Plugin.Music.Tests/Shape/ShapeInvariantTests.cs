@@ -151,7 +151,7 @@ public class ShapeInvariantTests
             Assert.That(family.Ladder, Is.Not.Empty);
             Assert.That(family.Ladder.Select(tier => tier.Rank), Is.Unique);
             Assert.That(
-                family.Ladder.Any(tier => tier.Rank == family.Unknown.Rank),
+                family.Ladder.Any(tier => tier.Rank == family.Unknown!.Rank),
                 Is.False,
                 "The unknown tier must not sit on the ladder.");
 

@@ -7,8 +7,8 @@ using Arronix.Abstractions.Shape;
 namespace Arronix.Plugin.Movies.Definition;
 
 /// <summary>
-/// The parity cases this definition ships with itself: real release names, each pinned to the rung or the
-/// title it must read as.
+/// The parity cases this definition ships with itself: real release names, each pinned to the quality or
+/// the title it must read as.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -25,7 +25,20 @@ namespace Arronix.Plugin.Movies.Definition;
 /// <para>
 /// Cases naming a season and an episode are kept verbatim from the surveyed corpus. They are not movie
 /// releases and they are not read as such: the quality scan reads tokens out of any text, which is
-/// precisely the evidence that it is not movie semantics.
+/// precisely the evidence that it is not movie semantics. Under the axes model that stops being a defect
+/// in the corpus — a quality expectation does not go through title parsing at all, so a quality case and a
+/// title case are simply two different assets, and the sixty rows a movie title pattern declines are
+/// asserted in full against the shared video family.
+/// </para>
+/// <para>
+/// <b>The quality column states a rendering rather than a rung, and nineteen rows changed with it.</b> A
+/// rung name was chosen from a fixed list of thirty; a rendering is derived from what was actually read, so
+/// where the two differ the row now states what the release says instead of the nearest row that existed.
+/// Eight rows carry a raster or a bitstream claim a ladder had nowhere to put — 360, 540 and 960 lines, and
+/// a disc bitstream copy below 1080. Seven drop a guess: a disc token with no stated resolution no longer
+/// invents one, and a broadcast token with no stated resolution reads the same way whether it was spelled
+/// with a separator or without, which is what the surveyed rows already said for every unspaced spelling.
+/// Four render both standard-definition disc members with the community's single word for them.
 /// </para>
 /// </remarks>
 public static class MoviesCorpus
@@ -56,29 +69,29 @@ public static class MoviesCorpus
         Tier("q017", "the.Movie Name.1x13.circles.ws.xvidvd-tns", "DVD"),
         Tier("q018", "The.Third.Movie Name.2008.DVDRip.360p.H264 iPod -20-40", "DVD"),
         Tier("q019", "SomeMovie.2018.DVDRip.ts", "DVD"),
-        Tier("q020", "Some.Movie.Magic.Rainbow.2007.DVD5.NTSC", "DVD-R"),
-        Tier("q021", "Some.Movie.Magic.Rainbow.2007.DVD9.NTSC", "DVD-R"),
-        Tier("q022", "Some.Movie.Magic.Rainbow.2007.DVDR.NTSC", "DVD-R"),
-        Tier("q023", "Some.Movie.Magic.Rainbow.2007.DVD-R.NTSC", "DVD-R"),
-        Tier("q024", "Some.Movie.2020.PAL.2xDVD9", "DVD-R"),
-        Tier("q025", "Some.Movie.2000.2DVD5", "DVD-R"),
-        Tier("q026", "Some.Movie.2005.PAL.MDVDR-SOMegRoUP", "DVD-R"),
+        Tier("q020", "Some.Movie.Magic.Rainbow.2007.DVD5.NTSC", "DVD"),
+        Tier("q021", "Some.Movie.Magic.Rainbow.2007.DVD9.NTSC", "DVD"),
+        Tier("q022", "Some.Movie.Magic.Rainbow.2007.DVDR.NTSC", "DVD"),
+        Tier("q023", "Some.Movie.Magic.Rainbow.2007.DVD-R.NTSC", "DVD"),
+        Tier("q024", "Some.Movie.2020.PAL.2xDVD9", "DVD"),
+        Tier("q025", "Some.Movie.2000.2DVD5", "DVD"),
+        Tier("q026", "Some.Movie.2005.PAL.MDVDR-SOMegRoUP", "DVD"),
         Tier("q027", "Movie.Name.S01E10.The.Leviathan.480p.WEB-DL.x264-mSD", "WEBDL-480p"),
         Tier("q028", "Movie.Name.S02E04.480p.WEB.DL.nSD.x264-NhaNc3", "WEBDL-480p"),
         Tier("q029", "[HorribleSubs] Movie Title! 2018 [Web][MKV][h264][480p][AAC 2.0][Softsubs (HorribleSubs)]", "WEBDL-480p"),
-        Tier("q030", "[SubsPlease] Movie Title (540p) [AB649D32].mkv", "WEBDL-480p"),
-        Tier("q031", "[Erai-raws] Movie Title [540p][Multiple Subtitle].mkv", "WEBDL-480p"),
+        Tier("q030", "[SubsPlease] Movie Title (540p) [AB649D32].mkv", "WEBDL-540p"),
+        Tier("q031", "[Erai-raws] Movie Title [540p][Multiple Subtitle].mkv", "WEBDL-540p"),
         Tier("q032", "Movie.Name.1x04.ITA.WEBMux.x264-NovaRip", "WEBRip-480p"),
         Tier("q033", "Movie.Name (BD)(640x480(RAW) (BATCH 1) (1-13)", "Bluray-480p"),
         Tier("q034", "Movie.Name.S01E05.480p.BluRay.DD5.1.x264-HiSD", "Bluray-480p"),
-        Tier("q035", "Movie.Name.S03E01-06.DUAL.BDRip.AC3.-HELLYWOOD", "Bluray-480p"),
-        Tier("q036", "Movie.Name.2011.LIMITED.BluRay.360p.H264-20-40", "Bluray-480p"),
-        Tier("q037", "Movie.Name.2011.BluRay.480i.DD.2.0.AVC.REMUX-FraMeSToR", "Bluray-480p"),
+        Tier("q035", "Movie.Name.S03E01-06.DUAL.BDRip.AC3.-HELLYWOOD", "Bluray"),
+        Tier("q036", "Movie.Name.2011.LIMITED.BluRay.360p.H264-20-40", "Bluray-360p"),
+        Tier("q037", "Movie.Name.2011.BluRay.480i.DD.2.0.AVC.REMUX-FraMeSToR", "Remux-480p"),
         Tier("q038", "Movie.Name.2004.576p.BDRip.x264-HANDJOB", "Bluray-576p"),
         Tier("q039", "Movie.Title.S01E05.576p.BluRay.DD5.1.x264-HiSD", "Bluray-576p"),
         Tier("q040", "Movie Name - S01E01 - Title [HDTV-720p]", "HDTV-720p"),
         Tier("q041", "Movie.Name S04E87 REPACK 720p HDTV x264 aAF", "HDTV-720p"),
-        Tier("q042", "Movie.Name - S22E03 - MoneyBART - HD TV.mkv", "HDTV-720p"),
+        Tier("q042", "Movie.Name - S22E03 - MoneyBART - HD TV.mkv", "SDTV"),
         Tier("q043", "Movie.Name.S08E05.720p.HDTV.X264-DIMENSION", "HDTV-720p"),
         Tier("q044", "Movie.Name.S01E08.Tourmaline.Nepal.720p.HDTV.x264-DHD", "HDTV-720p"),
         Tier("q045", "Movie.Name.US.S12E17.HR.WS.PDTV.X264-DIMENSION", "HDTV-720p"),
@@ -86,7 +99,7 @@ public static class MoviesCorpus
         Tier("q047", "Movie Name.S07E01.ARE.YOU.1080P.HDTV.proper.X264-QCF", "HDTV-1080p"),
         Tier("q048", "Movie Name - S01E01 - Title [HDTV-1080p]", "HDTV-1080p"),
         Tier("q049", "Movie.Name.2020.1080i.HDTV.DD5.1.H.264-NOGRP", "HDTV-1080p"),
-        Tier("q050", "[NOGRP][国漫][诛仙][Movie Title 2022][19][HEVC][GB][4K]", "HDTV-2160p"),
+        Tier("q050", "[NOGRP][国漫][诛仙][Movie Title 2022][19][HEVC][GB][4K]", "2160p"),
         Tier("q051", "Movie Name S01E04 Mexicos Death Train 720p WEB DL", "WEBDL-720p"),
         Tier("q052", "Movie Name S02E21 720p WEB DL DD5 1 H 264", "WEBDL-720p"),
         Tier("q053", "Movie Name - S11E06 - D-Yikes! - 720p WEB-DL.mkv", "WEBDL-720p"),
@@ -95,7 +108,7 @@ public static class MoviesCorpus
         Tier("q056", "Movie Name.S04E25.720p.iTunesHD.AVC-TVS", "WEBDL-720p"),
         Tier("q057", "Movie Name.S06E23.720p.WebHD.h264-euHD", "WEBDL-720p"),
         Tier("q058", "Movie Name.2016.03.14.720p.WEB.x264-spamTV", "WEBDL-720p"),
-        Tier("q059", "Movie.Title.2013.960p.WEB-DL.AAC2.0.H.264-squalor", "WEBDL-720p"),
+        Tier("q059", "Movie.Title.2013.960p.WEB-DL.AAC2.0.H.264-squalor", "WEBDL-960p"),
         Tier("q060", "Movie.Title.2021.DP.WEB.720p.DDP.5.1.H.264.PLEX", "WEBDL-720p"),
         Tier("q061", "Movie.Title.ITA.720p.WEBMux.x264-NovaRip", "WEBRip-720p"),
         Tier("q062", "Movie Name.S04E01.720p.WEBRip.AAC2.0.x264-NFRiP", "WEBRip-720p"),
@@ -127,7 +140,7 @@ public static class MoviesCorpus
         Tier("q088", "Movie.Name.2024.German.AC3D.DL.2160p.Hybrid.WEB.DV.HDR10Plus.HEVC-GROUP", "WEBDL-2160p"),
         Tier("q089", "Movie Name S01E01.2160P AMZN WEBRIP DD2.0 HI10P X264-TROLLUHD", "WEBRip-2160p"),
         Tier("q090", "Movie.Name.S01E01.2160p.AMZN.WEBRip.DD2.0.Hi10p.X264-TrollUHD", "WEBRip-2160p"),
-        Tier("q091", "Movie.Name.S03E01-06.DUAL.Bluray.AC3.-HELLYWOOD.avi", "Bluray-720p"),
+        Tier("q091", "Movie.Name.S03E01-06.DUAL.Bluray.AC3.-HELLYWOOD.avi", "Bluray"),
         Tier("q092", "Movie Name - S01E03 - Come Fly With Me - 720p BluRay.mkv", "Bluray-720p"),
         Tier("q093", "Movie.Name.S01E02.Chained.Heat.[Bluray720p].mkv", "Bluray-720p"),
         Tier("q094", "[FFF] Movie Name - 01 [BD][720p-AAC][0601BED4]", "Bluray-720p"),
@@ -137,8 +150,8 @@ public static class MoviesCorpus
         Tier("q098", "Movie.Name.S01E07.RERIP.720p.BluRay.x264-DEMAND", "Bluray-720p"),
         Tier("q099", "Movie.Name.2019.720p.MBLURAY.x264-MBLURAYFANS.mkv", "Bluray-720p"),
         Tier("q100", "Movie.Name.2.Parte.2.ITA-ENG.720p.BDMux.DD5.1.x264-DarkSideMux", "Bluray-720p"),
-        Tier("q101", "Movie.Hunter.2018.720p.Blu-ray.Remux.AVC.FLAC.2.0-SiCFoI", "Bluray-720p"),
-        Tier("q102", "Movie.1993.720p.BluRay.REMUX.AVC.FLAC.2.0-BLURANiUM", "Bluray-720p"),
+        Tier("q101", "Movie.Hunter.2018.720p.Blu-ray.Remux.AVC.FLAC.2.0-SiCFoI", "Remux-720p"),
+        Tier("q102", "Movie.1993.720p.BluRay.REMUX.AVC.FLAC.2.0-BLURANiUM", "Remux-720p"),
         Tier("q103", "Movie Title - S01E03 - Come Fly With Me - 1080p BluRay.mkv", "Bluray-1080p"),
         Tier("q104", "Movie.Title.S02E13.1080p.BluRay.x264-AVCDVD", "Bluray-1080p"),
         Tier("q105", "Movie.S01E02.Chained.Heat.[Bluray1080p].mkv", "Bluray-1080p"),
@@ -222,10 +235,10 @@ public static class MoviesCorpus
         Tier("s006", "Some Movie 2018 480p.WEB-DL", "WEBDL-480p"),
         Tier("s007", "Some Movie 2018 480p WEB-DL", "WEBDL-480p"),
         Tier("s008", "Some Movie 2018 480p_WEB-DL", "WEBDL-480p"),
-        Tier("s009", "Some Movie 2018 HD-TV", "HDTV-720p"),
-        Tier("s010", "Some Movie 2018 HD.TV", "HDTV-720p"),
-        Tier("s011", "Some Movie 2018 HD TV", "HDTV-720p"),
-        Tier("s012", "Some Movie 2018 HD_TV", "HDTV-720p"),
+        Tier("s009", "Some Movie 2018 HD-TV", "SDTV"),
+        Tier("s010", "Some Movie 2018 HD.TV", "SDTV"),
+        Tier("s011", "Some Movie 2018 HD TV", "SDTV"),
+        Tier("s012", "Some Movie 2018 HD_TV", "SDTV"),
         Tier("s013", "Some Movie 2018 1080p-HD-TV", "HDTV-1080p"),
         Tier("s014", "Some Movie 2018 1080p.HD.TV", "HDTV-1080p"),
         Tier("s015", "Some Movie 2018 1080p HD TV", "HDTV-1080p"),
@@ -306,7 +319,7 @@ public static class MoviesCorpus
         CaseId = id,
         Input = input,
         Source = MatchSource.ReleaseName,
-        ExpectedTierId = tierId
+        ExpectedQuality = tierId
     };
 
     private static CorpusCase Title(string id, string input, string title) => new()

@@ -57,13 +57,20 @@ internal sealed class CompiledParseDeclaration
                 tierNames.Add(tier.Name);
             }
 
-            tierNames.Add(family.Unknown.Name);
+            if (family.Unknown is { } unknown)
+            {
+                tierNames.Add(unknown.Name);
+            }
         }
 
         RungResolution = parsing.RungResolution;
         Defaults = model.Quality.Defaults;
 
-        ValidateRungResolution(parsing.RungResolution, tierNames);
+        if (parsing.RungResolution is { } table)
+        {
+            ValidateRungResolution(table, tierNames);
+        }
+
         ValidateDefaults(model.Quality.Defaults);
     }
 
@@ -79,8 +86,8 @@ internal sealed class CompiledParseDeclaration
     /// <summary>Gets the compiled token tables, in declared order.</summary>
     internal IReadOnlyList<CompiledTokenTable> TokenTables { get; }
 
-    /// <summary>Gets the declared rung-resolution table, order untouched.</summary>
-    internal RungResolutionTable RungResolution { get; }
+    /// <summary>Gets the declared rung-resolution table, order untouched. Absent for a kind that has none.</summary>
+    internal RungResolutionTable? RungResolution { get; }
 
     /// <summary>Gets the declared default rows applied before rung lookup, order untouched.</summary>
     internal IReadOnlyList<TierDefault> Defaults { get; }

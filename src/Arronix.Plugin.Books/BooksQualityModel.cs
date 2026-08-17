@@ -63,8 +63,8 @@ public sealed class BooksQualityModel : IQualityModel
         // A release name that says nothing recognizable is unknown in the family the codec implies, and
         // unknown-text when even that is silent. Two sentinels, one per family, is the point.
         return string.Equals(parsedRelease.Codec, "AUDIO", StringComparison.Ordinal)
-            ? Spoken.Unknown
-            : Written.Unknown;
+            ? Spoken.Unknown!
+            : Written.Unknown!;
     }
 
     /// <inheritdoc />
@@ -120,13 +120,13 @@ public sealed class BooksQualityModel : IQualityModel
         ArgumentNullException.ThrowIfNull(tier);
 
         if (Written.Ladder.Any(candidate => Same(candidate, tier))
-            || Same(Written.Unknown, tier))
+            || Same(Written.Unknown!, tier))
         {
             return BooksShape.WrittenFamilyId;
         }
 
         if (Spoken.Ladder.Any(candidate => Same(candidate, tier))
-            || Same(Spoken.Unknown, tier))
+            || Same(Spoken.Unknown!, tier))
         {
             return BooksShape.SpokenFamilyId;
         }
@@ -174,7 +174,7 @@ public sealed class BooksQualityModel : IQualityModel
 
         if (extension is null)
         {
-            return Written.Unknown;
+            return Written.Unknown!;
         }
 
         var byName = extension.TrimStart('.').ToUpperInvariant() switch
@@ -193,8 +193,8 @@ public sealed class BooksQualityModel : IQualityModel
         if (byName is null)
         {
             return FamilyForExtension(path) == BooksShape.SpokenFamilyId
-                ? Spoken.Unknown
-                : Written.Unknown;
+                ? Spoken.Unknown!
+                : Written.Unknown!;
         }
 
         return Written.Ladder.Concat(Spoken.Ladder)

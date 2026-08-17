@@ -1,4 +1,5 @@
 #pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
+#pragma warning disable ARX0021 // Quality contracts are experimental; these tests exercise the axes model.
 
 using System.Linq;
 using Arronix.Abstractions.Shape;
@@ -167,22 +168,32 @@ public class ShapeInvariantTests
     public void DeclaresAtLeastOneFormatFamily()
         => Assert.That(Declaration.FormatFamilies, Is.Not.Empty);
 
+    /// <summary>
+    /// A family says how its files are read exactly once. Declaring both a ladder and an axis model would
+    /// be two answers to one question; declaring neither leaves nothing able to say what one of its files
+    /// is.
+    /// </summary>
     [Test]
-    public void DeclaresANonEmptyLadderWithDistinctRanks()
+    public void DeclaresAQualityModelInsteadOfALadder()
     {
         foreach (var family in Declaration.FormatFamilies)
         {
-            Assert.That(family.Ladder, Is.Not.Empty, family.FamilyId);
-            Assert.That(family.Ladder.Select(static tier => tier.Rank), Is.Unique, family.FamilyId);
+            Assert.That(family.Quality, Is.Not.Null, family.FamilyId);
+            Assert.That(family.Ladder, Is.Empty, family.FamilyId);
         }
     }
 
+    /// <summary>
+    /// A sentinel rung exists only because a ladder has nowhere else to put "we do not know". An axis
+    /// reading carries its own typed absence and the policy — not the data — decides what an absent
+    /// reading is worth, so there is no sentinel to place anywhere.
+    /// </summary>
     [Test]
-    public void PlacesTheUnknownTierOutsideTheLadder()
+    public void DeclaresNoUnknownSentinelAtAll()
     {
         foreach (var family in Declaration.FormatFamilies)
         {
-            Assert.That(family.Ladder, Does.Not.Contain(family.Unknown), family.FamilyId);
+            Assert.That(family.Unknown, Is.Null, family.FamilyId);
         }
     }
 

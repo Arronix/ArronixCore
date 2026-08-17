@@ -59,7 +59,7 @@ internal sealed class DefinitionValidationTests
 
         Validate(model, out var validated, out _);
 
-        validated!.Model.Parsing.RungResolution.Rules
+        validated!.Model.Parsing.RungResolution!.Rules
             .Select(rule => rule.RuleId)
             .Should().Equal(
                 ["guarded-high", "everything-else"],
@@ -113,12 +113,12 @@ internal sealed class DefinitionValidationTests
     {
         var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
         {
-            RungResolution = parsing.RungResolution with
+            RungResolution = parsing.RungResolution! with
             {
                 Rules =
                 [
-                    parsing.RungResolution.Rules[0] with { TierId = "Bluray-2160p" },
-                    .. parsing.RungResolution.Rules.Skip(1),
+                    parsing.RungResolution!.Rules[0] with { TierId = "Bluray-2160p" },
+                    .. parsing.RungResolution!.Rules.Skip(1),
                 ],
             },
         });
@@ -132,7 +132,7 @@ internal sealed class DefinitionValidationTests
     {
         var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
         {
-            RungResolution = parsing.RungResolution with { UnknownTierId = "nope" },
+            RungResolution = parsing.RungResolution! with { UnknownTierId = "nope" },
         });
 
         DefectsOf(model).Should().Contain(defect => defect.Path == "parsing.rungResolution.unknownTierId");
@@ -222,18 +222,18 @@ internal sealed class DefinitionValidationTests
     {
         var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
         {
-            RungResolution = parsing.RungResolution with
+            RungResolution = parsing.RungResolution! with
             {
                 Rules =
                 [
-                    parsing.RungResolution.Rules[0] with
+                    parsing.RungResolution!.Rules[0] with
                     {
                         When = new TagPredicate(
                         [
                             new PredicateAtom { Subject = "guard:missing", Op = PredicateOp.GuardMatches },
                         ]),
                     },
-                    .. parsing.RungResolution.Rules.Skip(1),
+                    .. parsing.RungResolution!.Rules.Skip(1),
                 ],
             },
         });
@@ -355,7 +355,7 @@ internal sealed class DefinitionValidationTests
     {
         var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
         {
-            RungResolution = parsing.RungResolution with { UnknownTierId = "nope" },
+            RungResolution = parsing.RungResolution! with { UnknownTierId = "nope" },
         }) with
         {
             Querying = DefinitionFixtures.Sound().Querying with

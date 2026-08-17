@@ -52,7 +52,11 @@ internal static class DefinitionValidationRules
         var guards = CheckGuards(model.Parsing, defects);
         var patternIds = CheckTitlePatterns(model.Parsing, shape, guards, schemeIds, defects);
         CheckTokenTables(model.Parsing, defects);
-        CheckRungResolution(model.Parsing.RungResolution, tierIds, guards, defects);
+        if (model.Parsing.RungResolution is { } rungs)
+        {
+            CheckRungResolution(rungs, tierIds, guards, defects);
+        }
+
         CheckEscapes(model.Parsing.EscapeIds, defects);
         var releaseKinds = CollectReleaseKinds(model.Parsing);
         CheckMatching(model.Matching, shape, releaseKinds, schemeIds, defects);
@@ -70,7 +74,10 @@ internal static class DefinitionValidationRules
 
         foreach (var family in shape.Declaration.FormatFamilies)
         {
-            tiers.Add(family.Unknown.Name);
+            if (family.Unknown is { } unknown)
+            {
+                tiers.Add(unknown.Name);
+            }
 
             foreach (var tier in family.Ladder)
             {
@@ -746,7 +753,10 @@ internal static class DefinitionValidationRules
                 Report(defects, path, $"Title pattern '{pattern}' is not declared by the parsing section.");
             }
 
-            if (corpusCase.ExpectedTierId is { } tier && !tierIds.Contains(tier))
+            // Checked against the declared rungs only where there are rungs to check against. A kind whose
+            // families read their files onto axes pins a rendering rather than a row, and the set of
+            // renderings is not enumerable in advance — which is the point of the model, not a gap in it.
+            if (tierIds.Count > 0 && corpusCase.ExpectedQuality is { } tier && !tierIds.Contains(tier))
             {
                 Report(defects, path, $"Tier '{tier}' is absent from every declared ladder.");
             }

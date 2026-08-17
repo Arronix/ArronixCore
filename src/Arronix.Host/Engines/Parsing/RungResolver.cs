@@ -1,3 +1,5 @@
+using Arronix.Abstractions.Definition;
+
 // Consumes the experimental definition contracts (ARX0019).
 #pragma warning disable ARX0019
 
@@ -27,6 +29,15 @@ internal sealed class RungResolver
 
     internal RungResolver(CompiledParseDeclaration declaration) => _declaration = declaration;
 
+    /// <summary>Gets the table this resolver was built for.</summary>
+    /// <remarks>
+    /// Non-null by construction: a resolver is only built for a declaration that carries a table, and a
+    /// kind whose families read their files onto axes carries none and gets no resolver at all.
+    /// </remarks>
+    private RungResolutionTable Table =>
+        _declaration.RungResolution
+        ?? throw new InvalidOperationException("The declaration carries no rung-resolution table.");
+
     /// <summary>Resolves one release's evidence to a ladder rung.</summary>
     /// <param name="context">The release's predicate context. Default rows may adjust its effective
     /// source group and stated resolution; the adjustments are visible to the rung rows.</param>
@@ -36,7 +47,7 @@ internal sealed class RungResolver
     {
         ApplyDefaults(context);
 
-        foreach (var rule in _declaration.RungResolution.Rules)
+        foreach (var rule in Table.Rules)
         {
             if (TagPredicateEvaluator.Holds(rule.When, context))
             {
@@ -51,7 +62,7 @@ internal sealed class RungResolver
             return new RungOutcome(tierId, 0);
         }
 
-        return new RungOutcome(_declaration.RungResolution.UnknownTierId, 0);
+        return new RungOutcome(Table.UnknownTierId, 0);
     }
 
     private void ApplyDefaults(ParsePredicateContext context)
@@ -84,7 +95,7 @@ internal sealed class RungResolver
 
     private string? ResolveExtension(string rawTitle)
     {
-        var fallbacks = _declaration.RungResolution.ContainerFallbacks;
+        var fallbacks = Table.ContainerFallbacks;
 
         if (fallbacks.Count == 0)
         {
