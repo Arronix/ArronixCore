@@ -1,5 +1,12 @@
 # Open decisions and recorded defects
 
+> **SUBORDINATE DOCUMENT.** The controlling record of owner decisions is
+> [`docs/owner-ledger.md`](owner-ledger.md) — a third-party reconstruction of owner signal from the
+> session transcript, adopted by the owner on 2026-08-18 after this register was found to have blurred
+> owner decisions with agent proposals and, in places, recorded agent inferences as owner resolutions.
+> Where the two disagree, the ledger wins. This file remains the agent working register: defects,
+> verification results, and agent-proposed work items.
+
 > **Purpose.** A register of things that need an owner decision, and of defects found and fixed, so neither
 > is lost between sessions. Raised during the declarative media-kind milestone (2026-08-17), when
 > `Arronix.Plugin.Movies` became the first pure `MediaKindDefinition` and the declarative path was wired
@@ -728,7 +735,20 @@ channel that partly undoes source quarantine); the gatekeeper's similarity score
 gradient — report pass/fail only; corpus reduction currently loses the negative cases, which carry most of
 the corpus's value; spec sanitization is syntactic while the disputed material is semantic.
 
-**D-7 — RESOLVED (owner, 2026-08-17): Remux becomes its own `Origin` member.** The untouched-disc case
+**D-7 — SUPERSEDED by owner revision, 2026-08-18.** The 2026-08-17 UI selection (Remux as its own
+`Origin` member — an option the orchestrator recommended) is withdrawn by the owner with fuller context:
+*"that is backwards... Do not distort the domain facts to preserve the inherited metaphorical default
+ladder."* `VideoOrigin.HighDefinitionDiscBitstream` merges "where it came from" with "whether it is
+untouched" — precisely the two concerns the approved `SourceOrigin`/`Fidelity` split (owner ledger O-27)
+separates. The controlling rule when a policy cannot express a conditional preference: (a) question
+whether the preference is meaningful at all rather than an upstream ideological inheritance; (b) improve
+the policy composition language; or (c) accept that the profile cannot be expressed yet. Additionally
+(owner, 2026-08-18): codec, HDR, audio presentation, container, frame rate and flaws are useful facts but
+NOT members of the approved base `VideoQuality` — they are independently composable video capabilities /
+technical metadata, and audio presentation must not be collapsed into one "richest" value inside video
+quality. The original selection text is retained below for the record.
+
+*(original entry follows)* Remux becomes its own `Origin` member.** The untouched-disc case
 is promoted out of `Generation`, so the disc pair separates strictly on `Origin` (Remux > HDDisc) while
 `Generation` stays tieable {0,1} for the web pair. Zero new policy mechanism; the per-axis profile UI
 survives; the ladder's separate Remux rung is revealed as having accidentally encoded this all along. The
@@ -744,9 +764,10 @@ or prove acyclicity) as part of the amendment pass.
 
 **Q6 — RESOLVED (owner, 2026-08-17): truth over familiarity.** Sub-1080 Remux labels render what the
 evidence says (`Remux-480p`, `Remux-720p`); no collapse to `Bluray-*` for familiarity. Plausibility is the
-computed size gate's job, not the label's. **QA-j** (the "1080p Remux over 2160p WEB" shape migrating as a
-cutoff, not an ordering) was presented alongside and the owner proceeded — treated as accepted; reopen
-only with evidence from real profile usage.
+computed size gate's job, not the label's. **QA-j** — **CORRECTION 2026-08-18: this was never
+decided.** The original entry recorded "presented alongside and the owner proceeded — treated as
+accepted", which was an agent inference dressed as a resolution. The owner ledger (Q7) lists
+cutoff-vs-ordering as genuinely open. It is OPEN.
 
 ---
 
@@ -940,8 +961,13 @@ references Abstractions only.* Add family-vocabulary governance after relocation
 3. **Dispositions**: file formats — extensions already family data; container recognition joins it.
    Languages — the ISO-backed `Language` DTO stays core (external standard, media-agnostic); scene
    spellings (`MULTi`, `VOSTFR`, `German.DL`) move to family recognition data.
-The owner's framing ("shouldn't distributors just be registration plugin based?") is treated as the
-decision on P2-10's direction: family assemblies + open registries. Relocation pass launched 2026-08-18.
+**CORRECTION 2026-08-18:** the original entry here treated the owner's question as a decision. Per the
+owner ledger: the owner direction is *pluggability and registration/plugin composition*; the exact
+mechanisms — `Arronix.Family.Video` as an assembly topology, and the "open recognition table" for
+distributors — were agent proposals, not owner-approved (ledger open questions 1–4). The relocation
+workflow launched on that misreading was interrupted by the owner before any code landed. Family/package
+topology, codec/container registration, language ownership boundary and distributor lifecycle are OPEN
+owner questions.
 
 ---
 
@@ -1034,3 +1060,26 @@ P2-6, P2-7 remainder, P2-10 + vocabulary openness (Part 8 extension), TV/Music/B
 Music/Books quality types, clean-room remainder + LICENSE flip (Part 8), platform services /
 `ApplicationName` default / action seam / storage milestone / QA-16 / CI (previous session list),
 client-as-plugin, web-push-as-plugin, connector plugins, taxonomy docs (Part 4).
+
+---
+
+## Part 10 — Owner ledger adopted; register corrected (2026-08-18)
+
+- **`docs/owner-ledger.md` adopted verbatim as the controlling record** (third-party reconstruction of
+  owner signal, session `92b00c79`). This register is subordinate to it; its "Owner-backed implementation
+  backlog" (items 1–20) is the work order. Part 9's 32-item recovery remains as the agent-proposed
+  backlog, per the ledger's own separation.
+- **Resolutions corrected in place**: QA-j (Part 7) reopened; D-7 (Part 7) superseded by the owner's
+  quality revision; P2-10's "owner direction" claim (Part 8) corrected to open questions 1–4.
+- **New owner signal recorded (2026-08-18)**: the approved base `VideoQuality` is O-27's four fields
+  (`SourceOrigin`, `Fidelity` with untouched/first-encode/re-encode-generation, optional typed
+  `Resolution`, `Revision`). The landed 13-axis ontology contradicted it; restoration is ledger backlog
+  item 7. The three-option rule for inexpressible preferences (question the preference / improve the
+  policy language / accept inexpressibility — never distort facts) is standing policy. Additional facts
+  (codec, HDR, audio, container, frame rate, flaws) become independently composable capabilities /
+  technical metadata outside the base model.
+- **`ICataloger<T>`/`ICurator<T>` constraint**: the owner notes the `T : IMediaType` vs `T : IMediaItem`
+  phrasing may have been imprecise and is open to revisiting — treat the generic-pairing *principle* as
+  settled (ledger O-18) and the exact type parameter as an open design point to bring back with options.
+- The session is expected to hand off to a new thread; the entry sequence for the next session is:
+  `docs/owner-ledger.md` → this file's Part 10 → memory.
