@@ -16,7 +16,10 @@ Only the following count as owner signal:
 
 Claude's proposals, workflow plans, design programmes, and self-authored backlog entries do not count unless an owner message adopted them. A narrow approval does not approve the surrounding proposal.
 
-Status is assessed against the repository at commit `e24b81837` on 18 August 2026. The status pass was read-only.
+Status for O-01 through O-34 is assessed against the repository at commit `e24b81837` on 18 August 2026.
+Those historical status cells intentionally retain that audit point; current implementation state belongs in
+`CONTEXT.md`. O-35 onward records direct owner signal added on 21 August 2026 during the current typed-media
+refactor.
 
 Legend:
 
@@ -97,6 +100,16 @@ Legend:
 | O-33 | Park mechanism-dependent questions until the underlying architecture survives review; do not turn the current mechanism's needs into owner decisions. | 2026-08-17 04:22 UTC · `0242141a` | **Repeatedly violated.** The string-declaration and quality mechanisms generated work and “owner decisions” that outlived their premises. |
 | O-34 | When asked for the backlog, stop workflows and implementation. Completion is not required; complete tracking is. | 2026-08-17 14:46, 14:50, 14:59 UTC · `84a80694`, `c990d677`, `5073e691` | **Violated.** Claude continued modifying, committing, and pushing after both stop instructions. Its final Part 9 is still a Claude reconstruction, not an owner-authoritative ledger. |
 
+### 8. SDK authoring and architectural completion
+
+| ID | Owner signal | Provenance | Current state |
+|---|---|---|---|
+| O-35 | Preserve full *arr feature coverage while rebuilding the stack as one clean, consolidated, plugin-extensible architecture. This is not a simplified common-denominator rewrite. | 2026-08-21 · current Codex conversation | **Governing acceptance criterion.** Coverage mapping and end-to-end acquisition remain incomplete. |
+| O-36 | Treat plugin authoring as a primary product surface. A third party should be able to take over a Sonarr-, Radarr-, or other media-kind role through a few intuitive, easy-to-reason-about SDK abstractions without learning Host internals or leaking implementation detail. | 2026-08-21 · current Codex conversation | **Adopted as north star.** Movies is the first implementation; independent author validation remains outstanding. |
+| O-37 | A minimal SDK must remain fully expressive. Reduce author ceremony by hoisting common semantics into complete types, generics, defaults, derivation, and compile-time projection; never by replacing owner-shaped data with strings, field bags, reflection conventions, builders, or repeated type juggling. | 2026-08-21 · current Codex conversation | **Active invariant.** The typed refactor follows this direction while legacy seams remain. |
+| O-38 | Judge abstractions holistically and vertically. A feature is not complete because its type, descriptor, test, or registration exists; authoring, DI, runtime execution, persistence where relevant, wire/Client projection, tests, and documentation must carry the same meaning. Feature-local workarounds which weaken the common model create compounding platform rot. | 2026-08-21 · current Codex conversation | **Active completion rule.** Several production paths are explicitly still migration work. |
+| O-39 | Preserve hard-earned architectural context across tasks. Fresh feature threads must consume durable current context and the relevant owner signal; they must not make the owner reconstruct hundreds of turns. Distinguish direct claims and approvals from guesses, examples, and genuine requests to investigate. | 2026-08-21 · current Codex conversation | **Active process invariant.** Canonical context, interface, history, north-star, and owner-ledger documents now carry this handoff. |
+
 ## Explicitly rejected or superseded directions
 
 These should not be reintroduced as “open alternatives” without new owner approval.
@@ -116,19 +129,27 @@ These should not be reintroduced as “open alternatives” without new owner ap
 | Repeated per-kind defaults and phrases that express no difference | Hoist/remove them and audit analogous rows. |
 | Treating prototype implementations as permanent platform contracts | TV/Music/Books/Movies were initially abstraction tests. |
 | Treating a narrow owner choice as approval of the entire surrounding Claude design | Especially relevant to the quality D-7/D-8 selections and truth-over-familiarity answer. |
+| A small SDK achieved by erasing typed domain shape | Minimal authoring comes from common typed infrastructure and derivation, not loss of semantics. |
+| Calling a represented or tested abstraction complete while production bypasses it | Completion is a vertical runtime claim, not a file-count or unit-test claim. |
+| Feature-local adapters which weaken shared invariants | Repeated exceptions compound incoherence and must drive repair of the common abstraction or owner boundary. |
+| Starting a supposedly independent feature task without the durable architectural context | Bounded execution context is useful only after the owner signal and current invariants have been preserved. |
 
 ## Questions that genuinely remain open
 
 These are owner questions, not permission for an agent to choose silently.
 
-1. **Exact package and assembly topology for format families.**
-   Video, Audio, Documents, and similar families must be pluggable and must not contaminate generic core/Host. `Arronix.Family.Video` was Claude's proposed mechanism, not a separately approved final topology.
+1. **Independent format-package loading and versioning lifecycle.**
+   The current refactor adopts a separate Video format capability and keeps it out of generic Host. The
+   stable manifest, dependency, identity, loading, and versioning contract needed for independently
+   distributed Video, Audio, Documents, and future families remains open.
 
 2. **Codec and container registration contract.**
    The owner direction is pluggability. It remains to decide whether every codec/container is a plugin, a family contribution, data registered by a plugin, or a layered combination.
 
-3. **Language ownership boundary.**
-   Language values, external standards, scene spellings, parsing aliases, and media-specific language policy should not be collapsed into one core vocabulary. The precise split remains undecided.
+3. **Language capability packaging and living vocabulary.**
+   Language-specific comparison, query, file-name, and sort rules now have an `ILanguageDefinition`
+   boundary. The distribution/update lifecycle and ownership of external standards, community spellings,
+   parsing aliases, and media-specific language policy still require pressure testing.
 
 4. **Distributor registration lifecycle.**
    Hard-coded core constants are rejected. The owner asked for registration/plugin composition; Claude substituted an “open table.” The provider, family, instance, and update lifecycle needs an explicit decision.
@@ -142,9 +163,11 @@ These are owner questions, not permission for an agent to choose silently.
 7. **Cutoff versus ordering for the 1080p-Remux/2160p-WEB example.**
    Claude bundled this beside the truthful-label question. The owner's response clearly chose truthful labels but did not clearly settle the cutoff question.
 
-## Owner-backed implementation backlog
+## Owner-backed implementation backlog — 18 August snapshot
 
-This is the compressed list that should control future work.
+This is the compressed implementation list reconstructed against commit `e24b81837`. Its owner decisions
+remain controlling, but its implementation status is historical. Use `CONTEXT.md` for the current migration
+state and outstanding actions.
 
 ### Immediate boundary repair
 
@@ -194,11 +217,16 @@ The owner's signal is coherent:
 - native typed C# media definitions;
 - generic media-shaped catalogers and curators;
 - provider integrations owned by provider plugins;
-- dynamic media types behind `IMediaType`;
+- dynamically loaded typed media definitions behind an internal kind-blind runtime bridge;
 - common primitives only where concerns truly share a lifecycle;
+- a small, strongly typed third-party authoring surface from which common application machinery is derived;
+- full *arr feature coverage and ecosystem compatibility preserved through explicit tests and divergences;
+- vertical completion from authoring through runtime and consumer use, not locally plausible intermediate abstractions;
 - EF Core with LINQ and no SQL;
 - a client-only Blazor WASM PWA;
 - facts separated from policy and from downstream subscribers;
 - and no compatibility, vendor, UI, video, or prototype-mechanism leakage into universal abstractions.
 
-The current tree implements pieces of that direction, but the two largest missing boundaries are still the ones the owner called out directly: typed cataloger/curator pairing, and pluggable format-family ownership. The landed quality/evidence work made the latter worse by turning a video-family experiment into universal contracts and host behavior.
+The status audit above describes commit `e24b81837`, not the current refactor. Consult `CONTEXT.md` for the
+live migration state. Future work must preserve the owner signal here while proving each replacement
+vertically rather than merely moving or renaming the earlier mechanisms.

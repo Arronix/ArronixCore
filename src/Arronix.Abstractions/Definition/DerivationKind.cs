@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
 /// The host derivations a catalog declaration may invoke. Closed and append-only.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum DerivationKind
 {
     /// <summary>An ordered status ladder with dated stage conditions and a windowed final stage.</summary>

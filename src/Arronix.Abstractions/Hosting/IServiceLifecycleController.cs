@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Hosting;
 
 /// <summary>
 /// The state of a managed operating system service, as reported by the platform's service manager.
 /// </summary>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ServiceLifecycleStatus
 {
     /// <summary>The state could not be determined.</summary>
@@ -42,7 +40,6 @@ public enum ServiceLifecycleStatus
 /// legacy name shadowed.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IServiceLifecycleController
 {
     /// <summary>

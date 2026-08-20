@@ -3,8 +3,8 @@ using Arronix.Abstractions.Identity;
 namespace Arronix.Abstractions.Media;
 
 /// <summary>
-/// Resolves external media identifiers (e.g., TVDB, TMDB, IMDb) to internal MediaItemIds.
-/// Each media kind plugin provides an implementation for its supported identifier systems.
+/// Resolves an external identifier namespace to internal media item identifiers.
+/// Provider plugins supply implementations for the namespaces they own.
 /// </summary>
 public interface IMediaIdResolver
 {
@@ -14,8 +14,7 @@ public interface IMediaIdResolver
     MediaKindId MediaKind { get; }
 
     /// <summary>
-    /// Gets the external identifier system this resolver handles.
-    /// Examples: "tvdb", "tmdb", "imdb"
+    /// Gets the external identifier namespace this resolver handles.
     /// </summary>
     string IdentifierSystem { get; }
 

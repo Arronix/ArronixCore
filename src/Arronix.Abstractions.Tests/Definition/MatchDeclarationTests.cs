@@ -1,6 +1,4 @@
 // Exercises the declarative media-kind area and the shape vocabulary its rows key on.
-#pragma warning disable ARX0019
-#pragma warning disable ARX0013
 
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Definition;

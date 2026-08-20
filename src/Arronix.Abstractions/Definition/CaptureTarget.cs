@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
 /// What a title-pattern capture becomes.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum CaptureTarget
 {
     /// <summary>A component of a declared coordinate space.</summary>

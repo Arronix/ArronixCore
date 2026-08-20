@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Shape;
 /// no lookup in the host can fail. A property rather than a method because a shape is a constant of the
 /// extension, not a computation.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IMediaShapeProvider
 {
     /// <summary>

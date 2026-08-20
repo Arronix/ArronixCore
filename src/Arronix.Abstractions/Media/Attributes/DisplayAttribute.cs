@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Media;
 /// written because there is nowhere else for it to come from.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class DisplayAttribute : Attribute
 {
     /// <summary>

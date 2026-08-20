@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Definition;
 /// consequence, priced rather than hidden: a novel distance feature costs a host release, not a
 /// declaration edit.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record VariantChoiceDeclaration
 {
     /// <summary>

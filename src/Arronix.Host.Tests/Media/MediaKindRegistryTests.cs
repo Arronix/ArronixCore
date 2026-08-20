@@ -10,12 +10,6 @@ using Arronix.Host.Media;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
-// Every contract named here is experimental.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0016
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Tests.Media;
 

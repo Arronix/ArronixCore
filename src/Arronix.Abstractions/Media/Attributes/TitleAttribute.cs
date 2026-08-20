@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -13,5 +12,4 @@ namespace Arronix.Abstractions.Media;
 /// no attribute for either.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class TitleAttribute : Attribute;

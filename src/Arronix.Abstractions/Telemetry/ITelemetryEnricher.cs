@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Telemetry;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Telemetry;
 /// know what facts a given deployment wants attached. Enrichers run in registration order, each
 /// receiving the output of the previous one.
 /// </remarks>
-[Experimental(ExperimentalContracts.Telemetry, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface ITelemetryEnricher
 {
     /// <summary>

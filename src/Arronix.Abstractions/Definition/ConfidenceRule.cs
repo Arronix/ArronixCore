@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Shape;
 
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Definition;
 /// </param>
 /// <param name="Result">The confidence reported.</param>
 /// <param name="SourceIn">The provenances the row applies to, or null for all.</param>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct ConfidenceRule(
     MatchBasis Basis,
     CoordinateConfidence? CoordinateConfidence,

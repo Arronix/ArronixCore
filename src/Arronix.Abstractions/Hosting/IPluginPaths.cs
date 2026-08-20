@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Hosting;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Hosting;
 /// never need to create them and consumers never need to check.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IPluginPaths
 {
     /// <summary>

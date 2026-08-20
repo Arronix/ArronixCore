@@ -3,8 +3,6 @@ using System.Linq;
 using Arronix.Abstractions.Providers;
 using Microsoft.Extensions.Logging;
 
-// Provider contracts are experimental; dispatch names the notification family.
-#pragma warning disable ARX0015
 
 namespace Arronix.Host.Providers;
 

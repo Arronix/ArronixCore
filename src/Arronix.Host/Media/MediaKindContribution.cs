@@ -7,11 +7,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 
-// Every contract named here is experimental; this record is the bundle the loader hands the registry.
-#pragma warning disable ARX0009
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0016
 
 namespace Arronix.Host.Media;
 
@@ -33,6 +28,9 @@ namespace Arronix.Host.Media;
 /// </remarks>
 public sealed record MediaKindContribution
 {
+    /// <summary>Gets the closed typed runtime when this contribution came from a typed media definition.</summary>
+    public IMediaTypeRuntime? MediaType { get; init; }
+
     /// <summary>
     /// Gets the extension that contributed it.
     /// </summary>

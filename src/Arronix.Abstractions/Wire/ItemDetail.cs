@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Wire;
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Wire;
 /// the catalog half and the host supplies monitoring, links, the chosen variant and everything computed
 /// from them, so there is never more than one answer to "is this wanted?".
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ItemDetail
 {
     /// <summary>
@@ -72,7 +70,6 @@ public sealed record ItemDetail
 /// Four states rather than two, because a container is routinely wanted in part, and because a level with
 /// no monitor dimensions must be able to say the question does not apply rather than answer "no".
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum MonitorState
 {
     /// <summary>The user does not want it.</summary>
@@ -95,5 +92,4 @@ public enum MonitorState
 /// <param name="Page">The one-based page number.</param>
 /// <param name="PageSize">The number of items per page.</param>
 /// <param name="TotalCount">The number of items the query matched in total.</param>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ItemDetailPage(IReadOnlyList<ItemDetail> Items, int Page, int PageSize, int TotalCount);

@@ -5,11 +5,8 @@ using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
+using Arronix.Abstractions.Shape;
 
-// Provider, plugin and error contracts are experimental; the registry holds all three.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0014
-#pragma warning disable ARX0015
 
 namespace Arronix.Host.Providers;
 
@@ -21,12 +18,14 @@ namespace Arronix.Host.Providers;
 /// <param name="Descriptor">What it declares about itself and its settings.</param>
 /// <param name="Provider">The implementation, which is stateless and takes its configuration per call.</param>
 /// <param name="Plugin">The extension that contributed it.</param>
+/// <param name="MediaItemType">The paired media item type for typed catalogers and curators.</param>
 public readonly record struct RegisteredProvider(
     ProviderId Id,
     ProviderFamily Family,
     ProviderDescriptor Descriptor,
     IProvider Provider,
-    PluginId Plugin);
+    PluginId Plugin,
+    Type? MediaItemType);
 
 /// <summary>
 /// Every provider implementation a loaded extension contributed.
@@ -82,6 +81,7 @@ public sealed class ProviderRegistry
     /// <param name="family">The family.</param>
     /// <param name="descriptor">The declaration.</param>
     /// <param name="implementation">The implementation.</param>
+    /// <param name="mediaItemType">The paired media item type, when the provider is media-shaped.</param>
     /// <returns>The minted identifier.</returns>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="descriptor"/> or <paramref name="implementation"/> is <see langword="null"/>.
@@ -93,14 +93,15 @@ public sealed class ProviderRegistry
         PluginId plugin,
         ProviderFamily family,
         ProviderDescriptor descriptor,
-        IProvider implementation)
+        IProvider implementation,
+        Type? mediaItemType = null)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(implementation);
 
         var id = ProviderId.Create(plugin, descriptor.LocalId);
 
-        if (!_providers.TryAdd(id, new RegisteredProvider(id, family, descriptor, implementation, plugin)))
+        if (!_providers.TryAdd(id, new RegisteredProvider(id, family, descriptor, implementation, plugin, mediaItemType)))
         {
             throw new ArronixException(
                 CoreErrorCode.PluginIdConflict,
@@ -151,5 +152,51 @@ public sealed class ProviderRegistry
 
         provider = null;
         return false;
+    }
+
+    /// <summary>
+    /// Reads external identity markers using the installed catalogers paired with one media item type.
+    /// </summary>
+    /// <param name="mediaItemType">The exact media-owned item type being interpreted.</param>
+    /// <param name="text">The complete release, file, or folder name.</param>
+    /// <returns>Distinct recognized identities in provider and source order.</returns>
+    public IReadOnlyList<ExternalIdReading> ReadExternalIds(Type mediaItemType, string text)
+    {
+        ArgumentNullException.ThrowIfNull(mediaItemType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(text);
+
+        var readings = new List<ExternalIdReading>();
+        var seen = new HashSet<ExternalId>();
+
+        foreach (var registered in All)
+        {
+            if (registered.Family != ProviderFamily.Cataloger
+                || registered.MediaItemType != mediaItemType
+                || registered.Provider is not ICataloger cataloger)
+            {
+                continue;
+            }
+
+            foreach (var reading in cataloger.ReadExternalIds(text).OrderBy(static reading => reading.Index))
+            {
+                if (reading.Index < 0
+                    || reading.Index + reading.Marker.Length > text.Length
+                    || !string.Equals(
+                        text.Substring(reading.Index, reading.Marker.Length),
+                        reading.Marker,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidOperationException(
+                        $"Cataloger '{registered.Id}' returned an external-id marker outside the supplied text.");
+                }
+
+                if (seen.Add(reading.Id))
+                {
+                    readings.Add(reading);
+                }
+            }
+        }
+
+        return readings;
     }
 }

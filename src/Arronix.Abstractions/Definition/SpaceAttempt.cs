@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Definition;
 /// only place that lookup can run. It mirrors the entry-layer vocabulary — a normalized key against the
 /// unit level's titles — so no second grammar is introduced.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record SpaceAttempt
 {
     /// <summary>

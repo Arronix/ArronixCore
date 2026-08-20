@@ -1,5 +1,3 @@
-// The media-shape contracts are experimental; the format family and its ladder are read from the shape.
-#pragma warning disable ARX0013
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
@@ -45,7 +43,9 @@ public sealed class MusicQualityModel : IQualityModel
         ArgumentNullException.ThrowIfNull(parsedRelease);
 
         var metadata = parsedRelease.AdditionalMetadata;
-        var codec = parsedRelease.Codec;
+        var codec = metadata is not null && metadata.TryGetValue(MusicReleaseParser.CodecKey, out var value)
+            ? value
+            : null;
 
         var depth = ReadInt(metadata, MusicReleaseParser.BitDepthKey);
         var bitrate = ReadInt(metadata, MusicReleaseParser.BitrateKey);

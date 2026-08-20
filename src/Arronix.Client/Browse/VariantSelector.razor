@@ -1,7 +1,4 @@
 @{
-#pragma warning disable ARX0013 // Shape contracts are experimental; the variant axis is declared by them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; the selecting action is declared by one.
-#pragma warning disable ARX0017 // Wire contracts are experimental; the items are them.
 }
 @inject ActionDispatcher Dispatcher
 @*
@@ -75,7 +72,7 @@
         && variant.Triggers.HasFlag(SelectionTrigger.OnImport);
 
     private ActionDescriptor? SelectAction
-        => ItemProjection.Action(Level, AffordanceMap.For(Affordance.Selectable).ConventionalActionId);
+        => ItemProjection.Action(Level, AffordanceMap.For(Affordance.Selectable).StandardAction);
 
     private string SelectedId => Item.SelectedVariant is { } selected
         ? selected.Id.Value.ToString(CultureInfo.InvariantCulture)

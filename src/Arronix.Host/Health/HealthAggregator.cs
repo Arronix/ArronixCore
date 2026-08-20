@@ -4,8 +4,6 @@ using Arronix.Abstractions.Health;
 using Arronix.Host.Configuration;
 using Microsoft.Extensions.Options;
 
-// The health contribution contract is experimental; this file aggregates over it.
-#pragma warning disable ARX0006
 
 namespace Arronix.Host.Health;
 

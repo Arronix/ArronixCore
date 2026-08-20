@@ -1,18 +1,14 @@
 using System.Linq;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
-using Arronix.Host.Media.Typed.Builders;
-
-// The derivation reads and produces experimental contracts throughout.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
-#pragma warning disable ARX0020
+using Arronix.Host.Media.Typed.Compilation;
 
 namespace Arronix.Host.Media.Typed;
 
 /// <summary>
-/// Turns an item type and its configuration into the intent surface.
+/// Turns an item type and its typed definition values into the intent surface.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -36,14 +32,16 @@ internal static class IntentDerivation
     /// <param name="kind">The media kind identifier.</param>
     /// <param name="item">The item type's reading.</param>
     /// <param name="shape">The derived structure.</param>
-    /// <param name="declaration">Everything the configuration call recorded.</param>
+    /// <param name="declaration">The compiled typed definition values.</param>
+    /// <param name="compiledShapes">The build-time-generated item, group, and row projections.</param>
     /// <returns>The intent surface.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     internal static PluginIntentSurface Derive(
         MediaKindId kind,
         ItemTypeReader item,
         MediaShape shape,
-        TypedDeclaration declaration)
+        TypedDeclaration declaration,
+        CompiledShapeCatalog compiledShapes)
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(shape);
@@ -58,13 +56,13 @@ internal static class IntentDerivation
             Sorts = DeriveSorts(item, declaration),
             Filters = DeriveFilters(item),
             States = DeriveStates(item, declaration),
-            Actions = [.. declaration.Actions.Select(draft => DeriveAction(draft, levelId))],
+            Actions = DeriveActions(declaration, levelId),
 
             // None, and deliberately. Every surveyed external surface was a catalog's own address grammar
             // spelled inside a media kind; a surface at a catalog belongs to whoever owns the identifier.
             ExternalSurfaces = [],
 
-            Workbenches = [.. declaration.Workbenches.Select(DeriveWorkbench)]
+            Workbenches = [.. declaration.Workbenches.Select(draft => DeriveWorkbench(draft, compiledShapes))]
         };
     }
 
@@ -174,25 +172,248 @@ internal static class IntentDerivation
         ];
     }
 
-    private static ActionDescriptor DeriveAction(ActionDraft draft, MediaLevelId levelId) =>
-        new()
+    private static IReadOnlyList<ActionDescriptor> DeriveActions(
+        TypedDeclaration declaration,
+        MediaLevelId levelId)
+    {
+        var singular = declaration.Singular ?? "item";
+        var plural = declaration.Plural ?? "items";
+        var availability = declaration.Selections.Single(selection =>
+            string.Equals(selection.FacetId, declaration.AvailabilitySelectionId, StringComparison.Ordinal));
+
+        var actions = new List<ActionDescriptor>
         {
-            ActionId = draft.ActionId,
-            Name = draft.Name,
-            Scope = draft.Scope,
-            TargetLevelId = draft.Scope == ActionScope.Group ? null : levelId,
-            TargetGroupAxisId = draft.GroupAxisId,
-            Consequence = draft.Consequence,
-            Confirmation = draft.Confirmation,
-            ConsequenceStatement = draft.ConsequenceStatement,
-            LongRunning = draft.LongRunning,
-            Parameters = draft.Parameters,
-            EnabledWhenFieldId = draft.EnabledWhenFieldId
+            Standard(StandardMediaAction.Search, "Search", ActionScope.Selection, Consequence.Costly, levelId)
+                with { LongRunning = true },
+            Standard(
+                StandardMediaAction.SearchMissing,
+                $"Search for missing {plural.ToLowerInvariant()}",
+                ActionScope.Level,
+                Consequence.Costly,
+                levelId) with
+            {
+                LongRunning = true,
+                Confirmation = ConfirmationRequirement.Acknowledge,
+                ConsequenceStatement = $"Every wanted {singular.ToLowerInvariant()} without a satisfactory file is searched for.",
+                Parameters =
+                    [BooleanParameter(StandardMediaActionParameter.IncludeUnavailable, "Include unavailable items")]
+            },
+            Standard(
+                StandardMediaAction.SearchCutoffUnmet,
+                "Search for upgrades",
+                ActionScope.Level,
+                Consequence.Costly,
+                levelId) with
+            {
+                LongRunning = true,
+                Confirmation = ConfirmationRequirement.Acknowledge,
+                ConsequenceStatement = $"Every {singular.ToLowerInvariant()} below its release cutoff is searched for."
+            },
+            Standard(StandardMediaAction.Refresh, "Refresh", ActionScope.Selection, Consequence.Costly, levelId)
+                with { LongRunning = true },
+            Standard(StandardMediaAction.Rescan, "Rescan folders", ActionScope.Selection, Consequence.Safe, levelId)
+                with { LongRunning = true },
+            Standard(StandardMediaAction.SetMonitoring, "Set wanted", ActionScope.Selection, Consequence.Safe, levelId)
+                with
+                {
+                    Parameters =
+                    [
+                        BooleanParameter(
+                            StandardMediaActionParameter.Wanted,
+                            "Wanted",
+                            defaultValue: true,
+                            required: true)
+                    ]
+                },
+            Standard(
+                StandardMediaAction.SetAvailability,
+                "Set minimum availability",
+                ActionScope.Selection,
+                Consequence.Safe,
+                levelId) with { Parameters = [SelectionParameter(availability)] },
+            Standard(StandardMediaAction.Rename, "Rename files", ActionScope.Selection, Consequence.Destructive, levelId)
+                with
+                {
+                    LongRunning = true,
+                    Confirmation = ConfirmationRequirement.Acknowledge,
+                    ConsequenceStatement = "Files on disk will be moved to paths produced by the active naming policy."
+                },
+            Standard(
+                StandardMediaAction.Add,
+                $"Add a {singular.ToLowerInvariant()}",
+                ActionScope.Kind,
+                Consequence.Safe,
+                levelId) with
+            {
+                Parameters =
+                [
+                    new ActionParameter(
+                        WireParameterId(StandardMediaActionParameter.Identifier),
+                        "Catalog identifier",
+                        FieldValueKind.ExternalIdentifier,
+                        true,
+                        [],
+                        null,
+                        $"identity.{DerivedNames.Identifier(IdentifierRole.PrimaryWork.ToString())}")
+                    {
+                        StandardParameter = StandardMediaActionParameter.Identifier
+                    },
+                    new ActionParameter(
+                        WireParameterId(StandardMediaActionParameter.Monitoring),
+                        "What to take on",
+                        FieldValueKind.Enumerated,
+                        false,
+                        [
+                            .. EnumOrder.Names(typeof(MonitoringScope)).Select(member => new FacetValue(
+                                DerivedNames.Identifier(member),
+                                DerivedNames.Label(member)))
+                        ],
+                        DerivedNames.Identifier(MonitoringScope.Item.ToString()))
+                    {
+                        StandardParameter = StandardMediaActionParameter.Monitoring
+                    },
+                    SelectionParameter(availability),
+                    BooleanParameter(
+                        StandardMediaActionParameter.SearchImmediately,
+                        "Search immediately",
+                        defaultValue: true)
+                ]
+            },
+            Standard(StandardMediaAction.Remove, "Remove from library", ActionScope.Selection, Consequence.Irreversible, levelId)
+                with
+                {
+                    Confirmation = ConfirmationRequirement.TypeToConfirm,
+                    ConsequenceStatement = "The library state is removed. Files are removed only when explicitly requested.",
+                    Parameters =
+                    [
+                        BooleanParameter(StandardMediaActionParameter.DeleteFiles, "Also delete files"),
+                        BooleanParameter(StandardMediaActionParameter.Exclude, "Also exclude from curation")
+                    ]
+                },
+            Standard(
+                StandardMediaAction.Exclude,
+                $"Exclude this {singular.ToLowerInvariant()}",
+                ActionScope.Selection,
+                Consequence.Safe,
+                levelId) with
+            {
+                Confirmation = ConfirmationRequirement.Acknowledge,
+                ConsequenceStatement = $"The {singular.ToLowerInvariant()} will be skipped by curation until the exclusion is cleared."
+            },
+            Standard(
+                StandardMediaAction.ClearExclusion,
+                $"Clear {singular.ToLowerInvariant()} exclusion",
+                ActionScope.Selection,
+                Consequence.Safe,
+                levelId)
         };
 
-    private static WorkbenchDescriptor DeriveWorkbench(WorkbenchDraft draft)
+        foreach (var group in declaration.Groups)
+        {
+            if (group.IsMonitorable)
+            {
+                actions.Add(new ActionDescriptor
+                {
+                    StandardAction = StandardMediaAction.SetGroupMonitoring,
+                    ActionId = StandardActionIds.GroupMonitoring(group.AxisId),
+                    Name = $"Set wanted for {group.Plural?.ToLowerInvariant() ?? "groups"}",
+                    Scope = ActionScope.Group,
+                    TargetGroupAxisId = group.AxisId,
+                    Consequence = Consequence.Costly,
+                    Confirmation = ConfirmationRequirement.Acknowledge,
+                    ConsequenceStatement = $"Every member of the selected {group.Singular?.ToLowerInvariant() ?? "group"} is updated.",
+                    LongRunning = true,
+                    Parameters =
+                    [
+                        BooleanParameter(StandardMediaActionParameter.Wanted, "Wanted", true, true),
+                        BooleanParameter(StandardMediaActionParameter.AddMissing, "Also add missing members")
+                    ]
+                });
+            }
+
+            if (group.IsDiscoverySource)
+            {
+                actions.Add(new ActionDescriptor
+                {
+                    StandardAction = StandardMediaAction.RefreshGroups,
+                    ActionId = StandardActionIds.GroupRefresh(group.AxisId),
+                    Name = $"Refresh {group.Plural?.ToLowerInvariant() ?? "groups"}",
+                    Scope = ActionScope.Group,
+                    TargetGroupAxisId = group.AxisId,
+                    Consequence = Consequence.Costly,
+                    Confirmation = ConfirmationRequirement.None,
+                    LongRunning = true
+                });
+            }
+        }
+
+        return actions;
+    }
+
+    private static ActionDescriptor Standard(
+        StandardMediaAction action,
+        string name,
+        ActionScope scope,
+        Consequence consequence,
+        MediaLevelId levelId) => new()
+        {
+            StandardAction = action,
+            ActionId = StandardActionIds.For(action),
+            Name = name,
+            Scope = scope,
+            TargetLevelId = scope == ActionScope.Group ? null : levelId,
+            Consequence = consequence,
+            Confirmation = ConfirmationRequirement.None
+        };
+
+    private static ActionParameter BooleanParameter(
+        StandardMediaActionParameter parameter,
+        string name,
+        bool defaultValue = false,
+        bool required = false) =>
+        new(
+            WireParameterId(parameter),
+            name,
+            FieldValueKind.Boolean,
+            required,
+            [],
+            defaultValue ? "true" : "false")
+        {
+            StandardParameter = parameter
+        };
+
+    private static ActionParameter SelectionParameter(SelectionDraft facet) =>
+        new(
+            facet.FacetId,
+            facet.Name,
+            facet.Kind == SelectionFacetKind.Enumerated ? FieldValueKind.Enumerated : FieldValueKind.Decimal,
+            false,
+            facet.Values,
+            facet.DefaultAllowed.Count > 0
+                ? facet.DefaultAllowed[0]
+                : facet.DefaultNumber?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            $"selection.{facet.FacetId}")
+        {
+            StandardParameter = StandardMediaActionParameter.Availability
+        };
+
+    private static string WireParameterId(StandardMediaActionParameter parameter) => parameter switch
     {
-        var row = ItemTypeReader.ReadRow(draft.RowType);
+        StandardMediaActionParameter.IncludeUnavailable => "includeUnavailable",
+        StandardMediaActionParameter.Wanted => "wanted",
+        StandardMediaActionParameter.AddMissing => "addMissing",
+        StandardMediaActionParameter.Identifier => "identifier",
+        StandardMediaActionParameter.Monitoring => "monitoring",
+        StandardMediaActionParameter.Availability => "availability",
+        StandardMediaActionParameter.SearchImmediately => "searchImmediately",
+        StandardMediaActionParameter.DeleteFiles => "deleteFiles",
+        StandardMediaActionParameter.Exclude => "exclude",
+        _ => throw new ArgumentOutOfRangeException(nameof(parameter), parameter, null)
+    };
+
+    private static WorkbenchDescriptor DeriveWorkbench(WorkbenchDraft draft, CompiledShapeCatalog compiledShapes)
+    {
+        var row = ItemTypeReader.ReadRow(compiledShapes.Get(draft.RowType));
 
         return new WorkbenchDescriptor
         {
@@ -200,7 +421,7 @@ internal static class IntentDerivation
             Name = draft.Name,
             Subject = draft.Subject,
 
-            // The row type is the column set, so a column and the proposal that fills it cannot disagree.
+            // Columns are the generic presentation projection of the typed decision row.
             Columns =
             [
                 .. row.Select(static candidate => new WorkbenchColumn

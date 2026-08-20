@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
 
 using System.Linq;
 using Arronix.Abstractions.Shape;
@@ -61,54 +60,38 @@ public class AvailabilityFacetTests
         {
             Assert.That(Availability.ValuesAreOrdered, Is.True);
             Assert.That(
-                Availability.Values.Select(static value => (int)Enum.Parse<MovieStatus>(value.Value, true)),
+                Availability.Values.Select(static value => (int)Enum.Parse<MovieReleaseStage>(value.Value, true)),
                 Is.Ordered.Ascending,
                 "The order is the enumeration's, not the call site's.");
         });
 
     /// <summary>
     /// The rank the string surface carried in code the host could not see is the enumeration's own value.
-    /// A negative member is the case that proves the ordering has to be signed: it sorts first.
     /// </summary>
-    [TestCase(MovieStatus.Deleted, -1)]
-    [TestCase(MovieStatus.Tba, 0)]
-    [TestCase(MovieStatus.Announced, 1)]
-    [TestCase(MovieStatus.InCinemas, 2)]
-    [TestCase(MovieStatus.Released, 3)]
-    public void RanksEveryStatus(MovieStatus status, int expected)
+    [TestCase(MovieReleaseStage.Tba, 0)]
+    [TestCase(MovieReleaseStage.Announced, 1)]
+    [TestCase(MovieReleaseStage.InCinemas, 2)]
+    [TestCase(MovieReleaseStage.Released, 3)]
+    public void RanksEveryStatus(MovieReleaseStage status, int expected)
         => Assert.That((int)status, Is.EqualTo(expected));
 
-    /// <summary>
-    /// The withdrawn state sorts below every state a user may wait for, and the derived choice list keeps
-    /// it in that position rather than reporting it last the way an unsigned ordering would.
-    /// </summary>
-    [Test]
-    public void RanksTheWithdrawnStateBelowEverything()
-        => Assert.That(
-            MoviesDeclaration.Fields["status"].Choices.Select(static choice => choice.Value).First(),
-            Is.EqualTo("deleted"));
-
     /// <summary>The rule itself, applied — and it is an ordinary comparison the compiler checks.</summary>
-    [TestCase(MovieStatus.Released, MovieStatus.InCinemas, true)]
-    [TestCase(MovieStatus.InCinemas, MovieStatus.Released, false)]
-    [TestCase(MovieStatus.Released, MovieStatus.Released, true)]
-    [TestCase(MovieStatus.Announced, MovieStatus.Tba, true)]
-    [TestCase(MovieStatus.Deleted, MovieStatus.Tba, false)]
+    [TestCase(MovieReleaseStage.Released, MovieReleaseStage.InCinemas, true)]
+    [TestCase(MovieReleaseStage.InCinemas, MovieReleaseStage.Released, false)]
+    [TestCase(MovieReleaseStage.Released, MovieReleaseStage.Released, true)]
+    [TestCase(MovieReleaseStage.Announced, MovieReleaseStage.Tba, true)]
     public void DecidesAvailabilityByRankRatherThanByMembership(
-        MovieStatus status,
-        MovieStatus chosen,
+        MovieReleaseStage status,
+        MovieReleaseStage chosen,
         bool expected)
         => Assert.That(status >= chosen, Is.EqualTo(expected));
 
-    /// <summary>
-    /// The status the facet cannot be set to. A user can ask for "announced or later" but never for
-    /// "deleted or later", because a withdrawn film is not a state anybody waits for.
-    /// </summary>
+    /// <summary>Catalog withdrawal is not a release-stage choice.</summary>
     [Test]
     public void DoesNotOfferTheWithdrawnStateAsAChoice()
         => Assert.That(
             Availability.Values.Select(static value => value.Value),
-            Does.Not.Contain("deleted"));
+            Does.Not.Contain("withdrawn"));
 
     /// <summary>
     /// <b>The defect this facet recorded against itself is closed.</b> An unavailable movie is not hidden

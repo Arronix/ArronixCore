@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
 /// How one response shape maps onto one level's or one grouping axis's declared fields.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ResponseMap
 {
     /// <summary>

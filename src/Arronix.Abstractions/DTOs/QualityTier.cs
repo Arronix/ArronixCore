@@ -1,13 +1,10 @@
-// The revision axis is an experimental shape contract until 1.0.
-#pragma warning disable ARX0013
 
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.DTOs;
 
 /// <summary>
-/// Represents a quality tier for media content.
-/// Defines source, encoding, and resolution characteristics.
+/// Temporary compatibility rung for media types that have not yet moved to typed release policy.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,25 +14,13 @@ namespace Arronix.Abstractions.DTOs;
 /// at the other. When no weight is declared it defaults to the rank, which preserves the old behavior
 /// exactly.
 /// </para>
-/// <para>
-/// Size limits are stated per minute of runtime, because a plausible size scales with duration and
-/// nothing else the platform reliably knows. A null maximum means no ceiling.
-/// </para>
 /// </remarks>
 public record QualityTier(
     string Name,
     int Rank,
-    string? Source = null,
-    string? Resolution = null,
-    string? Codec = null,
-    int? BitDepth = null,
-    IReadOnlyDictionary<string, string>? AdditionalAttributes = null,
     int? Weight = null,
     string? GroupName = null,
-    QualityRevision? Revision = null,
-    double? MinSizeMbPerMinute = null,
-    double? MaxSizeMbPerMinute = null,
-    double? PreferredSizeMbPerMinute = null)
+    QualityRevision? Revision = null)
 {
     /// <summary>
     /// Gets the semantic weight upgrades and cutoffs compare on: the declared <see cref="Weight"/>, or

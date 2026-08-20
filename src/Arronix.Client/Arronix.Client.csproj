@@ -26,8 +26,7 @@
   <!--
        TreatWarningsAsErrors is on repo-wide and AnalysisLevel is 6.0-all, both of which also apply to the
        C# the Razor compiler generates from .razor files. Each identifier below is suppressed for a stated
-       reason and nothing else is; in particular no ARXnnnn contract-stability identifier is ever listed
-       here, because opting in to an experimental contract area is a per-file pragma by policy.
+       reason and nothing else is.
 
        CS1591  Missing XML comment. Razor-generated component partials are public and cannot be documented.
        CA1812  Uninstantiated internal class. Components are instantiated by the renderer, not by name.

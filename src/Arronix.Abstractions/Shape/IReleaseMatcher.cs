@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 
@@ -20,7 +19,6 @@ namespace Arronix.Abstractions.Shape;
 /// apply to a file it should not.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IReleaseMatcher
 {
     /// <summary>
@@ -40,7 +38,6 @@ public interface IReleaseMatcher
 /// <summary>
 /// What to match, and everything already known about it.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MatchRequest
 {
     /// <summary>
@@ -86,7 +83,6 @@ public sealed record MatchRequest
 /// Provenance changes the answer. A numbering scheme that is only valid in release names must not be
 /// applied to a file name, and a matcher cannot tell the two apart from the text alone.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum MatchSource
 {
     /// <summary>A release name, as published by a release source.</summary>
@@ -108,7 +104,6 @@ public enum MatchSource
 /// <summary>
 /// The items a piece of text was found to refer to.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MatchOutcome
 {
     /// <summary>

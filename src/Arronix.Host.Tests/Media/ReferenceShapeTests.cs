@@ -1,14 +1,14 @@
 using System.Linq;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
+using Arronix.Format.Video;
 using Arronix.Host.Media;
 using Arronix.Host.Media.Typed;
 using Arronix.Host.Tests.Support;
 using Arronix.Plugin.Movies;
+using Arronix.Plugin.Movies.Definition;
 using FluentAssertions;
 
-// The shape contracts are experimental; the reference declarations are written against them.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.Media;
 
@@ -35,7 +35,13 @@ internal sealed class ReferenceShapeTests
     {
         // Movies is the one reference kind whose structure is no longer written: it is derived from the
         // item type and its attributes, and it goes through the same gate as the three that are written.
-        yield return new TestCaseData(MediaTypeModelFactory.Build<Movie, Movies>().Shape).SetName("Movies");
+        yield return new TestCaseData(
+            MediaTypeModelFactory.Build<
+                Movie,
+                ReleaseTarget<Movie>,
+                Release<Video>,
+                MovieReleaseParser,
+                Movies>().Shape).SetName("Movies");
         yield return new TestCaseData(new Arronix.Plugin.Books.BooksShape().Shape).SetName("Books");
         yield return new TestCaseData(new Arronix.Plugin.Music.MusicShape().Shape).SetName("Music");
         yield return new TestCaseData(new Arronix.Plugin.Tv.TvShape().Shape).SetName("Tv");

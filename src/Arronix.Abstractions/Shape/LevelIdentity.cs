@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Shape;
 /// exist for entities the user has not added determines the direction of every relationship below it.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record LevelIdentity
 {
     /// <summary>

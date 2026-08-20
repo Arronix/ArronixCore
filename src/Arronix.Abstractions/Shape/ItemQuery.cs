@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 
 namespace Arronix.Abstractions.Shape;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Shape;
 /// the extension owns the catalog and is the only party that can page it efficiently. The host merges
 /// its own library state onto whatever comes back.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ItemQuery
 {
     /// <summary>

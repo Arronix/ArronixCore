@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Diagnostics;
 
@@ -21,7 +20,6 @@ namespace Arronix.Abstractions.Diagnostics;
 /// A rule is owned by whoever knows the shape of the secret. Keeping the rules contributed rather than
 /// hard-coded means a component that stops shipping also stops leaking its pattern into every install.
 /// </remarks>
-[Experimental(ExperimentalContracts.Diagnostics, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record RedactionRule(
     string RuleId,
     string Pattern,

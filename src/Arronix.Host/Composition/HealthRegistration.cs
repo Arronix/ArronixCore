@@ -3,8 +3,6 @@ using Arronix.Host.Health;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-// The health contribution contract is experimental; the host registers its own contributors against it.
-#pragma warning disable ARX0006
 
 namespace Arronix.Host.Composition;
 

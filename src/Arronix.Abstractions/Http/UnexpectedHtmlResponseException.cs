@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Http;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Http;
 /// success status. It gets its own type because it is not a transport failure and not a deserialization
 /// bug, and because callers routinely want to treat it as temporary and retry later.
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class UnexpectedHtmlResponseException : HttpGatewayException
 {
     /// <summary>

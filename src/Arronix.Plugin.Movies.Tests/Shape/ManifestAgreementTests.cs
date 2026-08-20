@@ -31,7 +31,7 @@ public class ManifestAgreementTests
 
     [Test]
     public void DeclaresTheSameMediaKindAsTheType()
-        => Assert.That(Strings("mediaKinds"), Is.EqualTo(new[] { Movies.Kind.Value }));
+        => Assert.That(Strings("mediaKinds"), Is.EqualTo(new[] { new Movies().Kind.Value }));
 
     [Test]
     public void NamesTheAssemblyTheModuleActuallyLivesIn()
@@ -39,26 +39,15 @@ public class ManifestAgreementTests
             Manifest.GetProperty("entryAssembly").GetString(),
             Is.EqualTo(typeof(MoviesPluginModule).Assembly.GetName().Name + ".dll"));
 
-    /// <summary>
-    /// <b>The leading review item, measured.</b> The manifest still advertises the schemes this extension
-    /// issues, because it still carries a cataloger; the <i>model</i> names none of them. Every identifier
-    /// the manifest lists is issued by the catalog declaration, and the derived structure declares roles
-    /// where it used to declare vendors.
-    /// </summary>
+    /// <summary>The media type declares identity roles but owns no catalog scheme.</summary>
     [Test]
-    public void NamesNoCatalogAnywhereExceptInTheCatalogDeclaration()
+    public void NamesNoCatalogScheme()
     {
         var advertised = Strings("identifiers").ToHashSet(StringComparer.Ordinal);
-        var issued = MoviesDeclaration.Carried.Catalog!.Responses
-            .Select(static map => map.ExternalIdScheme)
-            .Concat(MoviesDeclaration.Carried.Catalog.IdRules
-                .Select(static rule => rule.Scheme)
-                .Where(static scheme => scheme is not null)!)
-            .ToHashSet(StringComparer.Ordinal!);
 
         Assert.Multiple(() =>
         {
-            Assert.That(advertised, Is.EquivalentTo(issued));
+            Assert.That(advertised, Is.Empty);
 
             Assert.That(
                 MoviesDeclaration.Level.Identity.ExternalIds,
@@ -69,16 +58,6 @@ public class ManifestAgreementTests
                 Is.Empty,
                 "And the axis likewise, for its own key space.");
 
-            foreach (var token in MoviesDeclaration.Shape.Tokens)
-            {
-                foreach (var scheme in advertised)
-                {
-                    Assert.That(
-                        token.Name,
-                        Does.Not.Contain(scheme).IgnoreCase,
-                        "A naming token spelling a catalog's name is that catalog leaking into a media kind.");
-                }
-            }
         });
     }
 
@@ -93,7 +72,7 @@ public class ManifestAgreementTests
             Is.EquivalentTo(new[]
             {
                 "media-kind", "parsing", "matching", "indexing",
-                "quality", "renaming", "metadata", "notification"
+                "quality", "renaming", "notification"
             }));
 
     [TestCase("network")]
@@ -174,13 +153,16 @@ public class ManifestAgreementTests
                 "{Movie ExternalIds}",
 
                 // Fields with no worked example written on them, which is a judgement rather than a gap.
+                "{Movie TitleLanguage}",
                 "{Movie OriginalLanguage}",
                 "{Movie AlternateTitles}",
+                "{Movie Status}",
+                "{Movie CatalogState}",
                 "{Movie Overview}",
                 "{Movie Genres}",
                 "{Movie Keywords}",
                 "{Movie Website}",
-                "{Movie Trailer}",
+                "{Movie Preview}",
                 "{Movie Popularity}",
 
                 // The host's own title transforms, for the item and for the group. These are the ones that
@@ -220,14 +202,11 @@ public class ManifestAgreementTests
     }
 
     /// <summary>
-    /// <b>And the twenty-four it no longer publishes, recorded as an open gap.</b> Quality, the release
-    /// group, the file's own name and the media probe are the same spelling for every media kind, so a kind
-    /// declaring them was restating a platform fact twenty-four times. They are gone from here — and they
-    /// are nowhere else yet, so the default file template below mentions a token no registry defines. That
-    /// is an ordering constraint between this conversion and the host's token registry, not an oversight.
+    /// Representation facts do not belong in the item-owned naming vocabulary. A template over a typed
+    /// release is a separate surface; an item template must not name a token no item can supply.
     /// </summary>
     [Test]
-    public void PublishesNoHostGlobalTokenAndTheDefaultTemplateStillNeedsOne()
+    public void PublishesNoRepresentationTokensInTheItemTemplate()
     {
         var derived = MoviesDeclaration.Shape.Tokens.Select(static token => token.Name).ToHashSet(StringComparer.Ordinal);
 
@@ -244,8 +223,7 @@ public class ManifestAgreementTests
 
             Assert.That(
                 MoviesDeclaration.Carried.Naming.DefaultTemplates["file"],
-                Does.Contain("{Quality Full}"),
-                "The default file template needs a host-owned token that no registry defines yet.");
+                Does.Not.Contain("{Quality Full}"));
         });
     }
 

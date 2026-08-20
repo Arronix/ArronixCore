@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Providers;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Providers;
 /// policy and its own configuration surface. It is a value rather than a generic type argument
 /// specifically so that a provider event can cross an extension boundary — a generic event cannot.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ProviderFamily
 {
     /// <summary>A source of release candidates.</summary>

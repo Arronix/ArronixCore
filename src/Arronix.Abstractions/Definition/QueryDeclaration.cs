@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
 /// A kind's search templates: what queries an acquisition turns into.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record QueryDeclaration
 {
     /// <summary>

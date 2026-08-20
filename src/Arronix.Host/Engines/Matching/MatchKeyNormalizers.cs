@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using Arronix.Abstractions.DTOs;
+using Arronix.Host.Languages;
 
 namespace Arronix.Host.Engines.Matching;
 
@@ -16,8 +18,10 @@ namespace Arronix.Host.Engines.Matching;
 /// case folding, diacritic stripping, ampersand spelling, and removal of everything that is not a letter
 /// or digit.
 /// </remarks>
-internal static class MatchKeyNormalizers
+internal sealed class MatchKeyNormalizers(LanguageTextService languages)
 {
+    private readonly LanguageTextService _languages = languages ?? throw new ArgumentNullException(nameof(languages));
+
     /// <summary>The full title-cleaning chain.</summary>
     internal const string CleanTitle = "clean-title";
 
@@ -37,20 +41,34 @@ internal static class MatchKeyNormalizers
     /// </summary>
     /// <param name="normalizerId">The normalizer to run.</param>
     /// <param name="text">The text to normalize.</param>
+    /// <param name="language">The language of the text, when stated.</param>
     /// <returns>The derived key.</returns>
     /// <exception cref="InvalidOperationException">The identifier names no host normalizer.</exception>
-    internal static string Normalize(string normalizerId, string text) => normalizerId switch
+    internal IReadOnlySet<string> Normalize(
+        string normalizerId,
+        string text,
+        Language? language = null) => normalizerId switch
     {
-        CleanTitle => CleanTitleKey(text),
-        StripNonAlphanumericUpper => StripToAlphanumericUpper(text),
+        CleanTitle => _languages.ComparisonKeys(text, language),
+        StripNonAlphanumericUpper => OneInvariantKey(text),
         _ => throw new InvalidOperationException(
             $"'{normalizerId}' names no host key normalizer. Registered: '{CleanTitle}', '{StripNonAlphanumericUpper}'."),
     };
 
-    private static string CleanTitleKey(string text)
+    /// <summary>Runs a language-neutral normalizer for identifiers which cannot carry language.</summary>
+    internal static string NormalizeInvariant(string normalizerId, string text) => normalizerId switch
     {
-        var spelled = text.Replace("&", " and ", StringComparison.Ordinal);
-        return StripToAlphanumericUpper(spelled);
+        CleanTitle or StripNonAlphanumericUpper => StripToAlphanumericUpper(text),
+        _ => throw new InvalidOperationException(
+            $"'{normalizerId}' names no host key normalizer. Registered: '{CleanTitle}', '{StripNonAlphanumericUpper}'."),
+    };
+
+    private static IReadOnlySet<string> OneInvariantKey(string text)
+    {
+        var key = StripToAlphanumericUpper(text);
+        return key.Length == 0
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal) { $"und:{key}" };
     }
 
     private static string StripToAlphanumericUpper(string text)

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Providers;
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Providers;
 /// quality profile — is declared; how it should be presented is not, and cannot be.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record SettingsField
 {
     /// <summary>
@@ -111,7 +109,6 @@ public sealed record SettingsField
 /// Semantics, not presentation. The platform uses these to validate, to redact, to offer the right values
 /// and to tell an operator what a setting is for; nothing here says how a setting should look.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SettingRole
 {
     /// <summary>An ordinary value with no platform meaning.</summary>
@@ -175,7 +172,6 @@ public enum SettingRole
 /// "unchanged", and it contributes a redaction rule to the telemetry pipeline. Three mechanisms from one
 /// declaration is the strongest argument for the setting schema living in the contract layer at all.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SettingSensitivity
 {
     /// <summary>Ordinary configuration. May be read back and may appear in diagnostics.</summary>

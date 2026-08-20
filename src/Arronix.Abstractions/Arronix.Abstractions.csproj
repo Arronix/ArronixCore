@@ -3,7 +3,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <RootNamespace>Arronix.Abstractions</RootNamespace>
     <AssemblyName>Arronix.Abstractions</AssemblyName>
-    <Version>0.3.0</Version>
+    <Version>0.8.0</Version>
     <Description>Core abstractions and contracts for the Arronix media platform. Defines media-agnostic interfaces for the media-shape model, the plugin model, providers, presentation intent, wire contracts, scheduling, parsing, quality management and orchestration.</Description>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>

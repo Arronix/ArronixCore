@@ -4,15 +4,10 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
-using Arronix.Abstractions.Quality.Families;
+using Arronix.Abstractions.Parsing;
+using Arronix.Abstractions.Releases;
 using Arronix.Abstractions.Shape;
 
-// Every contract the fixture is written against is experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020
-#pragma warning disable ARX0021
 
 namespace Arronix.Host.Tests.TypedMedia;
 
@@ -46,22 +41,23 @@ internal sealed record Score(string Source, double Value, long? Votes = null);
 /// <summary>A collection a work belongs to: monitorable, independently lived, with metadata of its own.</summary>
 internal sealed class WorkCollection : IMediaGroup<Work>
 {
-    [Identity]
-    public required MediaItemId Id { get; init; }
+    public required MediaItemId Key { get; init; }
 
-    [Title, Searchable]
+    public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
+
+    [Searchable]
     public required string Title { get; init; }
+
+    public Language? TitleLanguage { get; init; }
 
     [Searchable, Multiline]
     public string? Overview { get; init; }
 
-    [Artwork]
-    public ArtworkSet Images { get; init; } = ArtworkSet.Empty;
+    public ArtworkSet Artwork { get; init; } = ArtworkSet.Empty;
 
     [Count, Sortable, Prominence(Prominence.Secondary)]
     public int MemberCount { get; init; }
 
-    public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 }
 
 /// <summary>
@@ -76,13 +72,16 @@ internal sealed class WorkCollection : IMediaGroup<Work>
 /// </remarks>
 internal sealed class Work : IMediaItem
 {
-    [Identity]
-    public required MediaItemId Id { get; init; }
+    public required MediaItemId Key { get; init; }
 
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
-    [Title, Searchable, Editable, Prominence(Prominence.Primary)]
+    public CatalogRecordState CatalogState { get; init; }
+
+    [Searchable, Editable, Prominence(Prominence.Primary)]
     public required string Title { get; init; }
+
+    public Language? TitleLanguage { get; init; }
 
     [Searchable, Disambiguation]
     public string? OriginalTitle { get; init; }
@@ -123,14 +122,13 @@ internal sealed class Work : IMediaItem
     [Size, Sortable]
     public long ShippedBytes { get; init; }
 
-    [Artwork]
-    public ArtworkSet Images { get; init; } = ArtworkSet.Empty;
+    public ArtworkSet Artwork { get; init; } = ArtworkSet.Empty;
 
     [Sortable, Filterable]
     public IReadOnlyList<Score> Scores { get; init; } = [];
 
     [Groupable, Prominence(Prominence.Secondary)]
-    public WorkCollection? Collection { get; init; }
+    public IReadOnlyList<WorkCollection> Collections { get; init; } = [];
 
     /// <summary>A helper the entity happens to expose, which is not a field of it.</summary>
     /// <remarks>
@@ -155,135 +153,229 @@ internal sealed record ImportRow
 }
 
 /// <summary>The media type the derivation tests replay.</summary>
-internal sealed class Works : IMediaType<Work>
+internal sealed class WorkTarget : IReleaseTarget;
+
+internal sealed record WorkRelease(
+    string Title = "Work",
+    int? Year = null,
+    string? Edition = null) : IRelease;
+
+internal sealed class WorkParser : IReleaseParser<WorkRelease>
 {
-    /// <inheritdoc />
-    public static MediaKindId Kind { get; } = MediaKindId.FromString("works");
+    public static ReleaseParseResult<WorkRelease> Parse(ReleaseParseContext context) =>
+        ReleaseParseResult<WorkRelease>.Accepted(new WorkRelease(context.Text));
+}
 
-    /// <inheritdoc />
-    public static void Configure(IMediaTypeBuilder<Work> b)
+internal sealed class WorkRepresentation : IRepresentation;
+
+internal static class WorkFormat
+{
+    internal static FormatFamilyDefinition<WorkRepresentation> Definition { get; } = new()
     {
-        ArgumentNullException.ThrowIfNull(b);
+        Id = "work",
+        Name = "Work",
+        FileExtensions = [".mkv", ".mp4"]
+    };
+}
 
-        b.Named("Work", "Works");
-        b.Files.OnePerItem();
+/// <summary>A malformed definition used to prove that required format composition fails at construction.</summary>
+internal sealed partial class EmptyFormatWorks() : MediaType<Work, WorkTarget, WorkRelease, WorkParser>(
+    MediaKindId.FromString("empty-format-works"),
+    "Empty-format work",
+    "Empty-format works",
+    formats: [],
+    availability: new OrderedSelectionDefinition<Work, WorkStage>(
+        work => work.Stage,
+        "Minimum availability",
+        WorkStage.Published))
+{
+}
 
-        b.Format("video", "Video")
-            .Extensions(".mkv", ".mp4")
-            .Quality<VideoQuality, VideoQualityType>()
-            .Facet("edition", "Edition", TechnicalFacetCase.TitleCaseWithExceptions, ["IMAX"], true);
+internal sealed partial class Works() : MediaType<Work, WorkTarget, WorkRelease, WorkParser>(
+    Id,
+    "Work",
+    "Works",
+    formats: [new FormatUse<WorkRepresentation>(WorkFormat.Definition)],
+    availability: new OrderedSelectionDefinition<Work, WorkStage>(
+        work => work.Stage,
+        "Minimum availability",
+        WorkStage.Published)
+    {
+        OfferedValues =
+            [WorkStage.Rumored, WorkStage.Announced, WorkStage.Previewing, WorkStage.Published]
+    })
+{
+    internal static MediaKindId Id { get; } = MediaKindId.FromString("works");
 
-        b.Identity(w => w.ExternalIds)
-            .Requires(IdentifierRole.PrimaryWork)
-            .Admits(IdentifierRole.SecondaryWork)
-            .SupportsRedirects();
+    public override IdentityDefinition Identity { get; } = new()
+    {
+        RequiredRoles = [IdentifierRole.PrimaryWork],
+        AdmittedRoles = [IdentifierRole.SecondaryWork]
+    };
 
-        b.Group(w => w.Collection)
-            .Named("Collection", "Collections")
-            .Monitorable()
-            .DiscoverySource()
-            .Independent();
+    public override IReadOnlyList<IGroupDefinition<Work>> Groups { get; } =
+    [
+        new GroupDefinition<Work, WorkCollection>(work => work.Collections, "Collection", "Collections")
+        {
+            IsMonitorable = true,
+            IsDiscoverySource = true,
+            Lifetime = GroupLifetime.Independent
+        }
+    ];
 
-        b.Selection(w => w.Stage)
-            .Named("Minimum availability")
-            .AtLeast(WorkStage.Published)
-            .Offering(WorkStage.Rumored, WorkStage.Announced, WorkStage.Previewing, WorkStage.Published);
+    public override IReadOnlyList<ISelectionDefinition<Work>> AdditionalSelections { get; } =
+    [
+        new ThresholdSelectionDefinition<Work>(
+            "availabilityDelay",
+            "Availability delay",
+            "days",
+            ThresholdDirection.AtLeast,
+            0)
+    ];
 
-        b.Selection("availabilityDelay", "Availability delay").Days().AtLeast(0);
+    public override IReadOnlyList<SearchDefinition> Searches { get; } =
+    [
+        new("work", "Work", [SearchTerm.WorkTitle], [SearchTerm.Year, SearchTerm.FreeText]),
+        new("work-id", "Work by identifier", [SearchTerm.ExternalIdentifier], [SearchTerm.WorkTitle])
+    ];
 
-        b.Search("work", "Work")
-            .Requires(SearchTerm.WorkTitle)
-            .Admits(SearchTerm.Year, SearchTerm.FreeText)
-            .Categories(2000, 2010);
+    public override MatchingDefinition<Work> Matching { get; } = new()
+    {
+        Layers =
+        [
+            new("own-title", work => new[] { work.Title, work.OriginalTitle }),
+            new("roman-rewrite", work => new[] { work.Title }, KeyExpansion.RomanNumerals)
+        ],
+        Agreements =
+        [
+            new MatchAgreement<Work, int>(
+                ReadingFact.TitleYear,
+                work => new int?[] { work.Year },
+                Agreement.Accept,
+                1800)
+        ],
+        ScopeReplacesSearch = true,
+        Ambiguity = AmbiguityPolicy.Reject
+    };
 
-        b.Search("work-id", "Work by identifier")
-            .Requires(SearchTerm.ExternalIdentifier)
-            .Admits(SearchTerm.WorkTitle)
-            .Categories(2000);
+    public override ReleasePolicy<WorkRelease> ReleasePolicy { get; } =
+        ReleasePolicy<WorkRelease>.Compile(policy =>
+            policy.Require(static _ => true, "fixture requirement"));
 
-        b.Matching
-            .Layer("own-title", w => new[] { w.Title, w.OriginalTitle })
-            .Layer("roman-rewrite", w => new[] { w.Title }, KeyExpansion.RomanNumerals)
-            .Agrees(ReadingFact.TitleYear, w => new int?[] { w.Year }, Agreement.Accept, 1800)
-            .ScopeReplacesSearch()
-            .RejectAmbiguity();
-
-        b.Querying
-            .Tier("identifier", "work-id")
-                .RequiresIdentity(IdentifierRole.PrimaryWork)
-                .Argument(SearchTerm.ExternalIdentifier, IdentifierRole.PrimaryWork)
-                .Argument(SearchTerm.ExternalIdentifier, IdentifierRole.SecondaryWork, omitWhenAbsent: true)
-                .FreeText(w => w.Title)
-                .CarryAliases()
-            .Tier("text", "work")
-                .Requires(w => w.Year)
-                .FreeText(w => $"{w.Title} {w.Year}")
-                .FanOutPerAlias()
-                .CarryAliases()
-            .Tier("sweep", "work")
-                .Origins(SearchOrigin.Rss)
-                .NoTerms()
-            .Alias("display-title", w => new[] { w.Title })
-            .Alias(
+    public override QueryDefinition<Work> Querying { get; } = new()
+    {
+        Tiers =
+        [
+            new("identifier", "work-id")
+            {
+                RequiredIdentityRoles = [IdentifierRole.PrimaryWork],
+                Arguments =
+                [
+                    new QueryIdentityArgument<Work>(
+                        SearchTerm.ExternalIdentifier,
+                        IdentifierRole.PrimaryWork),
+                    new QueryIdentityArgument<Work>(
+                        SearchTerm.ExternalIdentifier,
+                        IdentifierRole.SecondaryWork,
+                        true)
+                ],
+                FreeText = work => work.Title,
+                CarryAliases = true
+            },
+            new("text", "work")
+            {
+                Requirements = [new ItemPropertyDefinition<Work, int?>(work => work.Year)],
+                FreeText = work => $"{work.Title} {work.Year}",
+                FanOutPerAlias = true,
+                CarryAliases = true
+            },
+            new("sweep", "work") { Origins = [SearchOrigin.Rss], HasNoTerms = true }
+        ],
+        Aliases =
+        [
+            new("display-title", work => new[] { work.Title }),
+            new(
                 "translated-titles",
-                w => w.AlternateTitles
-                    .Where(t => t.Role == AlternateTitleRole.Translation)
-                    .Select(t => t.Title),
-                a => a.FilterByAcceptedLanguages().NeverOwnQuery());
+                work => work.AlternateTitles
+                    .Where(title => title.Role == AlternateTitleRole.Translation)
+                    .Select(title => title.Title))
+            {
+                FilterByAcceptedLanguages = true,
+                NeverOwnQuery = true
+            }
+        ]
+    };
 
-        b.Naming
-            .File("{Work Title} ({Work Year})")
-            .Folder("{Work TitleThe} ({Work Year}) <{{{Work Id}}}>")
-            .GroupFolder<WorkCollection>("{WorkCollection TitleThe}")
-            .Spine("{root}/[workCollection-folder/]{folder}")
-            .WhenGroupingBy<WorkCollection>("group-by-collection")
-            .RequireInFileTemplate(
+    public override NamingDefinition<Work> Naming { get; } = new()
+    {
+        FileTemplate = "{Work Title} ({Work Year})",
+        FolderTemplate = "{Work TitleThe} ({Work Year}) <{{{Work Id}}}>",
+        GroupFolders = [new GroupNamingDefinition<Work, WorkCollection>("{Collection TitleThe}")],
+        FolderSpine = "{root}/[collection-folder/]{folder}",
+        GroupSelections = [new GroupNamingSelection<Work, WorkCollection>("group-by-collection")],
+        Requirements =
+        [
+            new(
                 "names-the-work",
                 "A file template must name either the title and the year, or the original title.",
-                t => (t.Has(w => w.Title) && t.Has(w => w.Year)) ^ t.Has(w => w.OriginalTitle))
-            .Fallback(w => w.OriginalTitle, FileFact.SceneName, FileFact.OriginalFileName)
-            .FallbackForEmptyResult(FileFact.OriginalFileName);
+                facts => (facts.Has(work => work.Title) && facts.Has(work => work.Year))
+                    ^ facts.Has(work => work.OriginalTitle))
+        ],
+        Fallbacks =
+        [
+            new TokenFallbackDefinition<Work, string?>(
+                work => work.OriginalTitle,
+                [FileFact.SceneName, FileFact.OriginalFileName])
+        ],
+        EmptyResultFallback = FileFact.OriginalFileName
+    };
 
-        b.Summary
-            .Headline(w => $"{w.Title} ({w.Year})", maxLength: 200)
-            .Body(w => w.Overview, maxLength: 280)
-            .Field("Runtime", w => w.Runtime)
-            .Group(w => w.Collection, g => g
-                .Headline(c => c.Title)
-                .Field("Works", c => c.MemberCount));
+    public override SummaryDefinition<Work> Summary { get; } = new()
+    {
+        Headline = work => $"{work.Title} ({work.Year})",
+        HeadlineMaxLength = 200,
+        Body = work => work.Overview,
+        BodyMaxLength = 280,
+        Fields = [new("Runtime", work => work.Runtime)],
+        Groups =
+        [
+            new GroupSummaryDefinition<Work, WorkCollection>(
+                collection => collection.Title,
+                [new GroupSummaryFieldDefinition<WorkCollection, int>("Works", collection => collection.MemberCount)])
+        ]
+    };
 
-        b.Intent
-            .DefaultBrowse("all", "All works")
-            .Sort(w => w.Title, ascending: true)
-            .Hide(w => w.Keywords)
-            .StateTone(WorkStage.Previewing, StateTone.Attention)
-            .StateTone(WorkStage.Published, StateTone.Positive)
-            .StateTone(WorkStage.Withdrawn, StateTone.Problem);
+    public override IntentDefinition<Work> Intent { get; } = new()
+    {
+        DefaultBrowseId = "all",
+        DefaultBrowseName = "All works",
+        Sorts = [new SortDefinition<Work, string>(work => work.Title, true)],
+        HiddenBrowseFields =
+            [new ItemPropertyDefinition<Work, IReadOnlyList<string>>(work => work.Keywords)],
+        StateTones =
+        [
+            new StateToneDefinition<WorkStage>(WorkStage.Previewing, StateTone.Attention),
+            new StateToneDefinition<WorkStage>(WorkStage.Published, StateTone.Positive),
+            new StateToneDefinition<WorkStage>(WorkStage.Withdrawn, StateTone.Problem)
+        ]
+    };
 
-        b.Actions
-            .Add("search", "Search", Consequence.Costly, ActionScope.Selection).LongRunning()
-            .Add("collection.monitor", "Set wanted for the collection", Consequence.Costly, ActionScope.Item)
-                .EnabledWhen(w => w.Collection != null)
-                .Acknowledge("Every work in the collection is taken on.")
-                .Parameter("wanted", "Wanted", defaultValue: true)
-            .Add("add", "Add a work", Consequence.Safe, ActionScope.Kind)
-                .Parameter("identifier", "Catalog identifier", IdentifierRole.PrimaryWork, required: true)
-                .Parameter(b.Selection(w => w.Stage))
-            .AddForGroup<WorkCollection>("collection.refresh", "Refresh collections", Consequence.Costly);
+    public override IReadOnlyList<IWorkbenchDefinition<Work>> Workbenches { get; } =
+    [
+        new WorkbenchDefinition<Work, ImportRow>("manual-import", "Manual import")
+        {
+            Subject = WorkbenchSubject.LooseFiles,
+            Inputs = [new("files", "Files")],
+            CommitLabel = "Import",
+            CommitConsequence = Consequence.Destructive
+        }
+    ];
 
-        b.Workbench<ImportRow>("manual-import", "Manual import")
-            .Subject(WorkbenchSubject.LooseFiles)
-            .Input("files", "Files")
-            .Commit("Import", Consequence.Destructive);
-
-        b.Quality.IgnoreStatedResolutionFor("cam", "ts").FallbackRoundUp();
-
-        b.Derives(w => w.ReleaseDate, ReleaseDateOf);
-        b.Derives(w => w.Stage, StageOf);
-
-        b.Parsing(Parsing).Respace(static dotted => dotted.Replace('.', ' '));
-        b.Corpus([]);
-    }
+    public override IReadOnlyList<IDerivationDefinition<Work>> Derivations { get; } =
+    [
+        new DerivationDefinition<Work, DateOnly?>(work => work.ReleaseDate, ReleaseDateOf),
+        new DerivationDefinition<Work, WorkStage>(work => work.Stage, StageOf)
+    ];
 
     /// <summary>Recomputes the stored, queryable release date.</summary>
     internal static DateOnly? ReleaseDateOf(Work work)
@@ -302,17 +394,4 @@ internal sealed class Works : IMediaType<Work>
             : work.PreviewedOn is not null ? WorkStage.Previewing : WorkStage.Rumored;
     }
 
-    private static ParseDeclaration Parsing { get; } = new()
-    {
-        TitlePatterns =
-        [
-            new TitlePattern
-            {
-                PatternId = "title-year",
-                Regex = @"^(?<title>.+?)[. ](?<year>\d{4})",
-                Captures = []
-            }
-        ],
-        RungResolution = null
-    };
 }

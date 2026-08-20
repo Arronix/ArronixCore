@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// literal, a second-chance resolution check — while everything else scans the normalized form. The
 /// choice is per guard, exactly as the sources make it.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum GuardInput
 {
     /// <summary>The normalized text the pattern list runs against.</summary>

@@ -3,9 +3,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 
-// Shape and plugin contracts are experimental; the stable media-kind contract is projected from them.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Media;
 

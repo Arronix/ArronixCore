@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Media;
@@ -7,12 +6,11 @@ namespace Arronix.Abstractions.Media;
 /// What a user's template does and does not mention, as the host checks it.
 /// </summary>
 /// <remarks>
-/// The derived counterpart of the builder-side facts: an author writes property expressions, and by the
+/// The derived counterpart of the typed authoring facts: an author writes property expressions, and by the
 /// time the rule reaches the host those have become the field identifiers the derived token set is keyed
 /// by. One arity apart from <see cref="INamingTemplateFacts{TItem}"/> and deliberately so — the host holds
 /// a model it cannot name the item type of.
 /// </remarks>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface INamingTemplateFacts
 {
     /// <summary>
@@ -43,7 +41,6 @@ public interface INamingTemplateFacts
 /// motivated this is a disjunction with an exclusivity between its branches, which a per-token "is
 /// required" boolean cannot express at all and which is ten lines of ordinary code here.
 /// </remarks>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record TemplateRequirement(
     string RuleId,
     string Requirement,

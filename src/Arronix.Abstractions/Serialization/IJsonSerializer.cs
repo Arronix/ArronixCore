@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
 namespace Arronix.Abstractions.Serialization;
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Serialization;
 /// serializer and it excludes exactly the immutable records this contract layer is made of.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Serialization, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IJsonSerializer
 {
     /// <summary>

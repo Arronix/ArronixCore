@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
 /// How groups on one grouping axis are summarized.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record GroupSummaryRule
 {
     /// <summary>

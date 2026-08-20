@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Telemetry;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Telemetry;
 /// <see cref="ITelemetrySink"/> instances. It is deliberately one method: five severity-specific
 /// overloads existed in the code this replaces and only one of them was ever called.
 /// </remarks>
-[Experimental(ExperimentalContracts.Telemetry, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface ITelemetryEmitter
 {
     /// <summary>

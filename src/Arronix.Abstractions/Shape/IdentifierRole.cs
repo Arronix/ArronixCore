@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Shape;
 /// the role is what makes that statable.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum IdentifierRole
 {
     /// <summary>The catalog the kind's own records are keyed by. At most one scheme fills this role.</summary>

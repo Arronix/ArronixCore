@@ -6,6 +6,7 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Import;
 using Arronix.Abstractions.Intent;
+using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Parsing;
@@ -14,6 +15,7 @@ using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Health;
+using Arronix.Host.Languages;
 using Arronix.Host.Media;
 using Arronix.Host.Providers;
 using Arronix.Host.Scheduling;
@@ -21,18 +23,9 @@ using Arronix.Plugins.Loading;
 using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
-// Every contract the loader hands over is experimental; the bootstrapper is where they are committed into
-// the host's registries.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0006
-#pragma warning disable ARX0009
-#pragma warning disable ARX0020
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0015
-#pragma warning disable ARX0016
 
 namespace Arronix.Host.Runtime;
 
@@ -61,6 +54,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     private readonly PluginLoader _loader;
     private readonly MediaKindRegistry _kinds;
     private readonly MediaTypeBinder _mediaTypes;
+    private readonly LanguageDefinitionRegistry _languages;
     private readonly ProviderRegistry _providers;
     private readonly ProviderDefinitionStore _definitions;
     private readonly BackgroundTaskRegistry _jobs;
@@ -68,6 +62,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     private readonly IHealthAggregator _health;
     private readonly JobScheduler _scheduler;
     private readonly TimeProvider _clock;
+    private readonly IServiceProvider _services;
     private readonly ILogger<PluginBootstrapper> _log;
 
     private readonly ConcurrentDictionary<PluginId, PluginRuntimeState> _states = new();
@@ -79,6 +74,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     /// <param name="loader">The load pipeline.</param>
     /// <param name="kinds">Where admitted media kinds go.</param>
     /// <param name="mediaTypes">The binder that turns a typed registration into an admitted kind.</param>
+    /// <param name="languages">Where admitted language implementations go.</param>
     /// <param name="providers">Where admitted provider implementations go.</param>
     /// <param name="definitions">Where configured definitions are reconciled against implementations.</param>
     /// <param name="jobs">Where admitted background jobs go.</param>
@@ -86,12 +82,14 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     /// <param name="health">The report whose cache is invalidated when extension state changes.</param>
     /// <param name="scheduler">The scheduler, told when startup-scheduled work may begin.</param>
     /// <param name="clock">The clock state changes are stamped with.</param>
+    /// <param name="services">The host services used to activate admitted provider types.</param>
     /// <param name="log">Where the lifecycle reports what it did.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     public PluginBootstrapper(
         PluginLoader loader,
         MediaKindRegistry kinds,
         MediaTypeBinder mediaTypes,
+        LanguageDefinitionRegistry languages,
         ProviderRegistry providers,
         ProviderDefinitionStore definitions,
         BackgroundTaskRegistry jobs,
@@ -99,11 +97,13 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         IHealthAggregator health,
         JobScheduler scheduler,
         TimeProvider clock,
+        IServiceProvider services,
         ILogger<PluginBootstrapper> log)
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(kinds);
         ArgumentNullException.ThrowIfNull(mediaTypes);
+        ArgumentNullException.ThrowIfNull(languages);
         ArgumentNullException.ThrowIfNull(providers);
         ArgumentNullException.ThrowIfNull(definitions);
         ArgumentNullException.ThrowIfNull(jobs);
@@ -111,11 +111,13 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         ArgumentNullException.ThrowIfNull(health);
         ArgumentNullException.ThrowIfNull(scheduler);
         ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(log);
 
         _loader = loader;
         _kinds = kinds;
         _mediaTypes = mediaTypes;
+        _languages = languages;
         _providers = providers;
         _definitions = definitions;
         _jobs = jobs;
@@ -123,6 +125,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         _health = health;
         _scheduler = scheduler;
         _clock = clock;
+        _services = services;
         _log = log;
     }
 
@@ -215,6 +218,13 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
 
         if (!TryAdmitMediaKinds(manifest, ledger, out errorCode, out defects))
         {
+            Withdraw(manifest.Id);
+            return false;
+        }
+
+        if (!TryAdmitLanguages(manifest, ledger, out defects))
+        {
+            errorCode = CoreErrorCode.PluginIdConflict;
             Withdraw(manifest.Id);
             return false;
         }
@@ -382,6 +392,33 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         return found.Count == 0;
     }
 
+    private bool TryAdmitLanguages(
+        ValidatedManifest manifest,
+        PluginRegistrationLedger ledger,
+        out IReadOnlyList<string> defects)
+    {
+        var found = new List<string>();
+
+        foreach (var registration in ledger.Registered<LanguageDefinitionRegistration>())
+        {
+            try
+            {
+                var language = (ILanguageDefinition)ActivatorUtilities.CreateInstance(
+                    _services,
+                    registration.ImplementationType);
+
+                _languages.Register(manifest.Id, language);
+            }
+            catch (Exception failure) when (failure is InvalidOperationException or ArgumentException)
+            {
+                found.Add($"language[{registration.ImplementationType.Name}]: {failure.Message}");
+            }
+        }
+
+        defects = found;
+        return found.Count == 0;
+    }
+
     private bool TryAdmitProviders(
         ValidatedManifest manifest,
         PluginRegistrationLedger ledger,
@@ -389,42 +426,45 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     {
         var found = new List<string>();
 
-        Register<IndexerRegistration>(
-            ledger, ProviderFamily.Indexer, manifest, found, r => (r.Descriptor, r.Provider));
-        Register<DownloaderRegistration>(
-            ledger, ProviderFamily.Downloader, manifest, found, r => (r.Descriptor, r.Provider));
-        Register<NotifierRegistration>(
-            ledger, ProviderFamily.Notifier, manifest, found, r => (r.Descriptor, r.Provider));
-        Register<CatalogerRegistration>(
-            ledger, ProviderFamily.Cataloger, manifest, found, r => (r.Descriptor, r.Provider));
-        Register<CuratorRegistration>(
-            ledger, ProviderFamily.Curator, manifest, found, r => (r.Descriptor, r.Provider));
+        var context = ledger.ActivationContext;
+        if (context is null && ledger.Registered<ProviderTypeRegistration>().Count > 0)
+        {
+            found.Add("provider activation: the plugin context was not retained for DI activation");
+        }
+
+        foreach (var registration in ledger.Registered<ProviderTypeRegistration>())
+        {
+            try
+            {
+                var provider = (IProvider)ActivatorUtilities.CreateInstance(
+                    _services,
+                    registration.ImplementationType,
+                    context!);
+
+                if (!registration.ContractType.IsInstanceOfType(provider))
+                {
+                    found.Add(
+                        $"provider[{registration.Descriptor.LocalId}]: activated type "
+                        + $"'{registration.ImplementationType.Name}' does not implement "
+                        + $"'{registration.ContractType.Name}'.");
+                    continue;
+                }
+
+                _providers.Register(
+                    manifest.Id,
+                    registration.Family,
+                    registration.Descriptor,
+                    provider,
+                    registration.MediaItemType);
+            }
+            catch (Exception failure) when (failure is InvalidOperationException or ArgumentException or ArronixException)
+            {
+                found.Add($"provider[{registration.Descriptor.LocalId}]: {failure.Message}");
+            }
+        }
 
         defects = found;
         return found.Count == 0;
-    }
-
-    private void Register<TRegistration>(
-        PluginRegistrationLedger ledger,
-        ProviderFamily family,
-        ValidatedManifest manifest,
-        List<string> found,
-        Func<TRegistration, (ProviderDescriptor Descriptor, IProvider Provider)> unpack)
-        where TRegistration : class
-    {
-        foreach (var registration in ledger.Registered<TRegistration>())
-        {
-            var (descriptor, provider) = unpack(registration);
-
-            try
-            {
-                _providers.Register(manifest.Id, family, descriptor, provider);
-            }
-            catch (ArronixException failure)
-            {
-                found.Add($"provider[{descriptor.LocalId}]: {failure.Message}");
-            }
-        }
     }
 
     private static TContract? Pick<TContract>(PluginRegistrationLedger ledger)
@@ -437,6 +477,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     private void Withdraw(PluginId plugin)
     {
         _kinds.RemoveByPlugin(plugin);
+        _languages.RemoveByPlugin(plugin);
         _providers.RemoveByPlugin(plugin);
         _jobs.RemoveByPlugin(plugin);
         _pluginHealth.RemoveByPlugin(plugin);

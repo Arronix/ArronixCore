@@ -1,5 +1,3 @@
-// Shape, intent and wire contracts are experimental; this extension is a reference implementer of all three.
-#pragma warning disable ARX0013, ARX0015, ARX0016, ARX0017
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.DTOs;

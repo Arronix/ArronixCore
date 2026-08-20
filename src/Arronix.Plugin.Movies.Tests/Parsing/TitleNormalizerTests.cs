@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Linq;
 using Arronix.Plugin.Movies.Tests.Fixtures;
 using Arronix.Plugin.Movies.Tests.Support;
+using Arronix.Languages.Reference;
+
 
 namespace Arronix.Plugin.Movies.Tests.Parsing;
 
@@ -57,7 +59,7 @@ public class TitleNormalizerTests
     [TestCase("24", "24")]
     [TestCase("I'm a cyborg, but that's OK", "imcyborgbutthatsok")]
     [TestCase("Im a cyborg, but thats ok", "imcyborgbutthatsok")]
-    [TestCase("Test: Something à Deux", "testsomethingdeux")]
+    [TestCase("Test: Something à Deux", "testsomethingadeux")]
     [TestCase("Parler à", "parlera")]
     public void RemovesPunctuationAndCasing(string dirty, string expected)
         => Assert.That(DeclaredTitleKey.Of(dirty), Is.EqualTo(expected));
@@ -65,6 +67,22 @@ public class TitleNormalizerTests
     [Test]
     public void RemovesAccents()
         => Assert.That(DeclaredTitleKey.Of("Carnivàle"), Is.EqualTo("carnivale"));
+
+    [Test]
+    public void FrenchOwnsItsStopWordsRatherThanMoviesOrEnglish()
+        => Assert.Multiple(() =>
+        {
+            Assert.That(DeclaredTitleKey.Of("Test: Something à Deux"), Is.EqualTo("testsomethingadeux"));
+            Assert.That(
+                DeclaredTitleKey.Of("Test: Something à Deux", new FrenchLanguageDefinition()),
+                Is.EqualTo("testsomethingdeux"));
+        });
+
+    [Test]
+    public void GermanOwnsItsTransliteration()
+        => Assert.That(
+            DeclaredTitleKey.Of("Tür für Zwei", new GermanLanguageDefinition()),
+            Is.EqualTo("tuerfuerzwei"));
 
     [TestCase("the")]
     [TestCase("and")]
@@ -197,9 +215,8 @@ public class TitleNormalizerTests
         => Assert.Multiple(() =>
         {
             Assert.That(
-                DeclaredTitleKey.Options.QueryRewrites.Any(static rule => rule.Replacement == " "),
-                Is.True,
-                "The query spelling keeps words apart; the comparison key does not.");
+                new EnglishLanguageDefinition().PrepareQuery("The Lord & the Rings"),
+                Is.EqualTo("Lord and the Rings"));
             Assert.That(DeclaredTitleKey.Of("The Lord of the Rings"), Does.Not.Contain(' '));
         });
 }

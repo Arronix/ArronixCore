@@ -1,12 +1,9 @@
-// The shape (ARX0013) and definition (ARX0019) contracts are experimental until 1.0.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
-
 using System.IO;
 using System.Linq;
 using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Shape;
 using Arronix.Common.Naming;
+using Arronix.Host.Languages;
 
 namespace Arronix.Host.Engines.Naming;
 
@@ -41,16 +38,20 @@ internal sealed class NamingEngine
     /// </summary>
     /// <param name="declaration">The kind's naming declaration.</param>
     /// <param name="options">The render options.</param>
+    /// <param name="languages">The installed language operations.</param>
     /// <exception cref="ArgumentException">
     /// A declared default template does not parse. A plugin default that fails compilation is a plugin
     /// defect and must not reach a settings page (naming design resolution #19).
     /// </exception>
-    public NamingEngine(NamingDeclaration declaration, RenderOptions? options = null)
+    public NamingEngine(
+        NamingDeclaration declaration,
+        RenderOptions? options = null,
+        LanguageTextService? languages = null)
     {
         ArgumentNullException.ThrowIfNull(declaration);
 
         _declaration = declaration;
-        _renderer = new TemplateRenderer(options);
+        _renderer = new TemplateRenderer(options, languages);
 
         foreach (var (slotId, text) in declaration.DefaultTemplates)
         {

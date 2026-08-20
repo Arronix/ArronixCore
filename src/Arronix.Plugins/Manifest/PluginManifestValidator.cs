@@ -7,7 +7,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Versioning;
 
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
 
 namespace Arronix.Plugins.Manifest;
 

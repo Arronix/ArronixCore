@@ -1,3 +1,5 @@
+using Arronix.Abstractions.DTOs;
+
 namespace Arronix.Host.Engines.Naming;
 
 /// <summary>
@@ -47,6 +49,12 @@ internal sealed record TokenBinding
     /// Gets the year bound beside the token's level, feeding the <c>year</c> modifier.
     /// </summary>
     public int? Year { get; init; }
+
+    /// <summary>
+    /// Gets the language of the bound text when the owning typed value stated one. An absent language
+    /// never means English.
+    /// </summary>
+    public Language? Language { get; init; }
 
     /// <summary>
     /// Creates a single-valued binding.

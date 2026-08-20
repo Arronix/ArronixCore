@@ -2,9 +2,6 @@ using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
-#pragma warning disable ARX0019 // Definition contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0020 // The typed media surface is experimental; this assembly admits registrations of it.
 
 namespace Arronix.Plugins.Registration;
 
@@ -63,25 +60,11 @@ public static class DefinitionCapabilityRules
             new(Capability.Indexing, $"{nameof(MediaKindModel)}.{nameof(MediaKindModel.Querying)}"),
         };
 
-        if (DeclaresQuality(model.Quality))
-        {
-            requirements.Add(new(
-                Capability.Quality,
-                $"{nameof(MediaKindModel)}.{nameof(MediaKindModel.Quality)}"));
-        }
-
         if (DeclaresNaming(model.Naming))
         {
             requirements.Add(new(
                 Capability.Renaming,
                 $"{nameof(MediaKindModel)}.{nameof(MediaKindModel.Naming)}"));
-        }
-
-        if (model.Catalog is not null)
-        {
-            requirements.Add(new(
-                Capability.Metadata,
-                $"{nameof(MediaKindModel)}.{nameof(MediaKindModel.Catalog)}"));
         }
 
         if (DeclaresNotifications(model.Notifications))
@@ -120,24 +103,6 @@ public static class DefinitionCapabilityRules
         }
 
         return satisfied;
-    }
-
-    /// <summary>
-    /// Determines whether a quality section says anything the ladder-derived default does not.
-    /// </summary>
-    /// <param name="quality">The section.</param>
-    /// <returns><see langword="true"/> when it does.</returns>
-    /// <remarks>
-    /// Compared structurally rather than by instance, so a section spelled <c>new QualityDeclaration()</c>
-    /// still counts as the default it is.
-    /// </remarks>
-    public static bool DeclaresQuality(QualityDeclaration quality)
-    {
-        ArgumentNullException.ThrowIfNull(quality);
-
-        return quality.Defaults.Count > 0
-            || quality.Fallback != QualityDeclaration.LadderDerived.Fallback
-            || quality.CrossFamily != QualityDeclaration.LadderDerived.CrossFamily;
     }
 
     /// <summary>

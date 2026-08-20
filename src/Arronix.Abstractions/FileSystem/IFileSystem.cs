@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
 namespace Arronix.Abstractions.FileSystem;
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// permissions would have allowed — the check is the enforcement point, not a hint.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IFileSystem
 {
     /// <summary>

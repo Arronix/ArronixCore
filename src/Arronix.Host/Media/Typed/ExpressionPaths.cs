@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Reflection;
 using System.Text;
 
 namespace Arronix.Host.Media.Typed;
@@ -50,22 +49,22 @@ internal static class ExpressionPaths
     }
 
     /// <summary>
-    /// Reads the property an expression names.
+    /// Reads the direct member an expression names.
     /// </summary>
     /// <param name="expression">The expression.</param>
-    /// <returns>The property.</returns>
+    /// <returns>The member name.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="expression"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The expression is not a single property access.</exception>
-    internal static PropertyInfo Property(LambdaExpression expression)
+    internal static string DirectMemberName(LambdaExpression expression)
     {
         ArgumentNullException.ThrowIfNull(expression);
 
         var body = Unwrap(expression.Body);
 
-        return body is MemberExpression { Member: PropertyInfo property, Expression: ParameterExpression }
-            ? property
+        return body is MemberExpression { Expression: ParameterExpression } member
+            ? member.Member.Name
             : throw new ArgumentException(
-                $"The expression '{expression}' is not a direct property access on its parameter.",
+                $"The expression '{expression}' is not a direct member access on its parameter.",
                 nameof(expression));
     }
 

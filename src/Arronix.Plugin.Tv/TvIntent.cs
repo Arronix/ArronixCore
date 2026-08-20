@@ -1,5 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
-#pragma warning disable ARX0016 // Intent contracts are experimental; a media extension is their intended implementer.
 
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
@@ -220,6 +218,7 @@ public static class TvIntent
     [
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Search,
             ActionId = TvActions.Search,
             Name = "Search",
             Description = "Ask every eligible indexer for the selected units.",
@@ -254,6 +253,7 @@ public static class TvIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Refresh,
             ActionId = TvActions.Refresh,
             Name = "Refresh",
             Scope = ActionScope.Selection,
@@ -264,6 +264,7 @@ public static class TvIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.SetMonitoring,
             ActionId = TvActions.SetMonitor,
             Name = "Set wanted",
             Scope = ActionScope.Selection,
@@ -273,6 +274,9 @@ public static class TvIntent
             Parameters =
             [
                 new ActionParameter("wanted", "Wanted", FieldValueKind.Boolean, Required: true, Choices: [])
+                {
+                    StandardParameter = StandardMediaActionParameter.Wanted
+                }
             ]
         },
         new ActionDescriptor
@@ -330,6 +334,7 @@ public static class TvIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Rename,
             ActionId = TvActions.Rename,
             Name = "Rename files",
             Scope = ActionScope.Selection,
@@ -341,6 +346,7 @@ public static class TvIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Remove,
             ActionId = TvActions.Remove,
             Name = "Remove from library",
             Scope = ActionScope.Selection,

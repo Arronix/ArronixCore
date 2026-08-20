@@ -2,9 +2,6 @@ using System.Text;
 using Arronix.Host.Engines.Naming;
 using FluentAssertions;
 
-// The shape and definition contracts are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Tests.Engines;
 
@@ -16,7 +13,8 @@ namespace Arronix.Host.Tests.Engines;
 internal sealed class NamingEngineRenderingTests
 {
     private static string Render(string template, NamingTokenBindings bindings, RenderOptions? options = null)
-        => new TemplateRenderer(options).RenderComponent(NamingTemplateParser.Parse(template), bindings);
+        => new TemplateRenderer(options, NamingEngineTestSupport.Languages())
+            .RenderComponent(NamingTemplateParser.Parse(template), bindings);
 
     private static NamingTokenBindings Bindings() => NamingEngineTestSupport.Bind(
         NamingEngineTestSupport.File(),

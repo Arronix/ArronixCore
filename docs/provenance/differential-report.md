@@ -1,5 +1,9 @@
 # Differential validation — the oracle ledger
 
+> **Historical gate record.** The evidence scanner and quality-axes implementation named below were
+> removed on 2026-08-20. This file preserves what was compared at the time; it is not evidence that those
+> types or paths still exist.
+
 > **Role.** Gatekeeper. Written as the work happened, per `clean-room-plan.md` Part 6.
 >
 > **Not readable by the Implementer** (`clean-room-plan.md` §3.1 role table). This file carries per-case

@@ -6,11 +6,6 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
-// The media-shape contracts are experimental. This file is the host's gate over them and consumes the whole
-// area by construction. The error contract is consumed for the one lookup that can still fail: a search
-// identifier that arrived from a request rather than from the shape.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0003
 
 namespace Arronix.Host.Media;
 

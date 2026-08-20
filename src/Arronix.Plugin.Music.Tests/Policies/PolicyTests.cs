@@ -1,5 +1,5 @@
-// Shape contracts are experimental; this fixture asserts against them directly.
-#pragma warning disable ARX0013
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Arronix.Abstractions.DTOs;
@@ -42,7 +42,7 @@ public class PolicyTests
         Assert.That(parsed, Is.Not.Null);
         Assert.That(parsed!.Title, Is.EqualTo(expectedTitle));
         Assert.That(parsed.Year, Is.EqualTo(expectedYear));
-        Assert.That(parsed.Codec, Is.EqualTo(expectedCodec));
+        Assert.That(parsed.AdditionalMetadata![MusicReleaseParser.CodecKey], Is.EqualTo(expectedCodec));
         Assert.That(parsed.MediaKind, Is.EqualTo(MusicShape.Kind));
     }
 
@@ -166,7 +166,13 @@ public class PolicyTests
     [Test]
     public void AnUnrecognizedCopyLandsOnTheFamilysUnknownTier()
     {
-        var parsed = new ParsedRelease(MusicShape.Kind, "Something", Codec: "SHN");
+        var parsed = new ParsedRelease(
+            MusicShape.Kind,
+            "Something",
+            AdditionalMetadata: new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                [MusicReleaseParser.CodecKey] = "SHN",
+            });
 
         Assert.That(_quality.EvaluateQuality(parsed), Is.EqualTo(MusicQualityModel.Unknown));
         Assert.That(MusicQualityModel.Ladder, Does.Not.Contain(MusicQualityModel.Unknown));

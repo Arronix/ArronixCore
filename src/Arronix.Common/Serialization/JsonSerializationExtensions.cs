@@ -2,7 +2,6 @@ using System.IO;
 using System.Text.Json;
 using Arronix.Abstractions.Serialization;
 
-#pragma warning disable ARX0010 // Serialization contracts are experimental; this assembly implements them.
 
 namespace Arronix.Common.Serialization;
 

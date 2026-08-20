@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Definition;
 /// would misname its subject. The renderer seam itself lands in a later phase — these rows are inert
 /// until it does, which is stated here so nobody mistakes a declared row for a delivered notification.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record NotificationDeclaration
 {
     /// <summary>

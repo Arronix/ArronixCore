@@ -1,6 +1,3 @@
-// Consumes the experimental definition contracts (ARX0019).
-#pragma warning disable ARX0019
-
 using System.Text.RegularExpressions;
 using Arronix.Abstractions.Definition;
 
@@ -17,6 +14,7 @@ namespace Arronix.Host.Engines.Parsing;
 /// </remarks>
 internal sealed class CompiledGuardSet
 {
+    private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
     private readonly Dictionary<string, (Regex Expression, GuardInput Input)> _guards;
 
     internal CompiledGuardSet(IReadOnlyList<GuardPattern> declared)
@@ -50,7 +48,7 @@ internal sealed class CompiledGuardSet
                 expression = new Regex(
                     guard.Regex,
                     options,
-                    TimeSpan.FromMilliseconds(ReleaseTokenVocabulary.MatchTimeoutMilliseconds));
+                    MatchTimeout);
             }
             catch (ArgumentException inner)
             {

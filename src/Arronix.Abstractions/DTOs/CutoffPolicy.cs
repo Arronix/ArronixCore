@@ -1,5 +1,3 @@
-// The revision-handling vocabulary is an experimental shape contract until 1.0.
-#pragma warning disable ARX0013
 
 using Arronix.Abstractions.Shape;
 

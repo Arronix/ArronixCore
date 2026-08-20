@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Providers;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Providers;
 /// generalizes the ad-hoc "fetch the list of categories" request each surveyed application invented
 /// separately for a different family.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IProvider
 {
     /// <summary>

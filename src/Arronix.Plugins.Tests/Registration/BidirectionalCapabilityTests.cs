@@ -4,8 +4,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Registration;
 using Arronix.Plugins.Tests.Support;
 
-#pragma warning disable ARX0008 // Outbound-call contracts are experimental; these tests name one as a gated dependency.
-#pragma warning disable ARX0014 // The extension model is experimental; these tests exercise it.
 
 namespace Arronix.Plugins.Tests.Registration;
 
@@ -34,13 +32,13 @@ public sealed class BidirectionalCapabilityTests
     {
         var (registry, ledger) = Create(Capability.Parsing);
 
-        var register = () => registry.AddIndexer(Declarations.IndexerRegistration("acme"));
+        var register = () => registry.AddIndexer<FakeIndexer>(Declarations.Indexer("acme"));
 
         var failure = register.Should().Throw<PluginCapabilityException>().Which;
         failure.ErrorCode.Should().Be(CoreErrorCode.PluginCapabilityMissing);
         failure.Required.Should().Be(Capability.Indexing);
         failure.Plugin.Should().Be(Plugin);
-        failure.ContractName.Should().Be("IndexerRegistration");
+        failure.ContractName.Should().Be("Indexer");
         failure.Message.Should().Contain(CapabilityNames.Indexing);
 
         ledger.Count.Should().Be(0, "a refused registration is refused, not recorded and removed later");
@@ -51,7 +49,7 @@ public sealed class BidirectionalCapabilityTests
     {
         var (registry, ledger) = Create(Capability.Indexing);
 
-        registry.AddIndexer(Declarations.IndexerRegistration("acme"));
+        registry.AddIndexer<FakeIndexer>(Declarations.Indexer("acme"));
 
         ledger.Count.Should().Be(1);
         ledger.SatisfiedCapabilities.Has(Capability.Indexing).Should().BeTrue();
@@ -72,7 +70,7 @@ public sealed class BidirectionalCapabilityTests
     public void DeclaringACapabilityAndUsingItPassesTheForwardCheck()
     {
         var (registry, ledger) = Create(Capability.Indexing);
-        registry.AddIndexer(Declarations.IndexerRegistration("acme"));
+        registry.AddIndexer<FakeIndexer>(Declarations.Indexer("acme"));
 
         ledger.TryVerifyDeclaredCapabilities(CapabilitySet.Of(Capability.Indexing), out var unsatisfied)
             .Should().BeTrue();

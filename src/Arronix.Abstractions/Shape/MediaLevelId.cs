@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Shape;
 /// <c>string</c> dictionary keys, where a brand would buy nothing.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct MediaLevelId
 {
     private MediaLevelId(string value) => Value = value;

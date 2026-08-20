@@ -8,8 +8,6 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable ARX0006 // Health contracts are experimental; this assembly observes them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; this assembly publishes them.
 
 #pragma warning disable CA1848 // Source-generated log delegates buy an allocation on a hot path;
                                // every call site in this file is a startup event or a rare failure.

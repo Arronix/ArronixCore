@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; field values are what this file reads.
 
 using System.Globalization;
 using System.Linq;

@@ -3,7 +3,7 @@
   "id": "tv",
   "name": "Television",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.3 <0.4" },
+  "contracts": { "arronix": ">=0.8 <0.9" },
   "entryAssembly": "Arronix.Plugin.Tv.dll",
   "mediaKinds": ["tv"],
   "identifiers": ["tvdb", "tmdb", "imdb"],

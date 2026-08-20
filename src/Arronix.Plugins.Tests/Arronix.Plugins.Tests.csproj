@@ -12,6 +12,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Arronix.Generators\Arronix.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Arronix.Plugins\Arronix.Plugins.csproj" />
   </ItemGroup>
 

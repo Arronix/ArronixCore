@@ -1,15 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
-
-// The typed media contracts and the shape they derive into are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
 
 namespace Arronix.Abstractions.Tests.Media;
 
@@ -35,8 +31,8 @@ public sealed class TypedMediaContractTests
     public void TheVocabularyIsTheOneTheDesignNames() =>
         Assert.That(
             Attributes.Select(type => type.Name).ToArray(),
-            Is.EquivalentTo(new[]
-            {
+            Is.EquivalentTo(
+            [
                 nameof(ArtworkAttribute),
                 nameof(CountAttribute),
                 nameof(DerivedAttribute),
@@ -46,7 +42,7 @@ public sealed class TypedMediaContractTests
                 nameof(FilterableAttribute),
                 nameof(GroupableAttribute),
                 nameof(IdentityAttribute),
-                nameof(Arronix.Abstractions.Media.IgnoreAttribute),
+                nameof(Abstractions.Media.IgnoreAttribute),
                 nameof(MultilineAttribute),
                 nameof(ProgressAttribute),
                 nameof(ProminenceAttribute),
@@ -58,7 +54,7 @@ public sealed class TypedMediaContractTests
                 nameof(TimestampAttribute),
                 nameof(TitleAttribute),
                 nameof(UnitAttribute)
-            }));
+            ]));
 
     [Test]
     public void EveryAttributeAppliesToAPropertyOnlyAndIsNotInherited()
@@ -101,21 +97,6 @@ public sealed class TypedMediaContractTests
     }
 
     [Test]
-    public void EveryTypedMediaContractIsMarkedExperimentalWithItsOwnArea()
-    {
-        var unmarked = typeof(IMediaItem).Assembly
-            .GetExportedTypes()
-            .Where(type => type.Namespace == typeof(IMediaItem).Namespace)
-            .Where(type => type.GetCustomAttribute<ExperimentalAttribute>()?.DiagnosticId is not "ARX0020")
-            .Select(type => type.Name)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        // The two 0.1.0 contracts that already lived in this namespace are stable and correctly unmarked.
-        Assert.That(unmarked, Is.EquivalentTo(new[] { nameof(IMediaIdResolver), nameof(IMediaKind) }));
-    }
-
-    [Test]
     public void AnEmptyIdentifierSetIsSharedAndCarriesNothing()
     {
         Assert.Multiple(() =>
@@ -153,12 +134,6 @@ public sealed class TypedMediaContractTests
         });
     }
 
-    [Test]
-    public void TheAuthoringSeamAndTheRuntimeModelAreUnrelated() =>
-        // The split that keeps a plugin from being authoring surface and runtime model at once. A type that
-        // implemented both would be exactly the conflation the typed model removes.
-        Assert.That(typeof(IMediaType).IsAssignableFrom(typeof(IMediaType<>)), Is.False);
-
     /// <summary>
     /// A minimal entity, written the way a plugin author writes one.
     /// </summary>
@@ -171,10 +146,20 @@ public sealed class TypedMediaContractTests
     private sealed class Sample : IMediaItem
     {
         [Identity]
-        public required MediaItemId Id { get; init; }
+        public required MediaItemId Key { get; init; }
+
+        public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
         [Title, Searchable, Prominence(Prominence.Primary)]
         public required string Title { get; init; }
+
+        public Language? TitleLanguage { get; init; }
+
+        public string? Overview { get; init; }
+
+        public ArtworkSet Artwork { get; init; } = ArtworkSet.Empty;
+
+        public CatalogRecordState CatalogState { get; init; }
     }
 
     [Test]
@@ -184,7 +169,7 @@ public sealed class TypedMediaContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(typeof(Sample).GetProperty(nameof(Sample.Id))!
+            Assert.That(typeof(Sample).GetProperty(nameof(Sample.Key))!
                 .GetCustomAttribute<IdentityAttribute>(), Is.Not.Null);
             Assert.That(title.GetCustomAttribute<TitleAttribute>(), Is.Not.Null);
             Assert.That(

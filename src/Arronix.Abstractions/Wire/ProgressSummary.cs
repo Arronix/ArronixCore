@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Wire;
 
@@ -15,5 +14,4 @@ namespace Arronix.Abstractions.Wire;
 /// declared shape: what counts as an item, whether it counts against the selected variant only, and which
 /// positions are excluded outright are all declarations, not code.
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ProgressSummary(int Have, int Want, int Total, long SizeOnDisk);

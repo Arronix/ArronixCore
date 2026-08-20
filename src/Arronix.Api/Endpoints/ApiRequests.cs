@@ -7,8 +7,6 @@ using Arronix.Api.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 
-#pragma warning disable ARX0006 // Health contracts are experimental; error codes are quoted in problem documents.
-#pragma warning disable ARX0013 // Shape contracts are experimental; this assembly builds queries from them.
 
 namespace Arronix.Api.Endpoints;
 

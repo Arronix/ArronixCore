@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Plugins;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Plugins;
 /// place that knows both. Everything inside the platform uses the typed value; only the manifest reader
 /// and the published projection use the names.
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public static class CapabilityNames
 {
     /// <summary>The wire name of <see cref="Capability.Indexing"/>.</summary>
@@ -55,6 +53,9 @@ public static class CapabilityNames
     /// <summary>The wire name of <see cref="Capability.TelemetrySink"/>.</summary>
     public const string TelemetrySink = "telemetry-sink";
 
+    /// <summary>The wire name of <see cref="Capability.Language"/>.</summary>
+    public const string Language = "language";
+
     /// <summary>
     /// Reads a wire name.
     /// </summary>
@@ -79,6 +80,7 @@ public static class CapabilityNames
             case Network: capability = Capability.Network; return true;
             case Storage: capability = Capability.Storage; return true;
             case TelemetrySink: capability = Capability.TelemetrySink; return true;
+            case Language: capability = Capability.Language; return true;
             default: capability = default; return false;
         }
     }
@@ -105,6 +107,7 @@ public static class CapabilityNames
         Capability.Network => Network,
         Capability.Storage => Storage,
         Capability.TelemetrySink => TelemetrySink,
+        Capability.Language => Language,
         _ => throw new ArgumentOutOfRangeException(nameof(capability))
     };
 }

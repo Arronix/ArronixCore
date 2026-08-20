@@ -1,12 +1,10 @@
 using System.Linq;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Media;
 using Arronix.Host.Media.Typed;
 using FluentAssertions;
 
-// Every contract these tests read is experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.TypedMedia;
 
@@ -22,7 +20,8 @@ namespace Arronix.Host.Tests.TypedMedia;
 [TestFixture]
 internal sealed class ShapeDerivationTests
 {
-    private static IMediaType Model => MediaTypeModelFactory.Build<Work, Works>();
+    private static IMediaTypeRuntime Model =>
+        MediaTypeModelFactory.Build<Work, WorkTarget, WorkRelease, WorkParser, Works>();
 
     private static MediaShape Shape => Model.Shape;
 
@@ -32,11 +31,11 @@ internal sealed class ShapeDerivationTests
         Level.Fields.Single(field => string.Equals(field.FieldId, fieldId, StringComparison.Ordinal));
 
     [Test]
-    public void TheKindNamesItselfFromTheBuilderAndTheLevelFromTheType()
+    public void TheKindNamesItselfFromTheDefinitionAndTheLevelFromTheType()
     {
         Assert.Multiple(() =>
         {
-            Shape.Kind.Should().Be(Works.Kind);
+            Shape.Kind.Should().Be(Works.Id);
             Shape.Name.Should().Be("Work");
             Shape.PluralName.Should().Be("Works");
             Shape.Levels.Should().HaveCount(1);
@@ -44,6 +43,32 @@ internal sealed class ShapeDerivationTests
             Level.Name.Should().Be("Work");
             Level.Parent.Should().BeNull();
         });
+    }
+
+    [Test]
+    public void TheBaseConstructorOwnsEveryRequiredDefinitionValue()
+    {
+        var definition = new Works();
+
+        Assert.Multiple(() =>
+        {
+            definition.Kind.Should().Be(Works.Id);
+            definition.SingularName.Should().Be("Work");
+            definition.PluralName.Should().Be("Works");
+            definition.Files.Should().Be(FileBindingDefinition.OnePerItem);
+            definition.Formats.Should().ContainSingle()
+                .Which.Should().BeOfType<FormatUse<WorkRepresentation>>();
+            definition.Availability.Should()
+                .BeOfType<OrderedSelectionDefinition<Work, WorkStage>>();
+        });
+    }
+
+    [Test]
+    public void TheBaseConstructorRefusesAnEmptyFormatSet()
+    {
+        FluentActions.Invoking(static () => new EmptyFormatWorks())
+            .Should().Throw<ArgumentException>()
+            .WithParameterName("formats");
     }
 
     [Test]
@@ -102,7 +127,7 @@ internal sealed class ShapeDerivationTests
         {
             Level.Identity.RequiredRoles.Should().Equal(IdentifierRole.PrimaryWork);
             Level.Identity.AdmittedRoles.Should().Equal(IdentifierRole.SecondaryWork);
-            Level.Identity.SupportsIdentifierRedirects.Should().BeTrue();
+            Level.Identity.SupportsIdentifierRedirects.Should().BeFalse();
 
             // The scheme half is the host's, composed from whatever catalogers are installed. Empty here
             // is the honest answer, not an omission: no cataloger is installed in a unit test.
@@ -116,7 +141,7 @@ internal sealed class ShapeDerivationTests
         Assert.Multiple(() =>
         {
             Level.Fields.Select(field => field.FieldId).Should().Contain(
-                ["id", "externalIds", "title", "originalTitle", "year", "stage", "collection"]);
+                ["key", "externalIds", "title", "originalTitle", "year", "stage", "collections"]);
 
             Level.Fields.Should().NotContain(field =>
                 string.Equals(field.FieldId, "isPublished", StringComparison.Ordinal));
@@ -141,10 +166,10 @@ internal sealed class ShapeDerivationTests
     [TestCase("publishedOn", FieldValueKind.Date)]
     [TestCase("stage", FieldValueKind.Enumerated)]
     [TestCase("shippedBytes", FieldValueKind.ByteSize)]
-    [TestCase("images", FieldValueKind.Artwork)]
+    [TestCase("artwork", FieldValueKind.Artwork)]
     [TestCase("externalIds", FieldValueKind.ExternalIdentifier)]
     [TestCase("originalLanguage", FieldValueKind.Language)]
-    [TestCase("collection", FieldValueKind.Reference)]
+    [TestCase("collections", FieldValueKind.Reference)]
     [TestCase("genres", FieldValueKind.Text)]
     [TestCase("scores", FieldValueKind.Composite)]
     public void TheValueShapeIsReadOffTheClrType(string fieldId, FieldValueKind expected) =>
@@ -182,7 +207,7 @@ internal sealed class ShapeDerivationTests
 
             // Identity is derived twice over and written neither time: the key carries it, and so does any
             // external-identifier set, because both are how something names the same entity.
-            Field("id").Semantics.Should().HaveFlag(FieldSemantics.Identity);
+            Field("key").Semantics.Should().HaveFlag(FieldSemantics.Identity);
             Field("externalIds").Semantics.Should().HaveFlag(FieldSemantics.Identity);
             Field("shippedBytes").Semantics.Should().HaveFlag(FieldSemantics.Size);
             Field("stage").Semantics.Should().HaveFlag(FieldSemantics.Status);
@@ -223,14 +248,14 @@ internal sealed class ShapeDerivationTests
 
         Assert.Multiple(() =>
         {
-            axis.AxisId.Should().Be("workCollection");
+            axis.AxisId.Should().Be("collection");
             axis.Name.Should().Be("Collection");
             axis.PluralName.Should().Be("Collections");
             axis.MemberLevelId.Should().Be(Level.Id);
 
-            // Read off the property being a single, optional reference. Nothing to declare, so nothing that
-            // can contradict the type.
-            axis.Arity.Should().Be(GroupingArity.ManyToOne);
+            // Membership is plural in the item model: an item may belong to several groups and every group
+            // may contain several items.
+            axis.Arity.Should().Be(GroupingArity.ManyToMany);
             axis.Position.Should().Be(MemberPosition.None);
             axis.HasPrimaryMember.Should().BeFalse();
 
@@ -241,7 +266,7 @@ internal sealed class ShapeDerivationTests
             // The closed defect: a group could always say it had metadata of its own and never what it was.
             axis.HasOwnMetadata.Should().BeTrue();
             axis.Fields.Select(field => field.FieldId)
-                .Should().Contain(["title", "overview", "images", "memberCount"]);
+                .Should().Contain(["title", "overview", "artwork", "memberCount"]);
         });
     }
 
@@ -287,7 +312,7 @@ internal sealed class ShapeDerivationTests
     }
 
     [Test]
-    public void SearchKindsCarryTheTermsAndCategoriesTheyWereGiven()
+    public void SearchKindsCarrySemanticTermsWithoutAProviderProtocolCategory()
     {
         var search = Shape.SearchKinds
             .Single(candidate => string.Equals(candidate.SearchKindId, "work", StringComparison.Ordinal));
@@ -298,34 +323,28 @@ internal sealed class ShapeDerivationTests
             search.Scope.Kind.Should().Be(AcquisitionScopeKind.Single);
             search.RequiredTerms.Should().Equal(SearchTerm.WorkTitle);
             search.OptionalTerms.Should().Equal(SearchTerm.Year, SearchTerm.FreeText);
-            search.Categories.Select(category => category.Value).Should().Equal(2000, 2010);
+            search.Categories.Should().BeEmpty();
         });
     }
 
     [Test]
-    public void TheFormatFamilyCarriesItsQualityModelAndItsPerFileFacet()
+    public void TheFormatDescriptorCarriesDiscoveryDataButNoExecutablePolicy()
     {
         var family = Shape.FormatFamilies.Should().ContainSingle().Subject;
 
         Assert.Multiple(() =>
         {
-            family.FamilyId.Should().Be("video");
+            family.FamilyId.Should().Be("work");
             family.FileExtensions.Should().Equal(".mkv", ".mp4");
-            // The family declares a quality model rather than a ladder, so it carries no rungs and no
-            // sentinel: an axis reading represents its own absence and needs neither.
             family.Ladder.Should().BeEmpty();
             family.Unknown.Should().BeNull();
-            family.Quality.Should().NotBeNull();
-            family.Quality!.Family.Value.Should().Be("video");
-            family.Quality.Axes.Should().NotBeEmpty();
+            Model.HasReleasePolicy.Should().BeTrue();
 
             // Defaults, unstated by the kind and therefore unwritten.
             family.CoexistsWithOtherFamilies.Should().BeFalse();
             family.SupportsEmbeddedMetadata.Should().BeFalse();
 
-            family.TechnicalFacets.Should().ContainSingle()
-                .Which.CaseExceptions.Should().Equal("IMAX");
-            Level.FormatFamilyIds.Should().Equal("video");
+            Level.FormatFamilyIds.Should().Equal("work");
         });
     }
 
@@ -343,11 +362,10 @@ internal sealed class ShapeDerivationTests
             // The identity stamp renders whichever catalog is installed, so no catalog's name appears in a
             // kind's folder template.
             names.Should().Contain("{Work Id}");
-            names.Should().Contain(["{WorkCollection Title}", "{WorkCollection TitleThe}"]);
-            names.Should().Contain("{Edition Tags}");
+            names.Should().Contain(["{Collection Title}", "{Collection TitleThe}"]);
 
             // Artwork, references and composites are not interpolable, so no token is minted for them.
-            names.Should().NotContain(["{Work Images}", "{Work Collection}", "{Work Scores}"]);
+            names.Should().NotContain(["{Work Artwork}", "{Work Collection}", "{Work Scores}"]);
         });
     }
 
@@ -356,7 +374,7 @@ internal sealed class ShapeDerivationTests
     {
         Assert.Multiple(() =>
         {
-            Model.Kind.Should().Be(Works.Kind);
+            Model.Kind.Should().Be(Works.Id);
             Model.ItemType.Should().Be<Work>();
             Model.GroupTypes.Should().Equal(typeof(WorkCollection));
         });

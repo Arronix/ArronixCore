@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Definition;
 /// An empty conjunction holds vacuously, which is what makes an unconditional row expressible.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record TagPredicate(IReadOnlyList<PredicateAtom> All)
 {
     /// <summary>

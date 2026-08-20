@@ -1,6 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; items are described by them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; states are declared by them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; published items are them.
 
 using System.Linq;
 using Arronix.Abstractions.Intent;
@@ -205,19 +202,19 @@ public static class ItemProjection
     }
 
     /// <summary>
-    /// Gets the declared action with an identifier, when the level offers one.
+    /// Gets a standard platform action, when the level offers it.
     /// </summary>
     /// <param name="level">The level's description.</param>
-    /// <param name="actionId">The identifier looked for.</param>
+    /// <param name="standardAction">The operation looked for.</param>
     /// <returns>The action, or <see langword="null"/> when the level declares none with that identifier.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="level"/> is <see langword="null"/>.</exception>
-    public static ActionDescriptor? Action(LevelPresentation level, string actionId)
+    public static ActionDescriptor? Action(LevelPresentation level, StandardMediaAction? standardAction)
     {
         ArgumentNullException.ThrowIfNull(level);
 
-        return string.IsNullOrEmpty(actionId)
+        return standardAction is null
             ? null
-            : level.Actions.FirstOrDefault(action => string.Equals(action.ActionId, actionId, StringComparison.Ordinal));
+            : level.Actions.FirstOrDefault(action => action.StandardAction == standardAction);
     }
 
     /// <summary>

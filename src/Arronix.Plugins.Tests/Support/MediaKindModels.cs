@@ -3,9 +3,6 @@ using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
 
-#pragma warning disable ARX0013 // Shape contracts are experimental; these fixtures declare one.
-#pragma warning disable ARX0019 // Definition contracts are experimental; these fixtures declare one.
-#pragma warning disable ARX0020 // The typed media surface is experimental; these fixtures declare one.
 
 namespace Arronix.Plugins.Tests.Support;
 
@@ -37,11 +34,6 @@ internal static class MediaKindModels
                     Captures = [new CaptureBinding("title", CaptureTarget.TitleText)],
                 },
             ],
-            RungResolution = new RungResolutionTable
-            {
-                Rules = [new RungRule { RuleId = "standard", When = TagPredicate.Always, TierId = "HD" }],
-                UnknownTierId = "Unknown",
-            },
         },
         Matching = new MatchDeclaration
         {
@@ -75,38 +67,6 @@ internal static class MediaKindModels
             Grammar = CoordinateGrammar.None,
         },
     };
-
-    /// <summary>
-    /// The same model, additionally declaring a catalog section.
-    /// </summary>
-    /// <returns>The model.</returns>
-    public static MediaKindModel WithCatalog()
-        => RequiredSectionsOnly() with
-        {
-            Catalog = new CatalogDeclaration
-            {
-                Requests = [new RequestTemplate { RequestId = "lookup", Verb = "GET", Route = "/items" }],
-                Responses =
-                [
-                    new ResponseMap
-                    {
-                        ExternalIdPath = "$.id",
-                        ExternalIdScheme = "catalog",
-                        Rows = [],
-                    },
-                ],
-            },
-        };
-
-    /// <summary>
-    /// The same model, additionally declaring a non-default quality section.
-    /// </summary>
-    /// <returns>The model.</returns>
-    public static MediaKindModel WithQuality()
-        => RequiredSectionsOnly() with
-        {
-            Quality = new QualityDeclaration { Fallback = RungFallback.Nearest },
-        };
 
     /// <summary>
     /// The same model, additionally declaring a non-default naming section.

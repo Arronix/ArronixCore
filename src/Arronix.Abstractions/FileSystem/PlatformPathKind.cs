@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.FileSystem;
 
 /// <summary>
 /// The path grammar a <see cref="PlatformPath"/> is written in.
 /// </summary>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum PlatformPathKind
 {
     /// <summary>

@@ -3,9 +3,6 @@ using Arronix.Abstractions.Shape;
 using Arronix.Host.Providers;
 using FluentAssertions;
 
-// Provider and shape contracts are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0015
 
 namespace Arronix.Host.Tests.Providers;
 

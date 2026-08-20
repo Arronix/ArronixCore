@@ -35,11 +35,8 @@ public sealed partial class BooksReleaseParser : IReleaseParser
     /// <summary>The parsed-metadata key carrying a thirteen-digit book number read from the name.</summary>
     public const string BookNumberKey = "isbn13";
 
-    /// <summary>The synthetic codec value marking a spoken copy.</summary>
-    public const string SpokenCodec = "AUDIO";
-
-    /// <summary>The synthetic codec value marking a written copy.</summary>
-    public const string WrittenCodec = "TEXT";
+    /// <summary>The parsed-metadata key carrying the media-owned written or spoken family.</summary>
+    public const string FormatFamilyKey = "books.format-family";
 
     /// <inheritdoc />
     public MediaKindId MediaKind => BooksShape.Kind;
@@ -98,22 +95,22 @@ public sealed partial class BooksReleaseParser : IReleaseParser
             extra[FlavorKey] = format.Flavor;
         }
 
+        extra[FormatFamilyKey] = format.Flavor == BooksShape.SpokenFamilyId
+            ? BooksShape.SpokenFamilyId
+            : BooksShape.WrittenFamilyId;
+
         if (bookNumber is not null)
         {
             extra[BookNumberKey] = bookNumber;
         }
 
         return new ParsedRelease(
-            BooksShape.Kind,
-            title,
-            year,
-            format.QualityName,
-            format.Flavor == BooksShape.SpokenFamilyId ? SpokenCodec : WrittenCodec,
-            null,
-            null,
-            group,
-            null,
-            extra);
+            MediaKind: BooksShape.Kind,
+            Title: title,
+            Year: year,
+            Quality: format.QualityName,
+            ReleaseGroup: group,
+            AdditionalMetadata: extra);
     }
 
     private static string? ReadBookNumber(ref string working)

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -8,7 +7,6 @@ namespace Arronix.Abstractions.Definition;
 /// <remarks>
 /// The chain itself is host code, identical for every kind; what differs per kind is only this data.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record NormalizationOptions
 {
     /// <summary>

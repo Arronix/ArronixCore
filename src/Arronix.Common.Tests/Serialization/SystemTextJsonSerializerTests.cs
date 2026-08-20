@@ -10,7 +10,6 @@ using Arronix.Common.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-#pragma warning disable ARX0010 // Serialization contracts are experimental; these tests cover the implementation.
 
 namespace Arronix.Common.Tests.Serialization;
 

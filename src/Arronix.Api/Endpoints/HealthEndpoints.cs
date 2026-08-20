@@ -7,8 +7,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 
-#pragma warning disable ARX0006 // Health contracts are experimental; this assembly publishes them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; this assembly publishes them.
 
 namespace Arronix.Api.Endpoints;
 

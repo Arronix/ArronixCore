@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Definition;
@@ -6,7 +5,6 @@ namespace Arronix.Abstractions.Definition;
 /// <summary>
 /// One tier of a kind's query plan, as a template.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record QueryTierTemplate
 {
     /// <summary>

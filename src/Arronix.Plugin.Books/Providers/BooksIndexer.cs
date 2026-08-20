@@ -1,5 +1,3 @@
-// Provider, plugin and shape contracts are experimental; this extension implements all three.
-#pragma warning disable ARX0013, ARX0014, ARX0015
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
@@ -35,8 +33,12 @@ public sealed class BooksIndexer : IIndexer
     /// <summary>
     /// Initializes the provider.
     /// </summary>
-    /// <param name="plugin">The extension registering it, which qualifies the provider identifier.</param>
-    public BooksIndexer(PluginId plugin) => _id = ProviderId.Create(plugin, LocalId);
+    /// <param name="context">The capability-scoped plugin context supplied by DI.</param>
+    public BooksIndexer(IPluginContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        _id = ProviderId.Create(context.PluginId, LocalId);
+    }
 
     /// <inheritdoc />
     public ProviderId Id => _id;
@@ -186,7 +188,7 @@ public sealed class BooksIndexer : IIndexer
         ArgumentNullException.ThrowIfNull(query);
         cancellationToken.ThrowIfCancellationRequested();
 
-        var candidates = new List<ReleaseCandidate>();
+        var candidates = new List<ReleaseListing>();
 
         foreach (var work in BooksSeed.Works)
         {
@@ -220,7 +222,7 @@ public sealed class BooksIndexer : IIndexer
                     ? pages * 3L * 1024
                     : (long)(manifestation.RunningTime?.TotalMinutes ?? 300) * 900 * 1024;
 
-                candidates.Add(new ReleaseCandidate(
+                candidates.Add(new ReleaseListing(
                     ReleaseId.FromString(
                         string.Create(CultureInfo.InvariantCulture, $"{LocalId}:{manifestation.Id}")),
                     BooksQueryPlanner.CandidateTitle(work, manifestation),

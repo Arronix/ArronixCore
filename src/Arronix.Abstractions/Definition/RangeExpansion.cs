@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// span cap is carried as data because the surveyed parsers cap it deliberately: an absurd range is a
 /// mis-parse, not a very large release.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record RangeExpansion
 {
     /// <summary>

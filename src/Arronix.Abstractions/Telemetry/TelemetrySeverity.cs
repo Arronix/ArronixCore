@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Telemetry;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Telemetry;
 /// on a wire as integers — anything that stores a severity stores the member name — so the ordering is
 /// free to be corrected by renumbering whenever a member is added in the middle.
 /// </remarks>
-[Experimental(ExperimentalContracts.Telemetry, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum TelemetrySeverity
 {
     /// <summary>Step-by-step detail, off in normal operation.</summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Providers;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Providers;
 /// it, the only place to keep such state would be a field on the implementation — and a field on a shared
 /// implementation is exactly the mutation this design set out to make unrepresentable.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IProviderSessionStore
 {
     /// <summary>

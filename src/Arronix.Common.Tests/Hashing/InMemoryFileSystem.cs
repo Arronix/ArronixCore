@@ -5,8 +5,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Arronix.Abstractions.FileSystem;
 
-// The file system contract is experimental; this stand-in exists only to feed bytes to the hasher.
-#pragma warning disable ARX0005
 
 namespace Arronix.Common.Tests.Hashing;
 

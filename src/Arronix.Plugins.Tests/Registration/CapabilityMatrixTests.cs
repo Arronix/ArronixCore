@@ -1,16 +1,13 @@
 using System.Linq;
 using System.Reflection;
+using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
+using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Scheduling;
 using Arronix.Plugins.Registration;
 
-#pragma warning disable ARX0006 // Health contracts are experimental; these tests reflect over them.
-#pragma warning disable ARX0009 // Naming contracts are experimental; these tests reflect over them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; these tests reflect over them.
-#pragma warning disable ARX0014 // The extension model is experimental; these tests exercise it.
 
-#pragma warning disable ARX0020 // The typed media surface is experimental; this rule covers it.
 
 namespace Arronix.Plugins.Tests.Registration;
 
@@ -44,6 +41,11 @@ public sealed class CapabilityMatrixTests
     /// </remarks>
     private static Type ContractOf(MethodInfo method)
     {
+        if (ProviderContracts.TryGetValue(method.Name, out var providerContract))
+        {
+            return providerContract;
+        }
+
         var parameters = method.GetParameters();
 
         if (parameters.Length > 0)
@@ -61,6 +63,16 @@ public sealed class CapabilityMatrixTests
     private static readonly Dictionary<string, Type> ParameterlessContracts = new(StringComparer.Ordinal)
     {
         [nameof(IPluginRegistry.AddMediaType)] = typeof(IMediaTypeRegistration),
+        [nameof(IPluginRegistry.AddLanguage)] = typeof(LanguageDefinitionRegistration),
+    };
+
+    private static readonly Dictionary<string, Type> ProviderContracts = new(StringComparer.Ordinal)
+    {
+        [nameof(IPluginRegistry.AddIndexer)] = typeof(IIndexer),
+        [nameof(IPluginRegistry.AddDownloader)] = typeof(IDownloader),
+        [nameof(IPluginRegistry.AddNotifier)] = typeof(INotifier),
+        [nameof(IPluginRegistry.AddCataloger)] = typeof(ICataloger<>),
+        [nameof(IPluginRegistry.AddCurator)] = typeof(ICurator<>),
     };
 
     private static Type Normalize(Type type)

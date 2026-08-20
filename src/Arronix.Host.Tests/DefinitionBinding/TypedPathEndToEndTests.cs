@@ -11,10 +11,6 @@ using FluentAssertions.Execution;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-// Plugin, shape and typed-media contracts are experimental; this test drives all three end to end.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.DefinitionBinding;
 
@@ -32,8 +28,8 @@ namespace Arronix.Host.Tests.DefinitionBinding;
 /// <para>
 /// Nothing here constructs a shape, an intent surface or a model. <see cref="MoviesPluginModule"/> names two
 /// types; everything the assertions below read was derived by the host from <see cref="Movie"/>'s properties
-/// and attributes and from replaying <see cref="Movies.Configure"/>. A fixture that supplied any part of it
-/// would be asserting against itself.
+/// and attributes and from the ordinary typed values exposed by <see cref="Movies"/>. A fixture that
+/// supplied any part of it would be asserting against itself.
 /// </para>
 /// </remarks>
 [TestFixture]
@@ -56,7 +52,6 @@ internal sealed class TypedPathEndToEndTests
         Capability.Indexing,
         Capability.Quality,
         Capability.Renaming,
-        Capability.Metadata,
         Capability.Notification);
 
     [SetUp]
@@ -140,10 +135,9 @@ internal sealed class TypedPathEndToEndTests
 
         using var scope = new AssertionScope();
         catalog.ItemStore.Should().NotBeNull("the binder refuses a kind whose item store is empty");
-        catalog.Parser.Should().NotBeNull();
         catalog.Matcher.Should().NotBeNull();
         catalog.QueryPlanner.Should().NotBeNull();
-        catalog.Quality.Should().NotBeNull("a declared ladder is behavior, not decoration");
+        catalog.Quality.Should().BeNull("typed release policy replaced the legacy rung-shaped engine");
         catalog.Naming.Should().NotBeNull("declared templates are behavior, not decoration");
     }
 
@@ -157,7 +151,7 @@ internal sealed class TypedPathEndToEndTests
 
         using var scope = new AssertionScope();
         ledger.Count.Should().Be(1, "a typed media kind is the whole of what this extension contributes");
-        ledger.Single<IMediaTypeRegistration>()!.Kind.Should().Be(Movies.Kind);
+        ledger.Single<IMediaTypeRegistration>()!.Kind.Should().Be(new Movies().Kind);
         ledger.Single<IMediaTypeRegistration>()!.ItemType.Should().Be<Movie>();
     }
 
@@ -165,10 +159,9 @@ internal sealed class TypedPathEndToEndTests
     /// The kind's sections are priced against the manifest, by deriving them rather than trusting them.
     /// </summary>
     /// <remarks>
-    /// The reverse half of the bidirectional capability check, on the path that replaced the declarative
-    /// one. Metadata is the interesting grant: it is demanded by the catalog section alone, which is the
-    /// section scheduled to leave with the cataloger milestone — when it does, this case should start
-    /// failing and the manifest should lose the grant.
+    /// The reverse half of the bidirectional capability check, on the typed path. The release policy is
+    /// executable behavior and therefore demands the quality capability even though the obsolete quality
+    /// ladder declaration no longer exists on the media type.
     /// </remarks>
     [Test]
     public void RegisteringTheKindDemandsExactlyTheCapabilitiesItsSectionsAccountFor()
@@ -189,7 +182,6 @@ internal sealed class TypedPathEndToEndTests
             Capability.Parsing,
             Capability.Matching,
             Capability.Indexing,
-            Capability.Quality,
             Capability.Renaming,
             Capability.Notification);
 
@@ -197,8 +189,8 @@ internal sealed class TypedPathEndToEndTests
 
         register.Should().Throw<PluginCapabilityException>()
             .Which.Required.Should().Be(
-                Capability.Metadata,
-                "the catalog section demands it, and a section is a contribution");
+                Capability.Quality,
+                "the typed release policy demands it, and policy is a contribution");
     }
 
     /// <summary>
@@ -215,7 +207,7 @@ internal sealed class TypedPathEndToEndTests
             "the typed path is meant to work end to end; the binder reported: "
             + string.Join("; ", defects.Select(defect => $"{defect.Path}: {defect.Message}")));
 
-        registered!.Kind.Should().Be(Movies.Kind);
+        registered!.Kind.Should().Be(new Movies().Kind);
         registered.Definition.Should().NotBeNull("a declared kind's behavior stays reviewable as data");
     }
 
@@ -226,18 +218,18 @@ internal sealed class TypedPathEndToEndTests
         binder.TryRegister(Contribution(), out var registered, out _).Should().BeTrue();
 
         using var scope = new AssertionScope();
-        registered!.Items.MediaKind.Should().Be(Movies.Kind);
-        registered.Parser!.MediaKind.Should().Be(Movies.Kind);
-        registered.Matcher!.MediaKind.Should().Be(Movies.Kind);
-        registered.QueryPlanner!.MediaKind.Should().Be(Movies.Kind);
-        registered.Naming!.MediaKind.Should().Be(Movies.Kind);
+        registered!.Items.MediaKind.Should().Be(new Movies().Kind);
+        registered.Parser!.MediaKind.Should().Be(new Movies().Kind);
+        registered.Matcher!.MediaKind.Should().Be(new Movies().Kind);
+        registered.QueryPlanner!.MediaKind.Should().Be(new Movies().Kind);
+        registered.Naming!.MediaKind.Should().Be(new Movies().Kind);
 
-        // The rung-shaped quality seam is deliberately empty here, and its absence is the assertion. This
-        // kind's family reads its files onto typed axes, and a seam whose whole vocabulary is a rung name
-        // cannot serve one — so the host declines to build it rather than building one that answers wrongly.
-        // What reads quality for this kind is the family's own model, hanging off the derived structure.
+        // The legacy rung-shaped evaluator is deliberately absent. Selection now uses the typed release
+        // policy captured by the runtime, not executable objects hanging off the wire descriptor.
         registered.Quality.Should().BeNull();
-        registered.Shape.Declaration.FormatFamilies.Should().OnlyContain(family => family.Quality != null);
+        registered.Shape.Declaration.FormatFamilies.Should().OnlyContain(family => family.Ladder.Count == 0);
+        registered.MediaType.Should().NotBeNull();
+        registered.MediaType!.HasReleasePolicy.Should().BeTrue();
     }
 
     /// <summary>
@@ -251,13 +243,14 @@ internal sealed class TypedPathEndToEndTests
 
         var parsed = registered!.Parser!.Parse("Blade.Runner.2049.2017.1080p.BluRay.x264-SPARKS");
 
-        parsed.Should().NotBeNull("the declared title patterns are what read a release, and they are live here");
+        parsed.Should().NotBeNull("the typed parser bound by the media definition is live here");
 
         using var scope = new AssertionScope();
         parsed!.Title.Should().Be("Blade Runner 2049");
         parsed.Year.Should().Be("2017");
-        parsed.ReleaseGroup.Should().Be("SPARKS");
-        parsed.MediaKind.Should().Be(Movies.Kind);
+        parsed.ReleaseGroup.Should().BeNull(
+            "release-group interpretation is not a host-global title-reading concern");
+        parsed.MediaKind.Should().Be(new Movies().Kind);
     }
 
     /// <summary>
@@ -290,6 +283,6 @@ internal sealed class TypedPathEndToEndTests
 
         var registry = _provider!.GetRequiredService<IMediaKindRegistry>();
 
-        registry.All.Should().ContainSingle(kind => kind.Kind == Movies.Kind);
+        registry.All.Should().ContainSingle(kind => kind.Kind == new Movies().Kind);
     }
 }

@@ -1,5 +1,3 @@
-// The media-shape contracts are experimental; this extension is one of their four reference implementers.
-#pragma warning disable ARX0013
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
@@ -582,10 +580,10 @@ public sealed class BooksShape : IMediaShapeProvider
         FileExtensions = [".epub", ".mobi", ".azw", ".azw3", ".pdf", ".lit", ".fb2", ".djvu"],
         Ladder =
         [
-            new QualityTier("PDF", 1, "text", null, "PDF"),
-            new QualityTier("MOBI", 2, "text", null, "MOBI"),
-            new QualityTier("AZW3", 3, "text", null, "AZW3"),
-            new QualityTier("EPUB", 4, "text", null, "EPUB"),
+            new QualityTier("PDF", 1),
+            new QualityTier("MOBI", 2),
+            new QualityTier("AZW3", 3),
+            new QualityTier("EPUB", 4),
         ],
 
         // One unknown tier per family. A single ladder needs two, interleaved, and the second one is the
@@ -605,10 +603,10 @@ public sealed class BooksShape : IMediaShapeProvider
         FileExtensions = [".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".opus", ".aac", ".aa", ".aax"],
         Ladder =
         [
-            new QualityTier("MP3", 1, "audio", null, "MP3"),
-            new QualityTier("AAC", 2, "audio", null, "AAC"),
-            new QualityTier("M4B", 3, "audio", null, "AAC"),
-            new QualityTier("FLAC", 4, "audio", null, "FLAC"),
+            new QualityTier("MP3", 1),
+            new QualityTier("AAC", 2),
+            new QualityTier("M4B", 3),
+            new QualityTier("FLAC", 4),
         ],
         Unknown = new QualityTier("Unknown Audio", 0),
         CoexistsWithOtherFamilies = true,

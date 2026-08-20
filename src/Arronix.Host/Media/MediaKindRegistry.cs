@@ -12,12 +12,6 @@ using Arronix.Host.Configuration;
 using Arronix.Host.Intent;
 using Microsoft.Extensions.Options;
 
-// Shape, plugin, intent and wire contracts are all experimental; the registry is where they meet.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0016
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Media;
 

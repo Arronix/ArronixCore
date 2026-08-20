@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// its page budget is a different fact from a list that could not be fetched, and completeness reporting
 /// downstream depends on the difference.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record PagingPolicy
 {
     /// <summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.FileSystem;
 
@@ -26,7 +25,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// case-insensitive only sometimes.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly struct PlatformPath : IEquatable<PlatformPath>
 {
     private const char WindowsSeparator = '\\';

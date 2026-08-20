@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Shape;
 /// per-run monitoring and per-run naming without any level having to exist for it.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record SequenceAxis
 {
     /// <summary>
@@ -69,5 +67,4 @@ public sealed record SequenceAxis
 /// statistics and in monitoring, in each case independently; one declaration replaces all of them and
 /// lets the host apply the rule to a kind it has never seen.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct SequenceException(long Value, string Name, bool ExcludedFromCompleteness);

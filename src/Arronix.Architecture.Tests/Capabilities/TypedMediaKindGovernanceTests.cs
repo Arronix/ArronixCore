@@ -4,12 +4,9 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using Arronix.Abstractions.Media;
 using Arronix.Architecture.Tests.Repository;
+using Arronix.Host.Media;
 using Arronix.Host.Media.Typed;
 
-#pragma warning disable ARX0013 // Shape contracts are experimental; these rules read one.
-#pragma warning disable ARX0016 // Intent contracts are experimental; these rules read one.
-#pragma warning disable ARX0019 // Definition contracts are experimental; these rules read one.
-#pragma warning disable ARX0020 // The typed media surface is experimental; these rules govern it.
 
 namespace Arronix.Architecture.Tests.Capabilities;
 
@@ -35,6 +32,79 @@ namespace Arronix.Architecture.Tests.Capabilities;
 [TestFixture]
 public class TypedMediaKindGovernanceTests
 {
+    [Test]
+    public void MediaAuthoringExportsNoBuilderOrCapabilityBadgeSurface()
+    {
+        var offenders = typeof(MediaType<,,,>).Assembly
+            .GetExportedTypes()
+            .Where(type => type.Namespace == typeof(MediaType<,,,>).Namespace)
+            .Where(type => type.Name.Contains("Builder", StringComparison.Ordinal)
+                || type.Name.StartsWith("IUses", StringComparison.Ordinal)
+                || type.Name.StartsWith("IOneFilePerItem", StringComparison.Ordinal)
+                || type.Name.StartsWith("IGroups", StringComparison.Ordinal))
+            .Select(type => type.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(
+            offenders,
+            Is.Empty,
+            "a media definition exposes typed override values; it is not a builder transcript or a bag of badges");
+    }
+
+    [Test]
+    public void MediaAuthoringExportsNoPerKindActionTranscript()
+    {
+        var offenders = typeof(MediaType<,,,>).GetProperties()
+            .Where(property => string.Equals(property.Name, "Actions", StringComparison.Ordinal))
+            .Select(property => $"MediaType.{property.Name}")
+            .Concat(typeof(MediaType<,,,>).Assembly.GetExportedTypes()
+                .Where(type => type.Namespace == typeof(MediaType<,,,>).Namespace)
+                .Where(type => type.Name.Contains("ActionDefinition", StringComparison.Ordinal)
+                    || type.Name.Contains("ActionParameterDefinition", StringComparison.Ordinal))
+                .Select(type => type.Name))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(
+            offenders,
+            Is.Empty,
+            "standard media operations are derived by Host; a media type must not restate their catalog");
+    }
+
+    [Test]
+    public void TypedMediaDefinitionsDoNotAdvertiseTheirShapeThroughInterfaces()
+    {
+        var offenders = RepositoryLayout.MediaExtensionProjects
+            .Select(projectName => Assembly.Load(new AssemblyName(projectName)))
+            .SelectMany(assembly => assembly.GetExportedTypes())
+            .Where(IsTypedMediaDefinition)
+            .SelectMany(type => type.GetInterfaces()
+                .Where(contract => contract != typeof(IMediaTypeDefinition))
+                .Select(contract => $"{type.FullName} : {contract.FullName}"))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(
+            offenders,
+            Is.Empty,
+            "closed relationships are values returned by MediaType, not reflection-discovered interfaces");
+    }
+
+    [Test]
+    public void ProductionMediaContractsCarryNoTestCorpus()
+    {
+        var memberNames = typeof(MediaType<,,,>).GetProperties().Select(static property => property.Name)
+            .Concat(typeof(MediaKindModel).GetProperties().Select(static property => property.Name));
+
+        var exportedTypes = typeof(MediaType<,,,>).Assembly.GetExportedTypes().Select(static type => type.Name);
+
+        Assert.That(
+            memberNames.Concat(exportedTypes),
+            Has.None.Contains("Corpus"),
+            "parser examples belong to tests, not plugin or runtime contracts");
+    }
+
     /// <summary>
     /// Catalog vendors a media kind must not name. Spelled as whole words so that an unrelated identifier
     /// that happens to contain one of them as a substring does not fire the rule.
@@ -69,9 +139,13 @@ public class TypedMediaKindGovernanceTests
 
             foreach (var declaring in assembly.GetExportedTypes())
             {
-                var seam = declaring.GetInterfaces().FirstOrDefault(
-                    static candidate => candidate.IsGenericType
-                        && candidate.GetGenericTypeDefinition() == typeof(IMediaType<>));
+                var seam = declaring.BaseType;
+                while (seam is not null
+                       && (!seam.IsGenericType
+                           || seam.GetGenericTypeDefinition() != typeof(MediaType<,,,>)))
+                {
+                    seam = seam.BaseType;
+                }
 
                 if (seam is null)
                 {
@@ -80,13 +154,26 @@ public class TypedMediaKindGovernanceTests
 
                 var built = typeof(MediaTypeModelFactory)
                     .GetMethod(nameof(MediaTypeModelFactory.Build))!
-                    .MakeGenericMethod(seam.GetGenericArguments()[0], declaring)
+                    .MakeGenericMethod([.. seam.GetGenericArguments(), declaring])
                     .Invoke(null, null)!;
 
-                yield return new TestCaseData(projectName, (IMediaType)built)
+                yield return new TestCaseData(projectName, (IMediaTypeRuntime)built)
                     .SetArgDisplayNames(projectName, declaring.Name);
             }
         }
+    }
+
+    private static bool IsTypedMediaDefinition(Type declaring)
+    {
+        for (var seam = declaring.BaseType; seam is not null; seam = seam.BaseType)
+        {
+            if (seam.IsGenericType && seam.GetGenericTypeDefinition() == typeof(MediaType<,,,>))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -109,7 +196,7 @@ public class TypedMediaKindGovernanceTests
     /// </remarks>
     [Test]
     [TestCaseSource(nameof(TypedKinds))]
-    public void NamesNoCatalogVendorInItsStructureIntentOrEngineInputs(string projectName, IMediaType kind)
+    public void NamesNoCatalogVendorInItsStructureIntentOrEngineInputs(string projectName, IMediaTypeRuntime kind)
     {
         ArgumentNullException.ThrowIfNull(kind);
 
@@ -139,7 +226,7 @@ public class TypedMediaKindGovernanceTests
     /// </remarks>
     [Test]
     [TestCaseSource(nameof(TypedKinds))]
-    public void CarriesNoRouteOrAddressInItsStructureIntentOrEngineInputs(string projectName, IMediaType kind)
+    public void CarriesNoRouteOrAddressInItsStructureIntentOrEngineInputs(string projectName, IMediaTypeRuntime kind)
     {
         ArgumentNullException.ThrowIfNull(kind);
 
@@ -167,7 +254,7 @@ public class TypedMediaKindGovernanceTests
     /// leak: a vendor name reachable through any other section is reported even if the same name also
     /// appears in the catalog.
     /// </remarks>
-    private static IEnumerable<(string Path, string Text)> GovernedStrings(IMediaType kind)
+    private static IEnumerable<(string Path, string Text)> GovernedStrings(IMediaTypeRuntime kind)
     {
         var roots = new (string Path, object? Value)[]
         {
@@ -176,7 +263,6 @@ public class TypedMediaKindGovernanceTests
             ("parsing", kind.Model.Parsing),
             ("matching", kind.Model.Matching),
             ("querying", kind.Model.Querying),
-            ("quality", kind.Model.Quality),
             ("naming", kind.Model.Naming),
             ("notifications", kind.Model.Notifications),
             ("itemType", kind.ItemType.Name),

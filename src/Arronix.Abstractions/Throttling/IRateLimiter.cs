@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Throttling;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Throttling;
 /// as the throttled work runs, instead of sleeping for an interval computed in advance and hoping the
 /// work fits inside it.
 /// </remarks>
-[Experimental(ExperimentalContracts.Throttling, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IRateLimitLease : IDisposable
 {
     /// <summary>
@@ -40,7 +38,6 @@ public interface IRateLimitLease : IDisposable
 /// Acquisition never blocks a thread. Waiting is expressed by the returned task, not by sleeping.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Throttling, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IRateLimiter
 {
     /// <summary>

@@ -1,5 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
-#pragma warning disable ARX0021 // Quality contracts are experimental; these tests exercise the axes model.
 
 using System.Linq;
 using Arronix.Abstractions.Shape;
@@ -169,18 +167,18 @@ public class ShapeInvariantTests
         => Assert.That(Declaration.FormatFamilies, Is.Not.Empty);
 
     /// <summary>
-    /// A family says how its files are read exactly once. Declaring both a ladder and an axis model would
-    /// be two answers to one question; declaring neither leaves nothing able to say what one of its files
-    /// is.
+    /// A typed release policy replaces the cross-product ladder without placing executable format types
+    /// in the wire descriptor.
     /// </summary>
     [Test]
-    public void DeclaresAQualityModelInsteadOfALadder()
+    public void DeclaresATypedReleasePolicyInsteadOfALadder()
     {
         foreach (var family in Declaration.FormatFamilies)
         {
-            Assert.That(family.Quality, Is.Not.Null, family.FamilyId);
             Assert.That(family.Ladder, Is.Empty, family.FamilyId);
         }
+
+        Assert.That(MoviesDeclaration.Model.HasReleasePolicy, Is.True);
     }
 
     /// <summary>
@@ -275,7 +273,7 @@ public class ShapeInvariantTests
         {
             Assert.That(Declaration.Name, Is.EqualTo("Movie"));
             Assert.That(Declaration.PluralName, Is.EqualTo("Movies"));
-            Assert.That(Declaration.Kind, Is.EqualTo(Movies.Kind));
+            Assert.That(Declaration.Kind, Is.EqualTo(new Movies().Kind));
         });
 
     /// <summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -22,7 +21,6 @@ namespace Arronix.Abstractions.Http;
 /// put.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class OutboundHttpRequest
 {
     /// <summary>

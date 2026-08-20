@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Shape;
 /// intent surface.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MonitorDimension
 {
     /// <summary>
@@ -51,7 +49,6 @@ public sealed record MonitorDimension
 /// <summary>
 /// The answer shape of a monitor dimension.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum MonitorDimensionKind
 {
     /// <summary>A two-state answer.</summary>

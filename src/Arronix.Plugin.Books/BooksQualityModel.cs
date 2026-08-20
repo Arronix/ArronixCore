@@ -1,5 +1,3 @@
-// The media-shape contracts are experimental; the format families and their ladders live on the shape.
-#pragma warning disable ARX0013
 using System.Linq;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
@@ -60,9 +58,15 @@ public sealed class BooksQualityModel : IQualityModel
             }
         }
 
-        // A release name that says nothing recognizable is unknown in the family the codec implies, and
-        // unknown-text when even that is silent. Two sentinels, one per family, is the point.
-        return string.Equals(parsedRelease.Codec, "AUDIO", StringComparison.Ordinal)
+        // A release name that says nothing recognizable is unknown in the family its media-owned parser
+        // identified, and unknown-text when even that is silent. Two sentinels, one per family, is the
+        // point.
+        var family = parsedRelease.AdditionalMetadata is { } metadata
+            && metadata.TryGetValue(BooksReleaseParser.FormatFamilyKey, out var value)
+                ? value
+                : null;
+
+        return string.Equals(family, BooksShape.SpokenFamilyId, StringComparison.Ordinal)
             ? Spoken.Unknown!
             : Written.Unknown!;
     }

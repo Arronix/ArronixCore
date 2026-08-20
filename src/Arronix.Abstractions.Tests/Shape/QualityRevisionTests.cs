@@ -1,5 +1,3 @@
-// Exercises the experimental shape contracts.
-#pragma warning disable ARX0013
 
 using Arronix.Abstractions.Shape;
 

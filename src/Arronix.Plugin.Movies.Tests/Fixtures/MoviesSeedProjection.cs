@@ -1,8 +1,7 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these fixtures exercise the typed surface.
-#pragma warning disable ARX0020 // Media contracts are experimental; these fixtures exercise the typed surface.
 
 using System.Globalization;
 using System.Linq;
+using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 
@@ -28,8 +27,13 @@ namespace Arronix.Plugin.Movies.Tests.Fixtures;
 /// </remarks>
 internal static class MoviesSeedProjection
 {
+    private static readonly DateOnly EvaluationDate = new(2026, 8, 17);
+
     /// <summary>The regulator whose rating the seeded records carry.</summary>
     private const string CertificationRegion = "US";
+
+    /// <summary>The classification system whose codes the seeded US records carry.</summary>
+    private const string CertificationAuthority = "MPA";
 
     /// <summary>Projects one seeded record onto the typed entity.</summary>
     /// <param name="record">The catalog record.</param>
@@ -44,52 +48,57 @@ internal static class MoviesSeedProjection
                 Key = MediaItemId.FromInt64(record.Id),
                 ExternalIds = ExternalIdSet.From(IdentifiersOf(record)),
                 Title = record.Title,
+                TitleLanguage = Language.English,
                 OriginalTitle = record.OriginalTitle,
                 OriginalLanguage = record.OriginalLanguage,
                 AlternateTitles = record.AlternativeTitles,
                 Translations =
                 [
                     .. record.Translations.Select(static row =>
-                        new Translation(row.Language, row.Title, row.Overview)),
+                        new Localized<ItemInfo>(row.Language, new ItemInfo(row.Title, row.Overview))),
                 ],
                 Year = record.Year,
                 SecondaryYear = record.SecondaryYear,
-                InCinemas = record.InCinemas,
-                PhysicalRelease = record.PhysicalRelease,
-                DigitalRelease = record.DigitalRelease,
-                ReleaseDate = record.ReleaseDate,
-                Status = record.Status,
+                Lifecycle = new MovieReleaseTimeline
+                {
+                    InCinemas = record.InCinemas,
+                    Physical = record.PhysicalRelease,
+                    Digital = record.DigitalRelease,
+                    EvaluatedOn = EvaluationDate
+                },
+                CatalogState = record.CatalogState,
                 Overview = record.Overview,
                 Runtime = record.RuntimeMinutes > 0 ? TimeSpan.FromMinutes(record.RuntimeMinutes) : null,
-                Studio = record.Studio,
+                Organization = record.Studio,
                 Certification = record.Certification is { } rating
-                    ? new Certification(CertificationRegion, rating)
+                    ? new ContentCertification(CertificationRegion, CertificationAuthority, rating)
                     : null,
                 Genres = record.Genres,
                 Keywords = record.Keywords,
                 Website = record.Website,
-                Trailer = record.YouTubeTrailerId is { Length: > 0 } video
+                Preview = record.YouTubeTrailerId is { Length: > 0 } video
                     ? new Uri("https://www.youtube.com/watch?v=" + video)
                     : null,
-                Images = ArtworkSet.From(ArtworkOf(record)),
+                Artwork = ArtworkSet.From(ArtworkOf(record)),
                 Popularity = record.Popularity,
                 Ratings = [.. RatingsOf(record.Ratings)],
-                Collection = collection is null ? null : ToCollection(collection),
+                Collections = collection is null ? [] : [ToCollection(collection)],
             };
 
     /// <summary>Projects one seeded collection record onto the typed group.</summary>
     /// <param name="record">The collection record.</param>
     /// <returns>The group.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="record"/> is <see langword="null"/>.</exception>
-    internal static Collection ToCollection(MovieCollectionRecord record) =>
+    internal static MediaCollection<Movie> ToCollection(MovieCollectionRecord record) =>
         record is null
             ? throw new ArgumentNullException(nameof(record))
-            : new Collection
+            : new MediaCollection<Movie>
             {
                 Key = MediaItemId.FromInt64(record.TmdbId),
                 Title = record.Title,
+                TitleLanguage = Language.English,
                 Overview = record.Overview,
-                Images = ArtworkSet.From(CollectionArtworkOf(record)),
+                Artwork = ArtworkSet.From(CollectionArtworkOf(record)),
                 MemberCount = MoviesSeedData.Movies.Count(movie => movie.CollectionTmdbId == record.TmdbId),
                 ExternalIds = ExternalIdSet.Of(
                     new Abstractions.Shape.ExternalId(
@@ -153,27 +162,27 @@ internal static class MoviesSeedProjection
     {
         if (ratings.Tmdb is { } tmdb)
         {
-            yield return new Rating("tmdb", tmdb, RatingScale.OutOfTen, RatingVoice.Audience, ratings.TmdbVotes);
+            yield return new Rating("tmdb", Convert.ToDecimal(tmdb), RatingScale.OutOfTen, RatingVoice.Audience, ratings.TmdbVotes);
         }
 
         if (ratings.Imdb is { } imdb)
         {
-            yield return new Rating("imdb", imdb, RatingScale.OutOfTen, RatingVoice.Audience, ratings.ImdbVotes);
+            yield return new Rating("imdb", Convert.ToDecimal(imdb), RatingScale.OutOfTen, RatingVoice.Audience, ratings.ImdbVotes);
         }
 
         if (ratings.Trakt is { } trakt)
         {
-            yield return new Rating("trakt", trakt, RatingScale.OutOfTen, RatingVoice.Audience);
+            yield return new Rating("trakt", Convert.ToDecimal(trakt), RatingScale.OutOfTen, RatingVoice.Audience);
         }
 
         if (ratings.RottenTomatoes is { } tomatoes)
         {
-            yield return new Rating("rottenTomatoes", tomatoes, RatingScale.Percent, RatingVoice.Critic);
+            yield return new Rating("rottenTomatoes", Convert.ToDecimal(tomatoes), RatingScale.Percent, RatingVoice.Critic);
         }
 
         if (ratings.Metacritic is { } metacritic)
         {
-            yield return new Rating("metacritic", metacritic, RatingScale.Percent, RatingVoice.Critic);
+            yield return new Rating("metacritic", Convert.ToDecimal(metacritic), RatingScale.Percent, RatingVoice.Critic);
         }
     }
 }

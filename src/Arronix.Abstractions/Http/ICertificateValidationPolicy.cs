@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 
@@ -24,7 +23,6 @@ namespace Arronix.Abstractions.Http;
 /// mis-cased double negative that read as the opposite of its own behavior.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface ICertificateValidationPolicy
 {
     /// <summary>

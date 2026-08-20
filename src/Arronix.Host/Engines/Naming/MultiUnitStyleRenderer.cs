@@ -1,5 +1,3 @@
-// The declaration contracts are experimental until 1.0.
-#pragma warning disable ARX0019
 
 using System.Globalization;
 using System.Linq;

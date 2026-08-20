@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Shape;
 /// business and none of them are the host's. The host contributes ordering, dispatch and de-duplication.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IReleaseQueryPlanner
 {
     /// <summary>
@@ -38,7 +36,6 @@ public interface IReleaseQueryPlanner
 /// <summary>
 /// What is being acquired, and why.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record AcquisitionRequest
 {
     /// <summary>
@@ -76,7 +73,6 @@ public sealed record AcquisitionRequest
 /// The origin changes how hard the platform tries and how much it is willing to spend: a periodic sweep
 /// of new releases behaves differently from a request a user is waiting on.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SearchOrigin
 {
     /// <summary>A periodic sweep of what a source has recently published.</summary>
@@ -104,20 +100,17 @@ public enum SearchOrigin
 /// fall back to a text search. Expressing it as data lets the host run it identically for every kind and
 /// stop as soon as it has an answer.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ReleaseQueryPlan(IReadOnlyList<ReleaseQueryTier> Tiers);
 
 /// <summary>
 /// One tier of a query plan. Every query in a tier is dispatched.
 /// </summary>
 /// <param name="Queries">The queries making up the tier.</param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ReleaseQueryTier(IReadOnlyList<ReleaseQuery> Queries);
 
 /// <summary>
 /// One query against one release source.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ReleaseQuery
 {
     /// <summary>
@@ -176,5 +169,4 @@ public sealed record ReleaseQuery
 /// The coordinate component the value addresses, when <paramref name="Term"/> is
 /// <see cref="SearchTerm.Ordinal"/>.
 /// </param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct SearchArgument(SearchTerm Term, FieldValue Value, string? ComponentId = null);

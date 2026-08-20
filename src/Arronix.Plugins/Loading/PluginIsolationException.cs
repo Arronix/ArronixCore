@@ -1,7 +1,6 @@
 using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
 
-#pragma warning disable ARX0003 // The platform failure type is experimental; this assembly extends it.
 
 namespace Arronix.Plugins.Loading;
 

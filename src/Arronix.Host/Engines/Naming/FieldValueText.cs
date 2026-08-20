@@ -1,5 +1,3 @@
-// The shape contracts are experimental until 1.0.
-#pragma warning disable ARX0013
 
 using System.Globalization;
 using System.Linq;

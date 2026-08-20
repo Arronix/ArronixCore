@@ -2,8 +2,6 @@ using System.IO;
 using Arronix.Abstractions.FileSystem;
 using Arronix.Abstractions.Plugins;
 
-#pragma warning disable ARX0005 // File-system contracts are experimental; this assembly decorates them.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
 
 namespace Arronix.Plugins.Scoping;
 

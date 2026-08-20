@@ -3,7 +3,6 @@ using Arronix.Common.Serialization;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-#pragma warning disable ARX0010 // Serialization contracts are experimental; this assembly implements them.
 
 namespace Arronix.Common.Composition;
 

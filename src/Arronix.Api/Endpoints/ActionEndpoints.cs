@@ -12,11 +12,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 
-#pragma warning disable ARX0006 // Health contracts are experimental; error codes are quoted in problem documents.
-#pragma warning disable ARX0013 // Shape contracts are experimental; item references are parsed from them.
-#pragma warning disable ARX0015 // Provider contracts are experimental; validation outcomes are returned.
-#pragma warning disable ARX0016 // Intent contracts are experimental; this assembly dispatches through them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; this assembly publishes them.
 
 namespace Arronix.Api.Endpoints;
 
@@ -37,12 +32,9 @@ namespace Arronix.Api.Endpoints;
 /// stream; anything else is answered with its result. The alternative — holding the connection open for a
 /// library refresh — is how an interface ends up with a spinner nobody can cancel.
 /// </para>
-/// <para>
-/// The dispatch itself is missing, and the route says so with a 501 rather than pretending otherwise. No
-/// contract an extension implements has a method that performs a declared action, so the platform can state
-/// that an action exists and check a request against it, and can do nothing else with it. See the note in
-/// <see cref="Invoke"/> for what closing that would take.
-/// </para>
+/// Execution is capability-based. Host-owned operations such as changing monitoring state execute here;
+/// an operation whose scheduler, catalog, filesystem or exclusion capability has not been built returns
+/// 501 rather than being accepted and discarded.
 /// </remarks>
 internal static class ActionEndpoints
 {
@@ -63,22 +55,24 @@ internal static class ActionEndpoints
             .WithName("InvokeAction")
             .WithSummary("Performs one of a media kind's declared actions.")
             .WithDescription(
-                "Checks the request against the action's declaration and answers 501 while no extension seam "
-                + "exists to perform one. Answers 202 when the declaration says the action outlives the "
-                + "request, and 200 otherwise, once there is.");
+                "Checks the request against the action's declaration and dispatches it through the installed "
+                + "platform capability. Answers 501 when that capability is not yet installed.");
 
         return group;
     }
 
-    private static Results<Ok<ActionResult>, Accepted<ActionResult>, ProblemHttpResult> Invoke(
+    private static async Task<Results<Ok<ActionResult>, Accepted<ActionResult>, ProblemHttpResult>> Invoke(
         string kind,
         string actionId,
         ActionRequest? request,
         IMediaKindRegistry registry,
-        IIntentRegistry intents)
+        IIntentRegistry intents,
+        IStandardActionDispatcher dispatcher,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(intents);
+        ArgumentNullException.ThrowIfNull(dispatcher);
 
         if (!registry.TryGet(MediaKindId.FromString(kind), out var registered) || registered is null)
         {
@@ -94,22 +88,18 @@ internal static class ActionEndpoints
         }
 
         var body = request ?? ActionRequest.Empty;
-        var items = new List<MediaItemRef>(body.Items.Count);
-
-        foreach (var text in body.Items)
+        foreach (var reference in body.Items)
         {
-            if (!ApiRequests.TryParseItemRef(registered.Kind, text, out var reference))
+            if (reference.Kind != registered.Kind)
             {
                 return ApiRequests.Problem(
                     StatusCodes.Status400BadRequest,
                     CoreErrorCode.MediaItemNotFound,
-                    $"'{text}' is not a well-formed item reference; the form is 'level:id'.");
+                    $"'{reference}' belongs to '{reference.Kind}', not '{registered.Kind}'.");
             }
-
-            items.Add(reference);
         }
 
-        if (Validate(action, body, items) is { IsValid: false } invalid)
+        if (Validate(action, body, body.Items) is { IsValid: false } invalid)
         {
             return ApiRequests.Problem(
                 StatusCodes.Status400BadRequest,
@@ -117,22 +107,24 @@ internal static class ActionEndpoints
                 string.Join(" ", invalid.Failures.Select(static failure => failure.Message)));
         }
 
-        // TODO: dispatch the action. There is no seam to dispatch it through. An extension contributes its
-        // catalog through IMediaItemSource, and that contract has exactly two write methods — ProposeAsync
-        // and CommitAsync, which serve the declared working surface. It has nothing that performs a declared
-        // action, and neither IIntentRegistry nor any other host type supplies one, so a declaration like
-        // 'refresh' or 'monitor.set' can be published, validated and refused, but not carried out. Closing
-        // this needs a new contract member in Arronix.Abstractions (IMediaItemSource, or an action-handling
-        // seam beside it) and a host-side dispatcher that resolves the descriptor, applies the confirmation
-        // and consequence rules, and queues the long-running ones onto the scheduler rather than running
-        // them inside the request. Everything above this line is the half that does not depend on it: the
-        // kind, the action, the item references and the declared parameters have all been checked, so a
-        // caller learns what is wrong with its request before it learns that the platform cannot yet act.
+        var result = await dispatcher.TryDispatchAsync(
+            action,
+            body.Items,
+            body.Parameters,
+            cancellationToken).ConfigureAwait(false);
+
+        if (result is not null)
+        {
+            return action.LongRunning
+                ? TypedResults.Accepted((string?)null, result)
+                : TypedResults.Ok(result);
+        }
+
         return ApiRequests.Problem(
             StatusCodes.Status501NotImplemented,
             CoreErrorCode.Unknown,
-            $"'{kind}' declares the action '{actionId}' and the request for it is well-formed, but no "
-            + "extension seam exists to perform a declared action, so nothing can carry it out yet.");
+            $"'{action.StandardAction}' is a standard media operation, but this host does not yet have "
+            + "the execution capability it requires.");
     }
 
     /// <summary>
@@ -185,26 +177,36 @@ internal static class ActionEndpoints
             }
         }
 
+        foreach (var (parameterId, value) in request.Parameters)
+        {
+            var parameter = action.Parameters.FirstOrDefault(candidate =>
+                string.Equals(candidate.ParameterId, parameterId, StringComparison.Ordinal));
+            if (parameter is null)
+            {
+                failures.Add(new ValidationFailure(parameterId, $"'{parameterId}' is not a parameter of this action."));
+                continue;
+            }
+
+            var valid = parameter.ValueKind switch
+            {
+                FieldValueKind.Boolean => bool.TryParse(value, out _),
+                FieldValueKind.Decimal => double.TryParse(
+                    value,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out _),
+                FieldValueKind.Enumerated => parameter.Choices.Any(choice =>
+                    string.Equals(choice.Value, value, StringComparison.Ordinal)),
+                FieldValueKind.ExternalIdentifier => ExternalId.TryParse(value, out _),
+                _ => true
+            };
+
+            if (!valid)
+            {
+                failures.Add(new ValidationFailure(parameterId, $"'{value}' is not valid for '{parameter.Name}'."));
+            }
+        }
+
         return failures.Count == 0 ? ValidationOutcome.Success : new ValidationOutcome { Failures = failures };
     }
-}
-
-/// <summary>
-/// What a caller sends to perform an action.
-/// </summary>
-/// <remarks>
-/// This lives here rather than in the shared contract assembly because the contract assembly has a result
-/// type for an action and no request type for one — an asymmetry worth recording, since it means a client
-/// has to reproduce this shape rather than being handed it. Promoting it is additive and costs nothing; it
-/// is left alone in this milestone rather than editing a contract area another work package owns.
-/// </remarks>
-/// <param name="Items">The items to act on, each as <c>level:id</c>.</param>
-/// <param name="Parameters">The values the action's declared parameters were filled in with.</param>
-internal sealed record ActionRequest(
-    IReadOnlyList<string> Items,
-    IReadOnlyDictionary<string, string> Parameters)
-{
-    /// <summary>An action invoked with no items and no parameters.</summary>
-    internal static ActionRequest Empty { get; } =
-        new([], new Dictionary<string, string>(StringComparer.Ordinal));
 }

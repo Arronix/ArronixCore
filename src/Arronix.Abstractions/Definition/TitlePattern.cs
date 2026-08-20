@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Definition;
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Definition;
 /// names an undeclared coordinate component, an unknown guard, or a source the pattern cannot fire on is
 /// a load failure — never a silent no-op.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record TitlePattern
 {
     /// <summary>

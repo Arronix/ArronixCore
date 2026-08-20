@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Health;
 
 namespace Arronix.Abstractions.Errors;
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Errors;
 /// <see cref="FormatException"/> thrown from the failure path itself. Callers interpolate first.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Errors, UrlFormat = ExperimentalContracts.UrlFormat)]
 public class ArronixException : Exception
 {
     /// <summary>

@@ -1,15 +1,9 @@
-// Consumes the experimental definition (ARX0019) and shape (ARX0013) contracts.
-#pragma warning disable ARX0019
-#pragma warning disable ARX0013
-
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using Arronix.Abstractions.Definition;
-using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Media;
 
-#pragma warning disable ARX0020 // The typed media surface is experimental; this file consumes it.
 
 namespace Arronix.Host.Engines.Parsing;
 
@@ -20,8 +14,7 @@ namespace Arronix.Host.Engines.Parsing;
 /// <para>
 /// Parse, don't validate, applied to the declaration itself: every cross-reference is resolved here or
 /// the definition is refused with a message naming the row — a capture binding naming a group its own
-/// expression does not declare, a guard reference naming an undeclared guard, a rung row naming a tier
-/// absent from every ladder, a predicate subject outside the reachable vocabulary. Nothing is deferred
+/// expression does not declare or a guard reference naming an undeclared guard. Nothing is deferred
 /// to first use, because first use is some release at three in the morning.
 /// </para>
 /// <para>
@@ -31,12 +24,14 @@ namespace Arronix.Host.Engines.Parsing;
 /// </remarks>
 internal sealed class CompiledParseDeclaration
 {
-    internal CompiledParseDeclaration(MediaShape shape, MediaKindModel model)
+    private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
+
+    internal CompiledParseDeclaration(MediaKindModel model)
     {
-        ArgumentNullException.ThrowIfNull(shape);
         ArgumentNullException.ThrowIfNull(model);
 
-        var parsing = model.Parsing;
+        var parsing = model.Parsing
+            ?? throw new ArgumentException("The legacy declarative parser requires a parse declaration.", nameof(model));
 
         Guards = new CompiledGuardSet(parsing.Guards);
 
@@ -48,30 +43,6 @@ internal sealed class CompiledParseDeclaration
 
         TokenTables = [.. parsing.TokenTables.Select(static table => CompileTable(table))];
 
-        var tierNames = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var family in shape.FormatFamilies)
-        {
-            foreach (var tier in family.Ladder)
-            {
-                tierNames.Add(tier.Name);
-            }
-
-            if (family.Unknown is { } unknown)
-            {
-                tierNames.Add(unknown.Name);
-            }
-        }
-
-        RungResolution = parsing.RungResolution;
-        Defaults = model.Quality.Defaults;
-
-        if (parsing.RungResolution is { } table)
-        {
-            ValidateRungResolution(table, tierNames);
-        }
-
-        ValidateDefaults(model.Quality.Defaults);
     }
 
     /// <summary>Gets the compiled guard set.</summary>
@@ -85,12 +56,6 @@ internal sealed class CompiledParseDeclaration
 
     /// <summary>Gets the compiled token tables, in declared order.</summary>
     internal IReadOnlyList<CompiledTokenTable> TokenTables { get; }
-
-    /// <summary>Gets the declared rung-resolution table, order untouched. Absent for a kind that has none.</summary>
-    internal RungResolutionTable? RungResolution { get; }
-
-    /// <summary>Gets the declared default rows applied before rung lookup, order untouched.</summary>
-    internal IReadOnlyList<TierDefault> Defaults { get; }
 
     private static Regex CompileDeclared(string pattern, string what, bool ignoreCase = true)
     {
@@ -106,7 +71,7 @@ internal sealed class CompiledParseDeclaration
             return new Regex(
                 pattern,
                 options,
-                TimeSpan.FromMilliseconds(ReleaseTokenVocabulary.MatchTimeoutMilliseconds));
+                MatchTimeout);
         }
         catch (ArgumentException inner)
         {
@@ -206,62 +171,6 @@ internal sealed class CompiledParseDeclaration
         return new CompiledTokenTable(table, rows);
     }
 
-    private void ValidateRungResolution(RungResolutionTable table, IReadOnlySet<string> tierNames)
-    {
-        if (!tierNames.Contains(table.UnknownTierId))
-        {
-            throw new ArgumentException(
-                $"The rung table's unknown tier '{table.UnknownTierId}' is on no declared ladder.",
-                nameof(table));
-        }
-
-        foreach (var rule in table.Rules)
-        {
-            if (!tierNames.Contains(rule.TierId))
-            {
-                throw new ArgumentException(
-                    $"Rung rule '{rule.RuleId}' resolves to tier '{rule.TierId}', which is on no "
-                    + "declared ladder.",
-                    nameof(table));
-            }
-
-            foreach (var atom in rule.When.All)
-            {
-                if (TagPredicateEvaluator.Validate(atom, Guards) is { } defect)
-                {
-                    throw new ArgumentException(
-                        $"Rung rule '{rule.RuleId}': {defect}.", nameof(table));
-                }
-            }
-        }
-
-        foreach (var fallback in table.ContainerFallbacks)
-        {
-            if (!tierNames.Contains(fallback.TierId))
-            {
-                throw new ArgumentException(
-                    $"Container fallback '{fallback.Extension}' resolves to tier '{fallback.TierId}', "
-                    + "which is on no declared ladder.",
-                    nameof(table));
-            }
-        }
-    }
-
-    private void ValidateDefaults(IReadOnlyList<TierDefault> defaults)
-    {
-        for (var index = 0; index < defaults.Count; index++)
-        {
-            foreach (var atom in defaults[index].When.All)
-            {
-                if (TagPredicateEvaluator.Validate(atom, Guards) is { } defect)
-                {
-                    throw new ArgumentException(
-                        $"Quality default row {index.ToString(CultureInfo.InvariantCulture)}: {defect}.",
-                        nameof(defaults));
-                }
-            }
-        }
-    }
 }
 
 /// <summary>One compiled pre-substitution.</summary>

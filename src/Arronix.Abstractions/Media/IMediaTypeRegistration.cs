@@ -1,118 +1,86 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Parsing;
 
 namespace Arronix.Abstractions.Media;
 
-/// <summary>
-/// One typed media kind, captured at registration, with its two type arguments still recoverable.
-/// </summary>
-/// <remarks>
-/// <para>
-/// A media kind is authored as a pair of types — the item and the <see cref="IMediaType{TItem}"/> that
-/// declares it — but the registry that captures it and the loader that carries it are both kind-blind by
-/// construction, so neither can name either type. This interface is how the pair survives that crossing
-/// without either side naming it: the plugin closes the generic at its own call site, and the host reopens
-/// it through <see cref="Bind{TResult}"/>.
-/// </para>
-/// <para>
-/// The alternative — capturing two <see cref="Type"/> objects and reflecting a generic method back open —
-/// would move a compile-time fact to a runtime one and put a reflection call on the load path of every
-/// kind. That is the opposite of what a typed authoring surface is for, and it would be invisible to the
-/// trimmer besides.
-/// </para>
-/// </remarks>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
+/// <summary>A media definition able to capture its own closed generic contract.</summary>
+public interface IMediaTypeDefinition
+{
+    /// <summary>Captures this definition for the kind-blind plugin and host pipeline.</summary>
+    IMediaTypeRegistration Capture();
+}
+
+/// <summary>One typed media definition carried across the kind-blind plugin boundary.</summary>
 public interface IMediaTypeRegistration
 {
-    /// <summary>
-    /// Gets the media kind identifier, read from the declaring type's static member.
-    /// </summary>
+    /// <summary>Gets the media kind identifier.</summary>
     MediaKindId Kind { get; }
 
-    /// <summary>
-    /// Gets the item type, so a caller that only needs the entity does not have to reopen the generic.
-    /// </summary>
+    /// <summary>Gets the durable item type.</summary>
     Type ItemType { get; }
 
-    /// <summary>
-    /// Gets the declaring type, for diagnostics that should name what was registered.
-    /// </summary>
+    /// <summary>Gets the acquisition-target type.</summary>
+    Type TargetType { get; }
+
+    /// <summary>Gets the interpreted-release type.</summary>
+    Type ReleaseType { get; }
+
+    /// <summary>Gets the statically dispatched release parser type.</summary>
+    Type ParserType { get; }
+
+    /// <summary>Gets the concrete definition type.</summary>
     Type DeclaringType { get; }
 
-    /// <summary>
-    /// Reopens the generic and hands both type arguments to <paramref name="binder"/>.
-    /// </summary>
-    /// <typeparam name="TResult">What the binder produces.</typeparam>
-    /// <param name="binder">The host-side binder.</param>
-    /// <returns>Whatever the binder produced.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="binder"/> is <see langword="null"/>.</exception>
+    /// <summary>Reopens the three domain types and their parser type for a host-side binder.</summary>
     TResult Bind<TResult>(IMediaTypeBinder<TResult> binder);
 }
 
-/// <summary>
-/// The host side of <see cref="IMediaTypeRegistration.Bind{TResult}"/>: what to do once the item type and
-/// its declaring type are back in scope.
-/// </summary>
-/// <typeparam name="TResult">What binding produces.</typeparam>
-/// <remarks>
-/// The visitor half of the double-dispatch. It exists so that the one place in the host that genuinely
-/// needs both type arguments — the derivation — can have them statically, while every other participant
-/// keeps holding the kind-blind <see cref="IMediaTypeRegistration"/>.
-/// </remarks>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
+/// <summary>The host side of the media-registration double dispatch.</summary>
 public interface IMediaTypeBinder<out TResult>
 {
-    /// <summary>
-    /// Binds one typed media kind.
-    /// </summary>
-    /// <typeparam name="TItem">The kind's item type.</typeparam>
-    /// <typeparam name="TType">The type declaring it.</typeparam>
-    /// <returns>The result.</returns>
-    TResult Bind<TItem, TType>()
-        where TItem : IMediaItem
-        where TType : IMediaType<TItem>;
+    /// <summary>Binds one typed media definition.</summary>
+    TResult Bind<TItem, TTarget, TRelease, TParser>(MediaType<TItem, TTarget, TRelease, TParser> definition)
+        where TItem : class, IMediaItem
+        where TTarget : class, IReleaseTarget
+        where TRelease : class, IRelease
+        where TParser : IReleaseParser<TRelease>;
 }
 
-/// <summary>
-/// Captures a typed media kind as an <see cref="IMediaTypeRegistration"/>.
-/// </summary>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
+/// <summary>Captures typed media definitions without restating their closed types at registration.</summary>
 public static class MediaTypeRegistration
 {
-    /// <summary>
-    /// Captures one typed media kind.
-    /// </summary>
-    /// <typeparam name="TItem">The kind's item type.</typeparam>
-    /// <typeparam name="TType">The type declaring it.</typeparam>
-    /// <returns>The captured registration.</returns>
-    public static IMediaTypeRegistration For<TItem, TType>()
-        where TItem : IMediaItem
-        where TType : IMediaType<TItem>
-        => Captured<TItem, TType>.Instance;
+    /// <summary>Captures one already-constructed typed media definition.</summary>
+    public static IMediaTypeRegistration For<TItem, TTarget, TRelease, TParser>(
+        MediaType<TItem, TTarget, TRelease, TParser> definition)
+        where TItem : class, IMediaItem
+        where TTarget : class, IReleaseTarget
+        where TRelease : class, IRelease
+        where TParser : IReleaseParser<TRelease> =>
+        new Captured<TItem, TTarget, TRelease, TParser>(definition);
 
-    /// <summary>
-    /// One captured pair. Stateless, so one instance per closed pair is all that is ever needed.
-    /// </summary>
-    private sealed class Captured<TItem, TType> : IMediaTypeRegistration
-        where TItem : IMediaItem
-        where TType : IMediaType<TItem>
+    private sealed class Captured<TItem, TTarget, TRelease, TParser>(
+        MediaType<TItem, TTarget, TRelease, TParser> definition) : IMediaTypeRegistration
+        where TItem : class, IMediaItem
+        where TTarget : class, IReleaseTarget
+        where TRelease : class, IRelease
+        where TParser : IReleaseParser<TRelease>
     {
-        internal static readonly Captured<TItem, TType> Instance = new();
+        public MediaKindId Kind => definition.Kind;
 
-        /// <inheritdoc />
-        public MediaKindId Kind => TType.Kind;
-
-        /// <inheritdoc />
         public Type ItemType => typeof(TItem);
 
-        /// <inheritdoc />
-        public Type DeclaringType => typeof(TType);
+        public Type TargetType => typeof(TTarget);
 
-        /// <inheritdoc />
+        public Type ReleaseType => typeof(TRelease);
+
+        public Type ParserType => typeof(TParser);
+
+        public Type DeclaringType => definition.GetType();
+
         public TResult Bind<TResult>(IMediaTypeBinder<TResult> binder)
         {
             ArgumentNullException.ThrowIfNull(binder);
-            return binder.Bind<TItem, TType>();
+            return binder.Bind(definition);
         }
     }
 }

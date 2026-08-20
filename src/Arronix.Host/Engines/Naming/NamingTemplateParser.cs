@@ -305,8 +305,8 @@ internal static class NamingTemplateParser
     {
         if (body.Contains('{', StringComparison.Ordinal))
         {
-            // The surveyed tag-wrapper idiom ({tmdb-{Movie TmdbId}}) is not part of the grammar; the
-            // optional group '<tmdb-{Movie TmdbId}>' says the same thing and validates.
+            // A nested tag-wrapper is not part of the grammar; an optional group around literal text and
+            // one ordinary token says the same thing and validates.
             errors.Add($"'{{{body}}}' nests a brace. Wrap conditional text in '<…>' instead.");
         }
 

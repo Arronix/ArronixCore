@@ -1,7 +1,5 @@
 using Arronix.Abstractions.Shape;
 
-// The media-shape contracts are experimental; this seam is the query engine's read window over them.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Engines.Search;
 

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Intent;
@@ -26,7 +25,6 @@ namespace Arronix.Abstractions.Intent;
 /// reader gets a real table with headers. Nothing in it names a technology or an implement.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record WorkbenchDescriptor
 {
     /// <summary>
@@ -89,7 +87,6 @@ public sealed record WorkbenchDescriptor
 /// <summary>
 /// What a working surface operates on.
 /// </summary>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum WorkbenchSubject
 {
     /// <summary>Files that are not yet part of the library.</summary>
@@ -99,7 +96,10 @@ public enum WorkbenchSubject
     ReleaseCandidates = 1,
 
     /// <summary>Items already in the library.</summary>
-    LibraryItems = 2
+    LibraryItems = 2,
+
+    /// <summary>Catalog items offered for admission to the library.</summary>
+    CatalogCandidates = 3
 }
 
 /// <summary>
@@ -109,7 +109,6 @@ public enum WorkbenchSubject
 /// A read-only column is a projection of the row; an editable one is a decision the user makes, with the
 /// field's own declared choices or an option source supplying the permitted values.
 /// </remarks>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record WorkbenchColumn
 {
     /// <summary>

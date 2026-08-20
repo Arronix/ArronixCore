@@ -1,10 +1,7 @@
 using System.Linq;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
-using Arronix.Host.Media.Typed.Builders;
-
-// The derivation reads and produces experimental contracts throughout.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
+using Arronix.Host.Media.Typed.Compilation;
 
 namespace Arronix.Host.Media.Typed;
 
@@ -24,13 +21,17 @@ internal static class GroupAxisFactory
     /// </summary>
     /// <param name="draft">The axis as recorded.</param>
     /// <param name="memberLevelId">The level whose items are members.</param>
+    /// <param name="compiledShapes">The build-time-generated entity projections.</param>
     /// <returns>The axis.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="draft"/> is <see langword="null"/>.</exception>
-    internal static GroupingAxis Derive(GroupDraft draft, MediaLevelId memberLevelId)
+    internal static GroupingAxis Derive(
+        GroupDraft draft,
+        MediaLevelId memberLevelId,
+        CompiledShapeCatalog compiledShapes)
     {
         ArgumentNullException.ThrowIfNull(draft);
 
-        var reading = ItemTypeReader.Read(draft.GroupType);
+        var reading = ItemTypeReader.Read(compiledShapes.Get(draft.GroupType));
         var singular = draft.Singular ?? DerivedNames.Label(draft.GroupType.Name);
 
         return new GroupingAxis
@@ -40,9 +41,9 @@ internal static class GroupAxisFactory
             PluralName = draft.Plural ?? DerivedNames.Plural(singular),
             MemberLevelId = memberLevelId,
 
-            // Arity, position and the primary-member flag are all read off the property being a single,
-            // optional reference. There is nothing to declare, so nothing can contradict the type.
-            Arity = GroupingArity.ManyToOne,
+            // Arity is read from the typed membership property: a scalar relationship is many-to-one and
+            // a collection relationship is many-to-many.
+            Arity = draft.Arity,
             Position = MemberPosition.None,
             HasPrimaryMember = false,
 

@@ -1,7 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; the client reads them.
-#pragma warning disable ARX0015 // Provider contracts are experimental; the client configures providers.
-#pragma warning disable ARX0016 // Intent contracts are experimental; the client renders them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; they are what this client speaks.
 
 using System.Globalization;
 using System.Linq;

@@ -96,8 +96,7 @@ public sealed class ComparatorSet
     /// </summary>
     /// <remarks>
     /// A sound bound rather than the tightest one: an inclusive upper comparison is reported as the next
-    /// patch, because the exclusive bound that would be exact is not representable. Soundness is what the
-    /// experimental gate needs — it must never conclude that an unbounded range is bounded.
+    /// patch, because the exclusive bound that would be exact is not representable.
     /// </remarks>
     public SemanticVersion? UpperBoundExclusive
     {
@@ -237,22 +236,6 @@ public sealed class VersionRange
     /// <param name="version">The candidate.</param>
     /// <returns><see langword="true"/> when any alternative admits it.</returns>
     public bool IsSatisfiedBy(SemanticVersion version) => Sets.Any(set => set.IsSatisfiedBy(version));
-
-    /// <summary>
-    /// Determines whether the range is narrow enough for an extension to depend on experimental contracts.
-    /// </summary>
-    /// <param name="hostVersion">The version of the contract assembly the host is running.</param>
-    /// <returns><see langword="true"/> when the range is permitted.</returns>
-    /// <remarks>
-    /// The stability policy allows an experimental contract to change in any minor release, so a range that
-    /// reaches past the next minor is a promise the host cannot keep. Requiring an upper bound at or below
-    /// the next minor is the revocability the policy was written to buy: it is why a contract may be
-    /// published before its shape has settled, and it is why an unbounded range is rejected rather than
-    /// trusted.
-    /// </remarks>
-    public bool SatisfiesExperimentalGate(SemanticVersion hostVersion)
-        => UpperBoundExclusive is { } upper
-            && upper <= new SemanticVersion(hostVersion.Major, hostVersion.Minor + 1, 0);
 
     /// <summary>
     /// Gets the range as written.

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace Arronix.Abstractions.Shape;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Shape;
 /// item and per release rather than per level. A bag of typed readings keeps that open without giving up
 /// ordering, which a dictionary of strings would.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record CoordinateSet
 {
     /// <summary>

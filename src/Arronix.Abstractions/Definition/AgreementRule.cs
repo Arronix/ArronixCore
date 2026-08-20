@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// agree with the entry it resolved to. Absence is configurable because a missing statement is common
 /// and harmless where a contradicting one is neither.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record AgreementRule
 {
     /// <summary>

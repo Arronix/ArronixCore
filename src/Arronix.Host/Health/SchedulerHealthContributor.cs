@@ -5,8 +5,6 @@ using Arronix.Host.Configuration;
 using Arronix.Host.Scheduling;
 using Microsoft.Extensions.Options;
 
-// The health contribution contract is experimental.
-#pragma warning disable ARX0006
 
 namespace Arronix.Host.Health;
 

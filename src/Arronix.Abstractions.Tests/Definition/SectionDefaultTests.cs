@@ -1,5 +1,4 @@
 // Exercises the declarative media-kind area.
-#pragma warning disable ARX0019
 
 using Arronix.Abstractions.Definition;
 
@@ -8,19 +7,6 @@ namespace Arronix.Abstractions.Tests.Definition;
 [TestFixture]
 public class SectionDefaultTests
 {
-    [Test]
-    public void QualityDefaultsToPureLadderDerivation()
-    {
-        var quality = QualityDeclaration.LadderDerived;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(quality.Defaults, Is.Empty);
-            Assert.That(quality.Fallback, Is.EqualTo(RungFallback.RoundUp), "Round up, never down.");
-            Assert.That(quality.CrossFamily, Is.EqualTo(CrossFamilyRule.NeverCompare));
-        });
-    }
-
     [Test]
     public void NamingDefaultsToASingleSegmentSpineAndNoTemplatesOfItsOwn()
     {
@@ -62,22 +48,4 @@ public class SectionDefaultTests
         });
     }
 
-    [Test]
-    public void TierDefaultsUseTheSameClosedPredicateVocabularyAsEveryOtherRow()
-    {
-        var row = new TierDefault
-        {
-            When = new TagPredicate(
-            [
-                new PredicateAtom { Subject = "tags.SourceGroup", Op = PredicateOp.Present, Negated = true }
-            ]),
-            SourceGroup = "stream"
-        };
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(row.Resolution, Is.Null, "A row asserts only what it states.");
-            Assert.That(row.IgnoreStatedResolution, Is.False);
-        });
-    }
 }

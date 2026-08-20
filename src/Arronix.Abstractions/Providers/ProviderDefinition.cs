@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 
 namespace Arronix.Abstractions.Providers;
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Providers;
 /// extension destroys the user's configuration.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ProviderDefinition
 {
     /// <summary>
@@ -82,7 +80,6 @@ public sealed record ProviderDefinition
 /// <summary>
 /// Whether a definition's implementation is still present.
 /// </summary>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum DefinitionState
 {
     /// <summary>The implementation is loaded and the definition is usable.</summary>
@@ -97,13 +94,11 @@ public enum DefinitionState
 /// </summary>
 /// <param name="Text">The message.</param>
 /// <param name="Severity">How much it matters.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ProviderMessage(string Text, ProviderMessageSeverity Severity);
 
 /// <summary>
 /// How much a provider message matters.
 /// </summary>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ProviderMessageSeverity
 {
     /// <summary>Worth knowing.</summary>

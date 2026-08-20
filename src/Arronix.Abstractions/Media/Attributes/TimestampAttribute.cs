@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -11,5 +10,4 @@ namespace Arronix.Abstractions.Media;
 /// another as an ordered list, from the same declaration.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class TimestampAttribute : Attribute;

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Naming;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Naming;
 /// yields to the contributed one.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Naming, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IDiacriticFoldingProvider
 {
     /// <summary>

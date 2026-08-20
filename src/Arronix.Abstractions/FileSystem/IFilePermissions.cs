@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.FileSystem;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// permission API whose easiest call makes a file world-writable is not one worth carrying forward.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IFilePermissions
 {
     /// <summary>

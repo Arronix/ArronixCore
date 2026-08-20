@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 
 namespace Arronix.Abstractions.Plugins;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Plugins;
 /// rule and the "does this grant cover that requirement" test into single operations rather than string
 /// arithmetic over a list.
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct CapabilitySet
 {
     private const ushort NetworkImplyingMask =

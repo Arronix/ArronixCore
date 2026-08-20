@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -15,11 +14,10 @@ namespace Arronix.Abstractions.Media;
 /// that.
 /// </para>
 /// <para>
-/// The recomputation itself is a method on the kind's own type, bound on the builder. That is the whole of
+/// The recomputation itself is a method on the kind's own type, bound by a typed derivation value. That is the whole of
 /// what used to be a miniature expression grammar carried in strings: a reduction over dates, a comparison
 /// against a window, a conditional — all of them ordinary code once the model is typed.
 /// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class DerivedAttribute : Attribute;

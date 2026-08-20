@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Health;
 
 namespace Arronix.Abstractions.Wire;
@@ -15,7 +14,6 @@ namespace Arronix.Abstractions.Wire;
 /// this contract area where forward compatibility matters more than exhaustiveness: a health endpoint
 /// that fails to deserialize is the last thing that should break.
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record HealthSnapshotView(
     string Status,
     DateTimeOffset CheckedAt,

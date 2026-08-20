@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Arronix.Abstractions.Shape;
@@ -20,7 +19,6 @@ namespace Arronix.Abstractions.Shape;
 /// spare, not the most.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct MediaFileId(long Value)
 {
     /// <summary>

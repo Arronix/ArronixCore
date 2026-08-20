@@ -3,7 +3,7 @@ using Arronix.Abstractions.Identity;
 namespace Arronix.Abstractions.Media;
 
 /// <summary>
-/// Defines the identity and capabilities of a media kind (e.g., TV, Movies, Music).
+/// Defines the identity and capabilities of a legacy imperative media kind.
 /// Each plugin implements this interface to declare what it can handle.
 /// </summary>
 public interface IMediaKind
@@ -30,8 +30,7 @@ public interface IMediaKind
     IReadOnlyList<string> Capabilities { get; }
 
     /// <summary>
-    /// Gets the list of external identifier systems this media kind supports.
-    /// Examples: "tvdb", "tmdb", "imdb", "musicbrainz"
+    /// Gets the list of external identifier namespaces this media kind supports.
     /// </summary>
     IReadOnlyList<string> SupportedIdentifiers { get; }
 

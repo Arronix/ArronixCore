@@ -3,9 +3,6 @@ using System.IO.Hashing;
 using System.Security.Cryptography;
 using Arronix.Abstractions.FileSystem;
 
-// The file system contract is experimental while it has a single implementer. This file consumes it to read
-// the bytes it hashes; it takes no other dependency on the unstable surface.
-#pragma warning disable ARX0005
 
 namespace Arronix.Common.Hashing;
 

@@ -1,48 +1,54 @@
-using System.Diagnostics.CodeAnalysis;
+using Arronix.Abstractions.Media;
 
 namespace Arronix.Abstractions.Providers;
 
-/// <summary>
-/// Registers a release source: what it is, and the implementation that answers for it.
-/// </summary>
-/// <param name="Descriptor">What the provider is and how it is configured.</param>
-/// <param name="Provider">The already-constructed implementation.</param>
+/// <summary>A provider declaration paired with implementation and contract types for DI activation.</summary>
 /// <remarks>
-/// The descriptor and the implementation are registered together so that the host can admit or refuse the
-/// pair as a unit. An implementation with no declaration could not be configured, and a declaration with
-/// no implementation could not be called.
+/// Registration carries types, never an already-constructed implementation. The host activates the type
+/// only after the plugin and capability declaration have been admitted, supplying the scoped plugin
+/// context through DI.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
-public sealed record IndexerRegistration(ProviderDescriptor Descriptor, IIndexer Provider);
+public sealed record ProviderTypeRegistration
+{
+    public required ProviderDescriptor Descriptor { get; init; }
 
-/// <summary>
-/// Registers a transfer client: what it is, and the implementation that answers for it.
-/// </summary>
-/// <param name="Descriptor">What the provider is and how it is configured.</param>
-/// <param name="Provider">The already-constructed implementation.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
-public sealed record DownloaderRegistration(ProviderDescriptor Descriptor, IDownloader Provider);
+    public required ProviderFamily Family { get; init; }
 
-/// <summary>
-/// Registers a notification destination: what it is, and the implementation that answers for it.
-/// </summary>
-/// <param name="Descriptor">What the provider is and how it is configured.</param>
-/// <param name="Provider">The already-constructed implementation.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
-public sealed record NotifierRegistration(ProviderDescriptor Descriptor, INotifier Provider);
+    public required Type ContractType { get; init; }
 
-/// <summary>
-/// Registers a cataloger: what it is, and the implementation that answers for it.
-/// </summary>
-/// <param name="Descriptor">What the provider is and how it is configured.</param>
-/// <param name="Provider">The already-constructed implementation.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
-public sealed record CatalogerRegistration(ProviderDescriptor Descriptor, ICataloger Provider);
+    public required Type ImplementationType { get; init; }
 
-/// <summary>
-/// Registers a curator: what it is, and the implementation that answers for it.
-/// </summary>
-/// <param name="Descriptor">What the provider is and how it is configured.</param>
-/// <param name="Provider">The already-constructed implementation.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
-public sealed record CuratorRegistration(ProviderDescriptor Descriptor, ICurator Provider);
+    public Type? MediaItemType { get; init; }
+
+    public static ProviderTypeRegistration For<TContract, TImplementation>(
+        ProviderDescriptor descriptor,
+        ProviderFamily family)
+        where TContract : class, IProvider
+        where TImplementation : class, TContract
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        return new ProviderTypeRegistration
+        {
+            Descriptor = descriptor,
+            Family = family,
+            ContractType = typeof(TContract),
+            ImplementationType = typeof(TImplementation)
+        };
+    }
+
+    public static ProviderTypeRegistration ForCataloger<TItem, TImplementation>(ProviderDescriptor descriptor)
+        where TItem : class, IMediaItem
+        where TImplementation : class, ICataloger<TItem>
+    {
+        var registration = For<ICataloger<TItem>, TImplementation>(descriptor, ProviderFamily.Cataloger);
+        return registration with { MediaItemType = typeof(TItem) };
+    }
+
+    public static ProviderTypeRegistration ForCurator<TItem, TImplementation>(ProviderDescriptor descriptor)
+        where TItem : class, IMediaItem
+        where TImplementation : class, ICurator<TItem>
+    {
+        var registration = For<ICurator<TItem>, TImplementation>(descriptor, ProviderFamily.Curator);
+        return registration with { MediaItemType = typeof(TItem) };
+    }
+}

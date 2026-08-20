@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.FileSystem;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// platform itself ships only the portable fallback, which reports what the framework's own drive
 /// enumeration can see and nothing more.
 /// </remarks>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IStorageMountProvider
 {
     /// <summary>

@@ -4,7 +4,6 @@ using Arronix.Host.Providers;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 
-#pragma warning disable ARX0015 // Provider contracts are experimental; this assembly enforces their sensitivity rules.
 
 namespace Arronix.Api.Security;
 

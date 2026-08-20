@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
 
 namespace Arronix.Abstractions.Shape;
@@ -12,14 +11,7 @@ namespace Arronix.Abstractions.Shape;
 /// unreachable: the majority of a rendered file name is file properties — quality, release group,
 /// languages, technical facets — not item properties. This record is the missing subject.
 /// </para>
-/// <para>
-/// <see cref="TechnicalFacets"/> carries probed facts whose vocabulary is host-global (codec, bit depth,
-/// dynamic range, channels). <see cref="KindFacets"/> carries per-kind file markers declared by
-/// <see cref="FormatFamily.TechnicalFacets"/> — facts that belong to the file rather than the item, and
-/// to one kind rather than the platform.
-/// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MediaFileFacts
 {
     /// <summary>
@@ -62,16 +54,4 @@ public sealed record MediaFileFacts
     /// </summary>
     public IReadOnlyList<Language> Languages { get; init; } = [];
 
-    /// <summary>
-    /// Gets probed technical facts in the host-global vocabulary: codec, bit depth, dynamic range,
-    /// channels.
-    /// </summary>
-    public IReadOnlyDictionary<string, string> TechnicalFacets { get; init; }
-        = System.Collections.ObjectModel.ReadOnlyDictionary<string, string>.Empty;
-
-    /// <summary>
-    /// Gets per-kind file markers, keyed by the <see cref="TechnicalFacet.FacetId"/> that declares them.
-    /// </summary>
-    public IReadOnlyDictionary<string, string> KindFacets { get; init; }
-        = System.Collections.ObjectModel.ReadOnlyDictionary<string, string>.Empty;
 }

@@ -5,6 +5,7 @@ using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Parsing;
 using Arronix.Abstractions.Providers;
@@ -12,17 +13,6 @@ using Arronix.Abstractions.Serialization;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Telemetry;
 
-#pragma warning disable ARX0001 // Caching contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0004 // Event contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0006 // Health contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0007 // Hosting contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0009 // Naming contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0010 // Serialization contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0013 // Media-shape contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0015 // Provider contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; these doubles stand in for them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; these doubles stand in for them.
 
 namespace Arronix.Plugins.Tests.Support;
 
@@ -92,6 +82,65 @@ internal sealed class FakeIndexer : IIndexer
         => throw new NotSupportedException();
 }
 
+internal sealed class FakeCatalogItem : IMediaItem
+{
+    [Identity]
+    public required MediaItemId Key { get; init; }
+
+    public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
+
+    [Title]
+    public required string Title { get; init; }
+
+    public Language? TitleLanguage { get; init; }
+
+    public string? Overview { get; init; }
+
+    public ArtworkSet Artwork { get; init; } = ArtworkSet.Empty;
+
+    public CatalogRecordState CatalogState { get; init; }
+}
+
+internal sealed class FakeCataloger : ICataloger<FakeCatalogItem>
+{
+    public ProviderId Id { get; set; }
+
+    public ProviderFamily Family => ProviderFamily.Cataloger;
+
+    public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
+
+    public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
+
+    public Task<ValidationOutcome> TestAsync(
+        ProviderInvocation invocation,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<FacetValue>> GetOptionsAsync(
+        ProviderInvocation invocation,
+        string optionSourceId,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<FakeCatalogItem>> SearchAsync(
+        ProviderInvocation invocation,
+        CatalogQuery query,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<FakeCatalogItem?> GetAsync(
+        ProviderInvocation invocation,
+        ExternalId id,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<ExternalId>> ChangedSinceAsync(
+        ProviderInvocation invocation,
+        DateTimeOffset since,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+}
+
 /// <summary>
 /// Builds the provider declarations the registry records.
 /// </summary>
@@ -105,8 +154,14 @@ internal static class Declarations
         Settings = []
     };
 
-    public static IndexerRegistration IndexerRegistration(string localId)
-        => new(Indexer(localId), new FakeIndexer());
+    public static ProviderDescriptor Cataloger(string localId) => new()
+    {
+        LocalId = localId,
+        Family = ProviderFamily.Cataloger,
+        Name = localId,
+        Settings = []
+    };
+
 }
 
 /// <summary>

@@ -4,8 +4,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Host.Media;
 
-// The intent contracts are experimental; the registry publishes them.
-#pragma warning disable ARX0016
 
 namespace Arronix.Host.Intent;
 

@@ -3,8 +3,6 @@ using Arronix.Host.FileSystem;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-// The file system contract is experimental; the host registers its only implementation.
-#pragma warning disable ARX0005
 
 namespace Arronix.Host.Composition;
 

@@ -1,8 +1,6 @@
 using System.Collections.Concurrent;
 using Arronix.Abstractions.Providers;
 
-// Provider contracts are experimental; the session store implements one of them.
-#pragma warning disable ARX0015
 
 namespace Arronix.Host.Providers;
 

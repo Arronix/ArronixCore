@@ -4,10 +4,6 @@ using Arronix.Abstractions.Shape;
 using Arronix.Host.Media.Typed;
 using FluentAssertions;
 
-// Every contract these tests read is experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.TypedMedia;
 
@@ -22,7 +18,8 @@ namespace Arronix.Host.Tests.TypedMedia;
 [TestFixture]
 internal sealed class IntentDerivationTests
 {
-    private static PluginIntentSurface Surface => MediaTypeModelFactory.Build<Work, Works>().Intent;
+    private static PluginIntentSurface Surface =>
+        MediaTypeModelFactory.Build<Work, WorkTarget, WorkRelease, WorkParser, Works>().Intent;
 
     [Test]
     public void TheFlatTraversalIsTheDefaultAndTakesItsNameFromTheBuilder()
@@ -47,7 +44,7 @@ internal sealed class IntentDerivationTests
 
         Assert.Multiple(() =>
         {
-            facets.Should().Contain(["originalLanguage", "genres", "collection"]);
+            facets.Should().Contain(["originalLanguage", "genres", "collections"]);
 
             // Filterable but not worth a traversal: one of the three exceptions the kind writes.
             facets.Should().NotContain("keywords");
@@ -69,7 +66,7 @@ internal sealed class IntentDerivationTests
 
         Assert.Multiple(() =>
         {
-            grouping.GroupingAxisId.Should().Be("workCollection");
+            grouping.GroupingAxisId.Should().Be("collection");
             grouping.Name.Should().Be("Collections");
         });
     }
@@ -142,27 +139,52 @@ internal sealed class IntentDerivationTests
         Assert.Multiple(() =>
         {
             action.Scope.Should().Be(ActionScope.Group);
-            action.TargetGroupAxisId.Should().Be("workCollection");
+            action.TargetGroupAxisId.Should().Be("collection");
             action.TargetLevelId.Should().BeNull();
         });
     }
 
     [Test]
-    public void AnActionsConditionIsAPredicateOverTheItemRatherThanATwoStateField()
+    public void AMonitorableGroupReceivesTheStandardGroupOperation()
     {
-        // The closed defect: a condition that had to name a two-state field could not say "has a value"
-        // about a field that is not two-state, which is the condition actually wanted.
         var action = Surface.Actions
             .Single(candidate =>
                 string.Equals(candidate.ActionId, "collection.monitor", StringComparison.Ordinal));
 
         Assert.Multiple(() =>
         {
-            action.EnabledWhenFieldId.Should().Be("collection");
+            action.StandardAction.Should().Be(StandardMediaAction.SetGroupMonitoring);
+            action.Scope.Should().Be(ActionScope.Group);
+            action.TargetGroupAxisId.Should().Be("collection");
+            action.EnabledWhenFieldId.Should().BeNull();
             action.Confirmation.Should().Be(ConfirmationRequirement.Acknowledge);
             action.ConsequenceStatement.Should().NotBeNullOrWhiteSpace();
-            action.Parameters.Should().ContainSingle().Which.ParameterId.Should().Be("wanted");
+            action.Parameters.Select(parameter => parameter.StandardParameter).Should().Equal(
+                StandardMediaActionParameter.Wanted,
+                StandardMediaActionParameter.AddMissing);
         });
+    }
+
+    [Test]
+    public void ThePlatformDerivesTheWholeStandardActionCatalog()
+    {
+        Surface.Actions.Select(action => action.StandardAction).Should().Contain(
+        [
+            StandardMediaAction.Search,
+            StandardMediaAction.SearchMissing,
+            StandardMediaAction.SearchCutoffUnmet,
+            StandardMediaAction.Refresh,
+            StandardMediaAction.Rescan,
+            StandardMediaAction.SetMonitoring,
+            StandardMediaAction.SetAvailability,
+            StandardMediaAction.Rename,
+            StandardMediaAction.Add,
+            StandardMediaAction.Remove,
+            StandardMediaAction.Exclude,
+            StandardMediaAction.ClearExclusion,
+            StandardMediaAction.SetGroupMonitoring,
+            StandardMediaAction.RefreshGroups
+        ]);
     }
 
     [Test]

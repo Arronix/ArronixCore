@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.Shape;
 
@@ -21,7 +20,6 @@ namespace Arronix.Abstractions.Media;
 /// properties on two types.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ExternalIdSet
 {
     /// <summary>

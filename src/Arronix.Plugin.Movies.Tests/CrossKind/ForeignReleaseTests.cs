@@ -1,7 +1,5 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests read the derived shape.
 
 using System.Linq;
-using Arronix.Abstractions.Shape;
 using Arronix.Plugin.Movies.Tests.Support;
 
 namespace Arronix.Plugin.Movies.Tests.CrossKind;
@@ -11,10 +9,9 @@ namespace Arronix.Plugin.Movies.Tests.CrossKind;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Two declared discriminators do the work and neither alone is enough: the newznab category band a source
-/// files an answer under, and the file extensions the format family claims. A television episode and a
-/// movie are both <c>.mkv</c>, so the extension cannot separate them; a music release and a movie release
-/// never share a category, so the category can. Both are pure declaration and are asserted directly.
+/// A media type declares semantic searches and format use. A source plugin owns any wire-protocol category
+/// mapping because the same movie search can be implemented by Newznab, Torznab or a catalog API without
+/// changing what a movie is.
 /// </para>
 /// <para>
 /// The cases that read a foreign release's text and watch the matcher refuse it need the parse and match
@@ -24,13 +21,6 @@ namespace Arronix.Plugin.Movies.Tests.CrossKind;
 [TestFixture]
 public class ForeignReleaseTests
 {
-    /// <summary>
-    /// Every category the kind's search kinds claim, taken from the derived shape rather than from a
-    /// constant the shape and the tests both had to agree with.
-    /// </summary>
-    private static IReadOnlyList<CategoryId> DeclaredCategories { get; } =
-        [.. MoviesDeclaration.Shape.SearchKinds.SelectMany(static kind => kind.Categories).Distinct()];
-
     [TestCase("The.Office.US.S03E15.720p.HDTV.x264-DIMENSION")]
     [TestCase("Breaking.Bad.S05E14.1080p.BluRay.x264-DEMAND")]
     [TestCase("Game.of.Thrones.S01E01.HDTV.XviD-2HD")]
@@ -77,37 +67,12 @@ public class ForeignReleaseTests
     public void NeverReadsAMediaKindOutOfTheReleaseText()
         => Assert.Fail("Unreachable: see the fixture remarks.");
 
-    /// <summary>
-    /// Every category a movie claims is inside the 2000 band, which is the band a source files a movie
-    /// answer under and no other kind claims.
-    /// </summary>
     [Test]
-    public void ClaimsOnlyCategoriesInTheMovieBand()
+    public void DeclaresNoSourceProtocolCategories()
         => Assert.That(
-            DeclaredCategories.Select(static category => category.Value),
-            Is.All.InRange(2000, 2999));
-
-    [TestCase(3000, "music")]
-    [TestCase(3010, "music")]
-    [TestCase(5000, "television")]
-    [TestCase(5040, "television")]
-    [TestCase(7000, "books")]
-    [TestCase(7020, "books")]
-    [TestCase(1000, "console")]
-    [TestCase(4000, "software")]
-    [TestCase(6000, "adult")]
-    public void ClaimsNoCategoryAnotherKindWouldClaim(int category, string owner)
-        => Assert.That(
-            DeclaredCategories.Select(static claimed => claimed.Value),
-            Does.Not.Contain(category),
-            $"Category {category} belongs to {owner}.");
-
-    [Test]
-    public void ClaimsEveryCategoryASourceWouldFileAMovieUnder()
-        => Assert.That(
-            DeclaredCategories.Select(static category => category.Value),
-            Is.EquivalentTo(new[] { 2000, 2010, 2020, 2030, 2040, 2045, 2050, 2060 }),
-            "Foreign, other, SD, HD, UHD, BluRay and 3D, plus the parent category.");
+            MoviesDeclaration.Shape.SearchKinds.SelectMany(static kind => kind.Categories),
+            Is.Empty,
+            "provider-specific category mappings belong to the source plugin");
 
     /// <summary>
     /// A format family's extension set is the discriminator the shape gate enforces across kinds, and a
@@ -130,31 +95,13 @@ public class ForeignReleaseTests
 
     /// <summary>
     /// The one genuinely shared extension. A television library and a movie library both hold
-    /// <c>.mkv</c> files, so the extension cannot separate those two — which is exactly why the category
-    /// exists as a second discriminator and why neither alone is enough.
+    /// <c>.mkv</c> files, so eligibility requires the typed target/search context rather than pretending a
+    /// source protocol number is intrinsic movie vocabulary.
     /// </summary>
     [Test]
     public void SharesItsContainerExtensionsWithEveryOtherVideoKind()
         => Assert.That(
             MoviesDeclaration.Video.FileExtensions,
             Does.Contain(".mkv").And.Contain(".mp4"),
-            "A television episode is an .mkv too; the category is what tells them apart.");
-
-    /// <summary>
-    /// A source's answer is claimed by whichever kind declared the category it came back under. That is
-    /// eligibility, and it is media-agnostic: it belongs in the host, and this states the movie half of
-    /// the contract it is computed against.
-    /// </summary>
-    [Test]
-    public void DeclaresItsCategoriesOnEverySearchKindSoEligibilityCanBeComputed()
-    {
-        foreach (var kind in MoviesDeclaration.Shape.SearchKinds)
-        {
-            Assert.That(kind.Categories.ToList(), Is.Not.Empty, kind.SearchKindId);
-            Assert.That(
-                kind.Categories.All(DeclaredCategories.Contains),
-                Is.True,
-                kind.SearchKindId);
-        }
-    }
+            "A television episode is an .mkv too; the typed target tells the host which search is running.");
 }

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Caching;
 
@@ -6,7 +5,6 @@ namespace Arronix.Abstractions.Caching;
 /// The non-generic face of a cache, which is what lets a provider enumerate and sweep caches of
 /// differing element types without knowing any of them.
 /// </summary>
-[Experimental(ExperimentalContracts.Caching, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface ICache
 {
     /// <summary>

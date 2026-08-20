@@ -1,7 +1,5 @@
 using System.Linq;
-using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
-using Arronix.Abstractions.Parsing;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Configuration;
@@ -11,12 +9,6 @@ using Arronix.Host.Media;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
-// Shape, parsing, plugin and definition contracts are experimental; these tests wire them together.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0016
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.DefinitionBinding;
 
@@ -44,7 +36,6 @@ internal sealed class DefinitionBinderTests
     private static DefinitionEngineCatalog CompleteCatalog() => new()
     {
         ItemStore = definition => new FakeItemSource(definition.Kind),
-        Parser = definition => new FakeEngineParser(definition.Kind),
         Matcher = definition => new FakeEngineMatcher(definition.Kind),
         QueryPlanner = definition => new FakeEnginePlanner(definition.Kind),
     };
@@ -85,7 +76,7 @@ internal sealed class DefinitionBinderTests
 
         registered!.Kind.Should().Be(ShapeFixtures.Kind);
         registered.Items.Should().BeOfType<FakeItemSource>("the item seam is the engine the catalog built");
-        registered.Parser.Should().BeOfType<FakeEngineParser>();
+        registered.Parser.Should().BeOfType<Arronix.Host.Engines.Parsing.TypedReleaseParserAdapter>();
         registered.Matcher.Should().BeOfType<FakeEngineMatcher>();
         registered.QueryPlanner.Should().BeOfType<FakeEnginePlanner>();
         registered.Definition.Should().NotBeNull("a declared kind's behavior stays reviewable as data");
@@ -133,24 +124,22 @@ internal sealed class DefinitionBinderTests
 
         defects.Select(defect => defect.Path).Should().BeEquivalentTo(
             "engines.itemStore",
-            "engines.parser",
             "engines.matcher",
             "engines.queryPlanner");
     }
 
     [Test]
-    public void AnEngineReportingTheWrongKindIsRefused()
+    public void TheTypedParserCannotReportAKindDifferentFromItsMediaType()
     {
         var registry = EmptyRegistry();
-        var catalog = CompleteCatalog();
-        catalog.Parser = _ => new FakeEngineParser(MediaKindId.FromString("other"));
-        var binder = new MediaTypeBinder(registry, catalog);
+        var binder = new MediaTypeBinder(registry, CompleteCatalog());
 
-        Register(binder, out _, out var defects).Should().BeFalse();
+        Register(binder, out var registered, out var defects).Should().BeTrue();
 
-        defects.Should().Contain(defect =>
-            defect.Path == "engines.parser" && defect.Message.Contains("'other'", StringComparison.Ordinal));
-        registry.All.Should().BeEmpty();
+        defects.Should().BeEmpty();
+        registered!.Parser.Should().NotBeNull();
+        registered.Parser!.MediaKind.Should().Be(ShapeFixtures.Kind);
+        registry.All.Should().ContainSingle();
     }
 
     [Test]
@@ -166,14 +155,23 @@ internal sealed class DefinitionBinderTests
         };
         var binder = new MediaTypeBinder(registry, catalog);
 
-        var faulty = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
+        var faulty = DefinitionFixtures.Sound() with
         {
-            RungResolution = parsing.RungResolution! with { UnknownTierId = "nope" },
-        });
+            Querying = DefinitionFixtures.Sound().Querying with
+            {
+                Tiers =
+                [
+                    DefinitionFixtures.Sound().Querying.Tiers[0] with
+                    {
+                        SearchKindId = "undeclared-search",
+                    },
+                ],
+            },
+        };
 
         Register(binder, faulty, out _, out var defects).Should().BeFalse();
 
-        defects.Should().Contain(defect => defect.Path == "parsing.rungResolution.unknownTierId");
+        defects.Should().Contain(defect => defect.Path == "querying.tiers[0]");
         built.Should().BeFalse("engines are constructed from validated models only");
     }
 
@@ -205,15 +203,6 @@ internal sealed class DefinitionBinderTests
         registered!.Definition.Should().BeNull();
     }
 
-    private sealed class FakeEngineParser(MediaKindId kind) : IReleaseParser
-    {
-        public MediaKindId MediaKind => kind;
-
-        public ParsedRelease? Parse(string releaseTitle) => null;
-
-        public bool CanParse(string releaseTitle) => false;
-    }
-
     private sealed class FakeEngineMatcher(MediaKindId kind) : IReleaseMatcher
     {
         public MediaKindId MediaKind => kind;
@@ -241,11 +230,17 @@ internal sealed class DefinitionBinderTests
     /// admission; a caller that reaches for it is asking this stub the wrong question, which is why it says
     /// so rather than returning an empty view.
     /// </remarks>
-    private sealed class StubMediaType(MediaKindModel model) : IMediaType
+    private sealed class StubMediaType(MediaKindModel model) : IMediaTypeRuntime
     {
         public MediaKindId Kind => ShapeFixtures.Kind;
 
         public Type ItemType => typeof(object);
+
+        public Type TargetType => typeof(object);
+
+        public Type ReleaseType => typeof(object);
+
+        public Type ParserType => typeof(object);
 
         public IReadOnlyList<Type> GroupTypes => [];
 
@@ -254,6 +249,10 @@ internal sealed class DefinitionBinderTests
         public PluginIntentSurface Intent { get; } = DefinitionFixtures.Intent();
 
         public MediaKindModel Model { get; } = model;
+
+        public bool HasReleasePolicy => false;
+
+        public IRelease? Parse(Arronix.Abstractions.Parsing.ReleaseParseContext context) => null;
 
         public ItemView Project(object item) => throw new NotSupportedException(
             "Admission never projects an item; this stub carries a model, not a catalog.");

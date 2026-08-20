@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Definition;
 /// authored in advance can express that. The mode therefore lives here, on the thing that scans, and
 /// rule tables consume the single value the scan produced.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum OccurrenceSelection
 {
     /// <summary>The leftmost occurrence in the text wins.</summary>

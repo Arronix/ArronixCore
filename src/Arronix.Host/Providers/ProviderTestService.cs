@@ -4,9 +4,6 @@ using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Scheduling;
 
-// Provider and shape contracts are experimental; a test call names both.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0015
 
 namespace Arronix.Host.Providers;
 

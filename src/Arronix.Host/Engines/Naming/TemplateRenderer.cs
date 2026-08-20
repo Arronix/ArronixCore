@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using Arronix.Common.Naming;
+using Arronix.Host.Languages;
 
 namespace Arronix.Host.Engines.Naming;
 
@@ -46,12 +47,18 @@ internal sealed class TemplateRenderer
     private static readonly char[] SeparatorCharacters = ['-', ' ', '.', '_'];
 
     private readonly RenderOptions _options;
+    private readonly LanguageTextService _languages;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="TemplateRenderer"/> class.
     /// </summary>
     /// <param name="options">The render options.</param>
-    public TemplateRenderer(RenderOptions? options = null) => _options = options ?? RenderOptions.Default;
+    /// <param name="languages">The installed language operations, or an empty registry for invariant-only rendering.</param>
+    public TemplateRenderer(RenderOptions? options = null, LanguageTextService? languages = null)
+    {
+        _options = options ?? RenderOptions.Default;
+        _languages = languages ?? new LanguageTextService(new LanguageDefinitionRegistry());
+    }
 
     /// <summary>
     /// Renders a template into path components, one per separator-delimited segment.
@@ -198,7 +205,7 @@ internal sealed class TemplateRenderer
 
         foreach (var modifier in reference.Modifiers)
         {
-            raw = NamingModifiers.Apply(raw, modifier, binding?.Year);
+            raw = NamingModifiers.Apply(raw, modifier, binding?.Year, _languages, binding?.Language);
         }
 
         if (reference.PadWidth is { } width

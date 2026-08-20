@@ -42,6 +42,15 @@ internal static class RepositoryLayout
     /// <summary>The browser client's project name.</summary>
     public const string Client = "Arronix.Client";
 
+    /// <summary>The typed video representation assembly.</summary>
+    public const string VideoFormat = "Arronix.Format.Video";
+
+    /// <summary>The reference language implementation assembly.</summary>
+    public const string ReferenceLanguages = "Arronix.Language.Reference";
+
+    /// <summary>The compile-time media-shape generator.</summary>
+    public const string Generators = "Arronix.Generators";
+
     /// <summary>The prefix every media extension project shares.</summary>
     public const string ExtensionPrefix = "Arronix.Plugin.";
 

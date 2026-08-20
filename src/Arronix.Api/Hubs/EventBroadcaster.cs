@@ -6,10 +6,6 @@ using Arronix.Api.Serialization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 
-#pragma warning disable ARX0004 // Event contracts are experimental; this assembly subscribes to them.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; this assembly implements a sink.
-#pragma warning disable ARX0015 // Provider contracts are experimental; this assembly observes their events.
-#pragma warning disable ARX0017 // Wire contracts are experimental; this assembly publishes them.
 
 #pragma warning disable CA1848 // Source-generated log delegates buy an allocation on a hot path;
                                // every call site in this file is a startup event or a rare failure.

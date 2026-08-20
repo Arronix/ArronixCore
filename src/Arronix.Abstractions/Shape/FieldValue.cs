@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
 
 namespace Arronix.Abstractions.Shape;
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Shape;
 /// resolve a subtype by name is a versioning hazard rather than a convenience.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record FieldValue
 {
     /// <summary>

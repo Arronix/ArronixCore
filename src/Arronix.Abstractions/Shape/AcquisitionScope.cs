@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Shape;
 /// never has rows — and for everything under an ancestor. The core needs only the three shapes; which run
 /// and which ancestor is the kind's business.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record AcquisitionScope
 {
     /// <summary>
@@ -35,7 +33,6 @@ public sealed record AcquisitionScope
 /// <summary>
 /// The breadth of an acquisition.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum AcquisitionScopeKind
 {
     /// <summary>One item at the target level.</summary>

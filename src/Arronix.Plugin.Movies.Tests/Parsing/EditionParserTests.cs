@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Text.RegularExpressions;
 using Arronix.Plugin.Movies.Definition;
 using Arronix.Plugin.Movies.Tests.Support;
@@ -98,55 +97,11 @@ public class EditionParserTests
     public void ReadsNoEditionWhenTheWordBelongsToTheTitle(string releaseTitle)
         => Assert.That(
             MoviesEngines.Parse(releaseTitle)?.AdditionalMetadata,
-            Is.Null.Or.Not.ContainKey("parse.tag." + MoviesReleaseTags.Edition),
+            Is.Null.Or.Not.ContainKey("parse.tag.edition"),
             releaseTitle);
 
-    /// <summary>
-    /// The edition survives the projection onto the stable DTO — as a bag entry, because the DTO has no
-    /// member for it.
-    /// </summary>
-    [Test]
-    public void BindsTheEditionCaptureOnEveryPatternThatCarriesOne()
-    {
-        foreach (var patternId in new[] { "german-truefrench-no-year", "edition-then-year" })
-        {
-            var pattern = MoviesDeclaration.Pattern(patternId);
-
-            Assert.That(
-                pattern.Captures.Any(capture =>
-                    capture.GroupName == "edition"
-                    && capture.Key == MoviesReleaseTags.Edition),
-                Is.True,
-                patternId);
-        }
-    }
-
-    [Test]
-    public void DeclaresTheEditionAlternationOnceAndSharesItByIdentifier()
-        => Assert.Multiple(() =>
-        {
-            Assert.That(MoviesDeclaration.Guard("edition").Regex, Is.EqualTo(MoviesParsing.EditionRegex));
-            Assert.That(
-                MoviesDeclaration.Pattern("edition-then-year").Regex,
-                Does.Contain(MoviesParsing.EditionRegex),
-                "The pattern embeds the same alternation, so the two cannot drift apart.");
-        });
-
-    [Test]
-    public void DeclaresTheEditionAsATechnicalFacetOfTheVideoFamily()
-    {
-        var facet = MoviesDeclaration.Video.TechnicalFacets.Single();
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(facet.FacetId, Is.EqualTo("edition"));
-            Assert.That(facet.CaseExceptions, Does.Contain("IMAX").And.Contain("3D"));
-            Assert.That(facet.OrdinalSuffixesLowerCase, Is.True, "\"25th\", not \"25Th\".");
-        });
-    }
-
     private static readonly Regex Edition = new(
-        MoviesParsing.EditionRegex,
+        MovieReleaseParser.EditionRegex,
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant,
         TimeSpan.FromSeconds(1));
 
@@ -171,7 +126,7 @@ public class EditionParserTests
             Assert.That(parsed, Is.Not.Null);
             Assert.That(
                 parsed!.AdditionalMetadata,
-                Does.ContainKey("parse.tag." + MoviesReleaseTags.Edition));
+                Does.ContainKey("parse.tag.edition"));
         });
     }
 }

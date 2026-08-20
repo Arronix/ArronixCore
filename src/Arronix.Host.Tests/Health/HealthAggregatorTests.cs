@@ -6,8 +6,6 @@ using Arronix.Host.Tests.Support;
 using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
 
-// The health contribution contract is experimental.
-#pragma warning disable ARX0006
 
 namespace Arronix.Host.Tests.Health;
 

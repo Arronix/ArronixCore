@@ -9,8 +9,6 @@ using Arronix.Plugins.Manifest;
 using Arronix.Host.Media.Typed;
 using Arronix.Plugins.Registration;
 
-#pragma warning disable ARX0013 // Media-shape contracts are experimental; one is the negative control below.
-#pragma warning disable ARX0014 // The extension model is experimental; this fixture is its enforcement test.
 
 namespace Arronix.Architecture.Tests.Capabilities;
 
@@ -232,7 +230,7 @@ public class CapabilityDeclarationTests
 
         var ledger = new PluginRegistrationLedger(pluginId);
         // The real host reader, not a stand-in. A typed media kind's capability demands are only legible
-        // once its configuration call has been replayed and its model derived, so a fixture that priced it
+        // once its typed definition values have been compiled and its model derived, so a fixture that priced it
         // any other way would be checking a manifest against a guess.
         var registry = new PluginRegistry(pluginId, granted, ledger, new MediaTypeCapabilityReader());
         var telemetry = new RecordingTelemetryEmitter();

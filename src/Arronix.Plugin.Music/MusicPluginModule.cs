@@ -1,7 +1,4 @@
-// The plugin, shape and provider contracts are experimental; this extension implements all three.
-#pragma warning disable ARX0013, ARX0014, ARX0015
 using Arronix.Abstractions.Plugins;
-using Arronix.Abstractions.Providers;
 using Arronix.Plugin.Music.Providers;
 
 namespace Arronix.Plugin.Music;
@@ -19,9 +16,9 @@ namespace Arronix.Plugin.Music;
 /// them leave no room for a mismatch.
 /// </para>
 /// <para>
-/// Objects are constructed here, by this extension, from what the context hands it. Nothing is activated
-/// on its behalf, which is why per-definition state on a provider is not merely discouraged but
-/// unrepresentable.
+/// Legacy media-engine objects are still constructed here until this kind moves to the typed media path.
+/// Providers are different: registration contributes the implementation type and the host activates it
+/// through DI only after admission.
 /// </para>
 /// </remarks>
 public sealed class MusicPluginModule : IPluginModule
@@ -46,11 +43,7 @@ public sealed class MusicPluginModule : IPluginModule
             .AddQualityModel(new MusicQualityModel())
             .AddRenamePolicy(new MusicRenamePolicy())
             .AddLibraryLayout(new MusicLibraryLayout())
-            .AddIndexer(new IndexerRegistration(MusicIndexer.Describe(), new MusicIndexer(Id)))
-            .AddCataloger(
-                new CatalogerRegistration(
-                    MusicCataloger.Describe(),
-                    new MusicCataloger(Id)))
+            .AddIndexer<MusicIndexer>(MusicIndexer.Describe())
             .AddIntentSurface(MusicIntent.Declaration);
     }
 }

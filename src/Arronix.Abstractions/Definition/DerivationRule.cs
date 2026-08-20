@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Definition;
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Definition;
 /// date reduction, region-keyed selection with no cross-region fallback, image-role selection, and a
 /// guarded conditional value.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record DerivationRule
 {
     /// <summary>

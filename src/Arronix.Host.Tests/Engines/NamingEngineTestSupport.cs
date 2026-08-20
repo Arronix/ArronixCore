@@ -2,9 +2,10 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Engines.Naming;
+using Arronix.Host.Languages;
+using Arronix.Languages.Reference;
+using System.Linq;
 
-// The shape contracts are experimental; these fixtures are written against them.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Tests.Engines;
 
@@ -147,6 +148,29 @@ internal static class NamingEngineTestSupport
         Languages = [new Language("en", "English")],
     };
 
-    internal static NamingTokenBindings Bind(MediaFileFacts? file = null, params ItemView[] chain) =>
-        new ShapeTokenDeriver(Shape()).Bind(chain, file);
+    internal static NamingTokenBindings Bind(MediaFileFacts? file = null, params ItemView[] chain)
+    {
+        var bindings = new ShapeTokenDeriver(Shape()).Bind(chain, file);
+
+        // These fixture titles are explicitly English. Production bindings carry no language unless
+        // their typed value states one; absence must never silently mean English.
+        foreach (var binding in bindings.All.ToArray())
+        {
+            if (binding.CanonicalName.EndsWith("title", StringComparison.Ordinal))
+            {
+                bindings.Set(binding with { Language = Language.English });
+            }
+        }
+
+        return bindings;
+    }
+
+    internal static LanguageTextService Languages()
+    {
+        var registry = new LanguageDefinitionRegistry();
+        registry.Register(
+            Arronix.Abstractions.Plugins.PluginId.FromString("languages.reference"),
+            new EnglishLanguageDefinition());
+        return new LanguageTextService(registry);
+    }
 }

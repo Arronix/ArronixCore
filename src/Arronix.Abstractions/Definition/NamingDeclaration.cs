@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Definition;
 /// condition rows that choose among them, the multi-unit joining styles, the folder spine and the token
 /// fallbacks.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record NamingDeclaration
 {
     /// <summary>

@@ -1,8 +1,6 @@
 using System.Collections.Frozen;
 using Arronix.Abstractions.Naming;
 
-// The naming contract is experimental while its only implementer is the platform's own default table.
-#pragma warning disable ARX0009
 
 namespace Arronix.Common.Naming;
 

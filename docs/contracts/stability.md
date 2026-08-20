@@ -51,8 +51,8 @@ major-version-zero clause:
 | **MINOR** | additions, changes, renames and deletions — anything | additions made in a backwards-compatible manner |
 | **PATCH** | fixes that change no signature | backwards-compatible bug fixes |
 
-The consequence for plugins is that a pre-1.0 range spanning more than one MINOR line asserts a promise the
-contracts do not make. The loader refuses such a range — see [Plugin loading](#plugin-loading).
+Plugins declare the versions they have actually tested. The loader checks that declaration against the
+installed contract version and imposes no second stability classification.
 
 ## Contract Compatibility
 
@@ -61,134 +61,27 @@ Plugins declare their compatible `Arronix.Abstractions` version range using npm/
 ```json
 {
   "contracts": {
-    "arronix": ">=0.3 <0.4"
+    "arronix": ">=0.8 <0.9"
   }
 }
 ```
 
 The host runtime will reject plugin loading if the installed `Arronix.Abstractions` version does not satisfy the plugin's declared range.
 
-## API Stability Levels
+## API Stability
 
-### The Stable Surface
+Below 1.0.0, the public contract is one pre-release surface. There is no per-type stable or experimental
+tier, no compiler opt-in, and no diagnostic-id registry. The assembly version and the plugin manifest range
+are the compatibility contract.
 
-**Below 1.0.0 the stable surface is empty by policy.** The intended steady state is that every type exported
-by `Arronix.Abstractions` carries `System.Diagnostics.CodeAnalysis.ExperimentalAttribute`. A type without it
-is an omission to be closed, not a promise that has been made.
+A consumer chooses a range that reflects versions it has actually tested. The loader accepts a plugin when
+the installed `Arronix.Abstractions` version satisfies that declared range; it does not impose an additional
+range-width policy. First-party plugins use `>=0.8 <0.9` because they are built and tested against the 0.8
+line, not because types inside that line carry a second stability classification.
 
-Two reflection-driven fixtures hold the line:
-
-- `src/Arronix.Abstractions.Tests/Experimental/ExperimentalSurfaceTests.cs`
-- `src/Arronix.Architecture.Tests/Contracts/ExperimentalMarkingTests.cs`
-
-Each carries a written-out list of the types inherited from the initial release that are still unmarked.
-That list is a **ratchet, not a guarantee**: below 1.0.0 it may only shrink, and nothing is ever added to
-it. A type leaves the list in one of exactly two ways — it gains the experimental marker like every other
-contract, or it is deleted — and either way its entry is removed in the same change, which is what forces
-the decision through review rather than letting it happen by omission.
-
-Reading that list as a stability promise is the error this document was rewritten to stop. It records what
-shipped before the experimental mechanism existed; it does not record a commitment.
-
-### Experimental APIs
-
-APIs that are still evolving are marked with `System.Diagnostics.CodeAnalysis.ExperimentalAttribute`.
-These APIs:
-
-- May change signature or behavior at any time, in any release
-- Are promoted to stable at 1.0.0, not before
-- Must be opted into per file by any consumer, including this repository
-
-The mechanism is implemented, and every type added since 0.1.0 carries it.
-
-#### Why the BCL attribute rather than a project-local marker
-
-`ExperimentalAttribute` has shipped in the base class library since .NET 8, so using it costs
-`Arronix.Abstractions` nothing — the contract library keeps its **zero package references**. A
-project-local marker attribute would have cost the same and bought less:
-
-| | BCL `[Experimental]` | Project-local marker |
-|---|---|---|
-| Consuming an unstable contract | **compile error**, must be opted into explicitly | compiles silently |
-| Opt-in is visible in review | yes — a `#pragma` line in the consuming file | nothing to see |
-| Tooling support | first-class in the compiler and IDE | none |
-| Package cost | none (in-box) | none |
-
-A marker that nobody has to acknowledge is documentation, not a policy. The tier has to be enforced by the
-compiler rather than by good intentions, because its purpose is to make the answer to "which files depend on
-a contract whose shape has not settled?" available by `grep` at any moment.
-
-#### Diagnostic identifiers
-
-The diagnostic id names the **contract area**, not the individual type, so a consumer opts in to one
-area at a time. Identifiers are permanent: when an area is promoted the attribute is removed, but the
-identifier is never reused for something else.
-
-| Id | Area | Namespace |
-|---|---|---|
-| `ARX0001` | Caching | `Arronix.Abstractions.Caching` |
-| `ARX0002` | Diagnostics | `Arronix.Abstractions.Diagnostics` |
-| `ARX0003` | Errors | `Arronix.Abstractions.Errors` |
-| `ARX0004` | Events | `Arronix.Abstractions.Events` |
-| `ARX0005` | File system | `Arronix.Abstractions.FileSystem` |
-| `ARX0006` | Health contribution | `Arronix.Abstractions.Health` |
-| `ARX0007` | Hosting | `Arronix.Abstractions.Hosting` |
-| `ARX0008` | Outbound HTTP | `Arronix.Abstractions.Http` |
-| `ARX0009` | Naming | `Arronix.Abstractions.Naming` |
-| `ARX0010` | Serialization | `Arronix.Abstractions.Serialization` |
-| `ARX0011` | Telemetry | `Arronix.Abstractions.Telemetry` |
-| `ARX0012` | Throttling | `Arronix.Abstractions.Throttling` |
-| `ARX0013` | Media shape | `Arronix.Abstractions.Shape` |
-| `ARX0014` | Plugin model | `Arronix.Abstractions.Plugins` |
-| `ARX0015` | Provider model | `Arronix.Abstractions.Providers` |
-| `ARX0016` | Interface intent | `Arronix.Abstractions.Intent` |
-| `ARX0017` | Wire contracts | `Arronix.Abstractions.Wire` |
-| `ARX0019` | Declarative media kinds | `Arronix.Abstractions.Definition` |
-| `ARX0020` | Typed media model | `Arronix.Abstractions.Media` |
-| `ARX0021` | Quality axes | `Arronix.Abstractions.Quality` |
-
-`ARX0018` is unassigned: two in-flight designs contend for it and neither has landed, so the
-declarative-media-kind area took the next uncontended identifier rather than racing for the contested
-one. Identifiers are permanent either way; `ARX0018` remains available to whichever contender lands
-first.
-
-`ARX0021` shares the `Arronix.Abstractions.Quality` namespace with the 0.1.0 `IQualityModel`, which is
-**not** part of the area: it is stable, unmarked, and superseded rather than amended. Its successors are
-`IQualityType` — what a format family detects — and `QualityPolicy` — what a user prefers. Those are
-different questions, and keeping one interface that answered both is what made every ranking decision the
-kind's rather than the user's. `IQualityModel` is removed when its last implementer converts, not before.
-
-`ARX0015` covers the whole provider namespace. The seven v0.2.0 provider contracts that once shared it
-with the experimental surface were **deleted** — see the 0.4.0 entry below — so every type in
-`Arronix.Abstractions.Providers` is now experimental and every file that touches one must opt in.
-
-#### How to consume an experimental contract
-
-Opt in **per file**, naming the single area the file depends on:
-
-```csharp
-// Implements the outbound HTTP gateway contract, which is experimental until 1.0.
-#pragma warning disable ARX0008
-
-using Arronix.Abstractions.Http;
-```
-
-Do **not** add the identifier to a project-wide `NoWarn`. A blanket suppression removes the only
-signal that tells a reviewer which files will break when an experimental contract changes shape, and
-it silently absorbs new dependencies nobody agreed to take. The per-file form keeps the answer to
-"what depends on unstable contracts?" a single `grep` away.
-
-Note that `[SuppressMessage]` does **not** work here: the compiler reports this as an error rather
-than an analyzer diagnostic, and only `#pragma warning disable` and `NoWarn` suppress it.
-
-#### Plugin loading
-
-The Plugin Loader must refuse to satisfy an experimental contract for a plugin whose declared
-`contracts.arronix` range extends past the current MINOR. A plugin declaring `">=0.2 <1.0"` is
-asserting compatibility with versions that have not been written yet, and an experimental contract
-carries no such promise. Below 1.0.0 this is what keeps a plugin's declared range no wider than the promise
-the contracts actually make; from 1.0.0 it is what lets a contract be admitted to `Arronix.Abstractions`
-before its shape has fully settled.
+At 1.0.0, the ordinary Semantic Versioning guarantees described above begin. If a finer-grained preview API
+mechanism is ever needed, it requires a new explicit design rather than reviving compiler-error attributes
+and file-scoped suppressions.
 
 ## Removing a Contract
 
@@ -202,9 +95,7 @@ through a handful of call sites:
 
 1. Delete the type.
 2. Fix the call sites the compiler names.
-3. If the type appears on the residual unmarked-surface list in either fixture named under
-   [The Stable Surface](#the-stable-surface), remove that entry in the same change.
-4. Add a version-history line: what was deleted, and what replaced it.
+3. Add a version-history line: what was deleted, and what replaced it.
 
 That is the whole procedure, and it lands in the next MINOR release. A contract that *does* have an
 implementer outside this repository does not exist yet; when one does, this section grows a second half.
@@ -248,47 +139,55 @@ not a list of what to avoid.
 
 **Released**: [Current]
 
-**The first format family lands on the axes model, and the ladder leaves the movie kind.** `ARX0021` gains
-`Arronix.Abstractions.Quality.Families` — the same contract area, because a consumer that opts in to the
-axes model opts in to the families it ships with, and splitting the identifier would make one opt-in into
-two for no boundary anybody can point at.
+**Typed media ownership and format-owned representation replace the quality-axes experiment.**
 
-- **The video family**: `VideoQuality` (twelve axes), `VideoQualityType` (how evidence becomes typed
-  readings), `VideoLabels` (the community's words for a point), `VideoDefaults` (the opinion this platform
-  ships), `VideoSizeModel` (what a file at one point should weigh, computed rather than tabulated), and the
-  closed axes `VideoOrigin`, `DynamicRange`, `AudioPresentation`, `VideoCodec`, `Repackaging`, `Packaging`,
-  `VideoFlaw`. It belongs to a format family rather than to a media kind because quality is a property of a
-  *file* and a file belongs to a family: every kind whose files are video shares this one model and the two
-  therefore cannot drift.
-- **The shared token vocabulary** moves into the contract assembly: `EvidenceSourceTokens`,
-  `EvidenceVideoCodecTokens`, `EvidenceAudioTokens`, `EvidenceDynamicRangeTokens`, `EvidenceFlawTokens`,
-  `EvidencePackagingTokens`, `EvidenceDistributorTokens`. A scan produces these and a family's `Read`
-  interprets them, so they are a contract between the two halves and not one half's private detail — two
-  copies of a vocabulary is exactly the silent-divergence failure this project keeps refusing.
-- **The two reconciliation rules** move with it: `EvidenceMerge` and `EvidenceClaim<TValue>`. Between
-  sources the stronger wins; within one source the most specific claim wins and the lowest among equals.
-  `Read` owns both, and `Read` is in this assembly.
+- Removed the per-type `ExperimentalAttribute` policy, its `ExperimentalContracts` diagnostic registry,
+  file-scoped `ARX` suppressions, reflection-based enforcement fixtures, and the loader's additional
+  minor-range-width gate. Pre-1.0 status is expressed once by the assembly version; plugin compatibility is
+  expressed by the manifest range and checked against the installed version.
 
-**Breaking, within the experimental areas:**
+- `MediaType<TItem,TTarget,TRelease,TParser>` now keeps the durable item, ephemeral acquisition target,
+  interpreted release, and typed parser as one compile-time contract. Its primary constructor captures
+  the explicit stable kind identifier, singular/plural names, non-empty format composition, typed
+  minimum-availability selection, and file binding; `OnePerItem` is the file default, and identity is not
+  inferred from display wording. A media plugin supplies an ordinary derived class and overrides typed
+  values for identity, groups, additional selections, searches, matching, release
+  policy, querying, naming, intent, actions, workbenches and derivations. `TParser` implements the static
+  `IReleaseParser<TRelease>.Parse` contract directly rather than replaying a parse-declaration DSL.
+  There is no fluent media builder, static-abstract media-type seam, or type-class capability-badge graph.
+  The public non-generic shadow model is removed; Host uses a private runtime bridge after double-dispatch
+  registration through `AddMediaType<TMediaType>()`.
+- `MediaItem<TLifecycle>` owns the common durable item surface while each media type owns its exact public
+  item subtype where provider pairs require that identity. Lifecycle is an object, not parallel status and
+  release-date fields or an enum-keyed property bag; catalog workflow state remains a separate concern.
+- Group declarations are plural relationships. A media item may belong to zero, one or many groups, and
+  a kind can declare several independent group relationships.
+- Parser regression corpora are test assets rather than members of the production media contract. The
+  unused `CorpusCase`, `MediaType.Corpus`, and `MediaKindModel.Corpus` surface is removed.
+- Raw indexer output is `ReleaseListing`. Typed `TargetMatch<TTarget>`,
+  `ReleaseOption<TTarget,TRelease>`, and `ReleasePolicy<TRelease>` separate provider statements, coverage,
+  and deterministic selection.
+- `ICataloger<TItem>` and `ICurator<TItem>` return media-owned item types. Provider registration carries an
+  implementation type, and the `ICataloger` floor recognizes its own external-identifier marker syntax.
+  implementation type; Host performs DI activation after capability admission.
+- The universal `Evidence<T>`, axis, point, quality-family, video-token, and video-evidence contracts are
+  deleted. `ARX0021` is retired.
+- Video moves to `Arronix.Format.Video`, which owns `Video`, observable channel-relative
+  lineage, open codec and dynamic-range identifiers, all audio tracks, extensions, token interpretations,
+  and its default release-policy contribution. Host and Abstractions contain no video scanner vocabulary.
+- A Remux means a direct copy of disc streams; a WEB-DL means a direct copy of the hosted stream artifact.
+  Neither makes a claim about upstream studio-master lineage.
+- Compatibility `ParsedRelease` and `QualityTier` remain temporarily for unconverted media plugins, but
+  their video-specific codec, audio-codec, resolution, source, bit-depth, size, and attribute slots are
+  removed.
+- The contract assembly and first-party manifests move together to `0.8.0` / `>=0.8 <0.9`.
+- Common media values now include structural rating scales, rating voice, localized owner-shaped values,
+  content certifications, monitoring scope, and typed generic workbench rows.
+- `ARX0022` introduces `ILanguageDefinition` and type-based language registration. Language-specific
+  comparison, query, file-name and sort rules live in language plugins rather than media parse declarations.
 
-- `ReleaseEvidence.DynamicRangeToken` becomes `ReleaseEvidence.DynamicRangeTokens`, a list. A release
-  genuinely carries two dynamic-range formats at once and the axis that consumes them is set-valued; a
-  single slot forced the scan to pick a winner and discarded the other before anything could read it.
-- `FormatFamily.Ladder` and `FormatFamily.Unknown` stop being required and `FormatFamily.Quality` arrives.
-  A family declares a quality model **or** a ladder, never both and never neither. A sentinel "unknown"
-  rung exists only because a ladder has nowhere else to put "we do not know"; an axis reading carries its
-  own typed absence, so a family with a model declares no sentinel at all.
-- `IFormatFamilyBuilder.Ladder` is replaced by `Quality<TFacts, TType>` and `RefinedBy<TFacts, TRefinement>`.
-- `ParseDeclaration.RungResolution` becomes optional. Its whole job was to collapse evidence into one of a
-  fixed set of names before anything could reason about it; where there is nothing to collapse evidence
-  *to*, there is no table.
-- `CorpusCase.ExpectedTierId` becomes `CorpusCase.ExpectedQuality`. It states a rung name for a kind that
-  still ranks by a ladder and the family's own rendering for a kind that reads onto axes — the same string
-  in the community's vocabulary, differing in whether it was chosen from a fixed list or derived from the
-  evidence.
-- `DefinitionEngineCatalog.Quality` may answer `null` for a definition it has nothing to say about, which
-  is what a kind whose families read onto typed axes gets: a rung-shaped seam cannot serve one, and saying
-  "nothing here" is better than an evaluator that answers wrongly.
+This entry supersedes the 0.7 quality-axes design below. The 0.7 entry remains as history, not current
+architecture.
 
 ### 0.7.0
 
@@ -347,7 +246,7 @@ is a later milestone and not this one.
 
 ### 0.6.0
 
-**Released**: [Current]
+**Released**: 0.6.0
 
 **New contract area — Typed media model** (`ARX0020`, `Arronix.Abstractions.Media`), per
 `docs/design/typed-media-model.md`. A media kind is authored as typed entities plus property attributes
@@ -525,8 +424,8 @@ User-facing labels keep the wording users already know: the settings screen stil
 
 Purely additive: nothing from 0.1.0 or 0.2.0 changed shape in this release.
 
-Five new contract areas. Every type in them is marked `[Experimental]` with its area's identifier and is
-governed by the rules in the [Experimental APIs](#experimental-apis) section.
+Five new contract areas were introduced under the per-type experimental scheme that existed at the time.
+That scheme was removed on the 0.8 line; these identifiers are retained here only as historical record.
 
 - **Media shape** (`ARX0013`): the parameterized description of how a media kind is structured, and the
   four seams a media extension implements. `MediaLevelId`, `MediaItemRef`, `MediaFileId`, `ExternalId`,
@@ -600,9 +499,9 @@ failure-classification contract and a typed schedule (both would shape a small v
 implementers, and both are addable later). Note that this is an argument about designing against imaginary
 requirements, not about irreversibility: below 1.0.0 anything admitted here can be withdrawn by deleting it.
 
-**Consequence of the experimental gate, spelled out.** Everything added in 0.3.0 is experimental, so the
-gate described under [Plugin loading](#plugin-loading) means every plugin that uses any of it must declare
-`">=0.3 <0.4"` and re-declare at each MINOR. That is the revocability this policy is written to buy.
+**Historical consequence of the former experimental gate.** At the time, every plugin using the 0.3.0
+surface had to declare `">=0.3 <0.4"` and re-declare at each MINOR. The gate and that range-width policy
+were removed on the 0.8 line.
 
 ### 0.2.0
 
@@ -610,8 +509,8 @@ gate described under [Plugin loading](#plugin-loading) means every plugin that u
 
 Purely additive: nothing from 0.1.0 changed shape in this release.
 
-Every type below is marked `[Experimental]` and is governed by the rules in the
-[Experimental APIs](#experimental-apis) section.
+Every type below was introduced under the per-type experimental scheme that existed at the time. That
+scheme was removed on the 0.8 line; the identifiers remain here only as historical record.
 
 Types were added on evidence, not on anticipation. A contract qualifies when it has a demonstrated
 second implementer, is explicitly promised by `ARCHITECTURE.md`, or physically must cross the plugin
@@ -656,22 +555,16 @@ residue is tracked and what removes an entry from it.
 - **Naming**: `IRenamePolicy`, `ILibraryLayout`
 - **Providers**: *(the initial provider trio was deleted in 0.4.0; see that entry)*
 - **Scheduling**: `IScheduledJob`, `IBackgroundTaskRegistry`
-- **DTOs**: `ReleaseCandidate`, `ParsedRelease`, `MatchDecision`, `ImportDecision`, `LibraryPathSpec`, `NamingToken`, `QualityTier`, `Language`, `CutoffPolicy`
+- **DTOs**: `ReleaseListing`, `ParsedRelease`, `MatchDecision`, `ImportDecision`, `LibraryPathSpec`, `NamingToken`, `QualityTier`, `Language`, `CutoffPolicy`
 - **Health**: `HealthCheck`, `HealthStatus`, `HealthSeverity`, `CoreErrorCode`
 
 ## Plugin Development Guidelines
 
 ### Version Range Selection
 
-Below 1.0.0 a plugin declares exactly one MINOR line, because one MINOR line is the whole of what the
-contracts promise:
-
-- **Against the current contracts**: `">=0.3 <0.4"`
-- **Against the next release**: re-declare when you rebuild against it
-
-Ranges that reach past the current MINOR — `">=0.1 <1.0"`, `">=0.3 <1.0"` — assert compatibility with
-versions that have not been written, and are refused. From 1.0.0, a range spanning a MAJOR line becomes the
-normal form.
+A plugin declares the versions it has actually tested. First-party plugins currently use
+`">=0.8 <0.9"`. The loader checks only that its installed contract version satisfies the declared range;
+it does not reject a wider range independently of that compatibility check.
 
 ### Handling a Contract Change
 

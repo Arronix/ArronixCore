@@ -3,10 +3,8 @@ using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Languages;
 
-// The declaration and shape contracts the engine executes are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Engines.Search;
 
@@ -42,6 +40,7 @@ internal sealed class DeclarativeQueryPlanner : IReleaseQueryPlanner
     private readonly QueryDeclaration _declaration;
     private readonly IQueryItemReader _reader;
     private readonly Dictionary<string, SearchKind> _searchKinds;
+    private readonly LanguageTextService _languages;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="DeclarativeQueryPlanner"/> class.
@@ -50,16 +49,19 @@ internal sealed class DeclarativeQueryPlanner : IReleaseQueryPlanner
     /// <param name="declaration">The kind's query declaration.</param>
     /// <param name="searchKinds">The search kinds the kind's shape declares.</param>
     /// <param name="reader">The item read window.</param>
+    /// <param name="languages">The installed language-owned query operations.</param>
     /// <exception cref="InvalidOperationException">A tier names an undeclared search kind.</exception>
     internal DeclarativeQueryPlanner(
         MediaKindId mediaKind,
         QueryDeclaration declaration,
         IReadOnlyList<SearchKind> searchKinds,
-        IQueryItemReader reader)
+        IQueryItemReader reader,
+        LanguageTextService? languages = null)
     {
         MediaKind = mediaKind;
         _declaration = declaration;
         _reader = reader;
+        _languages = languages ?? new LanguageTextService(new LanguageDefinitionRegistry());
         _searchKinds = searchKinds.ToDictionary(kind => kind.SearchKindId, StringComparer.Ordinal);
 
         foreach (var tier in declaration.Tiers)
@@ -192,7 +194,7 @@ internal sealed class DeclarativeQueryPlanner : IReleaseQueryPlanner
 
         var spellings = ResolveSpellings(context, request.AcceptedLanguages);
         var carried = template.CarryAliases
-            ? spellings.Select(spelling => spelling.Text).Distinct(StringComparer.Ordinal).ToArray()
+            ? spellings.Select(spelling => spelling.QueryText).Distinct(StringComparer.Ordinal).ToArray()
             : [];
 
         var categories = _searchKinds[template.SearchKindId].Categories;
@@ -201,7 +203,7 @@ internal sealed class DeclarativeQueryPlanner : IReleaseQueryPlanner
         {
             var subjects = spellings
                 .Where(spelling => !spelling.NeverOwnQuery)
-                .Select(spelling => spelling.Text)
+                .Select(spelling => spelling.QueryText)
                 .Distinct(StringComparer.Ordinal)
                 .ToArray();
 
@@ -286,11 +288,11 @@ internal sealed class DeclarativeQueryPlanner : IReleaseQueryPlanner
         return true;
     }
 
-    private IReadOnlyList<(string Text, bool NeverOwnQuery)> ResolveSpellings(
+    private IReadOnlyList<QuerySpelling> ResolveSpellings(
         QueryTemplateContext context,
         IReadOnlyList<Language> acceptedLanguages)
     {
-        var spellings = new List<(string Text, bool NeverOwnQuery)>();
+        var spellings = new List<QuerySpelling>();
 
         foreach (var alias in _declaration.Aliases.OrderBy(alias => alias.Order))
         {
@@ -305,12 +307,20 @@ internal sealed class DeclarativeQueryPlanner : IReleaseQueryPlanner
                     continue;
                 }
 
-                spellings.Add((value.Text, alias.NeverOwnQuery));
+                spellings.Add(new QuerySpelling(
+                    _languages.Query(value.Text, value.Language),
+                    value.Language,
+                    alias.NeverOwnQuery));
             }
         }
 
         return spellings;
     }
+
+    private readonly record struct QuerySpelling(
+        string QueryText,
+        Language? Language,
+        bool NeverOwnQuery);
 
     private ReleaseQuery BuildQuery(
         QueryTierTemplate template,

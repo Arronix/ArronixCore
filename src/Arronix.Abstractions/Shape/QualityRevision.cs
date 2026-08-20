@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Shape;
 /// Ordering is total and deliberate: version first, then the mislabel count, then repack-ness.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct QualityRevision(int Version, int Real, bool IsRepack)
 {
     /// <summary>

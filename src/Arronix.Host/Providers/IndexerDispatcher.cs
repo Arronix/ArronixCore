@@ -5,9 +5,6 @@ using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Media;
 
-// Provider and shape contracts are experimental; eligibility is an intersection of the two vocabularies.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0015
 
 namespace Arronix.Host.Providers;
 
@@ -126,7 +123,7 @@ public sealed class IndexerDispatcher(
         ArgumentNullException.ThrowIfNull(kind);
         ArgumentNullException.ThrowIfNull(query);
 
-        var releases = new List<ReleaseCandidate>();
+        var releases = new List<ReleaseListing>();
         var warnings = new List<string>();
         var partial = false;
 

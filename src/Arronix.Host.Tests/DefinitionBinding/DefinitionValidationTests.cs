@@ -5,10 +5,6 @@ using Arronix.Host.Media;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
-// Definition and shape contracts are experimental; these tests exercise the host's gate over them.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.DefinitionBinding;
 
@@ -59,12 +55,7 @@ internal sealed class DefinitionValidationTests
 
         Validate(model, out var validated, out _);
 
-        validated!.Model.Parsing.RungResolution!.Rules
-            .Select(rule => rule.RuleId)
-            .Should().Equal(
-                ["guarded-high", "everything-else"],
-                "ordered tables are the algorithm; no stage may sort a rule table");
-        validated.Model.Parsing.TitlePatterns
+        validated!.Model.Parsing!.TitlePatterns
             .Select(pattern => pattern.PatternId)
             .Should().Equal("coordinate", "title-only");
     }
@@ -106,36 +97,6 @@ internal sealed class DefinitionValidationTests
         defects.Should().NotContain(
             defect => defect.Path.StartsWith("querying", StringComparison.Ordinal),
             "a section cannot be checked against a structure that did not resolve");
-    }
-
-    [Test]
-    public void ARungRuleNamingATierAbsentFromEveryLadderIsRefused()
-    {
-        var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
-        {
-            RungResolution = parsing.RungResolution! with
-            {
-                Rules =
-                [
-                    parsing.RungResolution!.Rules[0] with { TierId = "Bluray-2160p" },
-                    .. parsing.RungResolution!.Rules.Skip(1),
-                ],
-            },
-        });
-
-        DefectsOf(model).Should().Contain(defect =>
-            defect.Path == "parsing.rungResolution.rules[0]" && defect.Message.Contains("Bluray-2160p", StringComparison.Ordinal));
-    }
-
-    [Test]
-    public void TheUnknownTierMustResolveToo()
-    {
-        var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
-        {
-            RungResolution = parsing.RungResolution! with { UnknownTierId = "nope" },
-        });
-
-        DefectsOf(model).Should().Contain(defect => defect.Path == "parsing.rungResolution.unknownTierId");
     }
 
     [Test]
@@ -215,30 +176,6 @@ internal sealed class DefinitionValidationTests
         });
 
         DefectsOf(model).Should().Contain(defect => defect.Message.Contains("'br-disk'", StringComparison.Ordinal));
-    }
-
-    [Test]
-    public void APredicateAtomReferencingAnUndeclaredGuardIsRefused()
-    {
-        var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
-        {
-            RungResolution = parsing.RungResolution! with
-            {
-                Rules =
-                [
-                    parsing.RungResolution!.Rules[0] with
-                    {
-                        When = new TagPredicate(
-                        [
-                            new PredicateAtom { Subject = "guard:missing", Op = PredicateOp.GuardMatches },
-                        ]),
-                    },
-                    .. parsing.RungResolution!.Rules.Skip(1),
-                ],
-            },
-        });
-
-        DefectsOf(model).Should().Contain(defect => defect.Message.Contains("'missing'", StringComparison.Ordinal));
     }
 
     [Test]
@@ -336,27 +273,9 @@ internal sealed class DefinitionValidationTests
     /// counterpart, which pin the derivation those strings used to configure.
     /// </remarks>
     [Test]
-    public void ACorpusCaseExpectingAnUndeclaredPatternIsRefused()
-    {
-        var model = DefinitionFixtures.Sound() with
-        {
-            Corpus =
-            [
-                new CorpusCase { CaseId = "stray", Input = "x", ExpectedPatternId = "five-branch" },
-            ],
-        };
-
-        DefectsOf(model).Should().Contain(defect =>
-            defect.Path == "corpus[0]" && defect.Message.Contains("five-branch", StringComparison.Ordinal));
-    }
-
-    [Test]
     public void EveryFaultIsReportedNotOnlyTheFirst()
     {
-        var model = DefinitionFixtures.Sound().WithParsing(parsing => parsing with
-        {
-            RungResolution = parsing.RungResolution! with { UnknownTierId = "nope" },
-        }) with
+        var model = DefinitionFixtures.Sound() with
         {
             Querying = DefinitionFixtures.Sound().Querying with
             {
@@ -369,7 +288,6 @@ internal sealed class DefinitionValidationTests
 
         var defects = DefectsOf(model);
 
-        defects.Should().Contain(defect => defect.Path == "parsing.rungResolution.unknownTierId");
         defects.Should().Contain(defect => defect.Path == "querying.tiers[0]");
     }
 

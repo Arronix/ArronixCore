@@ -1,6 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; this client serializes them.
-#pragma warning disable ARX0014 // Plugin contracts are experimental; this client serializes the identifier.
-#pragma warning disable ARX0015 // Provider contracts are experimental; this client serializes the identifier.
 
 using System.Text.Json;
 using System.Text.Json.Serialization;

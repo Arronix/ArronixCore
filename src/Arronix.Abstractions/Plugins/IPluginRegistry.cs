@@ -1,10 +1,10 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Diagnostics;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Http;
 using Arronix.Abstractions.Import;
 using Arronix.Abstractions.Intent;
+using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Parsing;
@@ -27,10 +27,11 @@ namespace Arronix.Abstractions.Plugins;
 /// least privilege mechanical rather than aspirational.
 /// </para>
 /// <para>
-/// Instances arrive already constructed. The extension builds its own objects from its context and the
-/// host never activates an extension type through a container. That is the direct fix for a surveyed
-/// pattern in which per-instance configuration is written onto a container-resolved singleton before each
-/// call, which is racy under a unified host and would make capability gating racy with it.
+/// Provider contributions are implementation types, not instances. Host activates them through DI after
+/// manifest and capability admission, while per-invocation configuration stays on
+/// <see cref="ProviderInvocation"/> rather than mutable singleton state. The instance-taking media-engine
+/// methods below are temporary compatibility seams for media kinds that have not completed typed
+/// conversion.
 /// </para>
 /// <para>
 /// The cost is stated plainly: a new seam needs a new method here, which is a host change. It is additive
@@ -38,21 +39,18 @@ namespace Arronix.Abstractions.Plugins;
 /// contribute?" by reading one interface.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IPluginRegistry
 {
     /// <summary>
     /// Registers a complete media kind as a pair of types. Requires <see cref="Capability.MediaKind"/>.
     /// </summary>
-    /// <typeparam name="TItem">The kind's item type: an entity whose properties and attributes are the schema.</typeparam>
-    /// <typeparam name="TType">The type declaring what the item's attributes cannot.</typeparam>
+    /// <typeparam name="TType">The complete typed media definition.</typeparam>
     /// <returns>This registry, for chaining.</returns>
     /// <remarks>
     /// <para>
     /// The typed registration path, and the only way a media kind's structure enters the host. Nothing is
-    /// passed: the two type arguments <i>are</i> the declaration. The host replays
-    /// <see cref="IMediaType{TItem}.Configure"/> against its own builder, derives the shape, the intent
-    /// surface and the naming tokens from the item type, and builds every media engine from the result —
+    /// passed: the definition type <i>is</i> the declaration. The host reads its typed override values,
+    /// derives the shape, intent surface and naming tokens from the item type, and builds every media engine from the result —
     /// so the descriptors every engine reads have one source of truth and it is the entity.
     /// </para>
     /// <para>
@@ -66,9 +64,8 @@ public interface IPluginRegistry
     /// loader, exactly as it does for every other extension that ships code.
     /// </para>
     /// </remarks>
-    IPluginRegistry AddMediaType<TItem, TType>()
-        where TItem : IMediaItem
-        where TType : IMediaType<TItem>;
+    IPluginRegistry AddMediaType<TType>()
+        where TType : class, IMediaTypeDefinition, new();
 
     /// <summary>
     /// Registers the structure of a media kind. Requires <see cref="Capability.MediaKind"/>.
@@ -146,37 +143,44 @@ public interface IPluginRegistry
     /// <summary>
     /// Registers a release source. Requires <see cref="Capability.Indexing"/>.
     /// </summary>
-    /// <param name="registration">The declaration and its implementation.</param>
+    /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
-    IPluginRegistry AddIndexer(IndexerRegistration registration);
+    IPluginRegistry AddIndexer<TIndexer>(ProviderDescriptor descriptor)
+        where TIndexer : class, IIndexer;
 
     /// <summary>
     /// Registers a transfer client. Requires <see cref="Capability.Download"/>.
     /// </summary>
-    /// <param name="registration">The declaration and its implementation.</param>
+    /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
-    IPluginRegistry AddDownloader(DownloaderRegistration registration);
+    IPluginRegistry AddDownloader<TDownloader>(ProviderDescriptor descriptor)
+        where TDownloader : class, IDownloader;
 
     /// <summary>
     /// Registers a notification destination. Requires <see cref="Capability.Notification"/>.
     /// </summary>
-    /// <param name="registration">The declaration and its implementation.</param>
+    /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
-    IPluginRegistry AddNotifier(NotifierRegistration registration);
+    IPluginRegistry AddNotifier<TNotifier>(ProviderDescriptor descriptor)
+        where TNotifier : class, INotifier;
 
     /// <summary>
     /// Registers a cataloger. Requires <see cref="Capability.Metadata"/>.
     /// </summary>
-    /// <param name="registration">The declaration and its implementation.</param>
+    /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
-    IPluginRegistry AddCataloger(CatalogerRegistration registration);
+    IPluginRegistry AddCataloger<TItem, TCataloger>(ProviderDescriptor descriptor)
+        where TItem : class, IMediaItem
+        where TCataloger : class, ICataloger<TItem>;
 
     /// <summary>
     /// Registers a curator. Requires <see cref="Capability.Curation"/>.
     /// </summary>
-    /// <param name="registration">The declaration and its implementation.</param>
+    /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
-    IPluginRegistry AddCurator(CuratorRegistration registration);
+    IPluginRegistry AddCurator<TItem, TCurator>(ProviderDescriptor descriptor)
+        where TItem : class, IMediaItem
+        where TCurator : class, ICurator<TItem>;
 
     /// <summary>
     /// Registers a background job. Ungated.
@@ -233,6 +237,15 @@ public interface IPluginRegistry
     /// <param name="provider">The folding provider.</param>
     /// <returns>This registry, for chaining.</returns>
     IPluginRegistry AddDiacriticFolding(IDiacriticFoldingProvider provider);
+
+    /// <summary>
+    /// Registers a language implementation type for host-owned activation. Requires
+    /// <see cref="Capability.Language"/>.
+    /// </summary>
+    /// <typeparam name="TLanguage">The language implementation.</typeparam>
+    /// <returns>This registry, for chaining.</returns>
+    IPluginRegistry AddLanguage<TLanguage>()
+        where TLanguage : class, ILanguageDefinition;
 
     /// <summary>
     /// Registers an outbound call interceptor. Requires <see cref="Capability.Indexing"/>.

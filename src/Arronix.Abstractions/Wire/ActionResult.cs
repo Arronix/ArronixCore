@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Providers;
 
 namespace Arronix.Abstractions.Wire;
@@ -15,7 +14,6 @@ namespace Arronix.Abstractions.Wire;
 /// request that starts it, and reporting "done" when the work has only been queued is how a consumer ends
 /// up showing a stale answer for as long as the work takes.
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ActionResult(
     bool Accepted,
     string? CorrelationId,

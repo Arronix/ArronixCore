@@ -51,6 +51,26 @@ public class DetectorSelfTests
     }
 
     [Test]
+    public void EveryProjectInTheWorkingTreeBelongsToTheSolution()
+    {
+        var solutionPath = System.IO.Path.Combine(RepositoryLayout.Root, RepositoryLayout.SolutionFileName);
+        var solutionProjects = System.IO.File.ReadLines(solutionPath)
+            .Where(static line => line.StartsWith("Project(\"", StringComparison.Ordinal)
+                && line.Contains(".csproj\"", StringComparison.OrdinalIgnoreCase))
+            .Select(static line => line.Split('"'))
+            .Where(static parts => parts.Length > 5)
+            .Select(static parts => System.IO.Path.GetFileNameWithoutExtension(parts[5].Replace('\\', '/')))
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(
+            solutionProjects,
+            Is.EqualTo(RepositoryLayout.AllProjects.Order(StringComparer.Ordinal).ToArray()),
+            "The solution is the build and test boundary; an omitted project would escape both while the "
+            + "architecture source scanner still found it.");
+    }
+
+    [Test]
     [TestCase("Arronix.Abstractions", 150)]
     [TestCase("Arronix.Common", 20)]
     [TestCase("Arronix.Plugins", 30)]
@@ -145,7 +165,7 @@ public class DetectorSelfTests
             {
                 "Series", "SeriesTitle", "EpisodeFile", "SeasonPass", "MovieMetadata",
                 "AlbumRelease", "TrackFile", "ArtistMetadata", "BookRepository", "AuthorName",
-                "EditionSelector", "IEpisodeService", "seasonNumber", "TV_SERIES", "MediaTracks"
+                "IEpisodeService", "seasonNumber", "TV_SERIES", "MediaTracks"
             })
             {
                 Assert.That(
@@ -165,7 +185,7 @@ public class DetectorSelfTests
             {
                 "Authorization", "AuthorizationHeader", "IAuthorityResolver", "Tracking", "Tracker",
                 "Backtrack", "Bookmark", "Handbook", "Reason", "ImportReason", "Condition",
-                "PreconditionFailed", "Addition", "AdditionalFields", "Seasoning"
+                "PreconditionFailed", "Addition", "AdditionalFields", "Seasoning", "EditionSelector"
             })
             {
                 Assert.That(

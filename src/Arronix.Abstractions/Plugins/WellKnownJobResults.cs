@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Plugins;
 
@@ -24,7 +23,6 @@ namespace Arronix.Abstractions.Plugins;
 /// because a record could not be changed.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public static class WellKnownJobResults
 {
     /// <summary>

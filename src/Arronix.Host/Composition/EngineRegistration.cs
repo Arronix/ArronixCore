@@ -2,15 +2,12 @@ using System.Runtime.CompilerServices;
 using Arronix.Host.Engines.Items;
 using Arronix.Host.Engines.Matching;
 using Arronix.Host.Engines.Naming;
-using Arronix.Host.Engines.Parsing;
-using Arronix.Host.Engines.Quality;
 using Arronix.Host.Engines.Search;
 using Arronix.Host.Media;
+using Arronix.Host.Languages;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-// The shape contracts the engines are built over are experimental.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Composition;
 
@@ -26,7 +23,7 @@ namespace Arronix.Host.Composition;
 /// per-kind branching left inside any of them.
 /// </para>
 /// <para>
-/// All six slots are filled, including the two the binder treats as optional. Optional means an absent
+/// Every applicable slot is filled, including the two the binder treats as optional. Optional means an absent
 /// factory is not a <i>defect</i> — a definition whose quality section is the ladder-derived default and
 /// whose naming section is the bare folder spine is fully served without a seam instance. It does not mean
 /// the engines should be withheld: a definition that declares a real ladder or real templates has declared
@@ -53,14 +50,14 @@ internal static class EngineRegistration
     {
         services.TryAddSingleton(provider =>
         {
-            var strategies = MatchStrategyRegistry.CreateDefault(provider.GetRequiredService<TimeProvider>());
+            var languages = provider.GetRequiredService<LanguageTextService>();
+            var strategies = MatchStrategyRegistry.CreateDefault(
+                provider.GetRequiredService<TimeProvider>(),
+                languages);
 
             return new DefinitionEngineCatalog
             {
                 ItemStore = ItemsOf,
-                Parser = definition => new DeclarativeReleaseParser(
-                    definition.Shape.Declaration,
-                    definition.Model),
                 Matcher = definition => new DeclarativeMatcher(
                     definition.Kind,
                     definition.Model.Matching,
@@ -70,18 +67,18 @@ internal static class EngineRegistration
                     definition.Kind,
                     definition.Model.Querying,
                     definition.Shape.Declaration.SearchKinds,
-                    new ItemSourceQueryReader(ItemsOf(definition))),
-                // A kind whose families read their files onto axes is served by the axis evaluator and
-                // gets no ladder-derived seam at all. The slot is optional precisely so that saying
-                // "nothing here" is expressible rather than requiring an evaluator that answers wrongly.
-                Quality = definition => definition.Shape.Declaration.FormatFamilies[0].Unknown is null
-                    ? null
-                    : new DeclarativeQualityEvaluator(definition.Shape.Declaration),
+                    new ItemSourceQueryReader(ItemsOf(definition)),
+                    languages),
+                // Typed release selection supersedes the legacy rung-shaped quality seam. Imperative
+                // legacy media plugins may still register IQualityModel during their migration, but a
+                // typed media declaration never manufactures one from its display shape.
+                Quality = null,
                 Naming = definition => new DeclarativeRenamePolicy(
                     definition.Kind,
                     definition.Shape.Declaration,
                     definition.Model.Naming,
-                    new ItemSourceNamingResolver(ItemsOf(definition), definition.Shape)),
+                    new ItemSourceNamingResolver(ItemsOf(definition), definition.Shape),
+                    languages: languages),
             };
         });
 

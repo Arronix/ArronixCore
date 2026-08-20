@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
 
 using System.Linq;
 using Arronix.Abstractions.DTOs;
@@ -258,29 +257,29 @@ public sealed class TvShape : IMediaShapeProvider
 {
     private static readonly IReadOnlyList<QualityTier> VideoLadder =
     [
-        new QualityTier("SDTV", 1, "tv", "480p"),
-        new QualityTier("WEBRip-480p", 2, "webrip", "480p"),
-        new QualityTier("WEBDL-480p", 3, "webdl", "480p"),
-        new QualityTier("DVD", 4, "dvd", "480p"),
-        new QualityTier("Bluray-480p", 5, "bluray", "480p"),
-        new QualityTier("HDTV-720p", 6, "tv", "720p"),
-        new QualityTier("WEBRip-720p", 7, "webrip", "720p"),
-        new QualityTier("WEBDL-720p", 8, "webdl", "720p"),
-        new QualityTier("Bluray-720p", 9, "bluray", "720p"),
-        new QualityTier("HDTV-1080p", 10, "tv", "1080p"),
-        new QualityTier("Raw-HD", 11, "raw", "1080p"),
-        new QualityTier("WEBRip-1080p", 12, "webrip", "1080p"),
-        new QualityTier("WEBDL-1080p", 13, "webdl", "1080p"),
-        new QualityTier("Bluray-1080p", 14, "bluray", "1080p"),
-        new QualityTier("Bluray-1080p Remux", 15, "bluray-remux", "1080p"),
-        new QualityTier("HDTV-2160p", 16, "tv", "2160p"),
-        new QualityTier("WEBRip-2160p", 17, "webrip", "2160p"),
-        new QualityTier("WEBDL-2160p", 18, "webdl", "2160p"),
-        new QualityTier("Bluray-2160p", 19, "bluray", "2160p"),
-        new QualityTier("Bluray-2160p Remux", 20, "bluray-remux", "2160p")
+        new QualityTier("SDTV", 1),
+        new QualityTier("WEBRip-480p", 2),
+        new QualityTier("WEBDL-480p", 3),
+        new QualityTier("DVD", 4),
+        new QualityTier("Bluray-480p", 5),
+        new QualityTier("HDTV-720p", 6),
+        new QualityTier("WEBRip-720p", 7),
+        new QualityTier("WEBDL-720p", 8),
+        new QualityTier("Bluray-720p", 9),
+        new QualityTier("HDTV-1080p", 10),
+        new QualityTier("Raw-HD", 11),
+        new QualityTier("WEBRip-1080p", 12),
+        new QualityTier("WEBDL-1080p", 13),
+        new QualityTier("Bluray-1080p", 14),
+        new QualityTier("Bluray-1080p Remux", 15),
+        new QualityTier("HDTV-2160p", 16),
+        new QualityTier("WEBRip-2160p", 17),
+        new QualityTier("WEBDL-2160p", 18),
+        new QualityTier("Bluray-2160p", 19),
+        new QualityTier("Bluray-2160p Remux", 20)
     ];
 
-    private static readonly QualityTier UnknownTier = new("Unknown", 0, "unknown");
+    private static readonly QualityTier UnknownTier = new("Unknown", 0);
 
     private static readonly MediaShape Declaration = Build();
 

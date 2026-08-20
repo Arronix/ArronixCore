@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; this client browses by them.
 
 using System.Collections.ObjectModel;
 using System.Globalization;

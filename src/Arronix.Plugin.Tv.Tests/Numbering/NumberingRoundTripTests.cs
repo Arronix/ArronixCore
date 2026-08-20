@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests cover an implementation of them.
 
 using System;
 using System.Linq;

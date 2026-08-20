@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// position is the way queries must ask for it and file names must state it. A kind with a singleton
 /// coordinate space has nothing to spell and declares <see cref="None"/>.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record CoordinateGrammar
 {
     /// <summary>

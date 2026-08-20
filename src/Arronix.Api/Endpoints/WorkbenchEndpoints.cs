@@ -10,10 +10,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Routing;
 
-#pragma warning disable ARX0006 // Health contracts are experimental; error codes are quoted in problem documents.
-#pragma warning disable ARX0013 // Shape contracts are experimental; proposals are requested through them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; this assembly publishes workbenches.
-#pragma warning disable ARX0017 // Wire contracts are experimental; this assembly publishes them.
 
 namespace Arronix.Api.Endpoints;
 

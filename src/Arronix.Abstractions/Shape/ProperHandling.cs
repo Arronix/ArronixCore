@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -9,7 +8,6 @@ namespace Arronix.Abstractions.Shape;
 /// Without this, "cutoff met, but still take the corrected issue" is inexpressible: the cutoff check
 /// answers before the revision is ever consulted. The three answers are the surveyed set.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ProperHandling
 {
     /// <summary>A corrected issue is taken even when the cutoff is met.</summary>

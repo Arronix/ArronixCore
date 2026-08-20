@@ -1,13 +1,9 @@
-// The naming (ARX0009), shape (ARX0013) and definition (ARX0019) contracts are experimental until 1.0.
-#pragma warning disable ARX0009
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
-
 using System.Linq;
 using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Languages;
 
 namespace Arronix.Host.Engines.Naming;
 
@@ -64,12 +60,14 @@ internal sealed class DeclarativeRenamePolicy : IRenamePolicy
     /// <param name="declaration">The kind's naming declaration.</param>
     /// <param name="resolver">The item resolver.</param>
     /// <param name="options">The render options.</param>
+    /// <param name="languages">The installed language operations.</param>
     public DeclarativeRenamePolicy(
         MediaKindId mediaKind,
         MediaShape shape,
         NamingDeclaration declaration,
         INamingItemResolver resolver,
-        RenderOptions? options = null)
+        RenderOptions? options = null,
+        LanguageTextService? languages = null)
     {
         ArgumentNullException.ThrowIfNull(shape);
         ArgumentNullException.ThrowIfNull(declaration);
@@ -77,7 +75,7 @@ internal sealed class DeclarativeRenamePolicy : IRenamePolicy
 
         MediaKind = mediaKind;
         _deriver = new ShapeTokenDeriver(shape);
-        _engine = new NamingEngine(declaration, options);
+        _engine = new NamingEngine(declaration, options, languages);
         _resolver = resolver;
         _derivableTokens = PotentialTokens(shape);
     }
@@ -192,14 +190,6 @@ internal sealed class DeclarativeRenamePolicy : IRenamePolicy
             foreach (var component in space.Components)
             {
                 tokens.Add(NamingTemplateParser.Canonicalize(component.Name));
-            }
-        }
-
-        foreach (var family in shape.FormatFamilies)
-        {
-            foreach (var facet in family.TechnicalFacets)
-            {
-                tokens.Add(NamingTemplateParser.Canonicalize(facet.FacetId));
             }
         }
 

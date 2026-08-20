@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.FileSystem;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// mount table, rather than being inferred by the caller from a raw option name: the spelling of that
 /// option is one platform's mount-table syntax and does not belong in cross-platform code.
 /// </param>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record StorageMountOptions(bool IsReadOnly)
 {
     /// <summary>

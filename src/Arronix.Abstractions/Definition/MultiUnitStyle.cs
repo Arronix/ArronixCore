@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// ordinals, whether each repeats its prefix, whether a run collapses to first-through-last, and whether
 /// the outer coordinate is restated per unit.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MultiUnitStyle
 {
     /// <summary>

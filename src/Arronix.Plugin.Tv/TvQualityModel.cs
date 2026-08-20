@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
 
 using System.Linq;
 using Arronix.Abstractions.DTOs;
@@ -30,7 +29,11 @@ public sealed class TvQualityModel : IQualityModel
     {
         ArgumentNullException.ThrowIfNull(parsedRelease);
 
-        var name = TierName(parsedRelease.Quality, parsedRelease.Resolution);
+        var resolution = parsedRelease.AdditionalMetadata is { } metadata
+            && metadata.TryGetValue(TvReleaseFields.Resolution, out var value)
+                ? value
+                : null;
+        var name = TierName(parsedRelease.Quality, resolution);
         var tier = name is not null && ByName.TryGetValue(name, out var resolved)
             ? resolved
             : TvShape.Unknown;

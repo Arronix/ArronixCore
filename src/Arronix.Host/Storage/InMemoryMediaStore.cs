@@ -6,10 +6,6 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Media;
 
-// Shape and error contracts are experimental; the store is keyed by the first and refuses through the
-// second.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Storage;
 

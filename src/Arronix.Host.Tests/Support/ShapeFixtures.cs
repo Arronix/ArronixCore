@@ -3,8 +3,6 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
-// The shape contracts are experimental; these fixtures are written against them.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Tests.Support;
 

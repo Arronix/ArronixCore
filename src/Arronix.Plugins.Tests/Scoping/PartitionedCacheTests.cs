@@ -7,11 +7,6 @@ using Arronix.Plugins.Loading;
 using Arronix.Plugins.Scoping;
 using Arronix.Plugins.Tests.Support;
 
-#pragma warning disable ARX0001 // Caching contracts are experimental; these tests exercise the decorator.
-#pragma warning disable ARX0004 // Event contracts are experimental; these tests exercise the decorator.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; these tests exercise the decorator.
-#pragma warning disable ARX0012 // Throttling contracts are experimental; these tests exercise the decorator.
-#pragma warning disable ARX0014 // The extension model is experimental; these tests exercise it.
 
 namespace Arronix.Plugins.Tests.Scoping;
 

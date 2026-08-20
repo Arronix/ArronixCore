@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Events;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Events;
 /// The type parameter is contravariant, so a handler written against a base event type also receives
 /// derived events. A handler that throws does not prevent the remaining handlers from running.
 /// </remarks>
-[Experimental(ExperimentalContracts.Events, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IEventHandler<in TEvent>
     where TEvent : IDomainEvent
 {

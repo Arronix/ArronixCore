@@ -3,8 +3,6 @@ using System.Linq;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Shape;
 
-// The media-shape contracts are experimental. This file checks declarations written against them.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Media;
 
@@ -488,26 +486,6 @@ internal static class ShapeValidationRules
                 {
                     seen[normalized] = family.FamilyId;
                 }
-            }
-
-            // A family says how its files are read exactly once. Declaring both a ladder and an axis
-            // model is two answers to one question, and declaring neither leaves nothing able to say what
-            // one of its files is.
-            if (family.Ladder.Count == 0 && family.Quality is null)
-            {
-                defects.Add(new ShapeDefect(
-                    $"formatFamilies[{family.FamilyId}].quality",
-                    "A format family declares a quality model or a non-empty quality ladder.",
-                    CoreErrorCode.PluginShapeInvalid));
-                continue;
-            }
-
-            if (family.Ladder.Count > 0 && family.Quality is not null)
-            {
-                defects.Add(new ShapeDefect(
-                    $"formatFamilies[{family.FamilyId}].quality",
-                    "A format family declares a quality model or a ladder, never both: two ways of saying what a file is are two answers to one question.",
-                    CoreErrorCode.PluginShapeInvalid));
             }
 
             if (family.Ladder.Count == 0)

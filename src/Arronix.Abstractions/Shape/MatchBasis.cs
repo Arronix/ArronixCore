@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Shape;
 /// and are still treated differently by import policy. The surveyed matchers all carry this and could
 /// not report it through the contract until now.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum MatchBasis
 {
     /// <summary>Nothing was matched, so there is no basis to report.</summary>

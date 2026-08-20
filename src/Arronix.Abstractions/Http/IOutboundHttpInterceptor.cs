@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Http;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Http;
 /// the case that motivates the seam.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IOutboundHttpInterceptor
 {
     /// <summary>

@@ -6,12 +6,6 @@ using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
 
-// Definition, shape, intent and typed-media contracts are experimental; this file is the host's gate over
-// all four.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Media;
 
@@ -53,10 +47,12 @@ public sealed class ValidatedDefinition
         Intent = intent;
         Shape = shape;
 
-        _guardsById = model.Parsing.Guards.ToDictionary(guard => guard.GuardId, StringComparer.Ordinal);
-        _patternsById = model.Parsing.TitlePatterns.ToDictionary(
-            pattern => pattern.PatternId,
-            StringComparer.Ordinal);
+        _guardsById = model.Parsing?.Guards.ToDictionary(guard => guard.GuardId, StringComparer.Ordinal)
+            ?? new Dictionary<string, GuardPattern>(StringComparer.Ordinal);
+        _patternsById = model.Parsing?.TitlePatterns.ToDictionary(
+                pattern => pattern.PatternId,
+                StringComparer.Ordinal)
+            ?? new Dictionary<string, TitlePattern>(StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -97,7 +93,7 @@ public sealed class ValidatedDefinition
         "CA1021:Avoid out parameters",
         Justification = "The try-and-out form is the parse-don't-validate idiom this type exists to provide, and it returns two results: the parsed model and the complete defect list.")]
     public static bool TryValidate(
-        IMediaType type,
+        IMediaTypeRuntime type,
         out ValidatedDefinition? validated,
         out IReadOnlyList<ShapeDefect> defects)
     {

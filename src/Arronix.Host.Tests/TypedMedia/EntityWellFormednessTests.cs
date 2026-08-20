@@ -1,10 +1,10 @@
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Shape;
 using Arronix.Host.Media.Typed;
 using FluentAssertions;
 
-// Every contract these tests read is experimental.
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.TypedMedia;
 
@@ -21,13 +21,13 @@ namespace Arronix.Host.Tests.TypedMedia;
 [TestFixture]
 internal sealed class EntityWellFormednessTests
 {
-    private sealed class NoIdentity : IMediaItem
+    private sealed class NoIdentity
     {
         [Title]
         public required string Title { get; init; }
     }
 
-    private sealed class TwoIdentities : IMediaItem
+    private sealed class TwoIdentities
     {
         [Identity]
         public required MediaItemId Id { get; init; }
@@ -39,7 +39,7 @@ internal sealed class EntityWellFormednessTests
         public required string Title { get; init; }
     }
 
-    private sealed class WrongIdentityType : IMediaItem
+    private sealed class WrongIdentityType
     {
         [Identity]
         public required int Id { get; init; }
@@ -48,13 +48,13 @@ internal sealed class EntityWellFormednessTests
         public required string Title { get; init; }
     }
 
-    private sealed class NoTitle : IMediaItem
+    private sealed class NoTitle
     {
         [Identity]
         public required MediaItemId Id { get; init; }
     }
 
-    private sealed class TwoTitles : IMediaItem
+    private sealed class TwoTitles
     {
         [Identity]
         public required MediaItemId Id { get; init; }
@@ -66,7 +66,7 @@ internal sealed class EntityWellFormednessTests
         public string? Other { get; init; }
     }
 
-    private sealed class StatusThatIsNotAnEnumeration : IMediaItem
+    private sealed class StatusThatIsNotAnEnumeration
     {
         [Identity]
         public required MediaItemId Id { get; init; }
@@ -78,19 +78,63 @@ internal sealed class EntityWellFormednessTests
         public string? Stage { get; init; }
     }
 
-    [TestCase(typeof(NoIdentity))]
-    [TestCase(typeof(TwoIdentities))]
-    [TestCase(typeof(WrongIdentityType))]
-    [TestCase(typeof(NoTitle))]
-    [TestCase(typeof(TwoTitles))]
-    [TestCase(typeof(StatusThatIsNotAnEnumeration))]
-    public void AMalformedEntityIsRefusedWithAReasonNamingIt(Type entityType) =>
-        FluentActions.Invoking(() => ItemTypeReader.Read(entityType))
+    private static IEnumerable<TestCaseData> MalformedShapes()
+    {
+        yield return Case<NoIdentity>(Field(nameof(NoIdentity.Title), typeof(string), FieldSemantics.Title));
+        yield return Case<TwoIdentities>(
+            Field(nameof(TwoIdentities.Id), typeof(MediaItemId), FieldSemantics.Identity, explicitIdentity: true),
+            Field(nameof(TwoIdentities.Other), typeof(MediaItemId), FieldSemantics.Identity, explicitIdentity: true),
+            Field(nameof(TwoIdentities.Title), typeof(string), FieldSemantics.Title));
+        yield return Case<WrongIdentityType>(
+            Field(nameof(WrongIdentityType.Id), typeof(int), FieldSemantics.Identity, explicitIdentity: true),
+            Field(nameof(WrongIdentityType.Title), typeof(string), FieldSemantics.Title));
+        yield return Case<NoTitle>(
+            Field(nameof(NoTitle.Id), typeof(MediaItemId), FieldSemantics.Identity, explicitIdentity: true));
+        yield return Case<TwoTitles>(
+            Field(nameof(TwoTitles.Id), typeof(MediaItemId), FieldSemantics.Identity, explicitIdentity: true),
+            Field(nameof(TwoTitles.Title), typeof(string), FieldSemantics.Title),
+            Field(nameof(TwoTitles.Other), typeof(string), FieldSemantics.Title));
+        yield return Case<StatusThatIsNotAnEnumeration>(
+            Field(nameof(StatusThatIsNotAnEnumeration.Id), typeof(MediaItemId), FieldSemantics.Identity, explicitIdentity: true),
+            Field(nameof(StatusThatIsNotAnEnumeration.Title), typeof(string), FieldSemantics.Title),
+            Field(nameof(StatusThatIsNotAnEnumeration.Stage), typeof(string), FieldSemantics.Status));
+    }
+
+    [TestCaseSource(nameof(MalformedShapes))]
+    public void AMalformedEntityIsRefusedWithAReasonNamingIt(CompiledEntityShape shape) =>
+        FluentActions.Invoking(() => ItemTypeReader.Read(shape))
             .Should().Throw<ArgumentException>()
-            .WithMessage($"*{entityType.FullName}*");
+            .WithMessage($"*{shape.EntityType.FullName}*");
 
     [Test]
     public void AWellFormedEntityIsRead() =>
-        FluentActions.Invoking(() => ItemTypeReader.Read(typeof(Work)))
+        FluentActions.Invoking(() => ItemTypeReader.Read(new Works().CompiledShapes.Item))
             .Should().NotThrow();
+
+    private static TestCaseData Case<TEntity>(params CompiledField[] fields) =>
+        new TestCaseData(new CompiledEntityShape { EntityType = typeof(TEntity), Fields = fields })
+            .SetName($"Malformed_{typeof(TEntity).Name}");
+
+    private static CompiledField Field(
+        string name,
+        Type type,
+        FieldSemantics semantics,
+        bool explicitIdentity = false) =>
+        new()
+        {
+            PropertyName = name,
+            PropertyType = type,
+            ElementType = type,
+            FilterOperators = FilterOperators.Equals,
+            ExplicitIdentity = explicitIdentity,
+            IsNameable = true,
+            Read = static _ => null,
+            Descriptor = new FieldDescriptor
+            {
+                FieldId = char.ToLowerInvariant(name[0]) + name[1..],
+                Name = name,
+                ValueKind = type.IsEnum ? FieldValueKind.Enumerated : FieldValueKind.Text,
+                Semantics = semantics
+            }
+        };
 }

@@ -1,6 +1,3 @@
-// Opts this file in to the experimental file system contracts. The opt-in is per file and per area on
-// purpose: a project-wide NoWarn would hide every future dependency on an unstable contract.
-#pragma warning disable ARX0005
 
 using Arronix.Abstractions.FileSystem;
 

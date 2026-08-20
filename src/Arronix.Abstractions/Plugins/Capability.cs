@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Plugins;
 
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Plugins;
 /// no implementer are deferred, because adding a member later is additive and removing one is not.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum Capability
 {
     /// <summary>Contributing release sources and planning release queries.</summary>
@@ -65,5 +63,8 @@ public enum Capability
     Storage = 12,
 
     /// <summary>Receiving the platform's telemetry stream.</summary>
-    TelemetrySink = 13
+    TelemetrySink = 13,
+
+    /// <summary>Contributing language-owned title comparison, query and sorting rules.</summary>
+    Language = 14
 }

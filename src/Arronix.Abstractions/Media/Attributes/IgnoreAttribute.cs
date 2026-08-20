@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -11,5 +10,4 @@ namespace Arronix.Abstractions.Media;
 /// property, which is the drift the typed model exists to remove.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class IgnoreAttribute : Attribute;

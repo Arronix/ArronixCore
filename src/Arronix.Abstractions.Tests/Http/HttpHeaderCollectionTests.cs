@@ -1,5 +1,3 @@
-// Opts this file in to the experimental outbound HTTP contracts.
-#pragma warning disable ARX0008
 
 using System;
 using System.Linq;

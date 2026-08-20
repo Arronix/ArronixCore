@@ -1,7 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests cover an implementation of them.
-#pragma warning disable ARX0015 // Provider contracts are experimental; ValidationOutcome is shared with them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; the workbench proposal is one.
-#pragma warning disable ARX0017 // Wire contracts are experimental; ActionResult is one.
 
 using System;
 using System.Collections.Generic;

@@ -12,10 +12,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 
-// Error, plugin and shape contracts are experimental.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Tests.Scheduling;
 

@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; values are described by them.
 
 using System.Globalization;
 using System.Linq;

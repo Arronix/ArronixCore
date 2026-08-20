@@ -1,18 +1,16 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
-/// A per-kind token table layered over the host scanners.
+/// A media-owned token table used by its declared title grammar.
 /// </summary>
 /// <remarks>
-/// The shared token vocabulary lives once, host-side, because a codec token means the same thing to
-/// every kind; a kind extends recognition here only for tokens the shared vocabulary does not carry.
-/// Occurrence selection lives on the scan, where it belongs: whether the first or the last occurrence in
+/// A table states only vocabulary owned by the declaring media type. Representation packages own their
+/// own technical vocabulary; there is no host-global codec or format scan. Occurrence selection lives on
+/// the scan: whether the first or the last occurrence in
 /// the text wins is a property of scanning the text, not of any rule table that later consumes the one
 /// value the scan produced.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record TokenTable
 {
     /// <summary>

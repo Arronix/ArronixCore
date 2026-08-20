@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 
-#pragma warning disable ARX0017 // Wire contracts are experimental; this assembly publishes them.
 
 namespace Arronix.Api.Endpoints;
 

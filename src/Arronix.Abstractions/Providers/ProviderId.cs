@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Plugins;
 
 namespace Arronix.Abstractions.Providers;
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Providers;
 /// never writes the qualified form.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct ProviderId
 {
     private const char Separator = ':';

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Events;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Events;
 /// filter allows. A plugin sees platform events plus events raised from its own namespace, and never
 /// another plugin's — direct plugin-to-plugin calls are not a supported topology.
 /// </remarks>
-[Experimental(ExperimentalContracts.Events, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IEventPublisher
 {
     /// <summary>

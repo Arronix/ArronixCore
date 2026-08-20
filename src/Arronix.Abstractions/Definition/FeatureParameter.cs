@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// operator and no subject path — the surveyed feature arguments are imperative aggregations a path
 /// grammar cannot reach, and pretending otherwise was an over-claim this surface does not repeat.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record FeatureParameter
 {
     /// <summary>

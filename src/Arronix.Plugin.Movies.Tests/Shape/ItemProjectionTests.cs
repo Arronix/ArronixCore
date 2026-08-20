@@ -1,7 +1,6 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests exercise the typed surface.
-#pragma warning disable ARX0020 // Media contracts are experimental; these tests exercise the typed surface.
 
 using System.Linq;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
 using Arronix.Plugin.Movies.Tests.Fixtures;
 using Arronix.Plugin.Movies.Tests.Support;
@@ -39,6 +38,7 @@ public class ItemProjectionTests
             var view = MoviesDeclaration.Model.Project(MoviesSeedProjection.ToMovie(record, collection));
 
             Assert.That(view.Title, Is.EqualTo(record.Title));
+            Assert.That(view.TitleLanguage?.Code, Is.EqualTo("en"));
             Assert.That(
                 view.Fields.Keys,
                 Is.EquivalentTo(MoviesDeclaration.Fields.Keys),
@@ -53,11 +53,17 @@ public class ItemProjectionTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(view.Ref.Kind, Is.EqualTo(Movies.Kind));
+            Assert.That(view.Ref.Kind, Is.EqualTo(new Movies().Kind));
             Assert.That(view.Ref.Level, Is.EqualTo(MoviesDeclaration.Level.Id));
             Assert.That(view.Ref.Id.Value, Is.EqualTo(Godfather.Key.Value));
         });
     }
+
+    [Test]
+    public void RegistersTheClosedCommonItemTypeDirectly()
+        => Assert.That(
+            MoviesDeclaration.Model.ItemType,
+            Is.EqualTo(typeof(Movie)));
 
     /// <summary>
     /// The identifier set crosses as identifiers rather than as two vendor-named scalar fields, so a
@@ -109,8 +115,58 @@ public class ItemProjectionTests
             Assert.That(descriptor.Multivalued, Is.True);
             Assert.That(
                 descriptor.Components.Select(static component => component.FieldId),
-                Is.EqualTo(new[] { "source", "value", "scale", "voice", "votes" }));
+                Is.EqualTo(new[] { "source", "value", "scale", "voice", "sampleSize", "normalizedValue" }));
             Assert.That(value.Items, Is.Not.Null.And.Not.Empty);
+        });
+    }
+
+    [Test]
+    public void CarriesNestedLocalizedItemInfoWithoutFlatteningItsLanguageOrPayload()
+    {
+        var movie = new Movie
+        {
+            Key = Godfather.Key,
+            Title = Godfather.Title,
+            Lifecycle = Godfather.Lifecycle,
+            Translations =
+            [
+                new(
+                    new Arronix.Abstractions.DTOs.Language("fr", "French"),
+                    new ItemInfo("Le Parrain", "Chronique d'une famille")),
+            ],
+        };
+        var value = MoviesDeclaration.Model.Read(movie, "translations");
+        var localized = value.Items!.Single();
+        var payload = localized.Items![1].Items!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(localized.Items![0].Language!.Code, Is.EqualTo("fr"));
+            Assert.That(localized.Items[1].Kind, Is.EqualTo(FieldValueKind.Composite));
+            Assert.That(payload[0].Text, Is.EqualTo("Le Parrain"));
+            Assert.That(payload[1].Text, Is.EqualTo("Chronique d'une famille"));
+        });
+    }
+
+    [Test]
+    public void CarriesTheMovieOwnedReleaseTimelineAsAComposite()
+    {
+        var descriptor = MoviesDeclaration.Fields["lifecycle"];
+        var value = MoviesDeclaration.Model.Read(Godfather, "lifecycle");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(descriptor.ValueKind, Is.EqualTo(FieldValueKind.Composite));
+            Assert.That(
+                descriptor.Components.Select(static component => component.FieldId),
+                Does.Contain("inCinemas").And.Contain("physical").And.Contain("digital")
+                    .And.Contain("availableOn").And.Contain("stage"));
+            Assert.That(value.Items, Has.Count.EqualTo(descriptor.Components.Count));
+            Assert.That(value.Items![0].Date, Is.EqualTo(new DateOnly(1972, 3, 14)));
+            Assert.That(MoviesDeclaration.Fields, Does.Not.ContainKey("inCinemas"));
+            Assert.That(MoviesDeclaration.Fields, Does.Not.ContainKey("physicalRelease"));
+            Assert.That(MoviesDeclaration.Fields, Does.Not.ContainKey("digitalRelease"));
+            Assert.That(MoviesDeclaration.Fields, Does.Not.ContainKey("releaseDate"));
         });
     }
 
@@ -122,13 +178,14 @@ public class ItemProjectionTests
     [Test]
     public void AddressesAGroupByItsAxisBecauseAGroupIsNotALevel()
     {
-        var value = MoviesDeclaration.Model.Read(Godfather, "collection");
+        var value = MoviesDeclaration.Model.Read(Godfather, "collections");
+        var collection = value.Items!.Single();
 
         Assert.Multiple(() =>
         {
             Assert.That(value.Kind, Is.EqualTo(FieldValueKind.Reference));
-            Assert.That(value.Reference!.Value.Level.Value, Is.EqualTo("collection"));
-            Assert.That(value.Text, Is.EqualTo("The Godfather Collection"));
+            Assert.That(collection.Reference!.Value.Level.Value, Is.EqualTo("collection"));
+            Assert.That(collection.Text, Is.EqualTo("The Godfather Collection"));
         });
     }
 
@@ -138,11 +195,11 @@ public class ItemProjectionTests
     [Test]
     public void CarriesArtworkAsOneSetRatherThanOneFieldPerRole()
     {
-        var value = MoviesDeclaration.Model.Read(Godfather, "images");
+        var value = MoviesDeclaration.Model.Read(Godfather, "artwork");
 
         Assert.Multiple(() =>
         {
-            Assert.That(MoviesDeclaration.Fields["images"].ValueKind, Is.EqualTo(FieldValueKind.Artwork));
+            Assert.That(MoviesDeclaration.Fields["artwork"].ValueKind, Is.EqualTo(FieldValueKind.Artwork));
             Assert.That(value.Items, Is.Not.Null.And.Not.Empty);
 
             foreach (var role in new[] { "poster", "fanart", "banner", "clearLogo" })
@@ -153,8 +210,8 @@ public class ItemProjectionTests
     }
 
     /// <summary>
-    /// The two recomputations the kind binds agree with what the seeded catalog says, which is the only
-    /// evidence available that the code replacing two string grammars replaced them faithfully.
+    /// The availability-date calculation agrees with what the seeded catalog says, which is the evidence
+    /// available that the code replacing the old string grammar preserved its meaning.
     /// </summary>
     [Test]
     public void RecomputesTheReleaseDateTheCatalogWouldHaveComputed()
@@ -164,17 +221,17 @@ public class ItemProjectionTests
         {
             var movie = MoviesSeedProjection.ToMovie(record);
 
-            Assert.That(Movies.ReleaseDateOf(movie), Is.EqualTo(record.ReleaseDate), record.Title);
+            Assert.That(movie.Lifecycle.AvailableOn, Is.EqualTo(record.ReleaseDate), record.Title);
         }
     }
 
-    [TestCase(2026, 8, 17, MovieStatus.Released)]
-    public void RecomputesTheStatusFromTheThreeDates(int year, int month, int day, MovieStatus expected)
+    [TestCase(2026, 8, 17, MovieReleaseStage.Released)]
+    public void RecomputesTheStatusFromTheThreeDates(int year, int month, int day, MovieReleaseStage expected)
     {
         var movie = MoviesSeedProjection.ToMovie(
             Catalog.Movies.Single(static candidate => candidate.TmdbId == 238));
 
-        Assert.That(Movies.StatusOf(movie, new DateOnly(year, month, day)), Is.EqualTo(expected));
+        Assert.That(movie.Lifecycle.StageOn(new DateOnly(year, month, day)), Is.EqualTo(expected));
     }
 
     /// <summary>
@@ -189,30 +246,36 @@ public class ItemProjectionTests
         {
             Key = Abstractions.Identity.MediaItemId.FromInt64(1),
             Title = "Cinema Only",
-            InCinemas = new DateOnly(2026, 1, 1),
+            Lifecycle = new MovieReleaseTimeline
+            {
+                InCinemas = new DateOnly(2026, 1, 1),
+                EvaluatedOn = new DateOnly(2026, 2, 1)
+            }
         };
 
         Assert.Multiple(() =>
         {
             Assert.That(
-                Movies.StatusOf(cinemaOnly, new DateOnly(2026, 2, 1)),
-                Is.EqualTo(MovieStatus.InCinemas));
+                cinemaOnly.Lifecycle.StageOn(new DateOnly(2026, 2, 1)),
+                Is.EqualTo(MovieReleaseStage.InCinemas));
             Assert.That(
-                Movies.StatusOf(cinemaOnly, new DateOnly(2026, 6, 1)),
-                Is.EqualTo(MovieStatus.Released));
+                cinemaOnly.Lifecycle.StageOn(new DateOnly(2026, 1, 1)),
+                Is.EqualTo(MovieReleaseStage.InCinemas));
             Assert.That(
-                Movies.StatusOf(cinemaOnly, new DateOnly(2025, 12, 1)),
-                Is.EqualTo(MovieStatus.Announced));
+                cinemaOnly.Lifecycle.StageOn(new DateOnly(2026, 6, 1)),
+                Is.EqualTo(MovieReleaseStage.Released));
+            Assert.That(
+                cinemaOnly.Lifecycle.StageOn(new DateOnly(2025, 12, 1)),
+                Is.EqualTo(MovieReleaseStage.Announced));
         });
     }
 
     [Test]
     public void CountsAFilmWithNoDateAtAllAsUnannounced()
         => Assert.That(
-            Movies.StatusOf(
-                new Movie { Key = Abstractions.Identity.MediaItemId.FromInt64(2), Title = "Nothing Known" },
-                new DateOnly(2026, 8, 17)),
-            Is.EqualTo(MovieStatus.Tba));
+            new MovieReleaseTimeline { EvaluatedOn = new DateOnly(2026, 8, 17) }
+                .StageOn(new DateOnly(2026, 8, 17)),
+            Is.EqualTo(MovieReleaseStage.Tba));
 
     /// <summary>
     /// A premiere year is interesting only when it disagrees with the catalog year, which is exactly the

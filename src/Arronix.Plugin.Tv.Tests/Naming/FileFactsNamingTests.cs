@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests cover an implementation of them.
 
 using System;
 using System.Collections.Generic;
@@ -115,13 +114,11 @@ public sealed class FileFactsNamingTests
         TvIds.MediaKind,
         "The Expanse",
         Quality: "webdl",
-        Resolution: "1080p",
-        AdditionalMetadata: revision is null
-            ? null
-            : new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                [TvReleaseFields.Revision] = revision,
-            });
+        AdditionalMetadata: new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [TvReleaseFields.Resolution] = "1080p",
+            [TvReleaseFields.Revision] = revision ?? string.Empty,
+        });
 
     private static MediaFileFacts FactsFor(string tierName, QualityRevision revision, string? group) => new()
     {

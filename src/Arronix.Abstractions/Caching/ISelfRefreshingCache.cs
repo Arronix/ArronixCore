@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Caching;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Caching;
 /// table behind one remote call, for instance. It has no equivalent in the framework's caching
 /// primitives, which are all per-entry.
 /// </remarks>
-[Experimental(ExperimentalContracts.Caching, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface ISelfRefreshingCache<TValue> : ICache
 {
     /// <summary>

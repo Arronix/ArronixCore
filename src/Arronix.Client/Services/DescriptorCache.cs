@@ -1,4 +1,3 @@
-#pragma warning disable ARX0017 // Wire contracts are experimental; the descriptor is what this cache holds.
 
 using System.Linq;
 using Arronix.Abstractions.Identity;

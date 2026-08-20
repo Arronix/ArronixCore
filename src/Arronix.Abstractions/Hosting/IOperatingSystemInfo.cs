@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Hosting;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Hosting;
 /// service reachable at a different path inside a container than outside it — the canonical case being
 /// a path-mapping health check — cannot produce a correct diagnosis without knowing.
 /// </remarks>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IOperatingSystemInfo
 {
     /// <summary>

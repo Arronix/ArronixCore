@@ -1,5 +1,3 @@
-// The media-shape contracts are experimental; this extension is one of their four reference implementers.
-#pragma warning disable ARX0013
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
@@ -598,18 +596,18 @@ public sealed class MusicShape : IMediaShapeProvider
         ],
         Ladder =
         [
-            new QualityTier("MP3-128", 1, "mp3", null, "MP3"),
-            new QualityTier("MP3-192", 2, "mp3", null, "MP3"),
-            new QualityTier("MP3-256", 3, "mp3", null, "MP3"),
-            new QualityTier("MP3-320", 4, "mp3", null, "MP3"),
-            new QualityTier("MP3-VBR", 5, "mp3", null, "MP3"),
-            new QualityTier("AAC-256", 6, "aac", null, "AAC"),
-            new QualityTier("AAC-320", 7, "aac", null, "AAC"),
-            new QualityTier("Vorbis", 8, "vorbis", null, "Vorbis"),
-            new QualityTier("ALAC", 9, "lossless", null, "ALAC", 16),
-            new QualityTier("FLAC", 10, "lossless", null, "FLAC", 16),
-            new QualityTier("FLAC 24bit", 11, "lossless", null, "FLAC", 24),
-            new QualityTier("WAV", 12, "lossless", null, "PCM", 16),
+            new QualityTier("MP3-128", 1),
+            new QualityTier("MP3-192", 2),
+            new QualityTier("MP3-256", 3),
+            new QualityTier("MP3-320", 4),
+            new QualityTier("MP3-VBR", 5),
+            new QualityTier("AAC-256", 6),
+            new QualityTier("AAC-320", 7),
+            new QualityTier("Vorbis", 8),
+            new QualityTier("ALAC", 9),
+            new QualityTier("FLAC", 10),
+            new QualityTier("FLAC 24bit", 11),
+            new QualityTier("WAV", 12),
         ],
         Unknown = new QualityTier("Unknown Audio", 0),
         CoexistsWithOtherFamilies = false,

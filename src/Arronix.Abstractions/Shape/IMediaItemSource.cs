@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Wire;
@@ -28,7 +27,6 @@ namespace Arronix.Abstractions.Shape;
 /// failure mode for no gain.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IMediaItemSource
 {
     /// <summary>

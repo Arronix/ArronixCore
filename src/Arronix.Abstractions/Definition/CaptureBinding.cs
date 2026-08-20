@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Definition;
 /// The external-identifier scheme, tag key or release-kind value the capture lands under, for the
 /// targets that need one.
 /// </param>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct CaptureBinding(
     string GroupName,
     CaptureTarget Target,

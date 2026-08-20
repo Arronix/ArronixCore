@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Shape;
 /// surprising when it emerges from an implementation and unsurprising when a kind declares it.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record VariantSelection
 {
     /// <summary>
@@ -41,7 +39,6 @@ public sealed record VariantSelection
 /// When the host may change a variant selection without being asked.
 /// </summary>
 [Flags]
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SelectionTrigger
 {
     /// <summary>Only a user changes the selection.</summary>

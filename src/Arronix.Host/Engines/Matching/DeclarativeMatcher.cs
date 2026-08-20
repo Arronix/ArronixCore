@@ -5,9 +5,6 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
-// The declaration and shape contracts the engine executes are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Engines.Matching;
 
@@ -478,10 +475,10 @@ internal sealed class DeclarativeMatcher : IReleaseMatcher
             return null;
         }
 
-        var key = MatchKeyNormalizers.Normalize(attempt.NormalizerId!, unitTitle);
+        var key = MatchKeyNormalizers.NormalizeInvariant(attempt.NormalizerId!, unitTitle);
         var matched = units
             .Where(unit => string.Equals(
-                MatchKeyNormalizers.Normalize(attempt.NormalizerId!, unit.Title),
+                MatchKeyNormalizers.NormalizeInvariant(attempt.NormalizerId!, unit.Title),
                 key,
                 StringComparison.Ordinal))
             .ToArray();

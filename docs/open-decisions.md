@@ -1,5 +1,11 @@
 # Open decisions and recorded defects
 
+> **Historical working register.** The quality-axes implementation and the generic evidence/video scanner
+> discussed in Parts 7 and 8 were removed on 2026-08-20. They are not active work and do not describe the
+> current source. Current state lives in `CONTEXT.md`; the public boundary lives in `INTERFACE.md`; the
+> authoring acceptance model lives in `docs/design/typed-media-north-star.md`; accepted boundary changes are
+> recorded in `HISTORY.md`; and `docs/owner-ledger.md` remains the controlling owner-signal reconstruction.
+
 > **SUBORDINATE DOCUMENT.** The controlling record of owner decisions is
 > [`docs/owner-ledger.md`](owner-ledger.md) — a third-party reconstruction of owner signal from the
 > session transcript, adopted by the owner on 2026-08-18 after this register was found to have blurred

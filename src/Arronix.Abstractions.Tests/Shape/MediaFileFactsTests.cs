@@ -1,5 +1,3 @@
-// Exercises the experimental shape contracts.
-#pragma warning disable ARX0013
 
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Shape;
@@ -24,8 +22,6 @@ public class MediaFileFactsTests
         {
             Assert.That(facts.SceneName, Is.Null);
             Assert.That(facts.Languages, Is.Empty);
-            Assert.That(facts.TechnicalFacets, Is.Empty);
-            Assert.That(facts.KindFacets, Is.Empty);
         });
     }
 }

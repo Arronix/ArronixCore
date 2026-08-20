@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
 namespace Arronix.Abstractions.FileSystem;
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// Returned by the file system contract and consumed by free-space and read-only health checks that
 /// extensions contribute, which is why it crosses the boundary rather than staying host-side.
 /// </remarks>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IStorageMount
 {
     /// <summary>

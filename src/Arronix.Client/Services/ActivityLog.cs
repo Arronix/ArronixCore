@@ -1,4 +1,3 @@
-#pragma warning disable ARX0017 // Wire contracts are experimental; the feed is made of them.
 
 using System.Linq;
 using Arronix.Abstractions.Wire;

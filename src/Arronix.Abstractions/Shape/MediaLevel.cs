@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Shape;
 /// collection is a <see cref="GroupingAxis"/> and not a level. Keeping those two out is what stops the
 /// hierarchy from acquiring levels that exist to carry a single flag.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MediaLevel
 {
     /// <summary>

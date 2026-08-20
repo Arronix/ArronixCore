@@ -1,19 +1,3 @@
-#pragma warning disable ARX0001 // Caching contracts are experimental; the recorder only has to name the type.
-#pragma warning disable ARX0002 // Diagnostics contracts are experimental; likewise.
-#pragma warning disable ARX0004 // Event contracts are experimental; likewise.
-#pragma warning disable ARX0005 // File-system contracts are experimental; likewise.
-#pragma warning disable ARX0006 // Health contracts are experimental; likewise.
-#pragma warning disable ARX0007 // Hosting contracts are experimental; likewise.
-#pragma warning disable ARX0008 // HTTP contracts are experimental; likewise.
-#pragma warning disable ARX0009 // Naming contracts are experimental; likewise.
-#pragma warning disable ARX0010 // Serialization contracts are experimental; likewise.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; the recorder captures them.
-#pragma warning disable ARX0012 // Throttling contracts are experimental; likewise.
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests cover an implementation.
-#pragma warning disable ARX0014 // Extension contracts are experimental; these tests cover an implementation.
-#pragma warning disable ARX0015 // Provider contracts are experimental; these tests cover an implementation.
-#pragma warning disable ARX0016 // Intent contracts are experimental; these tests cover an implementation.
-#pragma warning disable ARX0020 // The typed media surface is experimental; the recorder only has to name the type.
 
 using System;
 using System.Collections.Generic;
@@ -27,6 +11,7 @@ using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Http;
 using Arronix.Abstractions.Import;
 using Arronix.Abstractions.Intent;
+using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Parsing;
@@ -82,8 +67,8 @@ public sealed class ModuleRegistrationTests
             Assert.That(_registry.LibraryLayouts, Has.Count.EqualTo(1));
             Assert.That(_registry.IdResolvers, Has.Count.EqualTo(1));
             Assert.That(_registry.IntentSurfaces, Has.Count.EqualTo(1));
-            Assert.That(_registry.Indexers, Has.Count.EqualTo(1));
-            Assert.That(_registry.Catalogers, Has.Count.EqualTo(1));
+            Assert.That(_registry.Providers, Has.Count.EqualTo(1));
+            Assert.That(_registry.Providers.Single().Family, Is.EqualTo(ProviderFamily.Indexer));
         });
     }
 
@@ -93,9 +78,8 @@ public sealed class ModuleRegistrationTests
         Assert.Multiple(() =>
         {
             Assert.That(_registry.ImportPipelines, Is.Empty, "the import capability is not declared");
-            Assert.That(_registry.Downloaders, Is.Empty, "the download capability is not declared");
-            Assert.That(_registry.Notifiers, Is.Empty, "the notification capability is not declared");
-            Assert.That(_registry.Curators, Is.Empty, "the curation capability is not declared");
+            Assert.That(_registry.Providers, Has.None.Matches<ProviderTypeRegistration>(p =>
+                p.Family is ProviderFamily.Downloader or ProviderFamily.Notifier or ProviderFamily.Curator));
             Assert.That(_registry.TelemetrySinks, Is.Empty, "the telemetry-sink capability is not declared");
             Assert.That(_registry.ScheduledJobs, Is.Empty);
         });
@@ -117,29 +101,13 @@ public sealed class ModuleRegistrationTests
     }
 
     [Test]
-    public void ProviderIdentifiersAreQualifiedByTheExtensionIdentifier()
-    {
-        Assert.Multiple(() =>
-        {
-            Assert.That(
-                _registry.Indexers.Single().Provider.Id.Plugin.Value,
-                Is.EqualTo(TvIds.PluginIdValue));
-            Assert.That(
-                _registry.Catalogers.Single().Provider.Id.Plugin.Value,
-                Is.EqualTo(TvIds.PluginIdValue));
-            Assert.That(
-                _registry.Indexers.Single().Provider.Id.Value,
-                Is.EqualTo($"{TvIds.PluginIdValue}:{TvIndexer.LocalId}"));
-        });
-    }
+    public void ProviderRegistrationCarriesATypeForLaterDiActivation()
+        => Assert.That(_registry.Providers.Single().ImplementationType, Is.EqualTo(typeof(TvIndexer)));
 
     [Test]
     public void EveryProviderSecretIsDeclaredAsOne()
     {
-        var descriptors = _registry.Indexers
-            .Select(registration => registration.Descriptor)
-            .Concat(_registry.Catalogers.Select(registration => registration.Descriptor))
-            .ToList();
+        var descriptors = _registry.Providers.Select(registration => registration.Descriptor).ToList();
 
         var apiKey = descriptors
             .SelectMany(descriptor => descriptor.Settings)
@@ -273,15 +241,7 @@ public sealed class ModuleRegistrationTests
 
         public List<IMediaIdResolver> IdResolvers { get; } = [];
 
-        public List<IndexerRegistration> Indexers { get; } = [];
-
-        public List<DownloaderRegistration> Downloaders { get; } = [];
-
-        public List<NotifierRegistration> Notifiers { get; } = [];
-
-        public List<CatalogerRegistration> Catalogers { get; } = [];
-
-        public List<CuratorRegistration> Curators { get; } = [];
+        public List<ProviderTypeRegistration> Providers { get; } = [];
 
         public List<IScheduledJob> ScheduledJobs { get; } = [];
 
@@ -293,11 +253,10 @@ public sealed class ModuleRegistrationTests
 
         public List<IMediaTypeRegistration> MediaKinds { get; } = [];
 
-        public IPluginRegistry AddMediaType<TItem, TType>()
-            where TItem : IMediaItem
-            where TType : IMediaType<TItem>
+        public IPluginRegistry AddMediaType<TType>()
+            where TType : class, IMediaTypeDefinition, new()
         {
-            MediaKinds.Add(MediaTypeRegistration.For<TItem, TType>());
+            MediaKinds.Add(new TType().Capture());
             return this;
         }
 
@@ -361,33 +320,40 @@ public sealed class ModuleRegistrationTests
             return this;
         }
 
-        public IPluginRegistry AddIndexer(IndexerRegistration registration)
+        public IPluginRegistry AddIndexer<TIndexer>(ProviderDescriptor descriptor)
+            where TIndexer : class, IIndexer
         {
-            Indexers.Add(registration);
+            Providers.Add(ProviderTypeRegistration.For<IIndexer, TIndexer>(descriptor, ProviderFamily.Indexer));
             return this;
         }
 
-        public IPluginRegistry AddDownloader(DownloaderRegistration registration)
+        public IPluginRegistry AddDownloader<TDownloader>(ProviderDescriptor descriptor)
+            where TDownloader : class, IDownloader
         {
-            Downloaders.Add(registration);
+            Providers.Add(ProviderTypeRegistration.For<IDownloader, TDownloader>(descriptor, ProviderFamily.Downloader));
             return this;
         }
 
-        public IPluginRegistry AddNotifier(NotifierRegistration registration)
+        public IPluginRegistry AddNotifier<TNotifier>(ProviderDescriptor descriptor)
+            where TNotifier : class, INotifier
         {
-            Notifiers.Add(registration);
+            Providers.Add(ProviderTypeRegistration.For<INotifier, TNotifier>(descriptor, ProviderFamily.Notifier));
             return this;
         }
 
-        public IPluginRegistry AddCataloger(CatalogerRegistration registration)
+        public IPluginRegistry AddCataloger<TItem, TCataloger>(ProviderDescriptor descriptor)
+            where TItem : class, IMediaItem
+            where TCataloger : class, ICataloger<TItem>
         {
-            Catalogers.Add(registration);
+            Providers.Add(ProviderTypeRegistration.ForCataloger<TItem, TCataloger>(descriptor));
             return this;
         }
 
-        public IPluginRegistry AddCurator(CuratorRegistration registration)
+        public IPluginRegistry AddCurator<TItem, TCurator>(ProviderDescriptor descriptor)
+            where TItem : class, IMediaItem
+            where TCurator : class, ICurator<TItem>
         {
-            Curators.Add(registration);
+            Providers.Add(ProviderTypeRegistration.ForCurator<TItem, TCurator>(descriptor));
             return this;
         }
 
@@ -417,6 +383,9 @@ public sealed class ModuleRegistrationTests
 
         public IPluginRegistry AddDiacriticFolding(IDiacriticFoldingProvider provider) => this;
 
+        public IPluginRegistry AddLanguage<TLanguage>()
+            where TLanguage : class, ILanguageDefinition => this;
+
         public IPluginRegistry AddOutboundHttpInterceptor(IOutboundHttpInterceptor interceptor) => this;
 
         public IPluginRegistry AddEventHandler<TEvent>(IEventHandler<TEvent> handler)
@@ -437,7 +406,7 @@ public sealed class ModuleRegistrationTests
 
         public string PluginVersion => "0.1.0";
 
-        public string HostContractVersion => "0.3.0";
+        public string HostContractVersion => "0.8.0";
 
         public CapabilitySet Capabilities { get; } = CapabilitySet.Of(
             Capability.MediaKind,

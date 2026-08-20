@@ -7,10 +7,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Registry;
 
-// Health and plugin contracts are experimental; this contributor reports on the extension pipeline and
-// carries the extensions' own contributors.
-#pragma warning disable ARX0006
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Health;
 

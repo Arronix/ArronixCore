@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Definition;
 /// feature distances, and one operator chain for all of them would be an over-claim. This declaration
 /// parameterizes the family; the strategies themselves are host code.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MatchDeclaration
 {
     /// <summary>

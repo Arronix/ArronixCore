@@ -9,11 +9,6 @@ using Arronix.Host.Configuration;
 using Arronix.Host.Media;
 using Microsoft.Extensions.Options;
 
-// Every contract stood in for here is experimental.
-#pragma warning disable ARX0006
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Tests.Support;
 

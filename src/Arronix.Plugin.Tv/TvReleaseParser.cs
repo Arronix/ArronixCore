@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
 
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -14,8 +13,8 @@ namespace Arronix.Plugin.Tv;
 /// Keys this extension writes into <see cref="ParsedRelease.AdditionalMetadata"/>.
 /// </summary>
 /// <remarks>
-/// <see cref="ParsedRelease"/> is a stable 0.1.0 DTO with a fixed member set and no coordinate slot, so the
-/// numbering this extension reads out of a title travels in its bag. The matcher prefers a strongly-typed
+/// The legacy compatibility projection has no media-specific coordinate or representation slots, so the
+/// values this extension reads travel in its media-owned bag. The matcher prefers a strongly-typed
 /// re-parse and treats these as a cross-check, which is why the keys are published rather than private.
 /// </remarks>
 public static class TvReleaseFields
@@ -46,6 +45,18 @@ public static class TvReleaseFields
 
     /// <summary>The revision marker: <c>proper</c>, <c>repack</c> or absent.</summary>
     public const string Revision = "tv.revision";
+
+    /// <summary>The legacy parser's release-source reading.</summary>
+    public const string Source = "tv.source";
+
+    /// <summary>The legacy parser's resolution reading.</summary>
+    public const string Resolution = "tv.resolution";
+
+    /// <summary>The legacy parser's video-codec reading.</summary>
+    public const string VideoCodec = "tv.videoCodec";
+
+    /// <summary>The legacy parser's audio-codec reading.</summary>
+    public const string AudioCodec = "tv.audioCodec";
 }
 
 /// <summary>
@@ -696,17 +707,27 @@ public sealed class TvReleaseParser : IReleaseParser
             extra[TvReleaseFields.Revision] = parsed.Revision;
         }
 
+        Add(extra, TvReleaseFields.Source, parsed.Source);
+        Add(extra, TvReleaseFields.Resolution, parsed.Resolution);
+        Add(extra, TvReleaseFields.VideoCodec, parsed.VideoCodec);
+        Add(extra, TvReleaseFields.AudioCodec, parsed.AudioCodec);
+
         return new ParsedRelease(
-            TvIds.MediaKind,
-            parsed.SeriesTitle,
-            parsed.Year?.ToString(CultureInfo.InvariantCulture),
-            parsed.Source,
-            parsed.VideoCodec,
-            parsed.AudioCodec,
-            parsed.Resolution,
-            parsed.ReleaseGroup,
-            parsed.Languages.Count == 0 ? null : [.. parsed.Languages],
-            new ReadOnlyDictionary<string, string>(extra));
+            MediaKind: TvIds.MediaKind,
+            Title: parsed.SeriesTitle,
+            Year: parsed.Year?.ToString(CultureInfo.InvariantCulture),
+            Quality: parsed.Source,
+            ReleaseGroup: parsed.ReleaseGroup,
+            Languages: parsed.Languages.Count == 0 ? null : [.. parsed.Languages],
+            AdditionalMetadata: new ReadOnlyDictionary<string, string>(extra));
+    }
+
+    private static void Add(IDictionary<string, string> values, string key, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            values[key] = value;
+        }
     }
 
     /// <inheritdoc />

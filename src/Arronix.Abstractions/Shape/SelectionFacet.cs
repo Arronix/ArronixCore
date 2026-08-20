@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -16,7 +15,6 @@ namespace Arronix.Abstractions.Shape;
 /// and one enumeration, and an enumeration-only vocabulary cannot express "at least this many pages".
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record SelectionFacet
 {
     /// <summary>
@@ -94,7 +92,6 @@ public sealed record SelectionFacet
 /// <summary>
 /// The shape of the answer a selection facet takes.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SelectionFacetKind
 {
     /// <summary>A choice among declared values.</summary>
@@ -110,7 +107,6 @@ public enum SelectionFacetKind
 /// <summary>
 /// Which side of a numeric threshold is kept.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ThresholdDirection
 {
     /// <summary>Values at or above the threshold are kept.</summary>
@@ -129,7 +125,6 @@ public enum ThresholdDirection
 /// the next refresh, so relaxing a profile later cannot recover what it deleted. Making a kind state
 /// which one it means turns a silent behavior into a declared one.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum FacetApplication
 {
     /// <summary>Excluded items are not created, and existing ones are removed on refresh.</summary>
@@ -155,5 +150,4 @@ public enum FacetApplication
 /// </summary>
 /// <param name="Value">The stored value.</param>
 /// <param name="Name">The display name.</param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct FacetValue(string Value, string Name);

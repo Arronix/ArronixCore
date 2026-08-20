@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Providers;
 
@@ -20,7 +19,6 @@ namespace Arronix.Abstractions.Providers;
 /// state is not discouraged; it is unrepresentable.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct ProviderInvocation(
     ProviderDefinition Definition,
     IProviderSessionStore Session,

@@ -3,10 +3,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
 
-// Shape, plugin and wire contracts are all experimental; this file derives one from the others.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Media;
 

@@ -1,5 +1,3 @@
-#pragma warning disable ARX0016 // Intent contracts are experimental; working surfaces are declared by them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; the kind description is one.
 
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Wire;

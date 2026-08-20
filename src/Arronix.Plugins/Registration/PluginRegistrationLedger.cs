@@ -1,12 +1,11 @@
 using System.Linq;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
+using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Scheduling;
 
-#pragma warning disable ARX0004 // Event contracts are experimental; this assembly records registrations of them.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
-#pragma warning disable ARX0020 // The typed media surface is experimental; this assembly records registrations of it.
 
 namespace Arronix.Plugins.Registration;
 
@@ -64,6 +63,9 @@ public sealed class PluginRegistrationLedger
     /// Gets the extension whose contributions are recorded.
     /// </summary>
     public PluginId Plugin { get; }
+
+    /// <summary>Gets the capability-scoped context supplied when registered provider types are activated.</summary>
+    public IPluginContext? ActivationContext { get; internal set; }
 
     /// <summary>
     /// Gets everything that was registered, in registration order.
@@ -179,6 +181,18 @@ public sealed class PluginRegistrationLedger
     {
         Record(typeof(IMediaTypeRegistration), registration);
         _satisfied = _satisfied.Union(satisfied);
+    }
+
+    internal void RecordProvider(ProviderTypeRegistration registration, Capability capability)
+    {
+        Record(typeof(ProviderTypeRegistration), registration);
+        _satisfied = _satisfied.Union(CapabilitySet.Of(capability));
+    }
+
+    internal void RecordLanguage(LanguageDefinitionRegistration registration)
+    {
+        Record(typeof(LanguageDefinitionRegistration), registration);
+        _satisfied = _satisfied.Union(CapabilitySet.Of(Capability.Language));
     }
 
     internal void RecordScheduledJob(IScheduledJob job, string schedule)

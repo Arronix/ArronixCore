@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Events;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Events;
 /// an event that cannot be correlated back to the operation that produced it is not observable, and
 /// an event without a timestamp cannot be ordered once it has crossed a queue.
 /// </remarks>
-[Experimental(ExperimentalContracts.Events, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IDomainEvent
 {
     /// <summary>

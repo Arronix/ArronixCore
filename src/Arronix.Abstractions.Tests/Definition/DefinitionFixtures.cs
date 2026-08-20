@@ -1,7 +1,4 @@
 // Exercises the declarative media-kind area and the shape/intent types its sections reuse.
-#pragma warning disable ARX0019
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
 
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Definition;
@@ -10,7 +7,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
 
-#pragma warning disable ARX0020 // The typed media surface is experimental; these fixtures build one.
 
 namespace Arronix.Abstractions.Tests.Definition;
 
@@ -69,20 +65,7 @@ internal static class DefinitionFixtures
                 Regex = "^(?<title>.+)$",
                 Captures = [new CaptureBinding("title", CaptureTarget.TitleText)]
             }
-        ],
-        RungResolution = new RungResolutionTable
-        {
-            Rules =
-            [
-                new RungRule
-                {
-                    RuleId = "standard",
-                    When = TagPredicate.Always,
-                    TierId = "Standard"
-                }
-            ],
-            UnknownTierId = "Unknown"
-        }
+        ]
     };
 
     internal static MatchDeclaration Matching() => new()

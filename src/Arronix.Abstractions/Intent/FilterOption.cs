@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Intent;
@@ -14,14 +13,12 @@ namespace Arronix.Abstractions.Intent;
 /// comparison is a property of the source, not of the type: a source may hold a date it cannot answer
 /// range queries against.
 /// </remarks>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record FilterOption(string FieldId, string Name, FilterOperators Operators);
 
 /// <summary>
 /// The comparisons a filter may use.
 /// </summary>
 [Flags]
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum FilterOperators
 {
     /// <summary>No comparison. The field cannot be filtered on.</summary>

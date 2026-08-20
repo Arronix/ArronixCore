@@ -60,6 +60,7 @@ public static class ArronixHostServiceCollectionExtensions
         services.AddHostFileSystem();
         services.AddArronixPlugins(configuration);
 
+        services.AddLanguageRegistry();
         services.AddMediaRegistry();
         services.AddDefinitionEngines();
         services.AddInMemoryStorage();

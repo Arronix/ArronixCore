@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
 /// What entry resolution does when more than one entry survives the cascade.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum AmbiguityPolicy
 {
     /// <summary>The match is rejected with a reason naming the contenders.</summary>

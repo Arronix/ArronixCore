@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Shape;
 /// </para>
 /// </remarks>
 [Flags]
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum MediaLevelRoles
 {
     /// <summary>No role. Valid for a purely structural level.</summary>

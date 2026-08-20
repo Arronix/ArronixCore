@@ -5,12 +5,7 @@ using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Tests.Support;
 
-// Definition, shape and intent contracts are experimental; these fixtures declare against them.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
-#pragma warning disable ARX0019
 
-#pragma warning disable ARX0020 // The typed media surface is experimental; these fixtures build one.
 
 namespace Arronix.Host.Tests.DefinitionBinding;
 
@@ -20,7 +15,7 @@ namespace Arronix.Host.Tests.DefinitionBinding;
 /// </summary>
 /// <remarks>
 /// <see cref="Sound"/> is the reference: it exercises every cross-reference family the validator checks —
-/// coordinate captures, guard references, rung rows, query tiers, a coordinate spelling, a strategy
+/// coordinate captures, guard references, query tiers, a coordinate spelling, a strategy
 /// binding, a vocabulary statement and a corpus case — against <see cref="ShapeFixtures.Layered"/>. Tests
 /// produce one malformed definition per rule by editing it with <c>with</c>, the same idiom the shape
 /// defect corpus uses.
@@ -81,27 +76,6 @@ internal static class DefinitionFixtures
                     Captures = [new CaptureBinding("title", CaptureTarget.TitleText)],
                 },
             ],
-            RungResolution = new RungResolutionTable
-            {
-                Rules =
-                [
-                    new RungRule
-                    {
-                        RuleId = "guarded-high",
-                        When = new TagPredicate(
-                        [
-                            new PredicateAtom
-                            {
-                                Subject = "guard:revision-token",
-                                Op = PredicateOp.GuardMatches,
-                            },
-                        ]),
-                        TierId = "High",
-                    },
-                    new RungRule { RuleId = "everything-else", When = TagPredicate.Always, TierId = "Low" },
-                ],
-                UnknownTierId = "Unknown",
-            },
         },
         Matching = new MatchDeclaration
         {
@@ -166,16 +140,6 @@ internal static class DefinitionFixtures
                 ],
             },
         },
-        Corpus =
-        [
-            new CorpusCase
-            {
-                CaseId = "plain-title",
-                Input = "Something 1x02",
-                ExpectedPatternId = "coordinate",
-                ExpectedQuality = "Low",
-            },
-        ],
     };
 
     /// <summary>
@@ -187,5 +151,5 @@ internal static class DefinitionFixtures
     internal static MediaKindModel WithParsing(
         this MediaKindModel model,
         Func<ParseDeclaration, ParseDeclaration> edit)
-        => model with { Parsing = edit(model.Parsing) };
+        => model with { Parsing = edit(model.Parsing!) };
 }

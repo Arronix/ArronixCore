@@ -3,10 +3,6 @@ using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
 using Arronix.Host.Storage;
 
-// Shape and wire contracts are experimental; completeness is computed from the first and published as the
-// second.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Media;
 

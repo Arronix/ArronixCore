@@ -4,8 +4,6 @@ using System.Linq;
 using Arronix.Abstractions.Naming;
 using Arronix.Common.Naming;
 
-// The naming contract is experimental; these tests exercise the platform's implementation of it.
-#pragma warning disable ARX0009
 
 namespace Arronix.Common.Tests.Naming;
 

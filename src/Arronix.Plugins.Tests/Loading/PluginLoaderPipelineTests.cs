@@ -11,7 +11,6 @@ using Arronix.Plugins.Tests.Support;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable ARX0014 // The extension model is experimental; these tests exercise it.
 
 namespace Arronix.Plugins.Tests.Loading;
 
@@ -94,7 +93,7 @@ public sealed class PluginLoaderPipelineTests
 
     private static string Manifest(
         string id,
-        string range = ">=0.3 <0.4",
+        string range = ">=0.8 <0.9",
         string entry = "Arronix.Abstractions.dll",
         string capabilities = "\"parsing\"")
         => $$"""
@@ -208,15 +207,18 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void ARangeReachingPastTheNextMinorIsQuarantinedWithTheRangeToDeclare()
+    public void ACompatibleRangeIsNotRejectedBecauseItSpansLaterMinorVersions()
     {
         var host = PluginLoader.HostContractVersion;
-        Install("alpha", Manifest("alpha", range: $">={host.Major}.{host.Minor} <{host.Major + 1}.0"));
+        Install(
+            "alpha",
+            Manifest("alpha", range: $">={host.Major}.{host.Minor} <{host.Major + 1}.0"),
+            ContractAssemblyPath);
 
         var result = CreateLoader().LoadAll().Should().ContainSingle().Which;
 
-        result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
-        result.Message.Should().Contain($">={host.Major}.{host.Minor}.0 <{host.Major}.{host.Minor + 1}.0");
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
+        result.Message.Should().Contain("no public parameterless entry module");
     }
 
     [Test]

@@ -14,9 +14,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-#pragma warning disable ARX0004 // Event contracts are experimental; the broadcaster subscribes to them.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; the broadcaster is a sink.
-#pragma warning disable ARX0015 // Provider contracts are experimental; the broadcaster observes their events.
 
 // The composition root of the Arronix server.
 //

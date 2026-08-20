@@ -1,5 +1,3 @@
-// The media-shape contracts are experimental; this extension is a reference implementer.
-#pragma warning disable ARX0013
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.Identity;

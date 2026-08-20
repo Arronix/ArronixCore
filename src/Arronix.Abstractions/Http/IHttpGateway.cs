@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
 namespace Arronix.Abstractions.Http;
@@ -23,7 +22,6 @@ namespace Arronix.Abstractions.Http;
 /// an asynchronous call underneath.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IHttpGateway
 {
     /// <summary>

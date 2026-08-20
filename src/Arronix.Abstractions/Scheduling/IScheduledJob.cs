@@ -2,12 +2,6 @@ using Arronix.Abstractions.Diagnostics;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
-// The progress reporter and the media-shape reference are experimental contracts. The job context names
-// both directly rather than smuggling them through its untyped bag: a published string key over an
-// object dictionary is not a weaker version of a typed member, it is an unchecked one.
-#pragma warning disable ARX0002
-#pragma warning disable ARX0013
-
 namespace Arronix.Abstractions.Scheduling;
 
 /// <summary>

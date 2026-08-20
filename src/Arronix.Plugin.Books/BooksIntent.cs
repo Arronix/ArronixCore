@@ -1,5 +1,3 @@
-// Shape and intent contracts are experimental; this extension is a reference implementer of both.
-#pragma warning disable ARX0013, ARX0016
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
 
@@ -142,6 +140,7 @@ public static class BooksIntent
     [
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Search,
             ActionId = SearchActionId,
             Name = "Search",
             Description = "Look for a copy of this book.",
@@ -165,6 +164,7 @@ public static class BooksIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Refresh,
             ActionId = RefreshActionId,
             Name = "Refresh",
             Description = "Re-read this author from the catalog.",
@@ -182,6 +182,7 @@ public static class BooksIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.SetMonitoring,
             ActionId = SetMonitorActionId,
             Name = "Set wanted",
             Scope = ActionScope.Selection,
@@ -196,11 +197,15 @@ public static class BooksIntent
                     FieldValueKind.Boolean,
                     true,
                     [],
-                    "true"),
+                    "true")
+                {
+                    StandardParameter = StandardMediaActionParameter.Wanted
+                },
             ],
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.SelectVariant,
             ActionId = SelectVariantActionId,
             Name = "Use this edition",
             Description = "Make this edition the one the library considers canonical.",
@@ -214,6 +219,7 @@ public static class BooksIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Rename,
             ActionId = RenameActionId,
             Name = "Rename files",
             Scope = ActionScope.Item,
@@ -225,6 +231,7 @@ public static class BooksIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Remove,
             ActionId = RemoveActionId,
             Name = "Remove",
             Scope = ActionScope.Item,

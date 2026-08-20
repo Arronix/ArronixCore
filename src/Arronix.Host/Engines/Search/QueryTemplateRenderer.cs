@@ -5,9 +5,6 @@ using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Shape;
 
-// The declaration and shape contracts the renderer reads are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Engines.Search;
 
@@ -237,14 +234,25 @@ internal static class QueryTemplateRenderer
     {
         if (element.Kind == FieldValueKind.Composite && element.Items is { } components)
         {
-            // A language-tagged text composite: the text component renders, the language component tags.
-            var text = components.FirstOrDefault(component => component.Text is { Length: > 0 })?.Text;
-            var language = components.FirstOrDefault(component => component.Language is not null)?.Language;
+            // A language-tagged value may wrap a media-owned composite. The wrapper remains one value:
+            // the first text is its query spelling and the language can live at any component depth.
+            var text = FindFirstText(element);
+            var language = FindLanguage(element);
             return new RenderedValue(text ?? string.Empty, language);
         }
 
         return new RenderedValue(FormatScalar(element), element.Language);
     }
+
+    private static string? FindFirstText(FieldValue value)
+        => value.Text ?? value.Items?
+            .Select(FindFirstText)
+            .FirstOrDefault(static text => !string.IsNullOrWhiteSpace(text));
+
+    private static Language? FindLanguage(FieldValue value)
+        => value.Language ?? value.Items?
+            .Select(FindLanguage)
+            .FirstOrDefault(static language => language is not null);
 
     private static string FormatScalar(FieldValue value)
     {
@@ -337,12 +345,11 @@ internal static class QueryTemplateRenderer
 
     private static string CleanForQuery(string text)
     {
-        var spelled = text.Replace("&", " and ", StringComparison.Ordinal);
-        var builder = new StringBuilder(spelled.Length);
+        var builder = new StringBuilder(text.Length);
 
-        foreach (var character in spelled)
+        foreach (var character in text)
         {
-            builder.Append(character is ':' or ';' or ',' or '!' or '?' or '\'' or '"' ? ' ' : character);
+            builder.Append(character is ':' or ';' or ',' or '!' or '?' or '\'' or '"' or '&' ? ' ' : character);
         }
 
         return CollapseWhitespace(builder.ToString());

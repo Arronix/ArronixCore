@@ -4,8 +4,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Host.Configuration;
 using Microsoft.Extensions.Options;
 
-// The plugin contracts are experimental; throttle keys are synthesized from the capability vocabulary.
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Scheduling;
 

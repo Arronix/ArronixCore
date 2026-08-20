@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Plugins;
@@ -23,7 +22,6 @@ namespace Arronix.Abstractions.Wire;
 /// declaration, three consumers.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MediaKindDescriptor
 {
     /// <summary>

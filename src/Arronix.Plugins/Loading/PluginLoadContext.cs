@@ -6,8 +6,6 @@ using System.Runtime.Loader;
 using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Plugins;
 
-#pragma warning disable ARX0007 // The hosting contracts are experimental; this assembly consumes them.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
 
 namespace Arronix.Plugins.Loading;
 
@@ -55,7 +53,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
     ];
 
     /// <summary>
-    /// The one contract assembly that must unify with the host's instance.
+    /// The root contract assembly that must unify with the host's instance.
     /// </summary>
     private const string SharedContractAssembly = "Arronix.Abstractions";
 
@@ -169,7 +167,8 @@ public sealed class PluginLoadContext : AssemblyLoadContext
 
         // 2. The one shared contract assembly, plus the shared framework: yield to the default context so
         //    the extension's types and the host's types are the same types.
-        if (string.Equals(name, SharedContractAssembly, StringComparison.Ordinal) || IsSharedFramework(name))
+        if (string.Equals(name, SharedContractAssembly, StringComparison.Ordinal)
+            || IsSharedFramework(name))
         {
             return null;
         }

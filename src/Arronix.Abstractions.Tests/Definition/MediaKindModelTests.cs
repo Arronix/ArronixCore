@@ -1,6 +1,4 @@
 // Exercises the per-kind engine inputs a typed media kind carries.
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020
 
 using System.Linq;
 using Arronix.Abstractions.Definition;
@@ -27,11 +25,8 @@ public class MediaKindModelTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(model.Quality, Is.SameAs(QualityDeclaration.LadderDerived));
             Assert.That(model.Naming, Is.SameAs(NamingDeclaration.Default));
             Assert.That(model.Notifications, Is.SameAs(NotificationDeclaration.Default));
-            Assert.That(model.Catalog, Is.Null, "A kind without catalog authority declares none.");
-            Assert.That(model.Corpus, Is.Empty);
         });
     }
 
@@ -57,19 +52,7 @@ public class MediaKindModelTests
             Has.No.Member("Shape")
                 .And.No.Member("Intent")
                 .And.No.Member("Strategies")
-                .And.No.Member("RequiredVocabulary"));
-    }
-
-    [Test]
-    public void CorpusCasesPinOnlyWhatTheyState()
-    {
-        var sparse = new CorpusCase { CaseId = "bare", Input = "Some.Release.Text" };
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(sparse.ExpectedPatternId, Is.Null);
-            Assert.That(sparse.ExpectedQuality, Is.Null);
-            Assert.That(sparse.ExpectedTitle, Is.Null);
-        });
+                .And.No.Member("RequiredVocabulary")
+                .And.No.Member("Quality"));
     }
 }

@@ -5,11 +5,9 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Host.Media.Typed;
+using Arronix.Host.Engines.Parsing;
+using Arronix.Host.Providers;
 
-// Shape, plugin and typed-media contracts are experimental; the binder is where they meet the registry.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Media;
 
@@ -18,8 +16,8 @@ namespace Arronix.Host.Media;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the typed registration path end to end. The registration's two type arguments are reopened, the
-/// item type is read and its configuration call replayed to produce the descriptors, the result is resolved
+/// This is the typed registration path end to end. The registration's three domain types and parser type are reopened, the
+/// item type and definition's typed values are read to produce the descriptors, the result is resolved
 /// into a <see cref="ValidatedDefinition"/> (shape first, then every section cross-reference), each engine
 /// the catalog carries is constructed for the kind, and the whole is admitted through
 /// <see cref="MediaKindRegistry.TryRegister"/> as an ordinary <see cref="MediaKindContribution"/> — which is
@@ -42,6 +40,7 @@ public sealed class MediaTypeBinder
 {
     private readonly MediaKindRegistry _kinds;
     private readonly DefinitionEngineCatalog _engines;
+    private readonly ProviderRegistry _providers;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MediaTypeBinder"/> class.
@@ -50,12 +49,23 @@ public sealed class MediaTypeBinder
     /// <param name="engines">The engines this build can execute a kind's model with.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     public MediaTypeBinder(MediaKindRegistry kinds, DefinitionEngineCatalog engines)
+        : this(kinds, engines, new ProviderRegistry())
+    {
+    }
+
+    /// <summary>Initializes a binder with the provider registry supplying catalog identity readers.</summary>
+    public MediaTypeBinder(
+        MediaKindRegistry kinds,
+        DefinitionEngineCatalog engines,
+        ProviderRegistry providers)
     {
         ArgumentNullException.ThrowIfNull(kinds);
         ArgumentNullException.ThrowIfNull(engines);
+        ArgumentNullException.ThrowIfNull(providers);
 
         _kinds = kinds;
         _engines = engines;
+        _providers = providers;
     }
 
     /// <summary>
@@ -104,7 +114,7 @@ public sealed class MediaTypeBinder
         PluginId plugin,
         string pluginVersion,
         CapabilitySet capabilities,
-        IMediaType derived,
+        IMediaTypeRuntime derived,
         out RegisteredMediaKind? registered,
         out IReadOnlyList<ShapeDefect> defects)
     {
@@ -119,7 +129,7 @@ public sealed class MediaTypeBinder
 
         var found = new List<ShapeDefect>();
         var items = Build(_engines.ItemStore, validated!, "engines.itemStore", "item store (E9)", found);
-        var parser = Build(_engines.Parser, validated!, "engines.parser", "title parse engine (E2)", found);
+        var parser = new TypedReleaseParserAdapter(derived, _providers);
         var matcher = Build(_engines.Matcher, validated!, "engines.matcher", "match engine (E5)", found);
         var planner = Build(_engines.QueryPlanner, validated!, "engines.queryPlanner", "query templater (E6)", found);
 
@@ -144,6 +154,7 @@ public sealed class MediaTypeBinder
 
         var bundle = new MediaKindContribution
         {
+            MediaType = derived,
             Plugin = plugin,
             PluginVersion = pluginVersion,
             Capabilities = capabilities,
@@ -230,14 +241,17 @@ public sealed class MediaTypeBinder
     /// Stateless, so one instance serves every kind. This is the only place in the host that needs both type
     /// arguments statically; everything else holds the kind-blind registration.
     /// </remarks>
-    private sealed class DerivationBinder : IMediaTypeBinder<IMediaType>
+    private sealed class DerivationBinder : IMediaTypeBinder<IMediaTypeRuntime>
     {
         internal static readonly DerivationBinder Instance = new();
 
         /// <inheritdoc />
-        public IMediaType Bind<TItem, TType>()
-            where TItem : IMediaItem
-            where TType : IMediaType<TItem>
-            => MediaTypeModelFactory.Build<TItem, TType>();
+        public IMediaTypeRuntime Bind<TItem, TTarget, TRelease, TParser>(
+            MediaType<TItem, TTarget, TRelease, TParser> definition)
+            where TItem : class, IMediaItem
+            where TTarget : class, IReleaseTarget
+            where TRelease : class, IRelease
+            where TParser : Arronix.Abstractions.Parsing.IReleaseParser<TRelease>
+            => MediaTypeModelFactory.Build<TItem, TTarget, TRelease, TParser>(definition);
     }
 }

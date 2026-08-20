@@ -3,7 +3,7 @@
   "id": "books",
   "name": "Books",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.3 <0.4" },
+  "contracts": { "arronix": ">=0.8 <0.9" },
   "entryAssembly": "Arronix.Plugin.Books.dll",
   "mediaKinds": ["books"],
   "identifiers": ["goodreads", "isbn13", "asin"],
@@ -13,8 +13,7 @@
     "matching",
     "indexing",
     "quality",
-    "renaming",
-    "metadata"
+    "renaming"
   ],
   "tokens": [
     {

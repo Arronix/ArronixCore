@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Plugins;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Plugins;
 /// which is reverse-domain friendly without requiring it.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct PluginId
 {
     private PluginId(string value) => Value = value;

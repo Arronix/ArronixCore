@@ -5,8 +5,6 @@ using Arronix.Common.Naming;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
-// The naming contract is experimental. This file registers the platform's default implementation of it.
-#pragma warning disable ARX0009
 
 namespace Arronix.Common.Composition;
 

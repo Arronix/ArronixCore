@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Telemetry;
 
@@ -21,7 +20,6 @@ namespace Arronix.Abstractions.Telemetry;
 /// its context — keeps one source of time, and so these helpers stay testable.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Telemetry, UrlFormat = ExperimentalContracts.UrlFormat)]
 public static class TelemetryEmitterExtensions
 {
     /// <summary>

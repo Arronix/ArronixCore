@@ -1,13 +1,8 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests exercise the declaration.
-#pragma warning disable ARX0014 // Plugin contracts are experimental; the contribution is one of them.
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020 // Definition contracts are experimental; these tests exercise the declaration.
 
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using Arronix.Abstractions.Parsing;
-using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Composition;
@@ -118,7 +113,7 @@ internal static class MoviesEngines
                     Capability.Renaming,
                     Capability.Metadata,
                     Capability.Notification),
-                Registration = MediaTypeRegistration.For<Movie, Movies>(),
+                Registration = new Movies().Capture(),
             },
             out var registered,
             out var defects);

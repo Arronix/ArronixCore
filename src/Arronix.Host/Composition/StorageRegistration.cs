@@ -1,4 +1,5 @@
 using Arronix.Host.Storage;
+using Arronix.Host.Intent;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -22,6 +23,7 @@ internal static class StorageRegistration
     internal static IServiceCollection AddInMemoryStorage(this IServiceCollection services)
     {
         services.TryAddSingleton<IMediaStore, InMemoryMediaStore>();
+        services.TryAddSingleton<IStandardActionDispatcher, StandardActionDispatcher>();
         return services;
     }
 }

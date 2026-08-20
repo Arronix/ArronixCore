@@ -135,17 +135,16 @@ public class RejectedReleaseTests
     public void RefusesTheObfuscatedFileNameSoTheFolderIsTried(string fileName)
         => Assert.That(MoviesEngines.Parse(fileName), Is.Null, fileName);
 
-    [TestCase("Some.Hashed.Release.2018.720p.WEB-DL.AAC2.0.H.264-Mercury", "Some Hashed Release", "Mercury")]
-    [TestCase("Movie.2018.DVDRip.XviD-RADARR", "Movie", "RADARR")]
-    [TestCase("Movie.2018.1080p.BluRay.x264-RADARR", "Movie", "RADARR")]
-    [TestCase("Movie.2018.1080p.BluRay.x264", "Movie", null)]
-    [TestCase("Movie 2018 720p WEB-DL DD5 1 H 264-ECI", "Movie", "ECI")]
-    [TestCase("Movie.2018.1080p.WEB-DL.DD5.1.H264-RARBG", "Movie", "RARBG")]
-    [TestCase("Movie.Title.2018.720p.HDTV.H.264", "Movie Title", null)]
+    [TestCase("Some.Hashed.Release.2018.720p.WEB-DL.AAC2.0.H.264-Mercury", "Some Hashed Release")]
+    [TestCase("Movie.2018.DVDRip.XviD-RADARR", "Movie")]
+    [TestCase("Movie.2018.1080p.BluRay.x264-RADARR", "Movie")]
+    [TestCase("Movie.2018.1080p.BluRay.x264", "Movie")]
+    [TestCase("Movie 2018 720p WEB-DL DD5 1 H 264-ECI", "Movie")]
+    [TestCase("Movie.2018.1080p.WEB-DL.DD5.1.H264-RARBG", "Movie")]
+    [TestCase("Movie.Title.2018.720p.HDTV.H.264", "Movie Title")]
     public void ReadsTheContainingFolderWhenTheFileNameIsObfuscated(
         string folderName,
-        string title,
-        string? releaseGroup)
+        string title)
     {
         var parsed = MoviesEngines.Parse(folderName);
 
@@ -153,7 +152,6 @@ public class RejectedReleaseTests
         {
             Assert.That(parsed, Is.Not.Null, folderName);
             Assert.That(parsed!.Title, Is.EqualTo(title));
-            Assert.That(parsed.ReleaseGroup, Is.EqualTo(releaseGroup));
         });
     }
 }

@@ -5,9 +5,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Registration;
 using Arronix.Plugins.Tests.Support;
 
-#pragma warning disable ARX0014 // The extension model is experimental; these tests exercise it.
-#pragma warning disable ARX0019 // Definition contracts are experimental; these tests build one.
-#pragma warning disable ARX0020 // The typed media surface is experimental; these tests register one.
 
 namespace Arronix.Plugins.Tests.Registration;
 
@@ -64,7 +61,7 @@ public sealed class MediaTypeRegistrationTests
         var ledger = new PluginRegistrationLedger(Plugin);
         var registry = new PluginRegistry(Plugin, CapabilitySet.Of(RequiredGrant), ledger);
 
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
+        var register = () => registry.AddMediaType<ExampleKind>();
 
         register.Should().Throw<InvalidOperationException>()
             .WithMessage("*cannot tell which capabilities*");
@@ -77,7 +74,7 @@ public sealed class MediaTypeRegistrationTests
         var (registry, _) = Create(RequiredGrant);
         registry.Seal();
 
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
+        var register = () => registry.AddMediaType<ExampleKind>();
 
         register.Should().Throw<InvalidOperationException>()
             .WithMessage("*after its configuration returned*");
@@ -88,7 +85,7 @@ public sealed class MediaTypeRegistrationTests
     {
         var (registry, ledger) = Create(Capability.Parsing, Capability.Matching, Capability.Indexing);
 
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
+        var register = () => registry.AddMediaType<ExampleKind>();
 
         var failure = register.Should().Throw<PluginCapabilityException>().Which;
         failure.ErrorCode.Should().Be(CoreErrorCode.PluginCapabilityMissing);
@@ -105,7 +102,7 @@ public sealed class MediaTypeRegistrationTests
     {
         var (registry, ledger) = Create([.. RequiredGrant.Where(capability => capability != missing)]);
 
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
+        var register = () => registry.AddMediaType<ExampleKind>();
 
         var failure = register.Should().Throw<PluginCapabilityException>().Which;
         failure.Required.Should().Be(missing);
@@ -121,7 +118,7 @@ public sealed class MediaTypeRegistrationTests
     {
         var (registry, ledger) = Create(RequiredGrant);
 
-        registry.AddMediaType<ExampleItem, ExampleKind>().Should().BeSameAs(registry);
+        registry.AddMediaType<ExampleKind>().Should().BeSameAs(registry);
 
         ledger.Count.Should().Be(1);
         ledger.Single<IMediaTypeRegistration>().Should().NotBeNull();
@@ -136,7 +133,7 @@ public sealed class MediaTypeRegistrationTests
     {
         var (registry, ledger) = Create([.. RequiredGrant, Capability.Quality]);
 
-        registry.AddMediaType<ExampleItem, ExampleKind>();
+        registry.AddMediaType<ExampleKind>();
 
         ledger.SatisfiedCapabilities.Has(Capability.Quality).Should().BeFalse(
             "a ladder-derived quality default is host behavior, not a contribution");
@@ -149,34 +146,11 @@ public sealed class MediaTypeRegistrationTests
     }
 
     [Test]
-    public void ACatalogSectionDemandsTheMetadataCapability()
-    {
-        var (registry, _) = Create(MediaKindModels.WithCatalog(), RequiredGrant);
-
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
-
-        var failure = register.Should().Throw<PluginCapabilityException>().Which;
-        failure.Required.Should().Be(Capability.Metadata);
-        failure.ContractName.Should().Be("MediaKindModel.Catalog");
-    }
-
-    [Test]
-    public void ANonDefaultQualitySectionDemandsTheQualityCapability()
-    {
-        var (registry, _) = Create(MediaKindModels.WithQuality(), RequiredGrant);
-
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
-
-        register.Should().Throw<PluginCapabilityException>()
-            .Which.Required.Should().Be(Capability.Quality);
-    }
-
-    [Test]
     public void ANonDefaultNamingSectionDemandsTheRenamingCapability()
     {
         var (registry, _) = Create(MediaKindModels.WithNaming(), RequiredGrant);
 
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
+        var register = () => registry.AddMediaType<ExampleKind>();
 
         register.Should().Throw<PluginCapabilityException>()
             .Which.Required.Should().Be(Capability.Renaming);
@@ -187,7 +161,7 @@ public sealed class MediaTypeRegistrationTests
     {
         var (registry, _) = Create(MediaKindModels.WithNotifications(), RequiredGrant);
 
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
+        var register = () => registry.AddMediaType<ExampleKind>();
 
         register.Should().Throw<PluginCapabilityException>()
             .Which.Required.Should().Be(Capability.Notification);
@@ -202,21 +176,18 @@ public sealed class MediaTypeRegistrationTests
             Capability.Parsing,
             Capability.Matching,
             Capability.Indexing,
-            Capability.Quality,
             Capability.Renaming,
-            Capability.Metadata,
             Capability.Notification,
         };
-        var everySection = MediaKindModels.WithCatalog() with
+        var everySection = MediaKindModels.RequiredSectionsOnly() with
         {
-            Quality = MediaKindModels.WithQuality().Quality,
             Naming = MediaKindModels.WithNaming().Naming,
             Notifications = MediaKindModels.WithNotifications().Notifications,
         };
 
         var (registry, ledger) = Create(everySection, granted);
 
-        registry.AddMediaType<ExampleItem, ExampleKind>();
+        registry.AddMediaType<ExampleKind>();
 
         ledger.TryVerifyDeclaredCapabilities(CapabilitySet.Of(granted), out var unsatisfied).Should().BeTrue();
         unsatisfied.Should().BeEmpty();
@@ -225,11 +196,11 @@ public sealed class MediaTypeRegistrationTests
     [Test]
     public void ARefusalChecksEveryDemandBeforeRecordingAnything()
     {
-        // Metadata is the last demand checked; the earlier ones all pass. If anything had been recorded
+        // Naming is an additional demand. If anything had been recorded
         // before the failing check, the ledger would hold a contribution from a refused configuration.
-        var (registry, ledger) = Create(MediaKindModels.WithCatalog(), RequiredGrant);
+        var (registry, ledger) = Create(MediaKindModels.WithNaming(), RequiredGrant);
 
-        var register = () => registry.AddMediaType<ExampleItem, ExampleKind>();
+        var register = () => registry.AddMediaType<ExampleKind>();
 
         register.Should().Throw<PluginCapabilityException>();
         ledger.Count.Should().Be(0);

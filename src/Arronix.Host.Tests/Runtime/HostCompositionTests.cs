@@ -17,10 +17,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
-// File system, health and hosting contracts are experimental.
-#pragma warning disable ARX0005
-#pragma warning disable ARX0006
-#pragma warning disable ARX0007
 
 namespace Arronix.Host.Tests.Runtime;
 

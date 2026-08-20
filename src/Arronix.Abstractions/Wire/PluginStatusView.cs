@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Wire;
 
@@ -26,7 +25,6 @@ namespace Arronix.Abstractions.Wire;
 /// extension model that means uninstalling an extension destroys the user's configuration.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record PluginStatusView(
     string Id,
     string? Name,

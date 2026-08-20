@@ -2,9 +2,6 @@ using System.Linq;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Wire;
 
-// The health contribution contract and the wire contracts are both experimental.
-#pragma warning disable ARX0006
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Health;
 

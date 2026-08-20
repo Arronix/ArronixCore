@@ -5,10 +5,6 @@ using Arronix.Abstractions.Shape;
 using Arronix.Host.Media.Typed;
 using FluentAssertions;
 
-// Every contract these tests read is experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.TypedMedia;
 
@@ -24,7 +20,8 @@ namespace Arronix.Host.Tests.TypedMedia;
 [TestFixture]
 internal sealed class CarriedModelTests
 {
-    private static MediaKindModel Model => MediaTypeModelFactory.Build<Work, Works>().Model;
+    private static MediaKindModel Model =>
+        MediaTypeModelFactory.Build<Work, WorkTarget, WorkRelease, WorkParser, Works>().Model;
 
     [Test]
     public void MatchLayersDeriveTheirKeyTemplateFromAnExpression()
@@ -151,10 +148,10 @@ internal sealed class CarriedModelTests
         Assert.Multiple(() =>
         {
             naming.DefaultTemplates["file"].Should().Be("{Work Title} ({Work Year})");
-            naming.DefaultTemplates["workCollection-folder"].Should().Be("{WorkCollection TitleThe}");
-            naming.FolderSpine.Should().Be("{root}/[workCollection-folder/]{folder}");
+            naming.DefaultTemplates["collection-folder"].Should().Be("{Collection TitleThe}");
+            naming.FolderSpine.Should().Be("{root}/[collection-folder/]{folder}");
             naming.Selection.Should().ContainSingle()
-                .Which.InsertSpineSegment.Should().Be("workCollection-folder");
+                .Which.InsertSpineSegment.Should().Be("collection-folder");
             naming.MultiUnitStyles.Should().BeEmpty();
             naming.Fallbacks.Select(fallback => fallback.Token).Should().Contain("originalTitle");
         });
@@ -227,30 +224,8 @@ internal sealed class CarriedModelTests
     }
 
     [Test]
-    public void QualityCarriesItsDefaultsAndLeavesTheUnreachableRuleAlone()
-    {
-        Assert.Multiple(() =>
-        {
-            Model.Quality.Defaults.Should().HaveCount(2);
-            Model.Quality.Defaults.Should().OnlyContain(row => row.IgnoreStatedResolution);
-            Model.Quality.Fallback.Should().Be(RungFallback.RoundUp);
-        });
-    }
-
-    [Test]
-    public void TheReleaseModelsAndTheCorpusAreCarriedVerbatim()
-    {
-        Assert.Multiple(() =>
-        {
-            Model.Parsing.TitlePatterns.Should().ContainSingle()
-                .Which.PatternId.Should().Be("title-year");
-
-            // A strategy is a method: what used to be a binding, a role, a parameter dictionary, a
-            // requirement row and a load-time resolution rule is a delegate.
-            Model.Respace.Should().NotBeNull();
-            Model.Respace!("S.W.A.T").Should().Be("S W A T");
-        });
-    }
+    public void TheTypedParserDoesNotProduceALegacyParseModel() =>
+        Model.Parsing.Should().BeNull();
 
     private static INamingTemplateFacts Facts(params string[] fieldIds) => new StubFacts(fieldIds);
 

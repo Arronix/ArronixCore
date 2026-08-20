@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -6,11 +5,10 @@ namespace Arronix.Abstractions.Definition;
 /// The comparisons a predicate atom may apply.
 /// </summary>
 /// <remarks>
-/// This enum is append-only, and every addition must be justified by a resolution-table row in the
-/// design document that grows it. A definition using a member this host does not know is refused at
+/// This enum is append-only, and every addition must be justified by a concrete declaration use case in
+/// the design document that grows it. A definition using a member this host does not know is refused at
 /// load, and the ordinal it used is what vocabulary negotiation reports.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum PredicateOp
 {
     /// <summary>The subject equals the single value.</summary>

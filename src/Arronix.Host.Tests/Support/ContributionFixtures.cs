@@ -2,9 +2,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Media;
 
-// Shape and plugin contracts are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Tests.Support;
 

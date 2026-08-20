@@ -2,9 +2,6 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
 
-// The plugin contracts are experimental; the runtime state describes one extension's progress through the
-// load pipeline.
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Runtime;
 

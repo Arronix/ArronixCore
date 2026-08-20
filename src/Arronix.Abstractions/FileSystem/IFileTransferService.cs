@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.FileSystem;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// transfer within the roots it was granted.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IFileTransferService
 {
     /// <summary>

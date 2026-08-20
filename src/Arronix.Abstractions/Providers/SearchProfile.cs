@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Providers;
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Providers;
 /// hand-mapping one vocabulary onto another.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record SearchProfile
 {
     /// <summary>
@@ -55,5 +53,4 @@ public sealed record SearchProfile
 /// <param name="Term">The argument kind.</param>
 /// <param name="ComponentId">The coordinate component, when the term is an ordinal.</param>
 /// <param name="WireName">The parameter name the source expects.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct SearchTermBinding(SearchTerm Term, string? ComponentId, string WireName);

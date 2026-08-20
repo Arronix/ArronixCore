@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.FileSystem;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// source, so deleting the source later frees nothing.
 /// </remarks>
 [Flags]
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum FileTransferMode
 {
     /// <summary>Nothing was transferred.</summary>

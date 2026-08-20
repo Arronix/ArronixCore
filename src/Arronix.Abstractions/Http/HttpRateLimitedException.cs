@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Headers;
 
 namespace Arronix.Abstractions.Http;
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Http;
 /// any machine not configured in English.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class HttpRateLimitedException : HttpGatewayException
 {
     /// <summary>

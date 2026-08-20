@@ -1,15 +1,11 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests exercise the derived model.
-#pragma warning disable ARX0015 // Provider contracts are experimental; these tests exercise the derived model.
-#pragma warning disable ARX0019 // Definition contracts are experimental; these tests exercise the derived model.
-#pragma warning disable ARX0020 // Media contracts are experimental; these tests exercise the typed surface.
-#pragma warning disable ARX0021 // Quality contracts are experimental; these tests exercise the axes model.
 
 using System.Linq;
 using System.Text.RegularExpressions;
 using Arronix.Abstractions.Definition;
+using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
-using Arronix.Abstractions.Quality.Families;
 using Arronix.Abstractions.Shape;
+using Arronix.Format.Video;
 using Arronix.Plugin.Movies.Definition;
 using Arronix.Plugin.Movies.Tests.Support;
 
@@ -31,15 +27,30 @@ public class DeclarationSectionTests
     // ---- root -----------------------------------------------------------------------------------
 
     [Test]
+    public void CatalogCandidatesCarryArtworkWithoutPrescribingALayout()
+    {
+        var workbench = MoviesDeclaration.Intent.Workbenches.Single(candidate =>
+            string.Equals(candidate.WorkbenchId, "add-from-catalog", StringComparison.Ordinal));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(workbench.Subject, Is.EqualTo(WorkbenchSubject.CatalogCandidates));
+            Assert.That(
+                workbench.Columns.Single(column => column.Field.FieldId == "artwork").Field.ValueKind,
+                Is.EqualTo(FieldValueKind.Artwork));
+        });
+    }
+
+    [Test]
     public void CarriesEverySectionTheHostNeeds()
         => Assert.Multiple(() =>
         {
             Assert.That(MoviesDeclaration.Shape, Is.Not.Null);
             Assert.That(MoviesDeclaration.Intent, Is.Not.Null);
-            Assert.That(MoviesDeclaration.Carried.Parsing, Is.Not.Null);
+            Assert.That(MoviesDeclaration.Carried.Parsing, Is.Null);
+            Assert.That(MoviesDeclaration.Model.ParserType, Is.EqualTo(typeof(MovieReleaseParser)));
             Assert.That(MoviesDeclaration.Carried.Matching, Is.Not.Null);
             Assert.That(MoviesDeclaration.Carried.Querying, Is.Not.Null);
-            Assert.That(MoviesDeclaration.Carried.Catalog, Is.Not.Null);
         });
 
     /// <summary>
@@ -58,8 +69,7 @@ public class DeclarationSectionTests
     public void BindsTheDottedTitleRewriteAsAMethodRatherThanAsANamedStrategy(string input, string expected)
         => Assert.Multiple(() =>
         {
-            Assert.That(MoviesDeclaration.Carried.Respace, Is.Not.Null);
-            Assert.That(MoviesDeclaration.Carried.Respace!(input), Is.EqualTo(expected));
+            Assert.That(Movies.RespaceDottedAcronym(input), Is.EqualTo(expected));
         });
 
     /// <summary>
@@ -68,7 +78,7 @@ public class DeclarationSectionTests
     /// </summary>
     [Test]
     public void RegistersNoPerKindCodeEscape()
-        => Assert.That(MoviesDeclaration.Parsing.EscapeIds, Is.Empty);
+        => Assert.That(MoviesDeclaration.Carried.Parsing, Is.Null);
 
     /// <summary>
     /// <b>The hand-maintained coupling is gone.</b> The old declaration asked its author to track by hand
@@ -88,129 +98,26 @@ public class DeclarationSectionTests
 
     // ---- parsing --------------------------------------------------------------------------------
 
-    [Test]
-    public void CompilesEveryDeclaredExpression()
-    {
-        var expressions = MoviesDeclaration.Parsing.Guards.Select(static guard => guard.Regex)
-            .Concat(MoviesDeclaration.Parsing.TitlePatterns.Select(static pattern => pattern.Regex))
-            .Concat(MoviesDeclaration.Parsing.TokenTables.SelectMany(static table =>
-                table.Rows.Select(static row => row.Pattern)))
-            .Concat(MoviesDeclaration.Parsing.Normalization.QueryRewrites.Select(static rule => rule.Regex))
-            .Append(MoviesDeclaration.Parsing.Normalization.StopWordExpression!);
-
-        foreach (var expression in expressions)
-        {
-            Assert.DoesNotThrow(
-                () => _ = new Regex(expression, RegexOptions.None, TimeSpan.FromSeconds(1)),
-                expression);
-        }
-    }
-
     /// <summary>
-    /// <b>The rung-resolution table is gone, and this is what its absence has to look like.</b> A hundred
-    /// and one rows plus a seven-row container fallback used to collapse tag evidence into one of thirty
-    /// names before anything could reason about it. There is nothing left to collapse evidence to, so the
-    /// declaration carries no table at all — not an empty one, which would still be a slot somebody could
-    /// refill.
+    /// The media type declares the format by its typed representation. The wire descriptor carries only
+    /// the stable family identity and extensions; executable representation and policy types stay on the
+    /// typed runtime model.
     /// </summary>
     [Test]
-    public void CarriesNoRungResolutionTableAtAll()
-        => Assert.That(
-            MoviesDeclaration.Parsing.RungResolution,
-            Is.Null,
-            "A quality model that reads evidence onto typed axes has nothing for a rung table to resolve.");
-
-    /// <summary>
-    /// The family declares a quality model instead, and it is the shared video one rather than a movie's
-    /// own — which is the whole placement decision: a stream download at 1080 lines is the same thing
-    /// whether the work is a film or an episode.
-    /// </summary>
-    [Test]
-    public void DeclaresTheSharedVideoQualityModelRatherThanALadder()
+    public void DeclaresVideoAsARepresentationRatherThanAHostQualityModel()
         => Assert.Multiple(() =>
         {
             Assert.That(MoviesDeclaration.Video.Ladder, Is.Empty);
-            Assert.That(MoviesDeclaration.Video.Unknown, Is.Null, "An axis reading carries its own absence.");
-            Assert.That(MoviesDeclaration.Quality.Family, Is.EqualTo(VideoQualityType.Family));
-            Assert.That(MoviesDeclaration.Quality.FactsType, Is.EqualTo(typeof(VideoQuality)));
+            Assert.That(MoviesDeclaration.Video.Unknown, Is.Null);
+            Assert.That(MoviesDeclaration.Model.HasReleasePolicy, Is.True);
+            Assert.That(
+                MoviesDeclaration.Model.ReleaseType,
+                Is.EqualTo(typeof(Release<Video>)));
         });
 
-    /// <summary>
-    /// Every axis the shared family declares, in declaration order. Listed rather than derived: an axis set
-    /// that checked itself against itself would pass while missing an axis.
-    /// </summary>
     [Test]
-    public void ReadsTwelveAxesOffTheSharedFactsType()
-        => Assert.That(
-            MoviesDeclaration.Quality.Axes.Select(static axis => axis.Id.Value),
-            Is.EqualTo(new[]
-            {
-                "Origin", "Generation", "Resolution", "DynamicRange", "Audio", "Codec", "FrameRate",
-                "Packaging", "Flaws", "Corrections", "Mislabels", "Repacked",
-            }));
-
-    /// <summary>
-    /// <b>Four guard classes left the per-kind residue upwards rather than sideways.</b> Each used to be a
-    /// movie identifier standing in for a fact about video, and each is now read from typed evidence by a
-    /// family every kind shares. A refinement seam that absorbed them instead would have moved the strings
-    /// rather than removed them.
-    /// </summary>
-    [TestCase("german-remux", TestName = "the dual-language disc rule reads the typed language claims")]
-    [TestCase("mpeg2", TestName = "the transport-stream rule reads the typed codec")]
-    [TestCase("container-web", TestName = "the stream-container rule reads the typed container")]
-    [TestCase("container-disc", TestName = "the disc-container rule reads the typed container")]
-    [TestCase("container-dvd", TestName = "the program-stream rule reads the typed container")]
-    [TestCase("px-848x480", TestName = "a pixel raster is a resolution claim the host scanner reads")]
-    [TestCase("px-1280x720", TestName = "a pixel raster is a resolution claim the host scanner reads")]
-    [TestCase("px-1920x1080", TestName = "a pixel raster is a resolution claim the host scanner reads")]
-    public void DeclaresNoGuardForAFactTheSharedFamilyNowReads(string guardId)
-        => Assert.That(
-            MoviesDeclaration.Parsing.Guards.Select(static guard => guard.GuardId),
-            Does.Not.Contain(guardId));
-
-    /// <summary>
-    /// What is left is the dialect, and only the dialect: bracketed fan-subtitling conventions, the scene's
-    /// whole-disc naming habit, a legacy widescreen spelling, the resolution words a bracketed title puts
-    /// outside the shared scan's reach, and the edition alternation that is not a quality guard at all.
-    /// </summary>
-    [Test]
-    public void KeepsOnlyTheGuardsThatAreGenuinelyAMovieNamingDialect()
-        => Assert.That(
-            MoviesDeclaration.Parsing.Guards.Select(static guard => guard.GuardId),
-            Is.EqualTo(new[]
-            {
-                MoviesVideoRefinement.WholeDiscGuard,
-                MoviesVideoRefinement.AnimeDiscGuard,
-                MoviesVideoRefinement.AnimeStreamGuard,
-                MoviesVideoRefinement.HighResolutionWidescreenGuard,
-                "text-480p", "text-720p", "text-1080p", "text-2160p",
-                "edition",
-            }));
-
-    /// <summary>
-    /// The refinement reads no guard the declaration does not declare, and the declaration declares no
-    /// quality guard the refinement does not read. Naming them through constants is what makes the two
-    /// halves fail to build rather than fail silently.
-    /// </summary>
-    [Test]
-    public void ReadsEveryQualityGuardTheDeclarationDeclares()
-    {
-        var declared = MoviesDeclaration.Parsing.Guards
-            .Select(static guard => guard.GuardId)
-            .Where(static id => !string.Equals(id, "edition", StringComparison.Ordinal))
-            .ToArray();
-
-        var read = new HashSet<string>(StringComparer.Ordinal)
-        {
-            MoviesVideoRefinement.WholeDiscGuard,
-            MoviesVideoRefinement.AnimeDiscGuard,
-            MoviesVideoRefinement.AnimeStreamGuard,
-            MoviesVideoRefinement.HighResolutionWidescreenGuard,
-            "text-480p", "text-720p", "text-1080p", "text-2160p",
-        };
-
-        Assert.That(declared, Is.SubsetOf(read));
-    }
+    public void HasNoHostInterpretedParserVocabulary()
+        => Assert.That(MoviesDeclaration.Carried.Parsing, Is.Null);
 
     // ---- matching -------------------------------------------------------------------------------
 
@@ -439,7 +346,7 @@ public class DeclarationSectionTests
         {
             Assert.That(
                 naming.DefaultTemplates["file"],
-                Is.EqualTo("{Movie Title} ({Movie Year}) {Quality Full}"));
+                Is.EqualTo("{Movie Title} ({Movie Year})"));
 
             // The identity stamp Plex and Jellyfin read. The surveyed application spells it with the
             // catalog's own name — a media kind writing a vendor into a folder — and the escaped braces
@@ -453,11 +360,10 @@ public class DeclarationSectionTests
     }
 
     /// <summary>
-    /// Every token in every default template is one the derivation publishes — except the host-owned one,
-    /// which no registry defines yet and which this pins as the open dependency it is.
+    /// Every token in every item template is derived from an item-owned property.
     /// </summary>
     [Test]
-    public void MentionsOnlyDerivedTokensExceptTheOneTheHostStillOwes()
+    public void MentionsOnlyDerivedTokens()
     {
         var derived = MoviesDeclaration.Shape.Tokens
             .Select(static token => token.Name)
@@ -472,7 +378,7 @@ public class DeclarationSectionTests
 
         Assert.That(
             mentioned.Where(token => !derived.Contains(token)),
-            Is.EqualTo(new[] { "{Quality Full}" }));
+            Is.Empty);
     }
 
     /// <summary>
@@ -561,163 +467,6 @@ public class DeclarationSectionTests
             MoviesDeclaration.Carried.Naming.Fallbacks.Single(static rule => rule.Token.Length != 0).Token,
             Is.EqualTo("originalTitle"));
 
-    // ---- catalog --------------------------------------------------------------------------------
-
-    [Test]
-    public void MapsEveryDeclaredFieldOntoADeclaredLevelOrAxis()
-    {
-        var movieMap = MoviesDeclaration.Carried.Catalog!.Responses
-            .Single(static map => map.LevelId is not null);
-
-        Assert.Multiple(() =>
-        {
-            foreach (var row in movieMap.Rows)
-            {
-                Assert.That(MoviesDeclaration.Fields, Does.ContainKey(row.FieldId), row.JsonPath);
-            }
-
-            Assert.That(movieMap.LevelId, Is.EqualTo(MoviesDeclaration.Level.Id.Value));
-        });
-    }
-
-    /// <summary>
-    /// The collection response embeds its members, and they re-enter the movie map rather than being
-    /// described a second time. Its rows name the group type's own properties.
-    /// </summary>
-    [Test]
-    public void ReentersTheMovieMapForACollectionsMembers()
-    {
-        var axisMap = MoviesDeclaration.Carried.Catalog!.Responses
-            .Single(static map => map.AxisId is not null);
-
-        var axisFields = MoviesDeclaration.Shape.GroupingAxes
-            .Single(axis => axis.AxisId == axisMap.AxisId)
-            .Fields
-            .Select(static field => field.FieldId)
-            .ToHashSet(StringComparer.Ordinal);
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(axisMap.AxisId, Is.EqualTo("collection"));
-            Assert.That(axisMap.MemberPath, Is.EqualTo("$.parts[*]"));
-
-            foreach (var row in axisMap.Rows)
-            {
-                Assert.That(axisFields, Does.Contain(row.FieldId), row.JsonPath);
-            }
-        });
-    }
-
-    /// <summary>
-    /// <b>Five response rows the string surface had and this one cannot.</b> A row is one path to one
-    /// field, so it can fill neither a composite's element nor a reference nor a member of an identifier
-    /// set. Every one of them returns when the mapping is code inside a cataloger that may reference the
-    /// item type.
-    /// </summary>
-    [Test]
-    public void FillsNoCompositeReferenceOrIdentifierSetFromTheResponseMap()
-    {
-        var filled = MoviesDeclaration.Carried.Catalog!.Responses
-            .Single(static map => map.LevelId is not null)
-            .Rows
-            .Select(static row => row.FieldId)
-            .ToHashSet(StringComparer.Ordinal);
-
-        Assert.Multiple(() =>
-        {
-            foreach (var unfillable in new[] { "translations", "ratings", "certification", "collection", "externalIds", "trailer" })
-            {
-                Assert.That(MoviesDeclaration.Fields, Does.ContainKey(unfillable));
-                Assert.That(filled, Does.Not.Contain(unfillable), unfillable);
-            }
-        });
-    }
-
-    /// <summary>
-    /// "PG-13" on a foreign regulator's scale means something else, so the region select has no
-    /// cross-region fallback: showing a rating from the wrong regulator is worse than showing none.
-    /// </summary>
-    [Test]
-    public void KeepsOnlyThePreferredRegionsCertification()
-    {
-        var rule = MoviesDeclaration.Carried.Catalog!.Derivations
-            .Single(static row => row.RuleId == "certification-region");
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(rule.Kind, Is.EqualTo(DerivationKind.RegionSelect));
-            Assert.That(rule.TargetFieldId, Is.EqualTo("certification"));
-            Assert.That(rule.Parameters["fallbackToAnyRegion"].Flag, Is.False);
-            Assert.That(
-                rule.Parameters["regionSetting"].Text,
-                Is.EqualTo(MoviesCatalogDeclaration.CertificationCountrySetting));
-        });
-    }
-
-    /// <summary>
-    /// <b>Three derivations became methods, and their grammars went with them.</b> What is left in the
-    /// table is exactly what selects out of a vendor's own response shape and therefore has no typed home
-    /// until the cataloger owns the mapping.
-    /// </summary>
-    [Test]
-    public void LeavesOnlyTheDerivationsThatReadAVendorsResponseShape()
-        => Assert.That(
-            MoviesDeclaration.Carried.Catalog!.Derivations.Select(static rule => rule.RuleId),
-            Is.EqualTo(new[] { "certification-region", "image-roles" }));
-
-    /// <summary>
-    /// The catalog caches on hour boundaries, so an exact-instant changed-since request straddling one
-    /// silently drops the updates inside it. The declaration backs off and floors rather than trusting it.
-    /// </summary>
-    [Test]
-    public void BacksOffAndFloorsTheChangedSinceWindow()
-    {
-        var delta = MoviesDeclaration.Carried.Catalog!.Delta!;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(delta.BackoffMinutes, Is.EqualTo(15));
-            Assert.That(delta.FloorTo, Is.EqualTo(TimeFloor.Hour));
-        });
-    }
-
-    [Test]
-    public void DeclaresEveryIdentifierFormAUserMayType()
-    {
-        var rules = MoviesDeclaration.Carried.Catalog!.IdRules;
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(
-                rules.Single(static rule =>
-                    rule.Kind == IdRuleKind.PrefixPad && rule.Scheme == "imdb").PadDigitsTo,
-                Is.EqualTo(7));
-
-            Assert.That(
-                rules.Count(static rule => rule.Kind == IdRuleKind.UrlSegment),
-                Is.EqualTo(3),
-                "A movie address, a collection address and the other catalog's.");
-
-            var trailingYear = rules.Single(static rule => rule.Kind == IdRuleKind.TrailingYearSplit);
-            Assert.That(trailingYear.YearLowerBound, Is.EqualTo(1870), "Nothing was filmed before it.");
-            Assert.That(
-                trailingYear.YearUpperBoundYearsFromNow,
-                Is.EqualTo(1),
-                "One year of slack admits a film that has been announced but not made.");
-        });
-    }
-
-    [Test]
-    public void CarriesTheCatalogSettingsItsDerivationsReference()
-        => Assert.That(
-            MoviesDeclaration.Carried.Catalog!.Settings.Select(static field => field.FieldId),
-            Is.EquivalentTo(new[]
-            {
-                MoviesCatalogDeclaration.BaseUrlSetting,
-                MoviesCatalogDeclaration.CertificationCountrySetting,
-                MoviesCatalogDeclaration.MinimumPopularitySetting
-            }));
-
     // ---- summaries ------------------------------------------------------------------------------
 
     /// <summary>
@@ -772,7 +521,7 @@ public class DeclarationSectionTests
             MoviesDeclaration.Carried.Notifications.Fields.Select(static row => (row.Label, row.Template)),
             Is.EqualTo(new[]
             {
-                ("Studio", "{studio}"),
+                ("Studio", "{organization}"),
                 ("Genres", "{genres}"),
                 ("Rated", "{certification}"),
                 ("Runtime", "{runtime}"),

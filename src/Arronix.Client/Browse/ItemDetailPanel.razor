@@ -1,7 +1,4 @@
 @{
-#pragma warning disable ARX0013 // Shape contracts are experimental; fields and levels come from them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; actions and surfaces are declared by them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; the item is one of them.
 }
 @*
     One item, at length.
@@ -186,7 +183,7 @@
             var byAffordance = Item.Affordances
                 .Select(AffordanceMap.For)
                 .Where(binding => binding.Control is AffordanceControl.Command)
-                .Select(binding => ItemProjection.Action(Level, binding.ConventionalActionId))
+                .Select(binding => ItemProjection.Action(Level, binding.StandardAction))
                 .OfType<ActionDescriptor>()
                 .ToList();
 

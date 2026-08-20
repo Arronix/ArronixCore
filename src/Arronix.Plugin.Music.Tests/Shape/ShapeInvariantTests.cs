@@ -1,5 +1,3 @@
-// The media-shape contracts are experimental; this fixture asserts against them directly.
-#pragma warning disable ARX0013
 using System;
 using System.Collections.Generic;
 using System.Linq;

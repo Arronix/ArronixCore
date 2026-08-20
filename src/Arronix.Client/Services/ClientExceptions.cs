@@ -1,4 +1,3 @@
-#pragma warning disable ARX0003 // Error contracts are experimental; this client throws them.
 
 using System.Net;
 using Arronix.Abstractions.Errors;

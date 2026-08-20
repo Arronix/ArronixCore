@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Hosting;
 
@@ -15,7 +14,6 @@ namespace Arronix.Abstractions.Hosting;
 /// Resolvers are consulted in registration order until one answers.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface INativeLibraryResolver
 {
     /// <summary>

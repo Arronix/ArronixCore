@@ -1,11 +1,7 @@
 using Arronix.Abstractions.Naming;
-using Arronix.Abstractions.Parsing;
 using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 
-// Shape and naming contracts are experimental; the catalog binds engines to their seams.
-#pragma warning disable ARX0009
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Media;
 
@@ -17,10 +13,10 @@ namespace Arronix.Host.Media;
 /// <para>
 /// Engines are host-side, media-agnostic and written once; a factory here turns one
 /// <see cref="ValidatedDefinition"/> into one seam instance for that kind. Because every engine implements
-/// an <i>existing</i> seam — the declarative title parser behind <see cref="IReleaseParser"/>, the
-/// declarative matcher behind <see cref="IReleaseMatcher"/>, the declarative planner behind
+/// an <i>existing</i> seam — the declarative matcher behind <see cref="IReleaseMatcher"/>, the declarative planner behind
 /// <see cref="IReleaseQueryPlanner"/> — the registry and everything downstream see no difference between a
-/// declarative and an imperative kind: both arrive as the same <see cref="MediaKindContribution"/>.
+/// typed and an imperative kind: both arrive as the same <see cref="MediaKindContribution"/>. Typed parsing
+/// is bound by the media type's parser arity and therefore has no factory slot here.
 /// </para>
 /// <para>
 /// A factory that is <see langword="null"/> means the engine has not landed in this build. The binder then
@@ -37,11 +33,6 @@ public sealed class DefinitionEngineCatalog
     /// The storage milestone's engine (design table row E9).
     /// </summary>
     public Func<ValidatedDefinition, IMediaItemSource>? ItemStore { get; set; }
-
-    /// <summary>
-    /// Gets or sets the parse engine behind the release-parsing seam (rows E2/E3).
-    /// </summary>
-    public Func<ValidatedDefinition, IReleaseParser>? Parser { get; set; }
 
     /// <summary>
     /// Gets or sets the match engine behind the release-matching seam (row E5).

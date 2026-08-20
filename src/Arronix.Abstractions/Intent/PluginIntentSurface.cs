@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 
 namespace Arronix.Abstractions.Intent;
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Intent;
 /// declaration down to a misleading label.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record PluginIntentSurface
 {
     /// <summary>

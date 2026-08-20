@@ -1,22 +1,19 @@
 using System.Linq;
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
-using Arronix.Host.Media.Typed.Builders;
-
-// The derivation reads and produces experimental contracts throughout.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
+using Arronix.Host.Media.Typed.Compilation;
 
 namespace Arronix.Host.Media.Typed;
 
 /// <summary>
-/// Turns an item type and its configuration into the structure descriptor every engine already reads.
+/// Turns an item type and its typed definition values into the structure descriptor every engine reads.
 /// </summary>
 /// <remarks>
 /// <para>
 /// This is the runtime model, in the sense a typed data mapper means it: the entity is what an author
 /// writes, and this is what the platform holds. Nothing here is a second source of truth — every value is
-/// either read off the type or carried from a builder call, so no part of it can disagree with the entity
+/// either read off the type or carried from a typed override value, so no part of it can disagree with the entity
 /// it came from.
 /// </para>
 /// <para>
@@ -44,21 +41,27 @@ internal static class ShapeDerivation
     /// </summary>
     /// <param name="kind">The media kind identifier.</param>
     /// <param name="item">The item type's reading.</param>
-    /// <param name="declaration">Everything the configuration call recorded.</param>
+    /// <param name="declaration">The compiled typed definition values.</param>
+    /// <param name="compiledShapes">The build-time-generated item, group, and row projections.</param>
     /// <returns>The structure.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    internal static MediaShape Derive(MediaKindId kind, ItemTypeReader item, TypedDeclaration declaration)
+    internal static MediaShape Derive(
+        MediaKindId kind,
+        ItemTypeReader item,
+        TypedDeclaration declaration,
+        CompiledShapeCatalog compiledShapes)
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(declaration);
 
         var singular = declaration.Singular ?? DerivedNames.Label(item.EntityType.Name);
         var plural = declaration.Plural ?? DerivedNames.Plural(singular);
-        var levelId = MediaLevelId.FromString(DerivedNames.Identifier(item.EntityType.Name));
+        var levelId = MediaLevelId.FromString(DerivedNames.Identifier(singular));
 
         var families = declaration.Formats.Select(DeriveFamily).ToArray();
-        var axes = declaration.Groups.Select(draft => GroupAxisFactory.Derive(draft, levelId)).ToArray();
-        var facets = families.SelectMany(static family => family.TechnicalFacets).ToArray();
+        var axes = declaration.Groups
+            .Select(draft => GroupAxisFactory.Derive(draft, levelId, compiledShapes))
+            .ToArray();
 
         var level = new MediaLevel
         {
@@ -78,7 +81,7 @@ internal static class ShapeDerivation
             {
                 HasCatalogRecord = true,
                 HasLibraryRecord = true,
-                SupportsIdentifierRedirects = declaration.Identity.SupportsRedirects,
+                SupportsIdentifierRedirects = false,
                 RequiredRoles = [.. declaration.Identity.Required],
                 AdmittedRoles = [.. declaration.Identity.Admitted],
 
@@ -120,11 +123,11 @@ internal static class ShapeDerivation
             SelectionFacets = [.. declaration.Selections.Select(draft => DeriveFacet(draft, levelId))],
             SearchKinds = [.. declaration.Searches.Select(draft => DeriveSearch(draft, levelId))],
             Tokens = TokenDerivation.Derive(
-                DerivedNames.TokenWord(item.EntityType.Name),
+                DerivedNames.TokenWord(singular),
                 item,
-                [.. declaration.Groups.Select(static draft =>
-                    (DerivedNames.TokenWord(draft.GroupType.Name), ItemTypeReader.Read(draft.GroupType)))],
-                facets,
+                [.. declaration.Groups.Select(draft =>
+                    (DerivedNames.TokenWord(draft.Singular ?? DerivedNames.Label(draft.MembershipPropertyName)),
+                     ItemTypeReader.Read(compiledShapes.Get(draft.GroupType))))],
                 declaration.Identity.Required.Count > 0 || declaration.Identity.Admitted.Count > 0)
         };
     }
@@ -146,13 +149,8 @@ internal static class ShapeDerivation
             FamilyId = draft.FamilyId,
             Name = draft.Name,
             FileExtensions = draft.Extensions,
-            Quality = draft.Quality
-                ?? throw new InvalidOperationException(
-                    $"The format family '{draft.FamilyId}' declared no quality model, so nothing can read "
-                    + "what one of its files is."),
             CoexistsWithOtherFamilies = draft.CoexistsWithOtherFamilies,
             SupportsEmbeddedMetadata = draft.SupportsEmbeddedMetadata,
-            TechnicalFacets = draft.Facets
         };
 
     private static SelectionFacet DeriveFacet(SelectionDraft draft, MediaLevelId levelId) =>

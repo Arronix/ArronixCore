@@ -12,7 +12,6 @@ namespace Arronix.Abstractions.Media;
 /// is restating a platform fact and pinning itself to whichever four the first cataloger happened to
 /// supply.
 /// </remarks>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ArtworkSet
 {
     /// <summary>
@@ -83,5 +82,4 @@ public sealed record ArtworkSet
 /// <param name="Address">Where the image is fetched from.</param>
 /// <param name="Width">The image's width in pixels, when the supplier stated one.</param>
 /// <param name="Height">The image's height in pixels, when the supplier stated one.</param>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ArtworkImage(string Role, Uri Address, int? Width = null, int? Height = null);

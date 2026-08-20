@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Plugins;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Plugins;
 /// disposes it; a module that itself needs teardown implements asynchronous disposal and is awaited.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IPluginModule
 {
     /// <summary>

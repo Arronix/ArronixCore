@@ -42,8 +42,28 @@ internal sealed class ProjectFile
 
     /// <summary>Gets the projects the project declares, by project name, ordered and de-duplicated.</summary>
     public IReadOnlyList<string> ProjectReferences =>
-        Document
+        ProjectReferenceNames(Document.Descendants("ProjectReference"));
+
+    /// <summary>Gets analyzer-only project references, which do not become runtime dependencies.</summary>
+    public IReadOnlyList<string> AnalyzerProjectReferences =>
+        ProjectReferenceNames(Document
             .Descendants("ProjectReference")
+            .Where(static element =>
+                string.Equals(Metadata(element, "OutputItemType"), "Analyzer", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(Metadata(element, "ReferenceOutputAssembly"), "false", StringComparison.OrdinalIgnoreCase)));
+
+    /// <summary>Gets project references whose assemblies may enter the runtime dependency graph.</summary>
+    public IReadOnlyList<string> RuntimeProjectReferences =>
+        ProjectReferenceNames(Document
+            .Descendants("ProjectReference")
+            .Where(static element =>
+                !string.Equals(Metadata(element, "ReferenceOutputAssembly"), "false", StringComparison.OrdinalIgnoreCase)));
+
+    private static string? Metadata(XElement element, string name) =>
+        (string?)element.Attribute(name) ?? (string?)element.Element(name);
+
+    private static IReadOnlyList<string> ProjectReferenceNames(IEnumerable<XElement> references) =>
+        references
             .Select(static element => (string?)element.Attribute("Include"))
             .Where(static include => !string.IsNullOrWhiteSpace(include))
             .Select(static include => System.IO.Path.GetFileNameWithoutExtension(

@@ -1,4 +1,3 @@
-#pragma warning disable ARX0016 // Intent contracts are experimental; resolving them is this file's job.
 
 using Arronix.Abstractions.Intent;
 using Arronix.Client.Browse.Presenters;
@@ -71,6 +70,7 @@ public static class IntentResolver
     /// </remarks>
     public static Type WorkbenchFor(WorkbenchSubject subject) => subject switch
     {
+        WorkbenchSubject.CatalogCandidates => typeof(WorkbenchGrid),
         WorkbenchSubject.LooseFiles => typeof(WorkbenchGrid),
         WorkbenchSubject.ReleaseCandidates => typeof(WorkbenchGrid),
         WorkbenchSubject.LibraryItems => typeof(WorkbenchGrid),

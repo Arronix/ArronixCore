@@ -78,17 +78,18 @@ public sealed partial class MusicReleaseParser : IReleaseParser
             extra[BitDepthKey] = depth.ToString(CultureInfo.InvariantCulture);
         }
 
+        if (tokens.Codec is { } codec)
+        {
+            extra[CodecKey] = codec;
+        }
+
         return new ParsedRelease(
-            MusicShape.Kind,
-            work,
-            year,
-            tokens.QualityName,
-            tokens.Codec,
-            tokens.Codec,
-            null,
-            group,
-            null,
-            extra);
+            MediaKind: MusicShape.Kind,
+            Title: work,
+            Year: year,
+            Quality: tokens.QualityName,
+            ReleaseGroup: group,
+            AdditionalMetadata: extra);
     }
 
     /// <summary>The parsed-metadata key carrying the credited performer.</summary>
@@ -102,6 +103,9 @@ public sealed partial class MusicReleaseParser : IReleaseParser
 
     /// <summary>The parsed-metadata key carrying a sample bit depth.</summary>
     public const string BitDepthKey = "bit-depth";
+
+    /// <summary>The parsed-metadata key carrying the legacy parser's audio codec reading.</summary>
+    public const string CodecKey = "music.codec";
 
     private static string? ReadGroup(ref string working)
     {

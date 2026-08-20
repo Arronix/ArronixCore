@@ -2,12 +2,10 @@ using System.Linq;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Media;
 using Arronix.Host.Media.Typed;
 using FluentAssertions;
 
-// Every contract these tests read is experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Tests.TypedMedia;
 
@@ -23,11 +21,12 @@ namespace Arronix.Host.Tests.TypedMedia;
 [TestFixture]
 internal sealed class ItemProjectionTests
 {
-    private static IMediaType Model => MediaTypeModelFactory.Build<Work, Works>();
+    private static IMediaTypeRuntime Model =>
+        MediaTypeModelFactory.Build<Work, WorkTarget, WorkRelease, WorkParser, Works>();
 
     private static Work Sample { get; } = new()
     {
-        Id = MediaItemId.FromInt64(42),
+        Key = MediaItemId.FromInt64(42),
         Title = "Arrival",
         OriginalTitle = "Arrival",
         Year = 2016,
@@ -37,9 +36,9 @@ internal sealed class ItemProjectionTests
         PublishedOn = new DateOnly(2017, 2, 14),
         Genres = ["Science fiction", "Drama"],
         ExternalIds = ExternalIdSet.Of(ExternalId.Of("tmdb", "329865")),
-        Images = ArtworkSet.Of(new ArtworkImage("poster", new Uri("https://example.invalid/p.jpg"))),
+        Artwork = ArtworkSet.Of(new ArtworkImage("poster", new Uri("https://example.invalid/p.jpg"))),
         AlternateTitles = [new AlternateTitle("Premier Contact", AlternateTitleRole.Translation)],
-        Collection = new WorkCollection { Id = MediaItemId.FromInt64(7), Title = "Villeneuve" }
+        Collections = [new WorkCollection { Key = MediaItemId.FromInt64(7), Title = "Villeneuve" }]
     };
 
     [Test]
@@ -49,7 +48,7 @@ internal sealed class ItemProjectionTests
 
         Assert.Multiple(() =>
         {
-            view.Ref.Kind.Should().Be(Works.Kind);
+            view.Ref.Kind.Should().Be(Works.Id);
             view.Ref.Level.Value.Should().Be("work");
             view.Ref.Id.Value.Should().Be(42);
             view.Title.Should().Be("Arrival");
@@ -115,31 +114,33 @@ internal sealed class ItemProjectionTests
             alternates.Items![0].Items.Should().HaveCount(3);
             var components = alternates.Items[0].Items!;
             components[0].Text.Should().Be("Premier Contact");
-            components[1].Text.Should().Be("Translation");
+            components[1].Text.Should().Be("translation");
         });
     }
 
     [Test]
-    public void AReferenceCarriesAHandleAndTheReferentsOwnTitle()
+    public void GroupMembershipsCarryHandlesAndTheReferentsOwnTitles()
     {
-        var reference = Model.Read(Sample, "collection");
+        var memberships = Model.Read(Sample, "collections");
+        var reference = memberships.Items.Should().ContainSingle().Subject;
 
         Assert.Multiple(() =>
         {
+            memberships.Items.Should().ContainSingle();
             reference.Kind.Should().Be(FieldValueKind.Reference);
             reference.Text.Should().Be("Villeneuve");
             reference.Reference!.Value.Id.Value.Should().Be(7);
 
             // A group is addressed per axis rather than per level, so the axis identifier fills the level
             // slot: inventing a level per grouping axis is the fused shape the descriptor keeps apart.
-            reference.Reference!.Value.Level.Value.Should().Be("workCollection");
+            reference.Reference!.Value.Level.Value.Should().Be("collection");
         });
     }
 
     [Test]
     public void AnArtworkSetProjectsItsAddresses()
     {
-        var images = Model.Read(Sample, "images");
+        var images = Model.Read(Sample, "artwork");
 
         Assert.Multiple(() =>
         {

@@ -1,6 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; sequences and coordinates come from them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; traversals are declared by them.
-#pragma warning disable ARX0017 // Wire contracts are experimental; published items are them.
 
 using System.Globalization;
 using System.Linq;

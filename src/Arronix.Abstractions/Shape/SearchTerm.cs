@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Arronix.Abstractions.Shape;
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Shape;
 /// a kind and a source be plain set intersection, with neither side knowing the other's vocabulary.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SearchTerm
 {
     /// <summary>Unstructured query text. Universally supported.</summary>
@@ -60,7 +58,6 @@ public enum SearchTerm
 /// interprets it. Values at or above one hundred thousand are private to one source and are excluded from
 /// aggregation.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct CategoryId(int Value)
 {
     /// <summary>

@@ -17,17 +17,19 @@
        This fixture asserts the platform's enforcement topology. Most of what it asserts is read from the
        repository - project files, source files and manifests - rather than from compiled references, so
        that a rule keeps being checked even while a project it is about is mid-rewrite and does not build.
-       Two projects are referenced because two rules genuinely need running code:
+       Three platform projects are referenced because rules genuinely need running code:
 
-         Arronix.Abstractions  - the experimental-marking rule reflects over the contract surface.
+         Arronix.Abstractions  - contract and typed-media rules inspect the real public surface.
          Arronix.Plugins       - the bidirectional capability rule drives the REAL admission gate and the
                                  REAL registration ledger. A re-implementation of either here would assert
                                  that this fixture agrees with itself.
+         Arronix.Host          - typed media binding and provider activation tests exercise the real host
+                                 boundary rather than a duplicate test implementation.
 
        The four media extensions are referenced for the same reason: the capability rule is asserted by
        configuring the actual extensions against the actual registry, not by configuring a fixture written
-       to pass. Nothing else is referenced - in particular not Arronix.Host, Arronix.Api or Arronix.Client,
-       whose rules are all read from the repository, so this project cannot be broken by their build state.
+       to pass. The API and Client rules are read from the repository, so this project does not reference
+       either edge.
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />

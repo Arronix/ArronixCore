@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Shape;
 /// read <see cref="Semantics"/>, and a support bundle reads the diagnostic tail. Parallel identifier
 /// lists per consumer were rejected because they drift the moment a field is added.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record FieldDescriptor
 {
     /// <summary>
@@ -84,7 +82,6 @@ public sealed record FieldDescriptor
 /// them, which is the point: a consumer that silently ignored an unknown shape would render an item's
 /// most important field as nothing at all.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum FieldValueKind
 {
     /// <summary>A single line of plain text.</summary>
@@ -159,7 +156,6 @@ public enum FieldValueKind
 /// routinely also the field it is searched by and sorted on.
 /// </remarks>
 [Flags]
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum FieldSemantics
 {
     /// <summary>No special meaning.</summary>
@@ -213,7 +209,6 @@ public enum FieldSemantics
 /// and to a verbose flag alike, and it orders naturally. Explicitly rejected in its place: a width, an
 /// absolute position and an inline flag, none of which mean anything outside one particular presentation.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum Prominence
 {
     /// <summary>Identifies the item. Always worth showing.</summary>

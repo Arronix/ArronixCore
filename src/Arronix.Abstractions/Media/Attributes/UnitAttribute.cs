@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Media;
 /// </remarks>
 /// <param name="unit">The unit, as a reader would see it.</param>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class UnitAttribute(string unit) : Attribute
 {
     /// <summary>

@@ -2,8 +2,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Scheduling;
 
-// The plugin contracts are experimental; a registration records who owns the job and what they may do.
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Scheduling;
 

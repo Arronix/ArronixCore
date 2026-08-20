@@ -1,5 +1,10 @@
 # The quality-axes model — contract specification
 
+> **SUPERSEDED on 2026-08-20.** This is a historical design record, not current architecture. The
+> implementation it describes was removed on the 0.8 contract line. Current quality is typed release
+> policy over media-owned releases and format-owned representations; see `ARCHITECTURE.md`, `CONTEXT.md`,
+> and the 0.8.0 entry in `docs/contracts/stability.md`.
+
 > **Status:** Design, **pass 4 — the amendment pass**. Supersedes the rung ladder for every media kind.
 >
 > **What changed in pass 4, and why.** Pass 3 was read adversarially, title by title, against the tree.

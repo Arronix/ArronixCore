@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Arronix.Abstractions.Shape;
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Shape;
 /// form and reads back through <see cref="TryParse(ReadOnlySpan{char}, out OrdinalPath)"/>.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct OrdinalPath : IComparable<OrdinalPath>
 {
     /// <summary>

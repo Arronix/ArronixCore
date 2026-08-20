@@ -1,5 +1,4 @@
 using System.Collections;
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Arronix.Abstractions.Http;
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Http;
 /// This type is mutable and is not thread-safe. It belongs to one request or response.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class HttpHeaderCollection : IEnumerable<KeyValuePair<string, IReadOnlyList<string>>>
 {
     private readonly Dictionary<string, List<string>> _headers =

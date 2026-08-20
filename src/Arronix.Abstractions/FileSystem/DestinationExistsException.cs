@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 
 namespace Arronix.Abstractions.FileSystem;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.FileSystem;
 /// file work catches it. The legacy pair of near-identical exceptions this replaces derived straight
 /// from <see cref="Exception"/>, so that catch block silently missed them.
 /// </remarks>
-[Experimental(ExperimentalContracts.FileSystem, UrlFormat = ExperimentalContracts.UrlFormat)]
 public class DestinationExistsException : IOException
 {
     /// <summary>

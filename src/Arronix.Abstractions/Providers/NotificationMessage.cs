@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
@@ -25,7 +24,6 @@ namespace Arronix.Abstractions.Providers;
 /// constants each surveyed application carries in its notification base class disappear entirely.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record NotificationMessage
 {
     /// <summary>
@@ -99,7 +97,6 @@ public sealed record NotificationMessage
 /// <param name="Protocol">The protocol it was transferred over.</param>
 /// <param name="DownloadId">The transfer client's own identifier for the transfer.</param>
 /// <param name="Indexer">The source it was found on, when that is known.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record DownloadAttribution(
     string ClientName,
     DownloadProtocol Protocol,
@@ -113,7 +110,6 @@ public sealed record DownloadAttribution(
 /// <param name="Size">The size in bytes.</param>
 /// <param name="Quality">The file's quality, when it was determined.</param>
 /// <param name="Languages">The languages the file carries.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record FileSummary(
     string RelativePath,
     long Size,

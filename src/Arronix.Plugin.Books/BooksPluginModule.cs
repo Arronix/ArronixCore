@@ -1,7 +1,4 @@
-// The plugin, shape and provider contracts are experimental; this extension implements all three.
-#pragma warning disable ARX0013, ARX0014, ARX0015
 using Arronix.Abstractions.Plugins;
-using Arronix.Abstractions.Providers;
 using Arronix.Plugin.Books.Providers;
 
 namespace Arronix.Plugin.Books;
@@ -37,11 +34,7 @@ public sealed class BooksPluginModule : IPluginModule
             .AddQualityModel(new BooksQualityModel())
             .AddRenamePolicy(new BooksRenamePolicy())
             .AddLibraryLayout(new BooksLibraryLayout())
-            .AddIndexer(new IndexerRegistration(BooksIndexer.Describe(), new BooksIndexer(Id)))
-            .AddCataloger(
-                new CatalogerRegistration(
-                    BooksCataloger.Describe(),
-                    new BooksCataloger(Id)))
+            .AddIndexer<BooksIndexer>(BooksIndexer.Describe())
             .AddIntentSurface(BooksIntent.Declaration);
     }
 }

@@ -1,5 +1,3 @@
-// Provider and shape contracts are experimental; this extension is a reference implementer of both.
-#pragma warning disable ARX0013, ARX0014, ARX0015
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
@@ -44,8 +42,12 @@ public sealed class MusicIndexer : IIndexer
     /// <summary>
     /// Initializes the provider.
     /// </summary>
-    /// <param name="plugin">The extension registering it, which qualifies the provider identifier.</param>
-    public MusicIndexer(PluginId plugin) => _id = ProviderId.Create(plugin, LocalId);
+    /// <param name="context">The capability-scoped plugin context supplied by DI.</param>
+    public MusicIndexer(IPluginContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        _id = ProviderId.Create(context.PluginId, LocalId);
+    }
 
     /// <inheritdoc />
     public ProviderId Id => _id;
@@ -209,7 +211,7 @@ public sealed class MusicIndexer : IIndexer
         cancellationToken.ThrowIfCancellationRequested();
 
         var text = query.FreeText;
-        var candidates = new List<ReleaseCandidate>();
+        var candidates = new List<ReleaseListing>();
 
         foreach (var work in MusicSeed.Works)
         {
@@ -227,7 +229,7 @@ public sealed class MusicIndexer : IIndexer
                 var title = MusicQueryPlanner.CandidateTitle(work, pressing);
                 var recordings = MusicSeed.RecordingsOf(pressing.Id).Count;
 
-                candidates.Add(new ReleaseCandidate(
+                candidates.Add(new ReleaseListing(
                     ReleaseId.FromString(
                         string.Create(CultureInfo.InvariantCulture, $"{LocalId}:{pressing.Id}")),
                     title,

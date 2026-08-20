@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Shape;
 /// flags below say exactly that, which is why no fifth scheme has to be invented for it.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record CoordinateSpace
 {
     /// <summary>
@@ -73,5 +71,4 @@ public sealed record CoordinateSpace
 /// <param name="ComponentId">The identifier constraints and axes reference the component by.</param>
 /// <param name="Name">The component's display name.</param>
 /// <param name="Required">Whether a reading in this space must populate the component.</param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record CoordinateComponent(string ComponentId, string Name, bool Required);

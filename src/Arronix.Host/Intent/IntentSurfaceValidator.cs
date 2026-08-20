@@ -3,12 +3,8 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Intent;
-using Arronix.Abstractions.Shape;
 using Arronix.Host.Media;
 
-// Intent and shape contracts are experimental; this file checks one against the other.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
 
 namespace Arronix.Host.Intent;
 
@@ -290,16 +286,9 @@ public static partial class IntentSurfaceValidator
 
             RequireDistinct(defects, $"{path}.columns", bench.Columns.Select(column => column.Field.FieldId));
 
-            // Artwork is not a cell. A grid column holding an image is the one place the declared vocabulary
-            // would start to imply a layout, and refusing it here is cheaper than every consumer deciding
-            // independently how large an image in a table should be.
-            foreach (var column in bench.Columns.Where(column => column.Field.ValueKind == FieldValueKind.Artwork))
-            {
-                defects.Add(new ShapeDefect(
-                    $"{path}.columns[{column.Field.FieldId}]",
-                    "A working-surface column does not carry artwork.",
-                    CoreErrorCode.PluginShapeInvalid));
-            }
+            // Artwork is semantic row data. A visual grid may choose a thumbnail, a text client may emit an
+            // address and another consumer may omit it; none of those presentation decisions can make the
+            // value invalid at the media boundary.
         }
     }
 

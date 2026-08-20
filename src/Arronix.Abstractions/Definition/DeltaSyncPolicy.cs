@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Definition;
 /// host's: a catalog that caches on time boundaries silently drops updates for an exact-instant request
 /// straddling one, so the request backs off and floors.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record DeltaSyncPolicy
 {
     /// <summary>

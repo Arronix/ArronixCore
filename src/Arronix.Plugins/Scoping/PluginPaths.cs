@@ -2,8 +2,6 @@ using System.IO;
 using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Plugins;
 
-#pragma warning disable ARX0007 // Hosting contracts are experimental; this assembly implements them.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
 
 namespace Arronix.Plugins.Scoping;
 

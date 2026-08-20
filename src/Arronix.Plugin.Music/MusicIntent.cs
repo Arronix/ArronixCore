@@ -1,5 +1,3 @@
-// Shape and intent contracts are experimental; this extension is a reference implementer of both.
-#pragma warning disable ARX0013, ARX0016
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
 
@@ -155,6 +153,7 @@ public static class MusicIntent
     [
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Search,
             ActionId = SearchActionId,
             Name = "Search",
             Description = "Look for a copy of this album.",
@@ -166,6 +165,7 @@ public static class MusicIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Refresh,
             ActionId = RefreshActionId,
             Name = "Refresh",
             Description = "Re-read this artist from the catalog.",
@@ -177,6 +177,7 @@ public static class MusicIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.SetMonitoring,
             ActionId = SetMonitorActionId,
             Name = "Set wanted",
             Scope = ActionScope.Selection,
@@ -191,7 +192,10 @@ public static class MusicIntent
                     FieldValueKind.Boolean,
                     true,
                     [],
-                    "true"),
+                    "true")
+                {
+                    StandardParameter = StandardMediaActionParameter.Wanted
+                },
             ],
         },
         new ActionDescriptor
@@ -199,6 +203,7 @@ public static class MusicIntent
             // The declared form of the surprise. Choosing a pressing changes what the platform counts
             // against, so the consequence is stated in a sentence any front end can present rather than
             // discovered from a changed number.
+            StandardAction = StandardMediaAction.SelectVariant,
             ActionId = SelectVariantActionId,
             Name = "Use this release",
             Description = "Make this pressing the one completeness is measured against.",
@@ -212,6 +217,7 @@ public static class MusicIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Rename,
             ActionId = RenameActionId,
             Name = "Rename files",
             Scope = ActionScope.Item,
@@ -223,6 +229,7 @@ public static class MusicIntent
         },
         new ActionDescriptor
         {
+            StandardAction = StandardMediaAction.Remove,
             ActionId = RemoveActionId,
             Name = "Remove",
             Scope = ActionScope.Item,

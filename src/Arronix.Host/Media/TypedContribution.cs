@@ -1,10 +1,6 @@
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 
-// The typed media surface and the extension model are experimental; this record is the bundle the loader
-// hands the binder.
-#pragma warning disable ARX0014
-#pragma warning disable ARX0020
 
 namespace Arronix.Host.Media;
 

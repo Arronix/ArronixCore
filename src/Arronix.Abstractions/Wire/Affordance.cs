@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Wire;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Wire;
 /// them rather than an ability that silently never appears.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum Affordance
 {
     /// <summary>The user can express whether they want the item.</summary>

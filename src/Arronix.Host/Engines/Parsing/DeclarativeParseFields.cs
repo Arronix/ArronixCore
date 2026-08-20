@@ -10,21 +10,6 @@ internal static class DeclarativeParseFields
     /// <summary>The identifier of the title pattern that claimed the release, for corpus coverage.</summary>
     internal const string PatternId = "parse.patternId";
 
-    /// <summary>The resolution the title literally stated, as a token such as <c>1080p</c>.</summary>
-    internal const string StatedResolution = "parse.statedResolution";
-
-    /// <summary>The stated re-issue number. Always written: absence and one are different statements.</summary>
-    internal const string RevisionVersion = "parse.revision.version";
-
-    /// <summary>How many times the release was re-issued because the previous issue was mislabeled.</summary>
-    internal const string RevisionReal = "parse.revision.real";
-
-    /// <summary>Whether the current issue is a repack: <c>true</c> or <c>false</c>.</summary>
-    internal const string RevisionIsRepack = "parse.revision.isRepack";
-
-    /// <summary>Whether the title claims a lossless remux: written only when it does, as <c>true</c>.</summary>
-    internal const string IsRemux = "parse.isRemux";
-
     /// <summary>The release-kind discriminator a pattern captured, when one did.</summary>
     internal const string ReleaseKind = "parse.releaseKind";
 

@@ -3,14 +3,10 @@ using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Parsing;
+using Arronix.Abstractions.Releases;
 using Arronix.Abstractions.Shape;
-using Arronix.Host.Media.Typed.Builders;
-
-// The derivation reads and produces experimental contracts throughout.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0016
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020
+using Arronix.Host.Media.Typed.Compilation;
 
 namespace Arronix.Host.Media.Typed;
 
@@ -20,9 +16,9 @@ namespace Arronix.Host.Media.Typed;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The whole derivation is here in four steps and nothing else calls into it. Read the entity, replay the
-/// configuration call, derive the structure and the intent surface, and carry the sections that are still
-/// data. What comes out is what every engine, the binder, the intent registry and the client already
+/// The whole derivation is here in four steps and nothing else calls into it. Read the entity, compile the
+/// definition's typed values, derive the structure and intent surface, and carry the remaining data. What
+/// comes out is what every engine, the binder, the intent registry and the client already
 /// consume, so nothing downstream of this point knows a typed kind from a declared one.
 /// </para>
 /// <para>
@@ -37,44 +33,70 @@ public static class MediaTypeModelFactory
     /// Builds one media kind's runtime model from its typed declaration.
     /// </summary>
     /// <typeparam name="TItem">The kind's item type.</typeparam>
+    /// <typeparam name="TTarget">The kind's acquisition-target type.</typeparam>
+    /// <typeparam name="TRelease">The kind's interpreted-release type.</typeparam>
+    /// <typeparam name="TParser">The kind's statically dispatched release parser.</typeparam>
     /// <typeparam name="TType">The type declaring the kind.</typeparam>
     /// <returns>The runtime model.</returns>
     /// <exception cref="ArgumentException">The item type is not a well-formed entity.</exception>
-    public static IMediaType Build<TItem, TType>()
-        where TItem : IMediaItem
-        where TType : IMediaType<TItem>
-    {
-        var builder = new MediaTypeBuilder<TItem>();
-        TType.Configure(builder);
+    public static IMediaTypeRuntime Build<TItem, TTarget, TRelease, TParser, TType>()
+        where TItem : class, IMediaItem
+        where TTarget : class, IReleaseTarget
+        where TRelease : class, IRelease
+        where TParser : IReleaseParser<TRelease>
+        where TType : MediaType<TItem, TTarget, TRelease, TParser>, new()
+        => Build<TItem, TTarget, TRelease, TParser>(new TType());
 
-        return Build(TType.Kind, typeof(TItem), builder.Declaration);
+    /// <summary>Builds one media kind from an already captured definition instance.</summary>
+    internal static IMediaTypeRuntime Build<TItem, TTarget, TRelease, TParser>(
+        MediaType<TItem, TTarget, TRelease, TParser> definition)
+        where TItem : class, IMediaItem
+        where TTarget : class, IReleaseTarget
+        where TRelease : class, IRelease
+        where TParser : IReleaseParser<TRelease>
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        var declaration = new TypedDeclaration();
+        MediaDefinitionCompiler.Apply<TItem, TTarget, TRelease, TParser>(declaration, definition);
+
+        return Build<TItem, TTarget, TRelease, TParser>(definition.Kind, declaration);
     }
 
     /// <summary>
-    /// Builds one media kind's runtime model from an already-replayed declaration.
+    /// Builds one media kind's runtime model from an already-compiled internal declaration.
     /// </summary>
+    /// <typeparam name="TItem">The item type.</typeparam>
+    /// <typeparam name="TTarget">The acquisition-target type.</typeparam>
+    /// <typeparam name="TRelease">The interpreted-release type.</typeparam>
+    /// <typeparam name="TParser">The statically dispatched release parser.</typeparam>
     /// <param name="kind">The media kind identifier.</param>
-    /// <param name="itemType">The item type.</param>
-    /// <param name="declaration">Everything the configuration call recorded.</param>
+    /// <param name="declaration">The one-way internal projection of the typed definition.</param>
     /// <returns>The runtime model.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The item type is not a well-formed entity.</exception>
-    internal static IMediaType Build(MediaKindId kind, Type itemType, TypedDeclaration declaration)
+    internal static IMediaTypeRuntime Build<TItem, TTarget, TRelease, TParser>(
+        MediaKindId kind,
+        TypedDeclaration declaration)
+        where TItem : class, IMediaItem
+        where TTarget : class, IReleaseTarget
+        where TRelease : class, IRelease
+        where TParser : IReleaseParser<TRelease>
     {
-        ArgumentNullException.ThrowIfNull(itemType);
         ArgumentNullException.ThrowIfNull(declaration);
 
-        var reading = ItemTypeReader.Read(itemType);
-        var shape = ShapeDerivation.Derive(kind, reading, declaration);
-        var intent = IntentDerivation.Derive(kind, reading, shape, declaration);
+        var compiledShapes = declaration.CompiledShapes
+            ?? throw new ArgumentException("The typed definition supplied no compile-time field projection.", nameof(declaration));
+        var reading = ItemTypeReader.Read(compiledShapes.Item);
+        var shape = ShapeDerivation.Derive(kind, reading, declaration, compiledShapes);
+        var intent = IntentDerivation.Derive(kind, reading, shape, declaration, compiledShapes);
 
-        return new TypedMediaType(
+        return new TypedMediaType<TItem, TTarget, TRelease, TParser>(
             kind,
-            itemType,
             [.. declaration.Groups.Select(static draft => draft.GroupType)],
             shape,
             intent,
             CarryModel(declaration, shape),
+            declaration.ReleasePolicy as ReleasePolicy<TRelease>,
             new ItemProjector(
                 kind,
                 shape.Levels[0].Id,
@@ -86,14 +108,12 @@ public static class MediaTypeModelFactory
 
     /// <summary>
     /// Carries the sections a later iteration types, with every reference into the item already turned into
-    /// a field path by the builder.
+    /// a field path during compilation.
     /// </summary>
     private static MediaKindModel CarryModel(TypedDeclaration declaration, MediaShape shape) =>
         new()
         {
-            Parsing = declaration.Parsing
-                ?? throw new InvalidOperationException(
-                    "The kind declared no release models, so no release title could ever be read."),
+            Parsing = null,
 
             Matching = new MatchDeclaration
             {
@@ -136,16 +156,6 @@ public static class MediaTypeModelFactory
                 Substitutions = []
             },
 
-            Quality = new QualityDeclaration
-            {
-                Defaults = declaration.QualityDefaults,
-                Fallback = declaration.QualityFallback,
-
-                // Left at its default. With one format family the rule is unreachable, and a kind with
-                // several says what it means.
-                CrossFamily = CrossFamilyRule.NeverCompare
-            },
-
             Naming = new NamingDeclaration
             {
                 DefaultTemplates = declaration.Templates,
@@ -171,10 +181,7 @@ public static class MediaTypeModelFactory
                 GroupSummaries = declaration.GroupSummaries
             },
 
-            Catalog = declaration.Catalog,
             TemplateRules = declaration.TemplateRules,
-            Respace = declaration.Respace,
-            Corpus = declaration.Corpus
         };
 
     /// <summary>
@@ -220,20 +227,33 @@ public static class MediaTypeModelFactory
     /// <summary>
     /// One media kind's runtime model, as the host holds it.
     /// </summary>
-    private sealed class TypedMediaType(
+    private sealed class TypedMediaType<TItem, TTarget, TRelease, TParser>(
         MediaKindId kind,
-        Type itemType,
         IReadOnlyList<Type> groupTypes,
         MediaShape shape,
         PluginIntentSurface intent,
         MediaKindModel model,
-        ItemProjector projector) : IMediaType
+        ReleasePolicy<TRelease>? releasePolicy,
+        ItemProjector projector) : IMediaTypeRuntime<TItem, TTarget, TRelease>
+        where TItem : class, IMediaItem
+        where TTarget : class, IReleaseTarget
+        where TRelease : class, IRelease
+        where TParser : IReleaseParser<TRelease>
     {
         /// <inheritdoc />
         public MediaKindId Kind { get; } = kind;
 
         /// <inheritdoc />
-        public Type ItemType { get; } = itemType;
+        public Type ItemType { get; } = typeof(TItem);
+
+        /// <inheritdoc />
+        public Type TargetType { get; } = typeof(TTarget);
+
+        /// <inheritdoc />
+        public Type ReleaseType { get; } = typeof(TRelease);
+
+        /// <inheritdoc />
+        public Type ParserType { get; } = typeof(TParser);
 
         /// <inheritdoc />
         public IReadOnlyList<Type> GroupTypes { get; } = groupTypes;
@@ -246,6 +266,19 @@ public static class MediaTypeModelFactory
 
         /// <inheritdoc />
         public MediaKindModel Model { get; } = model;
+
+        /// <inheritdoc />
+        public bool HasReleasePolicy => ReleasePolicy is not null;
+
+        /// <inheritdoc />
+        public IRelease? Parse(ReleaseParseContext context)
+        {
+            ArgumentNullException.ThrowIfNull(context);
+            return TParser.Parse(context).Release;
+        }
+
+        /// <inheritdoc />
+        public ReleasePolicy<TRelease>? ReleasePolicy { get; } = releasePolicy;
 
         /// <inheritdoc />
         public ItemView Project(object item) => projector.Project(item);

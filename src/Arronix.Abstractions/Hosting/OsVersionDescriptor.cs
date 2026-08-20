@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Hosting;
 
@@ -8,7 +7,6 @@ namespace Arronix.Abstractions.Hosting;
 /// <param name="Name">The short product name, for example <c>Ubuntu</c>.</param>
 /// <param name="Version">The version as the platform reports it, for example <c>24.04</c>.</param>
 /// <param name="FullName">The display name, normally the name and version together.</param>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record OsVersionDescriptor(string Name, string Version, string FullName)
 {
     /// <summary>

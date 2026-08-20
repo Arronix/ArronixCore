@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Shape;
 /// declared identifiers.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record MediaShape
 {
     /// <summary>

@@ -2,9 +2,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Shape;
 
-// Plugin and shape contracts are experimental; a queue entry names both.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Scheduling;
 

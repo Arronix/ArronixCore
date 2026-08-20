@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -11,5 +10,4 @@ namespace Arronix.Abstractions.Media;
 /// carrying the identity — would put a host-owned member on a plugin-owned type.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class IdentityAttribute : Attribute;

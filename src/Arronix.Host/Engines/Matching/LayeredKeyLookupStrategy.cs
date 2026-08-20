@@ -1,11 +1,10 @@
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.Definition;
+using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Languages;
 
-// The declaration and shape contracts this strategy executes are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Engines.Matching;
 
@@ -27,8 +26,16 @@ namespace Arronix.Host.Engines.Matching;
 /// its arabic and roman spellings and looks all of them up, and never rewrites the stored titles.
 /// </para>
 /// </remarks>
-internal sealed class LayeredKeyLookupStrategy : IEntryResolutionStrategy
+internal sealed class LayeredKeyLookupStrategy(MatchKeyNormalizers normalizers) : IEntryResolutionStrategy
 {
+    private readonly MatchKeyNormalizers _normalizers = normalizers ?? throw new ArgumentNullException(nameof(normalizers));
+
+    /// <summary>Creates the strategy with invariant-only language handling for focused engine tests.</summary>
+    internal LayeredKeyLookupStrategy()
+        : this(new MatchKeyNormalizers(new LanguageTextService(new LanguageDefinitionRegistry())))
+    {
+    }
+
     /// <inheritdoc />
     public string Role => MatchStrategyRoles.EntryResolution;
 
@@ -84,25 +91,32 @@ internal sealed class LayeredKeyLookupStrategy : IEntryResolutionStrategy
         return new EntryResolutionOutcome { RejectionReason = "No key layer produced a candidate." };
     }
 
-    private static HashSet<string> ReadingKeys(MatchLayer layer, EntryResolutionInput input)
+    private HashSet<string> ReadingKeys(MatchLayer layer, EntryResolutionInput input)
     {
         var keys = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var title in input.Titles)
         {
-            var key = MatchKeyNormalizers.Normalize(layer.NormalizerId, title);
-            if (key.Length == 0)
+            var normalized = _normalizers.Normalize(layer.NormalizerId, title);
+            if (normalized.Count == 0)
             {
                 continue;
             }
 
-            keys.Add(key);
+            keys.UnionWith(normalized);
 
             foreach (var expanderId in layer.ExpanderIds)
             {
-                foreach (var variant in MatchKeyExpanders.Expand(expanderId, key))
+                foreach (var key in normalized)
                 {
-                    keys.Add(variant);
+                    var separator = key.IndexOf(':', StringComparison.Ordinal);
+                    var prefix = separator >= 0 ? key[..(separator + 1)] : string.Empty;
+                    var value = separator >= 0 ? key[(separator + 1)..] : key;
+
+                    foreach (var variant in MatchKeyExpanders.Expand(expanderId, value))
+                    {
+                        keys.Add(prefix + variant);
+                    }
                 }
             }
         }
@@ -110,26 +124,22 @@ internal sealed class LayeredKeyLookupStrategy : IEntryResolutionStrategy
         return keys;
     }
 
-    private static HashSet<string> EntryKeys(MatchLayer layer, ItemView candidate)
+    private HashSet<string> EntryKeys(MatchLayer layer, ItemView candidate)
     {
         var keys = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var part in layer.KeyTemplate.Split('|', StringSplitOptions.RemoveEmptyEntries))
         {
-            foreach (var text in ResolveTemplatePart(part.Trim(), candidate))
+            foreach (var spelling in ResolveTemplatePart(part.Trim(), candidate))
             {
-                var key = MatchKeyNormalizers.Normalize(layer.NormalizerId, text);
-                if (key.Length > 0)
-                {
-                    keys.Add(key);
-                }
+                keys.UnionWith(_normalizers.Normalize(layer.NormalizerId, spelling.Text, spelling.Language));
             }
         }
 
         return keys;
     }
 
-    private static IEnumerable<string> ResolveTemplatePart(string part, ItemView candidate)
+    private static IEnumerable<TitleSpelling> ResolveTemplatePart(string part, ItemView candidate)
     {
         if (part.Length < 3 || part[0] != '{' || part[^1] != '}')
         {
@@ -141,7 +151,7 @@ internal sealed class LayeredKeyLookupStrategy : IEntryResolutionStrategy
         var fieldId = part[1..^1];
         if (string.Equals(fieldId, "title", StringComparison.Ordinal))
         {
-            return [candidate.Title];
+            return [new TitleSpelling(candidate.Title, null)];
         }
 
         if (!candidate.Fields.TryGetValue(fieldId, out var value) || value.IsAbsent)
@@ -149,18 +159,33 @@ internal sealed class LayeredKeyLookupStrategy : IEntryResolutionStrategy
             return [];
         }
 
-        return FieldTexts(value);
+        return FieldSpellings(value);
     }
 
-    private static IEnumerable<string> FieldTexts(FieldValue value)
+    private static IEnumerable<TitleSpelling> FieldSpellings(FieldValue value)
     {
-        if (value.Items is { } items)
+        if (value.Kind == FieldValueKind.Composite && value.Items is { } components)
         {
-            return items.SelectMany(FieldTexts);
+            var language = FindLanguage(value);
+            var compositeText = FindFirstText(value);
+            return compositeText is null ? [] : [new TitleSpelling(compositeText, language)];
         }
 
-        return value.Text is { Length: > 0 } text ? [text] : [];
+        if (value.Items is { } items)
+        {
+            return items.SelectMany(FieldSpellings);
+        }
+
+        return value.Text is { Length: > 0 } text ? [new TitleSpelling(text, value.Language)] : [];
     }
+
+    private static Language? FindLanguage(FieldValue value)
+        => value.Language ?? value.Items?.Select(FindLanguage).FirstOrDefault(static language => language is not null);
+
+    private static string? FindFirstText(FieldValue value)
+        => value.Text ?? value.Items?.Select(FindFirstText).FirstOrDefault(static text => !string.IsNullOrWhiteSpace(text));
+
+    private readonly record struct TitleSpelling(string Text, Language? Language);
 
     private static (List<ItemView> Agreeing, bool Corroborated) ApplyAgreements(
         IReadOnlyList<AgreementRule> agreements,

@@ -1,6 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
-#pragma warning disable ARX0014 // Extension contracts are experimental; PluginId is one.
-#pragma warning disable ARX0015 // Provider contracts are experimental; a media extension is their intended implementer.
 
 using System.Globalization;
 using System.Linq;
@@ -60,14 +57,20 @@ public sealed class TvIndexer : IIndexer
     private readonly TimeProvider _clock;
 
     /// <summary>Creates the indexer.</summary>
-    /// <param name="plugin">The owning extension, which qualifies the provider identifier.</param>
-    /// <param name="catalog">The catalog the synthesized releases are derived from.</param>
-    /// <param name="clock">The host clock. Never <see cref="DateTime.UtcNow"/>.</param>
+    /// <param name="context">The capability-scoped plugin context supplied by DI.</param>
+    public TvIndexer(IPluginContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        Id = ProviderId.Create(context.PluginId, LocalId);
+        _catalog = TvCatalog.CreateSeeded();
+        _clock = context.Clock;
+    }
+
     public TvIndexer(PluginId plugin, TvCatalog catalog, TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(clock);
-
         Id = ProviderId.Create(plugin, LocalId);
         _catalog = catalog;
         _clock = clock;
@@ -78,14 +81,6 @@ public sealed class TvIndexer : IIndexer
 
     /// <inheritdoc />
     public ProviderFamily Family => ProviderFamily.Indexer;
-
-    /// <summary>Builds the registration this provider is added to the registry with.</summary>
-    /// <param name="plugin">The owning extension.</param>
-    /// <param name="catalog">The catalog backing the provider.</param>
-    /// <param name="clock">The host clock.</param>
-    /// <returns>The registration.</returns>
-    public static IndexerRegistration Registration(PluginId plugin, TvCatalog catalog, TimeProvider clock)
-        => new(Describe(), new TvIndexer(plugin, catalog, clock));
 
     /// <summary>Builds the descriptor, including the declarative settings schema.</summary>
     /// <returns>The descriptor.</returns>
@@ -346,7 +341,7 @@ public sealed class TvIndexer : IIndexer
         CategoryId.FromInt(5070)
     ];
 
-    private IEnumerable<ReleaseCandidate> Synthesize(
+    private IEnumerable<ReleaseListing> Synthesize(
         TvSeriesRecord series,
         ReleaseQuery query,
         bool offerPacks)
@@ -405,7 +400,7 @@ public sealed class TvIndexer : IIndexer
             published);
     }
 
-    private ReleaseCandidate Candidate(string title, string key, long size, DateTime published) => new(
+    private ReleaseListing Candidate(string title, string key, long size, DateTime published) => new(
         ReleaseId.FromString($"{Id}/{key}"),
         title,
         new Uri($"https://catalog.invalid/download/{Uri.EscapeDataString(key)}"),

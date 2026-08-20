@@ -1,4 +1,5 @@
 using System.Linq;
+using Arronix.Host.Languages;
 
 namespace Arronix.Host.Engines.Matching;
 
@@ -19,11 +20,13 @@ internal sealed class MatchStrategyRegistry
     /// Creates a registry carrying the host's built-in strategies.
     /// </summary>
     /// <param name="clock">The clock time-dependent distance features read.</param>
+    /// <param name="languages">The installed language operations.</param>
     /// <returns>The registry.</returns>
-    internal static MatchStrategyRegistry CreateDefault(TimeProvider clock)
+    internal static MatchStrategyRegistry CreateDefault(TimeProvider clock, LanguageTextService? languages = null)
     {
+        languages ??= new LanguageTextService(new LanguageDefinitionRegistry());
         var registry = new MatchStrategyRegistry();
-        registry.Register(new LayeredKeyLookupStrategy());
+        registry.Register(new LayeredKeyLookupStrategy(new MatchKeyNormalizers(languages)));
         registry.Register(new AssignmentOverFeaturesStrategy(DistanceFeatureCatalog.CreateDefault(clock)));
         return registry;
     }

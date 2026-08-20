@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Diagnostics;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Diagnostics;
 /// applied to all redacted output, whatever produced it. Rules are additive: a provider cannot remove
 /// or weaken a rule contributed by another.
 /// </remarks>
-[Experimental(ExperimentalContracts.Diagnostics, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IRedactionRuleProvider
 {
     /// <summary>

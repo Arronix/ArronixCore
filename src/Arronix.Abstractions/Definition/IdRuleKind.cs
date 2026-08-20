@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
 /// <summary>
 /// The identifier normalizations a catalog declaration may invoke.
 /// </summary>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum IdRuleKind
 {
     /// <summary>Canonicalize by restoring a prefix and zero-padding the numeric part.</summary>

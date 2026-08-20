@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Providers;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Providers;
 /// configured instance of it. Keeping them apart is what makes a provider stateless: the implementation
 /// holds no configuration, so two definitions of the same provider cannot interfere with each other.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ProviderDescriptor
 {
     /// <summary>
@@ -60,7 +58,6 @@ public sealed record ProviderDescriptor
 /// <param name="PresetId">The identifier of the preset.</param>
 /// <param name="Name">The preset's display name.</param>
 /// <param name="Settings">The setting values, keyed by <see cref="SettingsField.FieldId"/>.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ProviderPreset(
     string PresetId,
     string Name,

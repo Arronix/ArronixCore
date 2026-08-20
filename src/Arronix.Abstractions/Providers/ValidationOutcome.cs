@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.Health;
 
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Providers;
 /// negotiate with a host built against the next, and baking a third-party type into a contract makes that
 /// mismatch unresolvable rather than merely inconvenient.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ValidationOutcome
 {
     /// <summary>
@@ -72,7 +70,6 @@ public sealed record ValidationOutcome
 /// <param name="Message">What is wrong, in a sentence an operator can act on.</param>
 /// <param name="Severity">Whether the definition is unusable or merely questionable.</param>
 /// <param name="Code">The machine-readable code, so a caller need not match on message text.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ValidationFailure(
     string? FieldId,
     string Message,
@@ -82,7 +79,6 @@ public sealed record ValidationFailure(
 /// <summary>
 /// Whether a validation failure invalidates its subject.
 /// </summary>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ValidationSeverity
 {
     /// <summary>The subject is usable, but something about it is questionable.</summary>

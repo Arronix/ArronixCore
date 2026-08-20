@@ -1,7 +1,5 @@
 using Arronix.Abstractions.Shape;
 
-// The shape contracts are experimental; the join is expressed in their identity types.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Storage;
 

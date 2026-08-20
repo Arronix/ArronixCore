@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Arronix.Abstractions.Shape;
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Shape;
 /// A closed vocabulary. A consumer switches over it exhaustively, so a value added here is a compile
 /// error at every consumer rather than a silent misrender.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum CoordinateKind
 {
     /// <summary>An ordinal tuple, ordered and countable.</summary>
@@ -41,7 +39,6 @@ public enum CoordinateKind
 /// the gaps in a dense run, decide what comes next — and ordering cannot be recovered from text.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct Coordinate
 {
     /// <summary>
@@ -119,7 +116,6 @@ public readonly record struct Coordinate
 /// against a catalog and values extrapolated by a mapping service, and a consumer that cannot tell them
 /// apart will present a guess as a fact.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum CoordinateConfidence
 {
     /// <summary>Extrapolated or guessed, and flagged as such by whatever produced it.</summary>
@@ -141,7 +137,6 @@ public enum CoordinateConfidence
 /// <param name="SpaceId">The <see cref="CoordinateSpace.SpaceId"/> the reading is expressed in.</param>
 /// <param name="Value">The position.</param>
 /// <param name="Confidence">How much the reading can be trusted.</param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct CoordinateReading(
     string SpaceId,
     Coordinate Value,

@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
+using Arronix.Abstractions.DTOs;
 using Arronix.Common.Naming;
+using Arronix.Host.Languages;
 
 namespace Arronix.Host.Engines.Naming;
 
@@ -14,7 +16,7 @@ namespace Arronix.Host.Engines.Naming;
 /// </remarks>
 internal enum NamingModifier
 {
-    /// <summary>Scene punctuation stripped, <c>&amp;</c> → <c>and</c>, diacritics folded.</summary>
+    /// <summary>Language-owned spelling applied, scene punctuation stripped and diacritics folded.</summary>
     Clean = 0,
 
     /// <summary>Leading article moved to the end: <c>The Expanse</c> → <c>Expanse, The</c>.</summary>
@@ -121,9 +123,18 @@ internal static partial class NamingModifiers
     /// <param name="value">The token value.</param>
     /// <param name="modifier">The modifier.</param>
     /// <param name="year">The year bound beside the token's level, for <see cref="NamingModifier.Year"/>.</param>
+    /// <param name="languages">The installed language operations.</param>
+    /// <param name="language">The stated language of the value, when known.</param>
     /// <returns>The transformed value.</returns>
-    public static string Apply(string value, NamingModifier modifier, int? year)
+    public static string Apply(
+        string value,
+        NamingModifier modifier,
+        int? year,
+        LanguageTextService languages,
+        Language? language)
     {
+        ArgumentNullException.ThrowIfNull(languages);
+
         if (value.Length == 0 && modifier != NamingModifier.First)
         {
             return value;
@@ -131,8 +142,8 @@ internal static partial class NamingModifiers
 
         return modifier switch
         {
-            NamingModifier.Clean => Clean(value),
-            NamingModifier.The => MoveArticle(value),
+            NamingModifier.Clean => Clean(languages.FileName(value, language)),
+            NamingModifier.The => languages.Sort(value, language),
             NamingModifier.Year => AppendYear(value, year),
             NamingModifier.NoYear => TrailingYear().Replace(value, string.Empty),
             NamingModifier.First => FirstCharacter(value),
@@ -149,14 +160,11 @@ internal static partial class NamingModifiers
 
     private static string Clean(string value)
     {
-        var replaced = value.Replace("&", "and", StringComparison.Ordinal);
-        replaced = ScenifyReplace().Replace(replaced, " ");
+        var replaced = ScenifyReplace().Replace(value, " ");
         replaced = ScenifyRemove().Replace(replaced, string.Empty);
 
         return TextFolding.Fold(replaced).Trim();
     }
-
-    private static string MoveArticle(string value) => TitlePrefix().Replace(value, "$2, $1$3");
 
     private static string AppendYear(string value, int? year)
     {
@@ -190,9 +198,6 @@ internal static partial class NamingModifiers
 
     [GeneratedRegex(@"[\/]")]
     private static partial Regex ScenifyReplace();
-
-    [GeneratedRegex(@"^(The|An|A) (.*?)((?: *\([^)]+\))*)$", RegexOptions.IgnoreCase)]
-    private static partial Regex TitlePrefix();
 
     [GeneratedRegex(@" \((19|20)\d{2}\)$")]
     private static partial Regex TrailingYear();

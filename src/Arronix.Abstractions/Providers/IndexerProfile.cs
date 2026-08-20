@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.Shape;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Providers;
 /// the categories, the page size and the supported arguments are all things the service reports. The host
 /// caches it per definition through the session store.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record IndexerProfile
 {
     /// <summary>
@@ -85,7 +83,6 @@ public sealed record IndexerProfile
 /// <summary>
 /// How open a release source is.
 /// </summary>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum IndexerPrivacy
 {
     /// <summary>Anyone can use it.</summary>

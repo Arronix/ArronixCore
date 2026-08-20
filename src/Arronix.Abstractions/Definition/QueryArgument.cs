@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Definition;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Definition;
 /// <param name="OmitWhenAbsent">
 /// Whether the argument is dropped when its template resolves to nothing, rather than failing the tier.
 /// </param>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct QueryArgument(
     SearchTerm Term,
     string Template,

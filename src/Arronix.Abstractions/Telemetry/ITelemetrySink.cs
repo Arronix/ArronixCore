@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Telemetry;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Telemetry;
 /// Registering a sink requires the <c>telemetry-sink</c> capability. Events reaching a sink have
 /// already passed enrichment, redaction and de-duplication, so every sink observes the same event.
 /// </remarks>
-[Experimental(ExperimentalContracts.Telemetry, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface ITelemetrySink
 {
     /// <summary>

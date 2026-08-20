@@ -1,7 +1,4 @@
 @{
-#pragma warning disable ARX0013 // Shape contracts are experimental; monitor dimensions are declared by them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; the setting action is declared by one.
-#pragma warning disable ARX0017 // Wire contracts are experimental; the item and its state are them.
 }
 @inject ActionDispatcher Dispatcher
 @*
@@ -12,10 +9,8 @@
     on. The rolled-up state the host publishes is shown alongside, because a container is routinely wanted
     in part and neither answer implies the other.
 
-    <b>A gap, stated.</b> Nothing in the contracts connects a monitor dimension to the action that sets
-    it. Where the declared action happens to take a parameter named after the dimension, the choice is
-    applied directly; where it does not, the choice falls back to the ordinary confirm-and-collect path.
-    That fallback is a symptom, not a design, and it is reported alongside this work.
+    The platform's standard monitoring action identifies its wanted-state parameter semantically. This
+    control never relies on the parameter's serialized key.
 *@
 
 <div class="monitor">
@@ -31,13 +26,13 @@
                 <input type="checkbox"
                        checked="@(ChoiceOf(dimension) == "true")"
                        disabled="@(_busy || SetAction is null)"
-                       @onchange="@(args => ApplyAsync(dimension, args.Value is true ? "true" : "false"))" />
+                       @onchange="@(args => ApplyAsync(args.Value is true ? "true" : "false"))" />
             }
             else
             {
                 <select value="@ChoiceOf(dimension)"
                         disabled="@(_busy || SetAction is null)"
-                        @onchange="@(args => ApplyAsync(dimension, args.Value?.ToString() ?? string.Empty))">
+                        @onchange="@(args => ApplyAsync(args.Value?.ToString() ?? string.Empty))">
                     @foreach (var choice in dimension.Choices)
                     {
                         <option value="@choice.Value" selected="@(choice.Value == ChoiceOf(dimension))">
@@ -97,7 +92,7 @@
         .MonitorDimensions ?? [];
 
     private ActionDescriptor? SetAction
-        => ItemProjection.Action(Level, AffordanceMap.For(Affordance.Monitorable).ConventionalActionId);
+        => ItemProjection.Action(Level, AffordanceMap.For(Affordance.Monitorable).StandardAction);
 
     private string ChoiceOf(MonitorDimension dimension)
         => Item.MonitorChoices.TryGetValue(dimension.DimensionId, out var value)
@@ -121,17 +116,16 @@
         MonitorState.NotApplicable => "tone-neutral",
     };
 
-    private async Task ApplyAsync(MonitorDimension dimension, string choice)
+    private async Task ApplyAsync(string choice)
     {
         if (SetAction is not { } action)
         {
             return;
         }
 
-        var direct = action.Parameters
-            .Any(parameter => string.Equals(parameter.ParameterId, dimension.DimensionId, StringComparison.Ordinal));
-
-        if (!direct)
+        var wanted = action.Parameters.FirstOrDefault(parameter =>
+            parameter.StandardParameter is StandardMediaActionParameter.Wanted);
+        if (wanted is null)
         {
             _pending = action;
             return;
@@ -139,7 +133,7 @@
 
         await RunAsync(
             action,
-            new Dictionary<string, string>(StringComparer.Ordinal) { [dimension.DimensionId] = choice });
+            new Dictionary<string, string>(StringComparer.Ordinal) { [wanted.ParameterId] = choice });
     }
 
     private async Task RunAsync(ActionDescriptor action, IReadOnlyDictionary<string, string> values)

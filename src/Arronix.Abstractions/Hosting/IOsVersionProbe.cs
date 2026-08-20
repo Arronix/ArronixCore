@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Hosting;
 
@@ -17,7 +16,6 @@ namespace Arronix.Abstractions.Hosting;
 /// that exists today already lives outside the platform assembly.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IOsVersionProbe
 {
     /// <summary>

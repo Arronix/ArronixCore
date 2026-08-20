@@ -15,10 +15,6 @@ using Arronix.Plugins.Versioning;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable ARX0003 // The platform failure type is experimental; this assembly catches it.
-#pragma warning disable ARX0013 // Media-shape contracts are experimental; the loader reads declared shapes.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
-#pragma warning disable ARX0015 // Provider contracts are experimental; the loader reads declared providers.
 
 namespace Arronix.Plugins.Loading;
 
@@ -303,7 +299,7 @@ public sealed class PluginLoader
                 defects: [.. missing]);
         }
 
-        // Step 5: the contract range, then the experimental gate.
+        // Step 5: the declared contract range.
         if (!manifest.ContractRange.IsSatisfiedBy(HostContractVersion))
         {
             return Quarantine(
@@ -312,20 +308,6 @@ public sealed class PluginLoader
                 manifest,
                 CoreErrorCode.PluginContractMismatch,
                 $"Extension '{manifest.Id}' accepts contract versions '{manifest.ContractRange}', which this host's {HostContractVersion} does not satisfy.",
-                defects: []);
-        }
-
-        if (!manifest.ContractRange.SatisfiesExperimentalGate(HostContractVersion))
-        {
-            var required = new SemanticVersion(HostContractVersion.Major, HostContractVersion.Minor, 0);
-            var upper = new SemanticVersion(HostContractVersion.Major, HostContractVersion.Minor + 1, 0);
-
-            return Quarantine(
-                source,
-                manifest.Id,
-                manifest,
-                CoreErrorCode.PluginContractMismatch,
-                $"Extension '{manifest.Id}' declares the contract range '{manifest.ContractRange}', which reaches past the next minor version. Contracts published for review may change in any minor release, so declare '>={required} <{upper}' instead.",
                 defects: []);
         }
 
@@ -373,6 +355,7 @@ public sealed class PluginLoader
             var registry = new PluginRegistry(manifest.Id, manifest.GrantedCapabilities, ledger, _mediaTypes);
 
             var pluginContext = BuildContext(manifest, registry, context);
+            ledger.ActivationContext = pluginContext;
 
             try
             {
@@ -727,27 +710,7 @@ public sealed class PluginLoader
 
     private static IEnumerable<ProviderDescriptor> DescribedProviders(PluginRegistrationLedger ledger)
     {
-        foreach (var registration in ledger.Registered<IndexerRegistration>())
-        {
-            yield return registration.Descriptor;
-        }
-
-        foreach (var registration in ledger.Registered<DownloaderRegistration>())
-        {
-            yield return registration.Descriptor;
-        }
-
-        foreach (var registration in ledger.Registered<NotifierRegistration>())
-        {
-            yield return registration.Descriptor;
-        }
-
-        foreach (var registration in ledger.Registered<CatalogerRegistration>())
-        {
-            yield return registration.Descriptor;
-        }
-
-        foreach (var registration in ledger.Registered<CuratorRegistration>())
+        foreach (var registration in ledger.Registered<ProviderTypeRegistration>())
         {
             yield return registration.Descriptor;
         }

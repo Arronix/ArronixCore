@@ -3,10 +3,6 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Host.Engines.Parsing;
 using FluentAssertions;
 
-// The shape (ARX0013) and definition (ARX0019) contracts are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
-
 namespace Arronix.Host.Tests.Engines;
 
 /// <summary>
@@ -63,35 +59,13 @@ internal sealed class ParseEngineTitlePatternTests
         Parser().Parse("2001 - A Spaced Odyssey").Should().BeNull();
 
     [Test]
-    public void ProjectsTheReleaseGroupAndLanguages()
-    {
-        var parsed = Parsed("Some.Film.2019.FRENCH.1080p.BluRay.x264-SPARKS");
-
-        parsed.ReleaseGroup.Should().Be("SPARKS");
-        parsed.Languages.Should().NotBeNull();
-        parsed.Languages.Should().Contain(new Language("fr", "French"));
-    }
-
-    /// <summary>
-    /// The language scan runs with the work's own title masked out: a title containing the name of a
-    /// language is not a language claim.
-    /// </summary>
-    [Test]
-    public void ATitleNamingALanguageIsNotALanguageClaim()
-    {
-        var parsed = Parsed("The.French.Connection.1971.1080p.BluRay.x264");
-
-        parsed.Languages.Should().BeNull();
-    }
-
-    [Test]
     public void TokenTablesWriteTagsAndMetadata()
     {
-        var parsed = Parsed("Some.Film.2019.1080p.BluRay.tt1234567");
+        var parsed = Parsed("Some.Film.2019.id1234567");
 
         parsed.AdditionalMetadata.Should()
-            .ContainKey(DeclarativeParseFields.TagPrefix + "imdbId")
-            .WhoseValue.Should().Be("tt1234567");
+            .ContainKey(DeclarativeParseFields.TagPrefix + "catalogId")
+            .WhoseValue.Should().Be("id1234567");
     }
 
     /// <summary>A token row's constraint refuses a capture outside its declared vocabulary.</summary>
@@ -110,7 +84,6 @@ internal sealed class ParseEngineTitlePatternTests
                     Rows = [new TokenRow(@"ser-(?<serial>\w{1,8})", "serial", Constraint: "numeric")],
                 },
             ],
-            RungResolution = ParseEngineFixtures.RungTable(),
         };
 
         var parser = ParseEngineFixtures.Parser(parsing);
@@ -140,16 +113,6 @@ internal sealed class ParseEngineTitlePatternTests
     [Test]
     public void ARangeBeyondTheDeclaredCapDeclines() =>
         Parser().Parse("Saga #1-99 720p WEB-DL").Should().BeNull();
-
-    [Test]
-    public void WritesTheRevisionTripleAlways()
-    {
-        var parsed = Parsed("Some.Film.2019.PROPER.1080p.BluRay.x264");
-
-        parsed.AdditionalMetadata![DeclarativeParseFields.RevisionVersion].Should().Be("2");
-        parsed.AdditionalMetadata[DeclarativeParseFields.RevisionReal].Should().Be("0");
-        parsed.AdditionalMetadata[DeclarativeParseFields.RevisionIsRepack].Should().Be("false");
-    }
 
     /// <summary>
     /// Guard references gate a pattern's claim: the same expression, negated, splits one shape into two
@@ -186,7 +149,6 @@ internal sealed class ParseEngineTitlePatternTests
                     Guards = [new GuardRef("marker", Negated: true)],
                 },
             ],
-            RungResolution = ParseEngineFixtures.RungTable(),
         };
 
         var parser = ParseEngineFixtures.Parser(parsing);

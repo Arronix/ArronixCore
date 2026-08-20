@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 
 namespace Arronix.Abstractions.Shape;
@@ -16,7 +15,6 @@ namespace Arronix.Abstractions.Shape;
 /// or an event payload is unresolvable. Everything the host stores about an item — monitoring, file
 /// links, group membership — is keyed by this triple.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct MediaItemRef(MediaKindId Kind, MediaLevelId Level, MediaItemId Id)
 {
     /// <summary>

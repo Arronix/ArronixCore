@@ -8,12 +8,6 @@ using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
 
-// Every contract named here is experimental; this is the host's admitted view of a media kind.
-#pragma warning disable ARX0009
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0016
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Media;
 
@@ -52,6 +46,7 @@ public sealed class RegisteredMediaKind
         Projection = projection;
         Descriptor = descriptor;
         Definition = contribution.Definition;
+        MediaType = contribution.MediaType;
     }
 
     /// <summary>Gets the extension that contributed this kind.</summary>
@@ -65,6 +60,9 @@ public sealed class RegisteredMediaKind
 
     /// <summary>Gets the media kind's identifier.</summary>
     public Abstractions.Identity.MediaKindId Kind => Shape.Kind;
+
+    /// <summary>Gets the closed typed media runtime, when registered through the typed contract.</summary>
+    public IMediaTypeRuntime? MediaType { get; }
 
     /// <summary>Gets the resolved shape.</summary>
     public ValidatedShape Shape { get; }

@@ -6,9 +6,6 @@ using Arronix.Host.Configuration;
 using Arronix.Host.Providers;
 using Microsoft.Extensions.Options;
 
-// Health and provider contracts are experimental; this contributor reports on configured providers.
-#pragma warning disable ARX0006
-#pragma warning disable ARX0015
 
 namespace Arronix.Host.Health;
 

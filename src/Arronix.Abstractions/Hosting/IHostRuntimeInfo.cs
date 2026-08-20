@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Hosting;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Hosting;
 /// pending — belongs to the framework's application lifetime abstraction, not here: a property that any
 /// consumer can set is a shared mutable global wearing an interface.
 /// </remarks>
-[Experimental(ExperimentalContracts.Hosting, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IHostRuntimeInfo
 {
     /// <summary>

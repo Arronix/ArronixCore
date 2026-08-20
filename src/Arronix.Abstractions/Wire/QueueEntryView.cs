@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Wire;
 
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Wire;
 /// story an operator needs about work that is not progressing: how many times it has failed and when it
 /// will next be tried.
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record QueueEntryView(
     Guid EntryId,
     string JobId,

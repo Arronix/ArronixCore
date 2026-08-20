@@ -1,7 +1,5 @@
 using Arronix.Abstractions.Shape;
 
-// The shape contracts are experimental; the library facet is keyed by one of their identity types.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Storage;
 

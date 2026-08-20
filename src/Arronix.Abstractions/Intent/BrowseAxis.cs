@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Intent;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Intent;
 /// coming next, for instance, is a sequence traversal over a date field; declaring the traversal lets one
 /// consumer present it as a calendar and another as an ordered list, from the same declaration.
 /// </remarks>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record BrowseAxis
 {
     /// <summary>
@@ -64,7 +62,6 @@ public sealed record BrowseAxis
 /// <summary>
 /// What kind of traversal a browse axis describes.
 /// </summary>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum BrowseAxisKind
 {
     /// <summary>Descend the containment hierarchy, one level at a time.</summary>

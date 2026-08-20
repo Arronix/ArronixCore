@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -10,7 +9,6 @@ namespace Arronix.Abstractions.Shape;
 /// declares what it needs to be able to ask; a source declares what it can be asked. Eligibility is the
 /// intersection of the two, computed by the host, and neither side ever names the other's vocabulary.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record SearchKind
 {
     /// <summary>

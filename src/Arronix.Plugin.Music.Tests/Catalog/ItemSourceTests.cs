@@ -1,5 +1,3 @@
-// Shape, provider and intent contracts are experimental; this fixture asserts against them directly.
-#pragma warning disable ARX0013, ARX0015, ARX0016
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;

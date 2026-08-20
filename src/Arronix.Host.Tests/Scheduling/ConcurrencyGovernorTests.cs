@@ -4,8 +4,6 @@ using Arronix.Host.Scheduling;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
-// The plugin contracts are experimental; throttle keys are synthesized from the capability vocabulary.
-#pragma warning disable ARX0014
 
 namespace Arronix.Host.Tests.Scheduling;
 

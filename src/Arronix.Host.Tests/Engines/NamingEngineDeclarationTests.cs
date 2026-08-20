@@ -4,9 +4,6 @@ using Arronix.Abstractions.Shape;
 using Arronix.Host.Engines.Naming;
 using FluentAssertions;
 
-// The shape and definition contracts are experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Tests.Engines;
 
@@ -17,6 +14,8 @@ namespace Arronix.Host.Tests.Engines;
 [TestFixture]
 internal sealed class NamingEngineDeclarationTests
 {
+    private static NamingEngine Engine() => new(Declaration(), languages: NamingEngineTestSupport.Languages());
+
     private static NamingDeclaration Declaration() => new()
     {
         DefaultTemplates = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -84,7 +83,7 @@ internal sealed class NamingEngineDeclarationTests
     [Test]
     public void SelectionRowsRunInDeclaredOrderAndFirstPassingRowWins()
     {
-        var engine = new NamingEngine(Declaration());
+        var engine = Engine();
 
         engine.SelectSlot("file", Options(("options.flat", "true")), FullBindings()).Should().Be("flat");
         engine.SelectSlot("file", Options(), FullBindings()).Should().Be("file");
@@ -93,7 +92,7 @@ internal sealed class NamingEngineDeclarationTests
     [Test]
     public void AChosenTemplateMissingItsTokensDegradesToTheDeclaredFallback()
     {
-        var engine = new NamingEngine(Declaration());
+        var engine = Engine();
 
         // No work item bound: {Work Title} has no value, so the row's fallback slot is taken.
         var entryOnly = NamingEngineTestSupport.Bind(null, NamingEngineTestSupport.EntryItem());
@@ -104,7 +103,7 @@ internal sealed class NamingEngineDeclarationTests
     [Test]
     public void TheSpineRendersItsSegmentsAndHonorsInsertedOnes()
     {
-        var engine = new NamingEngine(Declaration());
+        var engine = Engine();
         var bindings = FullBindings();
 
         engine.RenderSpine(Options(), bindings, null)
@@ -117,7 +116,7 @@ internal sealed class NamingEngineDeclarationTests
     [Test]
     public void ADeclaredFallbackRowFillsAnUnboundToken()
     {
-        var engine = new NamingEngine(Declaration());
+        var engine = Engine();
         var file = NamingEngineTestSupport.File() with { SceneName = "Fixture.Show.2020.1080p-GRP" };
 
         engine.RenderTemplate("{Original Title}", NamingEngineTestSupport.Bind(null), file)
@@ -127,7 +126,7 @@ internal sealed class NamingEngineDeclarationTests
     [Test]
     public void ATemplateRenderingNothingFallsBackToTheOriginalStem()
     {
-        var engine = new NamingEngine(Declaration());
+        var engine = Engine();
 
         engine.RenderTemplate("{Quality Real}", NamingEngineTestSupport.Bind(), NamingEngineTestSupport.File())
             .Should().Be("original.file.name");

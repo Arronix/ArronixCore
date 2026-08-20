@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Telemetry;
 
@@ -16,7 +15,6 @@ namespace Arronix.Abstractions.Telemetry;
 /// smuggle grouping information through a logging framework. It is a first-class field here precisely
 /// so that grouping survives without the call site knowing which sink groups by it.
 /// </remarks>
-[Experimental(ExperimentalContracts.Telemetry, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record TelemetryEvent(
     Guid EventId,
     DateTimeOffset Timestamp,

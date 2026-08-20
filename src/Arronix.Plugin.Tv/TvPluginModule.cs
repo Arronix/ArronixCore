@@ -1,5 +1,3 @@
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; they are the extension's diagnostic surface.
-#pragma warning disable ARX0014 // Extension contracts are experimental; a media extension is their intended implementer.
 
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Telemetry;
@@ -15,10 +13,9 @@ namespace Arronix.Plugin.Tv;
 /// <para>Exactly one public, parameterless-constructible module per assembly. <see cref="Configure"/>
 /// registers and does nothing else — no I/O, no network, no long work — and a throwing <c>Configure</c>
 /// quarantines this extension rather than failing the host.</para>
-/// <para>Every seam this extension contributes is built here and handed over already constructed. The host
-/// never activates a type this assembly owns and never reflects over one, which is what makes the
-/// capability gate an admission check: registering something the manifest did not declare is not a thing
-/// this method can express.</para>
+/// <para>Legacy media-engine seams are built here until Television completes its typed migration. Provider
+/// registrations carry implementation types instead; the host activates those through DI only after the
+/// capability declaration is admitted.</para>
 /// </remarks>
 public sealed class TvPluginModule : IPluginModule
 {
@@ -50,10 +47,8 @@ public sealed class TvPluginModule : IPluginModule
 
             // metadata
             .AddMediaIdResolver(new TvIdResolver(catalog))
-            .AddCataloger(TvCataloger.Registration(Id, catalog))
-
             // indexing, provider side
-            .AddIndexer(TvIndexer.Registration(Id, catalog, context.Clock))
+            .AddIndexer<TvIndexer>(TvIndexer.Describe())
 
             // declared intent - data only, never code
             .AddIntentSurface(TvIntent.Create());

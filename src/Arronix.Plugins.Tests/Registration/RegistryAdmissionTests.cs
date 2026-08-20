@@ -5,9 +5,6 @@ using Arronix.Abstractions.Scheduling;
 using Arronix.Plugins.Registration;
 using Arronix.Plugins.Tests.Support;
 
-#pragma warning disable ARX0004 // Event contracts are experimental; these tests exercise registrations of them.
-#pragma warning disable ARX0014 // The extension model is experimental; these tests exercise it.
-#pragma warning disable ARX0015 // Provider contracts are experimental; these tests register one.
 
 namespace Arronix.Plugins.Tests.Registration;
 
@@ -31,14 +28,27 @@ public sealed class RegistryAdmissionTests
         var (registry, ledger) = Create(Capability.Indexing);
 
         registry
-            .AddIndexer(Declarations.IndexerRegistration("first"))
-            .AddIndexer(Declarations.IndexerRegistration("second"))
-            .AddIndexer(Declarations.IndexerRegistration("third"));
+            .AddIndexer<FakeIndexer>(Declarations.Indexer("first"))
+            .AddIndexer<FakeIndexer>(Declarations.Indexer("second"))
+            .AddIndexer<FakeIndexer>(Declarations.Indexer("third"));
 
-        ledger.Registered<Abstractions.Providers.IndexerRegistration>()
+        ledger.Registered<Abstractions.Providers.ProviderTypeRegistration>()
             .Select(registration => registration.Descriptor.LocalId)
             .Should().Equal("first", "second", "third");
         ledger.Entries.Select(entry => entry.Ordinal).Should().Equal(0, 1, 2);
+    }
+
+    [Test]
+    public void ACatalogerRegistrationRetainsTheMediaOwnedItemTypeAndImplementationType()
+    {
+        var (registry, ledger) = Create(Capability.Metadata);
+
+        registry.AddCataloger<FakeCatalogItem, FakeCataloger>(Declarations.Cataloger("typed"));
+
+        var registration = ledger.Registered<Abstractions.Providers.ProviderTypeRegistration>().Single();
+        registration.ContractType.Should().Be(typeof(Abstractions.Providers.ICataloger<FakeCatalogItem>));
+        registration.ImplementationType.Should().Be(typeof(FakeCataloger));
+        registration.MediaItemType.Should().Be(typeof(FakeCatalogItem));
     }
 
     [Test]

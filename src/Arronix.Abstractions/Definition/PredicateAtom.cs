@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Definition;
 /// predicate and validated at load; an unresolvable subject refuses the definition rather than
 /// evaluating to anything.
 /// </remarks>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record PredicateAtom
 {
     /// <summary>

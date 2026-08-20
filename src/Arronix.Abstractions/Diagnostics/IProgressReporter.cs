@@ -1,11 +1,9 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Diagnostics;
 
 /// <summary>
 /// The verbosity at which a progress message is surfaced.
 /// </summary>
-[Experimental(ExperimentalContracts.Diagnostics, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ProgressLevel
 {
     /// <summary>Fine-grained step detail, off in normal operation.</summary>
@@ -31,7 +29,6 @@ public enum ProgressLevel
 /// that only wants to say how far along it is.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Diagnostics, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IProgressReporter
 {
     /// <summary>

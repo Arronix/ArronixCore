@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Providers;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Providers;
 /// closed form, ran into a protocol it could not name, and had to migrate its stored data to widen it.
 /// The two the platform knows by name are provided as constants; anything else is just a token.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct DownloadProtocol(string Value)
 {
     /// <summary>

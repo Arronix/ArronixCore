@@ -2,9 +2,6 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Shape;
 
-// Definition contracts are experimental; this is the host's own answer inside one of them.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Engines.Matching;
 

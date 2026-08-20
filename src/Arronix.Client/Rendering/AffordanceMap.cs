@@ -1,6 +1,6 @@
-#pragma warning disable ARX0017 // Wire contracts are experimental; affordances are what this table maps.
 
 using Arronix.Abstractions.Wire;
+using Arronix.Abstractions.Intent;
 
 namespace Arronix.Client.Rendering;
 
@@ -14,15 +14,8 @@ namespace Arronix.Client.Rendering;
 /// rendered from a declaration the shape already carries — the monitor dimensions, the variant axis, the
 /// child level. The remaining seven become entries in the item's command list.
 /// </para>
-/// <para>
-/// <b>A gap, stated rather than papered over.</b> An ability names no action, and an action names no
-/// ability, so nothing in the published contracts connects the two. Each row below therefore carries the
-/// identifier this client <i>expects</i> the corresponding action to be published under, and a control is
-/// only ever offered when the level actually declares an action with that identifier — an ability with no
-/// matching action is silently not offered rather than offered and broken. That convention is this
-/// client's, and it is the one place where this project holds an expectation about a string an extension
-/// chooses. The proper fix belongs in the contract layer and is reported alongside this work.
-/// </para>
+/// The binding uses the platform operation enum. Its wire identifier belongs to the host projection and
+/// never becomes a convention privately repeated by the client.
 /// </remarks>
 public static class AffordanceMap
 {
@@ -33,16 +26,16 @@ public static class AffordanceMap
     /// <returns>The control and the action identifier it invokes.</returns>
     public static AffordanceBinding For(Affordance affordance) => affordance switch
     {
-        Affordance.Monitorable => new AffordanceBinding(AffordanceControl.MonitorSwitch, "monitor.set", "Monitoring"),
-        Affordance.Searchable => new AffordanceBinding(AffordanceControl.Command, "search", "Search"),
-        Affordance.Refreshable => new AffordanceBinding(AffordanceControl.Command, "refresh", "Refresh"),
-        Affordance.Renamable => new AffordanceBinding(AffordanceControl.Command, "rename", "Rename files"),
-        Affordance.Removable => new AffordanceBinding(AffordanceControl.Command, "remove", "Remove"),
-        Affordance.Browsable => new AffordanceBinding(AffordanceControl.Navigation, "", "Open"),
-        Affordance.Selectable => new AffordanceBinding(AffordanceControl.VariantChooser, "variant.select", "Version"),
-        Affordance.Taggable => new AffordanceBinding(AffordanceControl.Command, "tags.set", "Tags"),
-        Affordance.Relocatable => new AffordanceBinding(AffordanceControl.Command, "relocate", "Move files"),
-        Affordance.Downloadable => new AffordanceBinding(AffordanceControl.Command, "grab", "Get"),
+        Affordance.Monitorable => new(AffordanceControl.MonitorSwitch, StandardMediaAction.SetMonitoring, "Monitoring"),
+        Affordance.Searchable => new(AffordanceControl.Command, StandardMediaAction.Search, "Search"),
+        Affordance.Refreshable => new(AffordanceControl.Command, StandardMediaAction.Refresh, "Refresh"),
+        Affordance.Renamable => new(AffordanceControl.Command, StandardMediaAction.Rename, "Rename files"),
+        Affordance.Removable => new(AffordanceControl.Command, StandardMediaAction.Remove, "Remove"),
+        Affordance.Browsable => new(AffordanceControl.Navigation, null, "Open"),
+        Affordance.Selectable => new(AffordanceControl.VariantChooser, StandardMediaAction.SelectVariant, "Version"),
+        Affordance.Taggable => new(AffordanceControl.Command, StandardMediaAction.SetTags, "Tags"),
+        Affordance.Relocatable => new(AffordanceControl.Command, StandardMediaAction.Relocate, "Move files"),
+        Affordance.Downloadable => new(AffordanceControl.Command, StandardMediaAction.Grab, "Get"),
     };
 }
 
@@ -50,11 +43,12 @@ public static class AffordanceMap
 /// What this client offers for one derived ability.
 /// </summary>
 /// <param name="Control">The kind of control drawn.</param>
-/// <param name="ConventionalActionId">
-/// The action identifier this client looks for. Empty when the control invokes nothing.
-/// </param>
+/// <param name="StandardAction">The platform operation invoked, or null when the control invokes nothing.</param>
 /// <param name="Label">What the control is called.</param>
-public sealed record AffordanceBinding(AffordanceControl Control, string ConventionalActionId, string Label);
+public sealed record AffordanceBinding(
+    AffordanceControl Control,
+    StandardMediaAction? StandardAction,
+    string Label);
 
 /// <summary>
 /// The kinds of control this client draws for a derived ability.

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Providers;
 
@@ -16,7 +15,6 @@ namespace Arronix.Abstractions.Providers;
 /// that owns the item, and arrives already rendered.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface INotifier : IProvider
 {
     /// <summary>
@@ -46,7 +44,6 @@ public interface INotifier : IProvider
 /// vocabulary would be silently ignored by every destination that had not heard of the new value, which is
 /// indistinguishable from the notification never being sent.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum NotificationEvent
 {
     /// <summary>A release was selected and handed to a transfer client.</summary>

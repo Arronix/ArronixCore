@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -6,5 +5,4 @@ namespace Arronix.Abstractions.Media;
 /// Marks a property that participates in free-text search.
 /// </summary>
 [AttributeUsage(AttributeTargets.Property, Inherited = false)]
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class SearchableAttribute : Attribute;

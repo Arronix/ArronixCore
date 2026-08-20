@@ -10,9 +10,6 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 
-#pragma warning disable ARX0013 // Shape contracts are experimental; identity types are described as text.
-#pragma warning disable ARX0014 // Extension contracts are experimental; identity types are described as text.
-#pragma warning disable ARX0015 // Provider contracts are experimental; identity types are described as text.
 
 namespace Arronix.Api.OpenApi;
 

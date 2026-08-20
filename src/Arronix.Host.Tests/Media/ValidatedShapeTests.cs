@@ -4,9 +4,6 @@ using Arronix.Host.Media;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
-// The shape contracts are experimental; these tests exercise the host's gate over them.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Tests.Media;
 

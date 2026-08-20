@@ -3,7 +3,6 @@ using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
 using Arronix.Plugins.Manifest;
 
-#pragma warning disable ARX0003 // The platform failure type is experimental; these tests assert on it.
 
 namespace Arronix.Plugins.Tests.Manifest;
 

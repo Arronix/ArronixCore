@@ -3,7 +3,6 @@ using System.Reflection;
 using System.Reflection.Emit;
 using Arronix.Abstractions.Plugins;
 
-#pragma warning disable ARX0014 // The extension model is experimental; these fixtures implement it.
 
 namespace Arronix.Plugins.Tests.Support;
 

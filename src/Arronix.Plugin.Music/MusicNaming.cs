@@ -1,5 +1,3 @@
-// The file-facts record is an experimental shape contract; the rename seam carries it.
-#pragma warning disable ARX0013
 
 using System.Globalization;
 using System.Linq;

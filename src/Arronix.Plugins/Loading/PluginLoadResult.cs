@@ -5,8 +5,6 @@ using Arronix.Abstractions.Wire;
 using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
 
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
-#pragma warning disable ARX0017 // The wire contracts are experimental; this assembly projects onto them.
 
 namespace Arronix.Plugins.Loading;
 

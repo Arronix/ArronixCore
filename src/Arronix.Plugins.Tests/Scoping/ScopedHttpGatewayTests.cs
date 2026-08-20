@@ -3,8 +3,6 @@ using Arronix.Abstractions.Http;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Scoping;
 
-#pragma warning disable ARX0008 // Outbound-call contracts are experimental; these tests exercise the decorator.
-#pragma warning disable ARX0014 // The extension model is experimental; these tests exercise it.
 
 namespace Arronix.Plugins.Tests.Scoping;
 

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Wire;
 /// the versioning hazard this contract layer refuses everywhere else; here it would also mean a consumer
 /// crashing on an event kind it has never heard of, on a live connection.
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record EventEnvelope
 {
     /// <summary>
@@ -80,7 +78,6 @@ public sealed record EventEnvelope
 /// <summary>
 /// What kind of event an envelope carries.
 /// </summary>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum EventKind
 {
     /// <summary>An item's state or contents changed.</summary>

@@ -1,5 +1,3 @@
-// The file-facts record is an experimental shape contract until 1.0.
-#pragma warning disable ARX0013
 
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;

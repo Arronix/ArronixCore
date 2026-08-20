@@ -1,4 +1,3 @@
-#pragma warning disable ARX0017 // Wire contracts are experimental; the envelope is what arrives here.
 
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Wire;

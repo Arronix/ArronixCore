@@ -1,5 +1,3 @@
-// The shape contracts are experimental until 1.0.
-#pragma warning disable ARX0013
 
 using System.Globalization;
 using System.IO;
@@ -77,7 +75,10 @@ internal sealed class ShapeTokenDeriver
 
         // The title binds first so a declared title field may overwrite it with the same value in a
         // richer kind (the field row carries the semantics; ItemView.Title is the guaranteed floor).
-        bindings.Set($"{level.Name} Title", item.Title, TokenElasticity.Elastic, depth);
+        bindings.Set(TokenBinding.Of($"{level.Name} Title", item.Title, TokenElasticity.Elastic, depth) with
+        {
+            Language = item.TitleLanguage,
+        });
 
         foreach (var field in level.Fields)
         {
@@ -100,6 +101,7 @@ internal sealed class ShapeTokenDeriver
             bindings.Set(TokenBinding.Of($"{level.Name} {field.Name}", text, elasticity, depth) with
             {
                 Year = YearOf(item),
+                Language = LanguageOf(value),
             });
         }
 
@@ -225,16 +227,6 @@ internal sealed class ShapeTokenDeriver
             bindings.Set(TokenBinding.Of("Ext", extension[1..]));
         }
 
-        foreach (var (facetId, value) in file.TechnicalFacets)
-        {
-            bindings.Set(TokenBinding.Of(facetId, value, TokenElasticity.Droppable));
-        }
-
-        foreach (var (facetId, value) in file.KindFacets)
-        {
-            // D15: per-kind file markers, keyed by the declaring TechnicalFacet identifier.
-            bindings.Set(TokenBinding.Of(facetId, value, TokenElasticity.Droppable));
-        }
     }
 
     private static int? YearOf(ItemView item)
@@ -244,6 +236,29 @@ internal sealed class ShapeTokenDeriver
             if (item.Fields.TryGetValue(key, out var value) && value.Number is { } year && year > 0)
             {
                 return (int)year;
+            }
+        }
+
+        return null;
+    }
+
+    private static Arronix.Abstractions.DTOs.Language? LanguageOf(FieldValue value)
+    {
+        if (value.Language is not null)
+        {
+            return value.Language;
+        }
+
+        if (value.Items is null)
+        {
+            return null;
+        }
+
+        foreach (var item in value.Items)
+        {
+            if (LanguageOf(item) is { } language)
+            {
+                return language;
             }
         }
 

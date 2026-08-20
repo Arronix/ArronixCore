@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Wire;
 
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Wire;
 /// registration contract takes a string, and publishing a parsed form would create a second answer to
 /// what a job's schedule is.
 /// </remarks>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record JobView(
     string JobId,
     string Name,

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Shape;
 /// express that.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record FileBinding
 {
     /// <summary>
@@ -67,13 +65,11 @@ public sealed record FileBinding
 /// leaf items but never cross the grouping run above them. Declared rather than thrown, the host enforces
 /// it for any kind without knowing what the run means.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct SpanConstraint(string SpaceId, string ComponentId, SpanRule Rule);
 
 /// <summary>
 /// Whether a file may straddle two values of a coordinate component.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SpanRule
 {
     /// <summary>A single file must not cover items with different values for the component.</summary>

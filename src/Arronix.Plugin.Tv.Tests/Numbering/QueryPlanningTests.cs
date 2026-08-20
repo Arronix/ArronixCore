@@ -1,6 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests cover an implementation of them.
-#pragma warning disable ARX0014 // Extension contracts are experimental; PluginId is one.
-#pragma warning disable ARX0015 // Provider contracts are experimental; these tests cover an implementation.
 
 using System;
 using System.Collections.Generic;

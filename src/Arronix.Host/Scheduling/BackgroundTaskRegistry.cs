@@ -8,12 +8,6 @@ using Arronix.Abstractions.Scheduling;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
 
-// Error, plugin, shape and wire contracts are experimental; the registry implements the stable scheduling
-// contract on top of them.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0013
-#pragma warning disable ARX0014
-#pragma warning disable ARX0017
 
 namespace Arronix.Host.Scheduling;
 

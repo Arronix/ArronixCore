@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Providers;
 /// type; every other member is character-for-character identical in all four of them.
 /// <see cref="GrabRequest"/> is that line, made media-neutral.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IDownloader : IProvider
 {
     /// <summary>
@@ -90,7 +88,6 @@ public interface IDownloader : IProvider
 /// <param name="Category">The client-side category the transfer should be filed under.</param>
 /// <param name="Protocol">The protocol the release is transferred over.</param>
 /// <param name="Indexer">The source the release was found on, when that is known.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record GrabRequest(
     ReleaseId Release,
     Uri DownloadUrl,
@@ -115,7 +112,6 @@ public sealed record GrabRequest(
 /// <param name="CanMoveFiles">Whether the platform may move the files rather than copy them.</param>
 /// <param name="CanBeRemoved">Whether the transfer may be removed from the client.</param>
 /// <param name="ErrorMessage">Why the transfer failed, when it did.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record DownloadItem(
     string DownloadId,
     string Title,
@@ -132,7 +128,6 @@ public sealed record DownloadItem(
 /// <summary>
 /// How a transfer is going.
 /// </summary>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum DownloadItemStatus
 {
     /// <summary>Accepted and waiting to start.</summary>
@@ -160,7 +155,6 @@ public enum DownloadItemStatus
 /// <param name="Name">The name the client reports for itself.</param>
 /// <param name="OutputRootFolders">The folders the client writes finished transfers into.</param>
 /// <param name="RemovesCompleted">Whether the client removes finished transfers by itself.</param>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record DownloaderInfo(
     string Name,
     IReadOnlyList<string> OutputRootFolders,

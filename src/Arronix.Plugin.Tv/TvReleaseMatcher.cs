@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
 
 using System.Globalization;
 using System.Linq;

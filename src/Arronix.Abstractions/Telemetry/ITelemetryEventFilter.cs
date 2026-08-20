@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Telemetry;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Telemetry;
 /// not worth reporting. That is what allows the telemetry pipeline itself to reference none of them.
 /// A single filter returning <see langword="false"/> drops the event for every sink.
 /// </remarks>
-[Experimental(ExperimentalContracts.Telemetry, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface ITelemetryEventFilter
 {
     /// <summary>

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
 
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Plugins;
 /// about the code need not know this type exists.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Plugins, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class PluginCapabilityException : ArronixException
 {
     /// <summary>

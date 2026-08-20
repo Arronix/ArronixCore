@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Definition;
 
@@ -13,7 +12,6 @@ namespace Arronix.Abstractions.Definition;
 /// surveyed sources rely on it — an upper-case token can be a revision marker where the same word in
 /// lower case is just a word, and a default-insensitive engine would silently flatten the two.
 /// </param>
-[Experimental(ExperimentalContracts.Definition, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct GuardPattern(
     string GuardId,
     string Regex,

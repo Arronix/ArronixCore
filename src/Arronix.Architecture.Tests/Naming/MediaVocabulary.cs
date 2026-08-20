@@ -38,8 +38,7 @@ internal static class MediaVocabulary
         "Track", "Tracks",
         "Artist", "Artists",
         "Book", "Books",
-        "Author", "Authors",
-        "Edition", "Editions"
+        "Author", "Authors"
     ];
 
     /// <summary>

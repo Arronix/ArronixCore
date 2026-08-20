@@ -3,9 +3,6 @@ using System.Linq;
 using System.Text;
 using Arronix.Abstractions.Naming;
 
-// The naming contract is experimental. This file consumes the folding provider contract to assemble the
-// table it applies; it takes no other dependency on the unstable surface.
-#pragma warning disable ARX0009
 
 namespace Arronix.Common.Naming;
 

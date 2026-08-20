@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Shape;
 /// elsewhere would couple two otherwise independent contract areas for no gain.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record RenderedSummary
 {
     /// <summary>
@@ -60,7 +58,6 @@ public sealed record RenderedSummary
 /// <param name="Label">What the value is.</param>
 /// <param name="Value">The value, already formatted by the extension that owns it.</param>
 /// <param name="Weight">How important the value is relative to the summary's other fields.</param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct SummaryField(string Label, string Value, SummaryFieldWeight Weight);
 
 /// <summary>
@@ -70,7 +67,6 @@ public readonly record struct SummaryField(string Label, string Value, SummaryFi
 /// An importance rank rather than a placement instruction: "weight" is meaningful to a spoken summary and
 /// a one-line notification alike, where a placement word would be meaningful to neither.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum SummaryFieldWeight
 {
     /// <summary>Carried wherever the summary is carried.</summary>
@@ -87,5 +83,4 @@ public enum SummaryFieldWeight
 /// <param name="Url">Where the image can be fetched from.</param>
 /// <param name="Width">The image's width in pixels, when known.</param>
 /// <param name="Height">The image's height in pixels, when known.</param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ArtworkRef(string Role, Uri Url, int? Width, int? Height);

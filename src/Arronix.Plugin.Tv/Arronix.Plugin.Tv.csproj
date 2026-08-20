@@ -4,19 +4,19 @@
     <RootNamespace>Arronix.Plugin.Tv</RootNamespace>
     <AssemblyName>Arronix.Plugin.Tv</AssemblyName>
     <Version>0.1.0</Version>
-    <Description>Reference media extension for episodic television. Declares a two-level shape with five coordinate spaces, a sequence axis carrying a policy record and an exception, a span constraint, and a one-file-to-many-units binding, and supplies the release parser, matcher, query planner, quality ladder, naming policy and catalog projection for it. References Arronix.Abstractions and nothing else.</Description>
+    <Description>Reference media extension for episodic television and the pressure test for set-shaped acquisition targets. It binds the independently owned Video format capability while its legacy shape implementation is migrated to the typed media contract.</Description>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
   <!--
-       Invariant 2: an extension references Arronix.Abstractions and NOTHING else - no Common, no Host, no
-       Plugins, no Api - and takes zero package references. Both halves are asserted mechanically by
-       ProjectTopologyTests, and again at load time by the static reference-graph check.
+       A media extension references contracts plus the format capabilities it composes, never Common,
+       Plugins, Host, Api or Client. It takes zero package references. Architecture tests enforce both.
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" />
   </ItemGroup>
 
   <ItemGroup>

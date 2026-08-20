@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
 
@@ -7,7 +6,6 @@ namespace Arronix.Abstractions.Wire;
 /// <summary>
 /// One level of a media kind, projected into everything a consumer needs to work with it.
 /// </summary>
-[Experimental(ExperimentalContracts.Wire, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record LevelPresentation
 {
     /// <summary>

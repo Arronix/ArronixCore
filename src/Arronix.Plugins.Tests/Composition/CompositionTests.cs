@@ -14,7 +14,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable ARX0010 // Serialization contracts are experimental; the composition needs one registered.
 
 namespace Arronix.Plugins.Tests.Composition;
 

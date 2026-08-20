@@ -1,8 +1,6 @@
 using System.Linq;
 using Arronix.Abstractions.Definition;
 
-// The declaration contracts the parameter rows arrive in are experimental.
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Engines.Matching;
 

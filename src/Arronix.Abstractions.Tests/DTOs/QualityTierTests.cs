@@ -32,18 +32,4 @@ public class QualityTierTests
         });
     }
 
-    [Test]
-    public void QualityTier_CanHaveOptionalProperties()
-    {
-        var quality = new QualityTier(
-            Name: "BluRay-1080p",
-            Rank: 15,
-            Source: "BluRay",
-            Resolution: "1080p",
-            Codec: "x264");
-
-        Assert.That(quality.Source, Is.EqualTo("BluRay"));
-        Assert.That(quality.Resolution, Is.EqualTo("1080p"));
-        Assert.That(quality.Codec, Is.EqualTo("x264"));
-    }
 }

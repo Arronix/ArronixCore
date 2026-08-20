@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 
 namespace Arronix.Abstractions.Shape;
@@ -19,7 +18,6 @@ namespace Arronix.Abstractions.Shape;
 /// and never branches on it, so a new catalog needs no platform change.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public readonly record struct ExternalId(string Scheme, string Value)
 {
     private const char SchemeSeparator = ':';
@@ -98,7 +96,6 @@ public readonly record struct ExternalId(string Scheme, string Value)
 /// came from and detect two library entries that are the same work, without knowing what any of the
 /// catalogs contain.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ExternalIdScheme
 {
     /// <summary>

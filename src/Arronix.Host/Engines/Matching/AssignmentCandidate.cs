@@ -1,7 +1,5 @@
 using Arronix.Abstractions.Shape;
 
-// The shape contracts the candidate row reuses are experimental.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Engines.Matching;
 

@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Shape;
 /// monitoring and profiles, and its own metadata fetch path. All of that is declared here so the host can
 /// offer it generically instead of a kind re-implementing it.
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record GroupingAxis
 {
     /// <summary>
@@ -90,7 +88,6 @@ public sealed record GroupingAxis
 /// <summary>
 /// How many groups on one axis an item may belong to.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum GroupingArity
 {
     /// <summary>An item may belong to several groups.</summary>
@@ -103,7 +100,6 @@ public enum GroupingArity
 /// <summary>
 /// The shape of a member's position within its group.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum MemberPosition
 {
     /// <summary>Membership carries no position; the group is a set.</summary>
@@ -119,7 +115,6 @@ public enum MemberPosition
 /// <summary>
 /// Whether a group outlives its members.
 /// </summary>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum GroupLifetime
 {
     /// <summary>The group ceases to exist when its last member leaves, and orphan links are swept.</summary>

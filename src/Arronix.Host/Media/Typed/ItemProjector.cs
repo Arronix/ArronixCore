@@ -6,11 +6,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
 
-// The derivation reads and produces experimental contracts throughout.
-#pragma warning disable ARX0005
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
-
 namespace Arronix.Host.Media.Typed;
 
 /// <summary>
@@ -67,16 +62,15 @@ internal sealed class ItemProjector
             fields[candidate.FieldId] = ValueOf(candidate, item);
         }
 
-        var externalIds = Reading.ExternalIds?.Property.GetValue(item) is ExternalIdSet set
-            ? set.Values
-            : [];
-
-        var id = (MediaItemId)(Reading.Key.Property.GetValue(item) ?? default(MediaItemId));
+        var entity = (IMediaEntity)item;
+        var externalIds = entity.ExternalIds.Values;
+        var id = entity.Key;
 
         return new ItemView
         {
             Ref = new MediaItemRef(Kind, LevelId, id),
-            Title = Reading.Title.Property.GetValue(item)?.ToString() ?? string.Empty,
+            Title = entity.Title,
+            TitleLanguage = entity.TitleLanguage,
             Fields = fields,
             ExternalIds = externalIds,
             SortIndex = id.Value
@@ -117,7 +111,7 @@ internal sealed class ItemProjector
 
     private FieldValue ValueOf(DerivedField field, object item)
     {
-        var raw = field.Property.GetValue(item);
+        var raw = field.Read(item);
         var kind = field.Descriptor.ValueKind;
 
         if (raw is null)
@@ -192,42 +186,91 @@ internal sealed class ItemProjector
         // A group is addressed per axis rather than per level — it is deliberately not a level — so the
         // axis identifier fills the level slot of the handle. The alternative was inventing a level for
         // every grouping axis, which is exactly the fused shape the descriptor keeps apart.
-        var reading = ItemTypeReader.ReadRow(raw.GetType());
-        var title = reading.FirstOrDefault(static candidate => candidate.Carries(FieldSemantics.Title));
-        var key = reading.FirstOrDefault(static candidate =>
-            candidate.Property.PropertyType == typeof(MediaItemId));
+        if (raw is not IMediaEntity entity)
+        {
+            throw new ArgumentException(
+                $"'{raw.GetType().FullName}' was compiled as a reference but does not implement '{nameof(IMediaEntity)}'.",
+                nameof(raw));
+        }
 
         var address = _groupAxisIds.TryGetValue(raw.GetType(), out var axisId)
             ? MediaLevelId.FromString(axisId)
             : LevelId;
 
-        var id = key?.Property.GetValue(raw) is MediaItemId itemId ? itemId : default;
-
         return new FieldValue
         {
             Kind = FieldValueKind.Reference,
-            Reference = new MediaItemRef(Kind, address, id),
-            Text = title?.Property.GetValue(raw)?.ToString()
+            Reference = new MediaItemRef(Kind, address, entity.Key),
+            Text = entity.Title
         };
     }
 
     private static FieldValue Composite(DerivedField field, object raw)
+        => Composite(field.Components, raw);
+
+    private static FieldValue Composite(IReadOnlyList<CompiledField> components, object raw)
     {
-        var components = new List<FieldValue>();
+        var values = new List<FieldValue>();
 
-        foreach (var component in field.Descriptor.Components)
+        foreach (var component in components)
         {
-            var property = raw.GetType().GetProperty(
-                char.ToUpperInvariant(component.FieldId[0]) + component.FieldId[1..]);
-
-            var value = property?.GetValue(raw);
-
-            components.Add(value is null
-                ? FieldValue.Absent(component.ValueKind)
-                : FieldValue.OfText(value.ToString() ?? string.Empty));
+            values.Add(ComponentValue(component, component.Read(raw)));
         }
 
-        return FieldValue.OfComposite(components);
+        return FieldValue.OfComposite(values);
+    }
+
+    private static FieldValue ComponentValue(CompiledField field, object? raw)
+    {
+        var descriptor = field.Descriptor;
+        if (raw is null)
+        {
+            return FieldValue.Absent(descriptor.ValueKind);
+        }
+
+        if (descriptor.Multivalued && raw is IEnumerable sequence and not string)
+        {
+            return FieldValue.OfItems(
+                descriptor.ValueKind,
+                [.. sequence.Cast<object?>().Select(value => ComponentScalar(field, value))]);
+        }
+
+        return ComponentScalar(field, raw);
+    }
+
+    private static FieldValue ComponentScalar(CompiledField field, object? raw)
+    {
+        var descriptor = field.Descriptor;
+        if (raw is null)
+        {
+            return FieldValue.Absent(descriptor.ValueKind);
+        }
+
+        return descriptor.ValueKind switch
+        {
+            FieldValueKind.Text => FieldValue.OfText(raw.ToString() ?? string.Empty),
+            FieldValueKind.MultilineText => FieldValue.OfMultilineText(raw.ToString() ?? string.Empty),
+            FieldValueKind.Integer => FieldValue.OfInteger(AsInt64(raw)),
+            FieldValueKind.ByteSize => FieldValue.OfByteSize(AsInt64(raw)),
+            FieldValueKind.Count => FieldValue.OfCount(AsInt64(raw)),
+            FieldValueKind.Decimal => FieldValue.OfDecimal(Convert.ToDouble(raw, CultureInfo.InvariantCulture)),
+            FieldValueKind.Ratio => FieldValue.OfRatio(Convert.ToDouble(raw, CultureInfo.InvariantCulture)),
+            FieldValueKind.Boolean => FieldValue.OfBoolean((bool)raw),
+            FieldValueKind.Date => FieldValue.OfDate((DateOnly)raw),
+            FieldValueKind.Instant => FieldValue.OfInstant(AsInstant(raw)),
+            FieldValueKind.Duration => FieldValue.OfDuration((TimeSpan)raw),
+            FieldValueKind.Link => FieldValue.OfLink((Uri)raw),
+            FieldValueKind.Artwork => FieldValue.OfArtwork(((ArtworkImage)raw).Address),
+            FieldValueKind.FilePath => FieldValue.OfFilePath(raw.ToString() ?? string.Empty),
+            FieldValueKind.Language => FieldValue.OfLanguage((Language)raw),
+            FieldValueKind.Quality => FieldValue.OfQuality((QualityTier)raw),
+            FieldValueKind.Ordinal => FieldValue.OfOrdinal((OrdinalPath)raw),
+            FieldValueKind.Enumerated => FieldValue.OfEnumerated(
+                DerivedNames.Identifier(raw.ToString() ?? string.Empty)),
+            FieldValueKind.ExternalIdentifier => FieldValue.OfExternalIdentifier((ExternalId)raw),
+            FieldValueKind.Composite => Composite(field.Components, raw),
+            _ => FieldValue.Absent(descriptor.ValueKind)
+        };
     }
 
     private static long AsInt64(object raw) =>

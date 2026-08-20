@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Media;
 
@@ -19,6 +18,5 @@ namespace Arronix.Abstractions.Media;
 /// rules. Nothing about group metadata needs a second vocabulary.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Media, UrlFormat = ExperimentalContracts.UrlFormat)]
-public interface IMediaGroup<TMember>
+public interface IMediaGroup<TMember> : IMediaEntity
     where TMember : IMediaItem;

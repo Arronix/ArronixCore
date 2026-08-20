@@ -34,7 +34,6 @@ namespace Arronix.Abstractions.Intent;
     "Design",
     "CA1056:URI-like properties should not be strings",
     Justification = "A template with placeholders is not a well-formed URI until the placeholders are substituted, so it cannot be carried as a Uri.")]
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ExternalSurfaceDescriptor(
     string SurfaceId,
     string Name,

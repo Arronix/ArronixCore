@@ -5,11 +5,7 @@ using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Media;
 
-// Definition and shape contracts are experimental; this file is the host's gate over the definition area.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
-#pragma warning disable ARX0020 // The typed media surface is experimental; this file consumes it.
 
 namespace Arronix.Host.Media;
 
@@ -20,8 +16,8 @@ namespace Arronix.Host.Media;
 /// <para>
 /// The rule is the design's §1.3, applied to the whole aggregate: every identifier a section uses must
 /// resolve against the section that declares it, at load, or the extension is refused with a diagnostic
-/// naming the row. A title-pattern capture naming an undeclared coordinate component, a rung rule naming a
-/// tier absent from every ladder, a query tier naming an undeclared search, a strategy binding naming a
+/// naming the row. A title-pattern capture naming an undeclared coordinate component, a query tier naming
+/// an undeclared search, or a strategy binding naming a
 /// strategy this host does not carry — all are load failures here, never runtime surprises in an engine.
 /// </para>
 /// <para>
@@ -47,45 +43,23 @@ internal static class DefinitionValidationRules
         ValidatedShape shape,
         List<ShapeDefect> defects)
     {
-        var tierIds = CollectTierIds(shape);
         var schemeIds = CollectSchemeIds(shape);
-        var guards = CheckGuards(model.Parsing, defects);
-        var patternIds = CheckTitlePatterns(model.Parsing, shape, guards, schemeIds, defects);
-        CheckTokenTables(model.Parsing, defects);
-        if (model.Parsing.RungResolution is { } rungs)
+        var guards = new HashSet<string>(StringComparer.Ordinal);
+        var releaseKinds = new HashSet<string>(StringComparer.Ordinal);
+
+        if (model.Parsing is { } parsing)
         {
-            CheckRungResolution(rungs, tierIds, guards, defects);
+            guards = CheckGuards(parsing, defects);
+            CheckTitlePatterns(parsing, shape, guards, schemeIds, defects);
+            CheckTokenTables(parsing, defects);
+            CheckEscapes(parsing.EscapeIds, defects);
+            releaseKinds = CollectReleaseKinds(parsing);
         }
 
-        CheckEscapes(model.Parsing.EscapeIds, defects);
-        var releaseKinds = CollectReleaseKinds(model.Parsing);
         CheckMatching(model.Matching, shape, releaseKinds, schemeIds, defects);
         CheckQuerying(model.Querying, shape, defects);
-        CheckQuality(model.Quality, guards, defects);
         CheckNaming(model.Naming, guards, defects);
-        CheckCatalog(model.Catalog, shape, schemeIds, defects);
         CheckNotifications(model.Notifications, shape, defects);
-        CheckCorpus(model.Corpus, patternIds, tierIds, defects);
-    }
-
-    private static HashSet<string> CollectTierIds(ValidatedShape shape)
-    {
-        var tiers = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var family in shape.Declaration.FormatFamilies)
-        {
-            if (family.Unknown is { } unknown)
-            {
-                tiers.Add(unknown.Name);
-            }
-
-            foreach (var tier in family.Ladder)
-            {
-                tiers.Add(tier.Name);
-            }
-        }
-
-        return tiers;
     }
 
     private static HashSet<string> CollectSchemeIds(ValidatedShape shape)
@@ -315,59 +289,6 @@ internal static class DefinitionValidationRules
         }
     }
 
-    private static void CheckRungResolution(
-        RungResolutionTable table,
-        HashSet<string> tierIds,
-        HashSet<string> guards,
-        List<ShapeDefect> defects)
-    {
-        if (table.Rules.Count == 0)
-        {
-            Report(defects, "parsing.rungResolution.rules", "A rung-resolution table carries at least one row.");
-        }
-
-        var ruleIds = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var i = 0; i < table.Rules.Count; i++)
-        {
-            var rule = table.Rules[i];
-            var path = Path("parsing.rungResolution.rules", i);
-
-            if (!ruleIds.Add(rule.RuleId))
-            {
-                Report(defects, path, $"Rung rule '{rule.RuleId}' is declared more than once.");
-            }
-
-            if (!tierIds.Contains(rule.TierId))
-            {
-                Report(defects, path, $"Tier '{rule.TierId}' is absent from every declared ladder.");
-            }
-
-            CheckPredicate(rule.When, guards, path, defects);
-        }
-
-        if (!tierIds.Contains(table.UnknownTierId))
-        {
-            Report(
-                defects,
-                "parsing.rungResolution.unknownTierId",
-                $"Tier '{table.UnknownTierId}' is absent from every declared ladder.");
-        }
-
-        for (var i = 0; i < table.ContainerFallbacks.Count; i++)
-        {
-            var fallback = table.ContainerFallbacks[i];
-
-            if (!tierIds.Contains(fallback.TierId))
-            {
-                Report(
-                    defects,
-                    Path("parsing.rungResolution.containerFallbacks", i),
-                    $"Tier '{fallback.TierId}' is absent from every declared ladder.");
-            }
-        }
-    }
-
     private static void CheckEscapes(IReadOnlyList<string> escapeIds, List<ShapeDefect> defects)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -578,14 +499,6 @@ internal static class DefinitionValidationRules
         }
     }
 
-    private static void CheckQuality(QualityDeclaration quality, HashSet<string> guards, List<ShapeDefect> defects)
-    {
-        for (var i = 0; i < quality.Defaults.Count; i++)
-        {
-            CheckPredicate(quality.Defaults[i].When, guards, Path("quality.defaults", i), defects);
-        }
-    }
-
     private static void CheckNaming(NamingDeclaration naming, HashSet<string> guards, List<ShapeDefect> defects)
     {
         if (string.IsNullOrWhiteSpace(naming.FolderSpine))
@@ -632,85 +545,6 @@ internal static class DefinitionValidationRules
         }
     }
 
-    private static void CheckCatalog(
-        CatalogDeclaration? catalog,
-        ValidatedShape shape,
-        HashSet<string> schemeIds,
-        List<ShapeDefect> defects)
-    {
-        if (catalog is null)
-        {
-            return;
-        }
-
-        if (catalog.Requests.Count == 0)
-        {
-            Report(defects, "catalog.requests", "A catalog declaration carries at least one request template.");
-        }
-
-        var requestIds = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var i = 0; i < catalog.Requests.Count; i++)
-        {
-            if (!requestIds.Add(catalog.Requests[i].RequestId))
-            {
-                Report(
-                    defects,
-                    Path("catalog.requests", i),
-                    $"Request template '{catalog.Requests[i].RequestId}' is declared more than once.");
-            }
-        }
-
-        if (catalog.Responses.Count == 0)
-        {
-            Report(defects, "catalog.responses", "A catalog declaration carries at least one response map.");
-        }
-
-        var levelIds = shape.Declaration.Levels.Select(level => level.Id.Value).ToHashSet(StringComparer.Ordinal);
-        var axisIds = shape.Declaration.GroupingAxes.Select(axis => axis.AxisId).ToHashSet(StringComparer.Ordinal);
-
-        for (var i = 0; i < catalog.Responses.Count; i++)
-        {
-            var response = catalog.Responses[i];
-            var path = Path("catalog.responses", i);
-
-            if (response.LevelId is { } level && !levelIds.Contains(level))
-            {
-                Report(defects, path, $"Level '{level}' is not declared by the shape.");
-            }
-
-            if (response.AxisId is { } axis && !axisIds.Contains(axis))
-            {
-                Report(defects, path, $"Grouping axis '{axis}' is not declared by the shape.");
-            }
-
-            // A response map's scheme is deliberately NOT cross-checked against the shape. The shape no
-            // longer enumerates schemes — which catalog issues which identifier is a fact about the
-            // installed catalogers, not about what a movie is, and the level's identity states the roles it
-            // needs instead. With nothing to check against, this check could only ever refuse every kind.
-            // The check it replaces returns when a cataloger is its own plugin: at that point the scheme is
-            // the cataloger's own and the pairing is checkable where both halves are in scope.
-        }
-
-        var derivationIds = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var i = 0; i < catalog.Derivations.Count; i++)
-        {
-            if (!derivationIds.Add(catalog.Derivations[i].RuleId))
-            {
-                Report(
-                    defects,
-                    Path("catalog.derivations", i),
-                    $"Derivation rule '{catalog.Derivations[i].RuleId}' is declared more than once.");
-            }
-        }
-
-        if (catalog.Paging.MaxPages <= 0)
-        {
-            Report(defects, "catalog.paging", "A paging policy allows at least one page.");
-        }
-    }
-
     private static void CheckNotifications(
         NotificationDeclaration notifications,
         ValidatedShape shape,
@@ -726,39 +560,6 @@ internal static class DefinitionValidationRules
                     defects,
                     Path("notifications.groupSummaries", i),
                     $"Grouping axis '{notifications.GroupSummaries[i].AxisId}' is not declared by the shape.");
-            }
-        }
-    }
-
-    private static void CheckCorpus(
-        IReadOnlyList<CorpusCase> corpus,
-        HashSet<string> patternIds,
-        HashSet<string> tierIds,
-        List<ShapeDefect> defects)
-    {
-        var caseIds = new HashSet<string>(StringComparer.Ordinal);
-
-        for (var i = 0; i < corpus.Count; i++)
-        {
-            var corpusCase = corpus[i];
-            var path = Path("corpus", i);
-
-            if (!caseIds.Add(corpusCase.CaseId))
-            {
-                Report(defects, path, $"Corpus case '{corpusCase.CaseId}' is declared more than once.");
-            }
-
-            if (corpusCase.ExpectedPatternId is { } pattern && !patternIds.Contains(pattern))
-            {
-                Report(defects, path, $"Title pattern '{pattern}' is not declared by the parsing section.");
-            }
-
-            // Checked against the declared rungs only where there are rungs to check against. A kind whose
-            // families read their files onto axes pins a rendering rather than a row, and the set of
-            // renderings is not enumerable in advance — which is the point of the model, not a gap in it.
-            if (tierIds.Count > 0 && corpusCase.ExpectedQuality is { } tier && !tierIds.Contains(tier))
-            {
-                Report(defects, path, $"Tier '{tier}' is absent from every declared ladder.");
             }
         }
     }

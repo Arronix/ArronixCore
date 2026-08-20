@@ -60,8 +60,8 @@ projected between the old and new vocabularies. There was no `[Obsolete]` period
 contract, because nothing had ever shipped against them.
 
 What exists today is one spine, **`IProvider`**, and five families — `IIndexer`, `IDownloader`, `INotifier`,
-`ICataloger` (external authorities answering what a thing *is*) and `ICurator` (external lists answering which
-things you *want*). All of them are `[Experimental]` under `ARX0015`. See `ARCHITECTURE.md` §3.3 and the 0.4.0
+`ICataloger<TItem>` (external authorities returning a media-owned shape) and `ICurator<TItem>` (external
+lists proposing that same shape). See `ARCHITECTURE.md` §6 and the 0.4.0
 entry in [`stability.md`](stability.md) for the full rename table.
 
 ### 6. Scheduling (`Scheduling/`)
@@ -76,13 +76,13 @@ Interfaces for background job management:
 Comprehensive set of records for data exchange:
 
 **Release & Matching:**
-- `ReleaseCandidate`: Downloadable release from an indexer
-- `ParsedRelease`: Structured data extracted from release titles
+- `ReleaseListing`: Raw downloadable listing returned by an indexer
+- `ParsedRelease`: Temporary compatibility projection for legacy media engines
 - `MatchDecision`: Result of matching releases to media items
 - `ImportDecision`: Result of import validation
 
 **Quality & Policy:**
-- `QualityTier`: Quality level with ranking and attributes
+- `QualityTier`: Temporary compatibility rung for legacy media engines
 - `CutoffPolicy`: Quality upgrade cutoff rules
 - `Language`: Language codes and names
 
@@ -120,7 +120,7 @@ Contract tests covering:
 
 - **Target Framework**: .NET 8.0 *(as delivered; the platform targets `net10.0` today)*
 - **Language Features**: C# latest with nullable reference types enabled
-- **Version**: 0.1.0 (semantic versioning) *(as delivered; `<Version>` is 0.3.0 today)*
+- **Version**: 0.1.0 (semantic versioning) *(as delivered; `<Version>` is 0.8.0 today)*
 - **Assembly**: `Arronix.Abstractions.dll`
 
 ### Key Design Decisions
@@ -206,10 +206,10 @@ is not a contract**: below 1.0.0 the assembly is free to change, and it has.
 | Since 0.1.0 | What happened |
 |---|---|
 | Target framework | `net8.0` → `net10.0` |
-| Assembly `<Version>` | 0.1.0 → **0.3.0** (the 0.4.0 provider work is in the source but the version has not been bumped) |
+| Assembly `<Version>` | 0.1.0 → **0.8.0**; first-party manifests require `>=0.8 <0.9` |
 | Solution membership | Removed from `src/Sonarr.sln`; `/Arronix.sln` is the only home |
 | Provider contracts | `IIndexerProvider`, `IMetadataProvider`, `IDownloadClientAdapter`, their DTOs and `StableProviderBridge` **deleted outright** in 0.4.0; replaced by `IProvider` + five families |
-| Contract areas | Twelve infrastructure areas added in 0.2.0 (`ARX0001`–`ARX0012`), five platform areas in 0.3.0 (`ARX0013`–`ARX0017`) — all `[Experimental]`, all opt-in per file |
+| Contract stability | The whole assembly is one pre-1.0 surface; no per-type experimental tier or compiler opt-in remains |
 | Deprecation policy | **Deleted.** `[Obsolete]` is not used below 1.0.0; a contract with no implementer outside this repository is deleted, not deprecated |
-| Plugin contract ranges | A declared range must be bounded at the host's next minor. `">=0.1 <1.0"` is refused at load |
-| Tests | 26 in this delivery → 1,313 passing / 1 skipped solution-wide |
+| Plugin contract ranges | The loader accepts a plugin when the installed contract version satisfies its declared range; first-party manifests currently use `>=0.8 <0.9` |
+| Media and quality model | Typed item/target/release contracts and format-owned representation replaced the 0.7 quality-axes experiment; legacy `ParsedRelease` and `QualityTier` are removal-only scaffolding |

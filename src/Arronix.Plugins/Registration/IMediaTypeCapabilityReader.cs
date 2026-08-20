@@ -1,6 +1,5 @@
 using Arronix.Abstractions.Media;
 
-#pragma warning disable ARX0020 // The typed media surface is experimental; this assembly admits registrations of it.
 
 namespace Arronix.Plugins.Registration;
 
@@ -13,8 +12,8 @@ namespace Arronix.Plugins.Registration;
 /// The bidirectional capability check needs the answer at the moment of registration — the reverse half
 /// refuses a section whose capability was never granted, and the forward half quarantines a manifest that
 /// declared a capability nothing used, and the loader runs the forward half before the host has admitted
-/// anything. But the answer is only readable by replaying the kind's configuration call, and that replay is
-/// host machinery. This interface is that one fact crossing the boundary, and nothing else.
+/// anything. But the answer is only readable by compiling the kind's typed definition values, and that
+/// compilation is host machinery. This interface is that one fact crossing the boundary, and nothing else.
 /// </para>
 /// <para>
 /// Deliberately not defaulted. A registry built without a reader refuses a typed media kind outright rather

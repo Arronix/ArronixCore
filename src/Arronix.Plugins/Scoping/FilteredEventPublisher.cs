@@ -3,8 +3,6 @@ using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
 
-#pragma warning disable ARX0004 // Event contracts are experimental; this assembly decorates them.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
 
 namespace Arronix.Plugins.Scoping;
 

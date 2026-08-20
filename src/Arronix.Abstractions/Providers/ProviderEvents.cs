@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Events;
 
 namespace Arronix.Abstractions.Providers;
@@ -18,7 +17,6 @@ namespace Arronix.Abstractions.Providers;
 /// generic type argument, and that is what makes the event able to cross an extension boundary at all: a
 /// generic event cannot be handled by code that does not reference the type argument.
 /// </remarks>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ProviderDefinitionChanged(
     Guid EventId,
     DateTimeOffset OccurredAt,
@@ -30,7 +28,6 @@ public sealed record ProviderDefinitionChanged(
 /// <summary>
 /// What happened to a provider definition.
 /// </summary>
-[Experimental(ExperimentalContracts.Providers, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ProviderChangeKind
 {
     /// <summary>The definition was created.</summary>

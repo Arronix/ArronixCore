@@ -4,6 +4,7 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Http;
 using Arronix.Abstractions.Import;
 using Arronix.Abstractions.Intent;
+using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Parsing;
@@ -14,17 +15,6 @@ using Arronix.Abstractions.Scheduling;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Telemetry;
 
-#pragma warning disable ARX0002 // Diagnostics contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0004 // Event contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0006 // Health contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0008 // Outbound-call contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0009 // Naming contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0013 // Media-shape contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
-#pragma warning disable ARX0015 // Provider contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; this assembly admits registrations of them.
-#pragma warning disable ARX0020 // The typed media surface is experimental; this assembly admits registrations of it.
 
 namespace Arronix.Plugins.Registration;
 
@@ -64,7 +54,7 @@ public sealed class PluginRegistry : IPluginRegistry
     /// <param name="ledger">Where its contributions are recorded.</param>
     /// <param name="mediaTypes">
     /// How a typed media kind is priced in capabilities. Absent only for a registry that will never see
-    /// one; <see cref="AddMediaType{TItem, TType}"/> refuses rather than guessing when it is.
+    /// one; <see cref="AddMediaType{TType}"/> refuses rather than guessing when it is.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="ledger"/> is <see langword="null"/>.</exception>
     public PluginRegistry(
@@ -116,13 +106,13 @@ public sealed class PluginRegistry : IPluginRegistry
     /// </para>
     /// <para>
     /// The demands are read through <see cref="IMediaTypeCapabilityReader"/> rather than computed here,
-    /// because they are only legible after the kind's configuration call has been replayed and that replay
-    /// is host machinery. The check itself is unchanged; only the place that can see the facts moved.
+    /// because they are only legible after the kind's typed definition values have been compiled and that
+    /// compilation is host machinery. The check itself is unchanged; only the place that can see the facts
+    /// moved.
     /// </para>
     /// </remarks>
-    public IPluginRegistry AddMediaType<TItem, TType>()
-        where TItem : IMediaItem
-        where TType : IMediaType<TItem>
+    public IPluginRegistry AddMediaType<TType>()
+        where TType : class, IMediaTypeDefinition, new()
     {
         ThrowIfSealed();
 
@@ -135,7 +125,7 @@ public sealed class PluginRegistry : IPluginRegistry
                 + "refused. This is a host wiring defect, not an extension defect.");
         }
 
-        var registration = MediaTypeRegistration.For<TItem, TType>();
+        var registration = new TType().Capture();
         var requirements = _mediaTypes.Requirements(registration);
 
         foreach (var requirement in requirements)
@@ -181,22 +171,31 @@ public sealed class PluginRegistry : IPluginRegistry
     public IPluginRegistry AddMediaIdResolver(IMediaIdResolver resolver) => Admit<IMediaIdResolver>(resolver);
 
     /// <inheritdoc />
-    public IPluginRegistry AddIndexer(IndexerRegistration registration) => Admit<IndexerRegistration>(registration);
+    public IPluginRegistry AddIndexer<TIndexer>(ProviderDescriptor descriptor)
+        where TIndexer : class, IIndexer
+        => AdmitProvider(ProviderTypeRegistration.For<IIndexer, TIndexer>(descriptor, ProviderFamily.Indexer), Capability.Indexing);
 
     /// <inheritdoc />
-    public IPluginRegistry AddDownloader(DownloaderRegistration registration)
-        => Admit<DownloaderRegistration>(registration);
+    public IPluginRegistry AddDownloader<TDownloader>(ProviderDescriptor descriptor)
+        where TDownloader : class, IDownloader
+        => AdmitProvider(ProviderTypeRegistration.For<IDownloader, TDownloader>(descriptor, ProviderFamily.Downloader), Capability.Download);
 
     /// <inheritdoc />
-    public IPluginRegistry AddNotifier(NotifierRegistration registration) => Admit<NotifierRegistration>(registration);
+    public IPluginRegistry AddNotifier<TNotifier>(ProviderDescriptor descriptor)
+        where TNotifier : class, INotifier
+        => AdmitProvider(ProviderTypeRegistration.For<INotifier, TNotifier>(descriptor, ProviderFamily.Notifier), Capability.Notification);
 
     /// <inheritdoc />
-    public IPluginRegistry AddCataloger(CatalogerRegistration registration)
-        => Admit<CatalogerRegistration>(registration);
+    public IPluginRegistry AddCataloger<TItem, TCataloger>(ProviderDescriptor descriptor)
+        where TItem : class, IMediaItem
+        where TCataloger : class, ICataloger<TItem>
+        => AdmitProvider(ProviderTypeRegistration.ForCataloger<TItem, TCataloger>(descriptor), Capability.Metadata);
 
     /// <inheritdoc />
-    public IPluginRegistry AddCurator(CuratorRegistration registration)
-        => Admit<CuratorRegistration>(registration);
+    public IPluginRegistry AddCurator<TItem, TCurator>(ProviderDescriptor descriptor)
+        where TItem : class, IMediaItem
+        where TCurator : class, ICurator<TItem>
+        => AdmitProvider(ProviderTypeRegistration.ForCurator<TItem, TCurator>(descriptor), Capability.Curation);
 
     /// <inheritdoc />
     public IPluginRegistry AddScheduledJob(IScheduledJob job, string schedule)
@@ -227,6 +226,21 @@ public sealed class PluginRegistry : IPluginRegistry
     /// <inheritdoc />
     public IPluginRegistry AddDiacriticFolding(IDiacriticFoldingProvider provider)
         => Admit<IDiacriticFoldingProvider>(provider);
+
+    /// <inheritdoc />
+    public IPluginRegistry AddLanguage<TLanguage>()
+        where TLanguage : class, ILanguageDefinition
+    {
+        ThrowIfSealed();
+
+        if (!_granted.Has(Capability.Language))
+        {
+            throw new PluginCapabilityException(Plugin, Capability.Language, nameof(ILanguageDefinition));
+        }
+
+        Ledger.RecordLanguage(LanguageDefinitionRegistration.For<TLanguage>());
+        return this;
+    }
 
     /// <inheritdoc />
     public IPluginRegistry AddOutboundHttpInterceptor(IOutboundHttpInterceptor interceptor)
@@ -272,6 +286,20 @@ public sealed class PluginRegistry : IPluginRegistry
         }
 
         Ledger.Record(contract, instance);
+        return this;
+    }
+
+    private PluginRegistry AdmitProvider(ProviderTypeRegistration registration, Capability capability)
+    {
+        ArgumentNullException.ThrowIfNull(registration);
+        ThrowIfSealed();
+
+        if (!_granted.Has(capability))
+        {
+            throw new PluginCapabilityException(Plugin, capability, registration.Family.ToString());
+        }
+
+        Ledger.RecordProvider(registration, capability);
         return this;
     }
 

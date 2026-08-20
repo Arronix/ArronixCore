@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 
 namespace Arronix.Abstractions.Health;
 
@@ -11,7 +10,6 @@ namespace Arronix.Abstractions.Health;
 /// contributor that fails should return an unhealthy result describing the failure, because an
 /// exception escaping here degrades the whole report rather than one entry in it.
 /// </remarks>
-[Experimental(ExperimentalContracts.Health, UrlFormat = ExperimentalContracts.UrlFormat)]
 public interface IHealthContributor
 {
     /// <summary>

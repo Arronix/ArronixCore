@@ -1,10 +1,8 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; these tests exercise the declaration.
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020 // Definition contracts are experimental; these tests exercise the declaration.
 
 using System.Linq;
 using Arronix.Abstractions.Media;
 using Arronix.Host.Media;
+using Arronix.Plugin.Movies.Definition;
 using Arronix.Plugin.Movies.Tests.Support;
 
 namespace Arronix.Plugin.Movies.Tests.Declaration;
@@ -16,15 +14,14 @@ namespace Arronix.Plugin.Movies.Tests.Declaration;
 /// <para>
 /// This is the assertion that makes the whole conversion checkable from here. <c>ValidatedDefinition</c>
 /// resolves every cross-reference a definition makes over its own shape — a title-pattern capture naming a
-/// coordinate component, a rung row naming a ladder tier, a query tier naming a search kind, a strategy
-/// binding naming a strategy this host build carries, a corpus case naming a pattern — and refuses the
+/// coordinate component, a query tier naming a search kind, or a strategy binding naming a strategy this
+/// host build carries — and refuses the
 /// definition with every defect it found rather than with the first. A fixture written beside a validator
 /// agrees with it by construction; this declaration was not.
 /// </para>
 /// <para>
-/// The gate is public. The engines behind it are not: they are internal to <c>Arronix.Host</c> and shared
-/// only with that assembly's own tests, which is why the release corpus cannot be executed from this
-/// project and ships on the definition instead.
+/// This test exercises the public admission boundary. Parser behavior is verified separately through the
+/// admitted kind's public parser seam.
 /// </para>
 /// </remarks>
 [TestFixture]
@@ -46,28 +43,20 @@ public class HostGateTests
                 string.Join("; ", defects.Select(defect => $"{defect.Path}: {defect.Message}")));
 
             Assert.That(validated, Is.Not.Null);
-            Assert.That(validated!.Kind, Is.EqualTo(Movies.Kind));
+            Assert.That(validated!.Kind, Is.EqualTo(new Movies().Kind));
         });
     }
 
     [Test]
-    public void ResolvesEveryDeclaredGuardAndPatternThroughTheGate()
+    public void CarriesTheStaticParserTypeWithoutAParseDeclaration()
     {
         ValidatedDefinition.TryValidate(MoviesDeclaration.Derived, out var validated, out _);
 
         Assert.Multiple(() =>
         {
-            foreach (var guard in MoviesDeclaration.Parsing.Guards)
-            {
-                Assert.That(validated!.GuardOf(guard.GuardId).Regex, Is.EqualTo(guard.Regex));
-            }
-
-            foreach (var pattern in MoviesDeclaration.Parsing.TitlePatterns)
-            {
-                Assert.That(
-                    validated!.PatternOf(pattern.PatternId).Regex,
-                    Is.EqualTo(pattern.Regex));
-            }
+            Assert.That(validated, Is.Not.Null);
+            Assert.That(MoviesDeclaration.Derived.ParserType, Is.EqualTo(typeof(MovieReleaseParser)));
+            Assert.That(MoviesDeclaration.Carried.Parsing, Is.Null);
         });
     }
 

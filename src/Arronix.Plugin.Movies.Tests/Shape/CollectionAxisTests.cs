@@ -1,4 +1,3 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
 
 using System.Linq;
 using Arronix.Abstractions.Shape;
@@ -33,21 +32,20 @@ public class CollectionAxisTests
         });
 
     /// <summary>
-    /// A movie belongs to at most one collection — and nothing declares that any more. The arity, the
-    /// member position and the primary-member flag are all read off the member property being a single,
-    /// optional reference, so there is nothing that can contradict the type.
+    /// Membership is plural on the movie. A title may therefore belong to several independently-lived
+    /// collections without adding another join-key field or changing the media-type contract.
     /// </summary>
     [Test]
     public void DerivesItsArityFromTheMemberPropertyRatherThanDeclaringIt()
         => Assert.Multiple(() =>
         {
-            Assert.That(Axis.Arity, Is.EqualTo(GroupingArity.ManyToOne));
+            Assert.That(Axis.Arity, Is.EqualTo(GroupingArity.ManyToMany));
             Assert.That(Axis.Position, Is.EqualTo(MemberPosition.None));
             Assert.That(Axis.HasPrimaryMember, Is.False);
             Assert.That(
-                Axis.Arity != GroupingArity.ManyToMany && Axis.HasPrimaryMember,
+                Axis.HasPrimaryMember,
                 Is.False,
-                "A primary member is meaningful only on a many-to-many grouping axis.");
+                "Membership order does not silently invent a primary collection.");
         });
 
     /// <summary>
@@ -71,18 +69,18 @@ public class CollectionAxisTests
         });
 
     /// <summary>
-    /// The membership is one reference on the member, not a label plus a join key the item carried as data
-    /// with no foreign key between them. There is nothing left for two fields to disagree about.
+    /// Membership is one typed list of references on the member, not parallel labels and join keys with no
+    /// relationship between them.
     /// </summary>
     [Test]
-    public void CarriesTheMembershipAsOneReferenceOnTheMember()
+    public void CarriesMembershipsAsTypedReferencesOnTheMember()
     {
-        var field = MoviesDeclaration.Fields["collection"];
+        var field = MoviesDeclaration.Fields["collections"];
 
         Assert.Multiple(() =>
         {
             Assert.That(field.ValueKind, Is.EqualTo(FieldValueKind.Reference));
-            Assert.That(field.Multivalued, Is.False);
+            Assert.That(field.Multivalued, Is.True);
             Assert.That(field.Semantics.HasFlag(FieldSemantics.Groupable), Is.True);
             Assert.That(
                 MoviesDeclaration.Fields,
@@ -112,7 +110,7 @@ public class CollectionAxisTests
                 Is.True,
                 "A consumer that could not name a collection could not list one.");
             Assert.That(fields["overview"].ValueKind, Is.EqualTo(FieldValueKind.MultilineText));
-            Assert.That(fields["images"].Semantics.HasFlag(FieldSemantics.Artwork), Is.True);
+            Assert.That(fields["artwork"].Semantics.HasFlag(FieldSemantics.Artwork), Is.True);
             Assert.That(fields["memberCount"].ValueKind, Is.EqualTo(FieldValueKind.Count));
             Assert.That(
                 fields["externalIds"].ValueKind,

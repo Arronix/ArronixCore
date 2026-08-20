@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+using Arronix.Abstractions.DTOs;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -16,7 +16,6 @@ namespace Arronix.Abstractions.Shape;
 /// split of the shape model expressed as a runtime topology.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ItemView
 {
     /// <summary>
@@ -33,6 +32,12 @@ public sealed record ItemView
     /// Gets the item's title.
     /// </summary>
     public required string Title { get; init; }
+
+    /// <summary>
+    /// Gets the language of <see cref="Title"/> when the typed entity stated it. Absence is unknown,
+    /// never an implicit platform language.
+    /// </summary>
+    public Language? TitleLanguage { get; init; }
 
     /// <summary>
     /// Gets the normalized form the item sorts by, when it differs from the title.
@@ -79,5 +84,4 @@ public sealed record ItemView
 /// <param name="Page">The one-based page number.</param>
 /// <param name="PageSize">The number of items per page.</param>
 /// <param name="TotalCount">The number of items the query matched in total.</param>
-[Experimental(ExperimentalContracts.Shape, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ItemPage(IReadOnlyList<ItemView> Items, int Page, int PageSize, int TotalCount);

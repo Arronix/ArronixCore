@@ -2,8 +2,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Media;
 
-// The shape contracts this adapter reads through are experimental.
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Engines.Naming;
 

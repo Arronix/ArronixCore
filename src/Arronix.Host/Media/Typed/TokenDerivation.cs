@@ -1,10 +1,6 @@
 using System.Linq;
 using Arronix.Abstractions.DTOs;
-using Arronix.Abstractions.Shape;
-
-// The derivation reads and produces experimental contracts throughout.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0020
+using Arronix.Abstractions.Media;
 
 namespace Arronix.Host.Media.Typed;
 
@@ -48,7 +44,6 @@ internal static class TokenDerivation
     /// <param name="levelWord">The word a template spells the item level with.</param>
     /// <param name="item">The item type's reading.</param>
     /// <param name="groups">The kind's grouping axes, paired with the word a template spells each with.</param>
-    /// <param name="facets">The per-file facets the kind's format families declare.</param>
     /// <param name="hasIdentityRole">Whether the kind declares any external-identity role.</param>
     /// <returns>The tokens.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
@@ -56,16 +51,16 @@ internal static class TokenDerivation
         string levelWord,
         ItemTypeReader item,
         IReadOnlyList<(string Word, ItemTypeReader Reading)> groups,
-        IReadOnlyList<TechnicalFacet> facets,
         bool hasIdentityRole)
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(groups);
-        ArgumentNullException.ThrowIfNull(facets);
 
         var tokens = new List<NamingToken>();
 
-        foreach (var field in item.Fields.Where(static candidate => candidate.IsNameable))
+        foreach (var field in item.Fields
+                     .Where(static candidate => candidate.IsNameable)
+                     .OrderBy(static candidate => TokenPosition(candidate)))
         {
             tokens.Add(TokenFor(levelWord, field));
         }
@@ -76,15 +71,14 @@ internal static class TokenDerivation
         {
             // The identity stamp, as the primary catalog writes it: "scheme-value". A kind spelling a
             // catalog's own name into a folder template is that catalog's name leaking into a media kind;
-            // rendering whichever catalog is installed is the same folder for a TMDb-keyed library and a
-            // correct one for any other.
+            // rendering whichever catalog is installed gives every provider the same neutral shape.
             tokens.Add(new NamingToken(
                 $"{{{levelWord} Id}}",
                 $"the {levelWord.ToLowerInvariant()}'s primary catalog identifier, as scheme-value",
 
                 // The example is vendor-neutral on purpose, and the paragraph above is why: an example
-                // reading "tmdb-335984" would put a catalog's name in every kind's published token list,
-                // which is the leak this token exists to avoid. The shape is what the example has to show.
+                // A provider-named example would put that provider into every media type's published
+                // vocabulary. The shape is all the example has to demonstrate.
                 "catalog-335984"));
         }
 
@@ -94,20 +88,19 @@ internal static class TokenDerivation
             tokens.AddRange(TransformTokensFor(group.Word, group.Reading));
         }
 
-        foreach (var facet in facets)
-        {
-            tokens.Add(new NamingToken(
-                $"{{{DerivedNames.TokenWord(facet.FacetId)} Tags}}",
-                $"the file's {facet.Name.ToLowerInvariant()}",
-                facet.Name));
-        }
-
         return tokens;
     }
 
+    private static int TokenPosition(DerivedField field) => field.PropertyName switch
+    {
+        nameof(IMediaItem<CatalogRecordState>.Status) => 0,
+        nameof(IMediaItem.CatalogState) => 1,
+        _ => 2
+    };
+
     private static NamingToken TokenFor(string word, DerivedField field) =>
         new(
-            $"{{{word} {DerivedNames.TokenWord(field.Property.Name)}}}",
+            $"{{{word} {DerivedNames.TokenWord(field.PropertyName)}}}",
             field.Descriptor.Description ?? field.Descriptor.Name,
             field.Example ?? string.Empty);
 
@@ -116,7 +109,7 @@ internal static class TokenDerivation
         var title = reading.Title;
 
         return TitleTransforms.Select(transform => new NamingToken(
-            $"{{{word} {DerivedNames.TokenWord(title.Property.Name)}{transform.Suffix}}}",
+            $"{{{word} {DerivedNames.TokenWord(title.PropertyName)}{transform.Suffix}}}",
             transform.Description,
             string.Empty));
     }

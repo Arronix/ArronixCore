@@ -9,15 +9,6 @@ using Arronix.Abstractions.Serialization;
 using Arronix.Abstractions.Telemetry;
 using Arronix.Abstractions.Throttling;
 
-#pragma warning disable ARX0001 // Caching contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0004 // Event contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0005 // File-system contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0007 // Hosting contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0008 // Outbound-call contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0010 // Serialization contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0012 // Throttling contracts are experimental; this fixture stands in for a host.
-#pragma warning disable ARX0014 // The extension model is experimental; this fixture drives it.
 
 namespace Arronix.Architecture.Tests.Support;
 
@@ -61,7 +52,7 @@ internal sealed class ConfigureOnlyPluginContext : IPluginContext
 
     public string PluginVersion { get; }
 
-    public string HostContractVersion { get; } = "0.3.0";
+    public string HostContractVersion { get; } = "0.8.0";
 
     public CapabilitySet Capabilities { get; }
 

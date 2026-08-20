@@ -51,15 +51,22 @@ public class MediaExtensionTopologyTests
 
     [Test]
     [TestCaseSource(nameof(MediaExtensions))]
-    public void MediaExtensionDeclaresExactlyOneProjectReferenceOnTheContractAssembly(string projectName)
+    public void MediaExtensionReferencesOnlyContractsAndTypedFormatAssemblies(string projectName)
     {
         var project = ProjectFile.Load(projectName);
 
         Assert.That(
-            project.ProjectReferences,
-            Is.EqualTo(new[] { RepositoryLayout.Abstractions }),
-            $"'{projectName}' must reference the contract assembly and nothing else - not the platform "
-            + "library, not the loader, not the runtime, not the HTTP surface.");
+            project.RuntimeProjectReferences,
+            Is.SubsetOf(new[] { RepositoryLayout.Abstractions, RepositoryLayout.VideoFormat }),
+            $"'{projectName}' may reference contracts and typed format assemblies, but not the platform "
+            + "library, loader, runtime or HTTP surface.");
+
+        Assert.That(project.RuntimeProjectReferences, Does.Contain(RepositoryLayout.Abstractions));
+        Assert.That(
+            project.AnalyzerProjectReferences,
+            Is.SubsetOf(new[] { RepositoryLayout.Generators }),
+            $"'{projectName}' may use the Arronix compile-time generator, but an analyzer must not become "
+            + "a runtime plugin dependency.");
     }
 
     [Test]
@@ -101,7 +108,7 @@ public class MediaExtensionTopologyTests
 
         Assert.That(
             linked,
-            Is.EqualTo(new[] { RepositoryLayout.Abstractions }),
+            Is.SubsetOf(new[] { RepositoryLayout.Abstractions, RepositoryLayout.VideoFormat }),
             $"The compiled '{projectName}' links a platform assembly. The declaration and the binary have "
             + "to agree, because the loader's reference-graph check judges the binary.");
     }

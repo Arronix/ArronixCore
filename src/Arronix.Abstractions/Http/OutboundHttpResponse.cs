@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Mime;
 using System.Text;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Http;
 /// The body is exposed as bytes and decoded lazily, because the charset lives in a header that has to
 /// be parsed first and because a caller that only wants the status should not pay for a decode.
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public class OutboundHttpResponse
 {
     private string? _content;
@@ -186,7 +184,6 @@ public class OutboundHttpResponse
 /// Both were workarounds for an older serializer, and the second one is actively harmful: it reports a
 /// null payload as a successfully deserialized empty object, so the caller cannot tell the difference.
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed class OutboundHttpResponse<TResource> : OutboundHttpResponse
 {
     /// <summary>

@@ -1,8 +1,10 @@
+using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Parsing;
+using Arronix.Abstractions.Shape;
 using Arronix.Plugins.Registration;
 
-#pragma warning disable ARX0020 // The typed media surface is experimental; these fixtures declare one.
 
 namespace Arronix.Plugins.Tests.Support;
 
@@ -18,25 +20,63 @@ namespace Arronix.Plugins.Tests.Support;
 /// </remarks>
 internal sealed class ExampleItem : IMediaItem
 {
+    [Identity]
+    public required MediaItemId Key { get; init; }
+
+    public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
+
     /// <summary>Gets the item's title.</summary>
     [Title]
     public required string Title { get; init; }
+
+    public Language? TitleLanguage { get; init; }
+
+    public string? Overview { get; init; }
+
+    public ArtworkSet Artwork { get; init; } = ArtworkSet.Empty;
+
+    public CatalogRecordState CatalogState { get; init; }
 }
 
 /// <summary>
 /// The declaring half of <see cref="ExampleItem"/>.
 /// </summary>
-internal sealed class ExampleKind : IMediaType<ExampleItem>
-{
-    /// <inheritdoc />
-    public static MediaKindId Kind => MediaKindId.FromString("example");
+internal sealed class ExampleTarget : IReleaseTarget;
 
-    /// <inheritdoc />
-    public static void Configure(IMediaTypeBuilder<ExampleItem> builder)
-    {
-        // Nothing. See the remarks on ExampleItem: this call is never replayed by these tests.
-    }
+internal sealed record ExampleRelease(
+    string Title = "Example",
+    int? Year = null,
+    string? Edition = null) : IRelease;
+
+internal sealed class ExampleParser : IReleaseParser<ExampleRelease>
+{
+    public static ReleaseParseResult<ExampleRelease> Parse(ReleaseParseContext context) =>
+        ReleaseParseResult<ExampleRelease>.Accepted(new ExampleRelease(context.Text));
 }
+
+internal sealed class ExampleRepresentation : IRepresentation;
+
+internal static class ExampleFormat
+{
+    internal static FormatFamilyDefinition<ExampleRepresentation> Definition { get; } = new()
+    {
+        Id = "example",
+        Name = "Example",
+        FileExtensions = [".example"]
+    };
+}
+
+internal sealed partial class ExampleKind() : MediaType<ExampleItem, ExampleTarget, ExampleRelease, ExampleParser>(
+    MediaKindId.FromString("example"),
+    "Example",
+    "Examples",
+    formats: [new FormatUse<ExampleRepresentation>(ExampleFormat.Definition)],
+    availability: new ThresholdSelectionDefinition<ExampleItem>(
+        "availability",
+        "Minimum availability",
+        "days",
+        ThresholdDirection.AtLeast,
+        0));
 
 /// <summary>
 /// A capability reader that prices every kind from one model the test chose.

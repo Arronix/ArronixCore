@@ -3,9 +3,6 @@ using Arronix.Host.Storage;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
-// Shape and error contracts are experimental.
-#pragma warning disable ARX0003
-#pragma warning disable ARX0013
 
 namespace Arronix.Host.Tests.Storage;
 

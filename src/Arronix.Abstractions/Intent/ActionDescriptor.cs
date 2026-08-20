@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Intent;
@@ -19,9 +18,14 @@ namespace Arronix.Abstractions.Intent;
 /// re-cast until it is not.
 /// </para>
 /// </remarks>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ActionDescriptor
 {
+    /// <summary>
+    /// Gets the platform operation this descriptor presents. Null is reserved for extension-specific
+    /// operations; standard media actions always set it.
+    /// </summary>
+    public StandardMediaAction? StandardAction { get; init; }
+
     /// <summary>
     /// Gets the identifier the action is invoked by.
     /// </summary>
@@ -90,7 +94,6 @@ public sealed record ActionDescriptor
 /// <summary>
 /// What an action operates on.
 /// </summary>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ActionScope
 {
     /// <summary>One item.</summary>
@@ -128,7 +131,6 @@ public enum ActionScope
 /// hands-free assistant into a spoken confirmation. Encoding an appearance instead would have made the
 /// declaration meaningless to three of those four.
 /// </remarks>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum Consequence
 {
     /// <summary>Changes nothing that cannot be changed back, and costs nothing to try.</summary>
@@ -147,7 +149,6 @@ public enum Consequence
 /// <summary>
 /// How sure a user must be before an action happens.
 /// </summary>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public enum ConfirmationRequirement
 {
     /// <summary>The request itself is enough.</summary>
@@ -173,7 +174,6 @@ public enum ConfirmationRequirement
 /// The identifier of a set of values resolved through the platform at the time of asking, for parameters
 /// whose permitted values are not known in advance.
 /// </param>
-[Experimental(ExperimentalContracts.Intent, UrlFormat = ExperimentalContracts.UrlFormat)]
 public sealed record ActionParameter(
     string ParameterId,
     string Name,
@@ -181,4 +181,8 @@ public sealed record ActionParameter(
     bool Required,
     IReadOnlyList<FacetValue> Choices,
     string? DefaultValue = null,
-    string? OptionSourceId = null);
+    string? OptionSourceId = null)
+{
+    /// <summary>Gets this parameter's role when it belongs to a standard media operation.</summary>
+    public StandardMediaActionParameter? StandardParameter { get; init; }
+}

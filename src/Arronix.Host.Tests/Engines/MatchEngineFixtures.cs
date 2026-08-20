@@ -5,9 +5,6 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Engines.Matching;
 
-// Every contract named here is experimental.
-#pragma warning disable ARX0013
-#pragma warning disable ARX0019
 
 namespace Arronix.Host.Tests.Engines;
 

@@ -1,9 +1,9 @@
-#pragma warning disable ARX0013 // Shape contracts are experimental; a media extension is their intended implementer.
 
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Plugin.Movies.Tests.Fixtures;
@@ -108,7 +108,10 @@ public sealed record MovieRecord
     public int? SecondaryYear { get; init; }
 
     /// <summary>How far through its release sequence the film has travelled.</summary>
-    public required MovieStatus Status { get; init; }
+    public required MovieReleaseStage Status { get; init; }
+
+    /// <summary>Whether the upstream catalog still presents the record.</summary>
+    public CatalogRecordState CatalogState { get; init; }
 
     /// <summary>Synopsis.</summary>
     public string? Overview { get; init; }
@@ -198,7 +201,7 @@ public sealed record MovieRecord
 /// </summary>
 /// <remarks>
 /// A collection has a title, a synopsis, artwork, its own identifier and its own refresh cycle, and the
-/// grouping axis can now say all of it, because <see cref="Collection"/> is a type and its fields derive
+/// grouping axis can now say all of it, because <c>MediaCollection&lt;TItem&gt;</c> is a type and its fields derive
 /// exactly as an item's do. This record is the catalog-side shape the seed was written from; the axis
 /// descriptor is derived from the entity rather than from a naming convention nothing validated.
 /// </remarks>
@@ -251,7 +254,7 @@ public sealed class MoviesCatalog
     private static readonly MediaLevelId MovieLevel = MediaLevelId.FromString("movie");
 
     /// <summary>The media kind. Named through its namespace: the class shares its name with a property here.</summary>
-    private static readonly MediaKindId MovieKind = Arronix.Plugin.Movies.Movies.Kind;
+    private static readonly MediaKindId MovieKind = new Arronix.Plugin.Movies.Movies().Kind;
 
     private readonly IReadOnlyList<MovieRecord> _movies;
     private readonly Dictionary<long, MovieRecord> _byId;

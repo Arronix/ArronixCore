@@ -1,4 +1,3 @@
-using System.Diagnostics.CodeAnalysis;
 using System.Net.Http;
 
 namespace Arronix.Abstractions.Http;
@@ -12,7 +11,6 @@ namespace Arronix.Abstractions.Http;
 /// <see cref="HttpRequestException.StatusCode"/> carries the status without the caller reaching into
 /// <see cref="Response"/>.
 /// </remarks>
-[Experimental(ExperimentalContracts.Http, UrlFormat = ExperimentalContracts.UrlFormat)]
 public class HttpGatewayException : HttpRequestException
 {
     /// <summary>

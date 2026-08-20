@@ -38,7 +38,7 @@
       "required": ["arronix"],
       "properties": {
         "arronix": {
-          "description": "A range in a documented subset of npm/yarn syntax: comparison operators, whitespace conjunction, '||' alternation and partial versions. Caret, tilde, wildcards and hyphen ranges are rejected. An extension depending on experimental contracts must bound the range at or below the host's next minor, for example '>=0.3 <0.4'.",
+          "description": "A range in a documented subset of npm/yarn syntax: comparison operators, whitespace conjunction, '||' alternation and partial versions. Caret, tilde, wildcards and hyphen ranges are rejected.",
           "type": "string",
           "minLength": 1
         }
@@ -70,7 +70,8 @@
           "curation",
           "network",
           "storage",
-          "telemetry-sink"
+          "telemetry-sink",
+          "language"
         ]
       }
     },

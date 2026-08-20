@@ -9,6 +9,7 @@ using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Http;
 using Arronix.Abstractions.Import;
 using Arronix.Abstractions.Intent;
+using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Parsing;
@@ -21,23 +22,7 @@ using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Telemetry;
 using Arronix.Abstractions.Throttling;
 
-#pragma warning disable ARX0001 // Caching contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0002 // Diagnostics contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0004 // Event contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0005 // File-system contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0006 // Health contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0007 // Hosting contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0008 // Outbound-call contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0009 // Naming contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0010 // Serialization contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0011 // Telemetry contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0012 // Throttling contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0013 // Media-shape contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0014 // The extension model is experimental; this assembly implements it.
-#pragma warning disable ARX0015 // Provider contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0016 // Intent contracts are experimental; this assembly gates them.
-#pragma warning disable ARX0019
-#pragma warning disable ARX0020 // The typed media surface is experimental; this assembly admits registrations of it. // Definition contracts are experimental; this assembly gates them.
+
 
 namespace Arronix.Plugins.Registration;
 
@@ -87,17 +72,19 @@ public static class CapabilityMatrix
             [typeof(ILibraryLayout)] = [Capability.Renaming],
             [typeof(IMediaIdResolver)] = [Capability.Metadata],
 
-            // Provider families, one row per family.
-            [typeof(IndexerRegistration)] = [Capability.Indexing],
-            [typeof(DownloaderRegistration)] = [Capability.Download],
-            [typeof(NotifierRegistration)] = [Capability.Notification],
-            [typeof(CatalogerRegistration)] = [Capability.Metadata],
-            [typeof(CuratorRegistration)] = [Capability.Curation],
+            // Provider implementations are registered by type and activated by the host after admission.
+            // The generic cataloger and curator contracts retain the media item type at the seam.
+            [typeof(IIndexer)] = [Capability.Indexing],
+            [typeof(IDownloader)] = [Capability.Download],
+            [typeof(INotifier)] = [Capability.Notification],
+            [typeof(ICataloger<>)] = [Capability.Metadata],
+            [typeof(ICurator<>)] = [Capability.Curation],
 
             // Platform participation that is a privilege rather than a contribution.
             [typeof(ITelemetrySink)] = [Capability.TelemetrySink],
             [typeof(IOutboundHttpInterceptor)] = [Capability.Indexing],
-            [typeof(IDiacriticFoldingProvider)] = [Capability.Parsing, Capability.Renaming]
+            [typeof(IDiacriticFoldingProvider)] = [Capability.Parsing, Capability.Renaming],
+            [typeof(LanguageDefinitionRegistration)] = [Capability.Language]
         }.ToFrozenDictionary();
 
     private static readonly FrozenDictionary<Type, Capability[]> DependencyRows =
