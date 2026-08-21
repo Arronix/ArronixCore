@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arronix.invalid/verification/compatibility/baseline.schema.json",
+  "title": "Arronix G01 compatibility baseline manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "baselineId",
+    "repositoryBaselineCommit",
+    "captureHeadCommit",
+    "runs",
+    "totals",
+    "currentSkipCount",
+    "initialRecordCounts",
+    "reasonCounts",
+    "fixtureCounts",
+    "zeroCaseRequirementIds",
+    "notes"
+  ],
+  "properties": {
+    "$schema": { "const": "schema/baseline.schema.json" },
+    "schemaVersion": { "const": 1 },
+    "baselineId": { "$ref": "#/$defs/stableId" },
+    "repositoryBaselineCommit": { "$ref": "#/$defs/commit" },
+    "captureHeadCommit": { "$ref": "#/$defs/commit" },
+    "runs": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "project",
+          "format",
+          "artifactDigest",
+          "capturedAtUtc",
+          "total",
+          "passed",
+          "failed",
+          "inconclusive",
+          "skipped"
+        ],
+        "properties": {
+          "runId": { "$ref": "#/$defs/stableId" },
+          "project": { "$ref": "#/$defs/relativePath" },
+          "format": { "const": "nunit3" },
+          "artifactDigest": { "$ref": "#/$defs/digest" },
+          "capturedAtUtc": { "type": "string", "format": "date-time" },
+          "total": { "type": "integer", "minimum": 0 },
+          "passed": { "type": "integer", "minimum": 0 },
+          "failed": { "type": "integer", "minimum": 0 },
+          "inconclusive": { "type": "integer", "minimum": 0 },
+          "skipped": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capturedCases", "passed", "failed", "inconclusive", "skipped"],
+      "properties": {
+        "capturedCases": { "const": 841 },
+        "passed": { "const": 539 },
+        "failed": { "const": 0 },
+        "inconclusive": { "const": 0 },
+        "skipped": { "const": 302 }
+      }
+    },
+    "currentSkipCount": { "type": "integer", "minimum": 0, "maximum": 302 },
+    "initialRecordCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources", "requirements", "cases", "replacements"],
+      "properties": {
+        "sources": { "const": 12 },
+        "requirements": { "const": 129 },
+        "cases": { "const": 302 },
+        "replacements": { "const": 0 }
+      }
+    },
+    "reasonCounts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "advertising-prefix",
+        "bracketed-source-prefix",
+        "honorific-punctuation",
+        "literal-deny-list-recorded-exception",
+        "movie-edition-after-year",
+        "obfuscation-recovery-assertion-lost",
+        "parser-assertion-not-restored",
+        "shared-name-sanitizer-owner-gap",
+        "storage-item-source-empty",
+        "video-imax-terminator"
+      ],
+      "properties": {
+        "advertising-prefix": { "const": 3 },
+        "bracketed-source-prefix": { "const": 1 },
+        "honorific-punctuation": { "const": 1 },
+        "literal-deny-list-recorded-exception": { "const": 1 },
+        "movie-edition-after-year": { "const": 3 },
+        "obfuscation-recovery-assertion-lost": { "const": 1 },
+        "parser-assertion-not-restored": { "const": 19 },
+        "shared-name-sanitizer-owner-gap": { "const": 114 },
+        "storage-item-source-empty": { "const": 158 },
+        "video-imax-terminator": { "const": 1 }
+      }
+    },
+    "fixtureCounts": {
+      "type": "array",
+      "minItems": 9,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["fixture", "skipped"],
+        "properties": {
+          "fixture": { "type": "string", "minLength": 1, "maxLength": 220 },
+          "skipped": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "zeroCaseRequirementIds": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stableId" }
+    },
+    "notes": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 500 }
+    }
+  },
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 220
+    },
+    "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$",
+      "minLength": 1,
+      "maxLength": 300
+    }
+  }
+}

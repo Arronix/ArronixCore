@@ -9,7 +9,6 @@ using Arronix.Plugin.Movies;
 using Arronix.Plugin.Movies.Definition;
 using FluentAssertions;
 
-
 namespace Arronix.Host.Tests.Media;
 
 /// <summary>
@@ -41,10 +40,10 @@ internal sealed class ReferenceShapeTests
                 ReleaseTarget<Movie>,
                 Release<Video>,
                 MovieReleaseParser,
-                Movies>().Shape).SetName("Movies");
-        yield return new TestCaseData(new Arronix.Plugin.Books.BooksShape().Shape).SetName("Books");
-        yield return new TestCaseData(new Arronix.Plugin.Music.MusicShape().Shape).SetName("Music");
-        yield return new TestCaseData(new Arronix.Plugin.Tv.TvShape().Shape).SetName("Tv");
+                Movies>().Shape).SetArgDisplayNames("Movies");
+        yield return new TestCaseData(new Arronix.Plugin.Books.BooksShape().Shape).SetArgDisplayNames("Books");
+        yield return new TestCaseData(new Arronix.Plugin.Music.MusicShape().Shape).SetArgDisplayNames("Music");
+        yield return new TestCaseData(new Arronix.Plugin.Tv.TvShape().Shape).SetArgDisplayNames("Tv");
     }
 
     [TestCaseSource(nameof(ReferenceShapes))]

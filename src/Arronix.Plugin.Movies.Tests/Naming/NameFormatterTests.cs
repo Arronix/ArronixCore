@@ -1,3 +1,9 @@
+using NUnitAssert = global::NUnit.Framework.Assert;
+using NUnitIgnoreAttribute = global::NUnit.Framework.IgnoreAttribute;
+using NUnitTestAttribute = global::NUnit.Framework.TestAttribute;
+using NUnitTestCaseAttribute = global::NUnit.Framework.TestCaseAttribute;
+using NUnitTestFixtureAttribute = global::NUnit.Framework.TestFixtureAttribute;
+
 namespace Arronix.Plugin.Movies.Tests.Naming;
 
 /// <summary>
@@ -17,212 +23,220 @@ namespace Arronix.Plugin.Movies.Tests.Naming;
 /// run.
 /// </para>
 /// </remarks>
-[TestFixture]
+[NUnitTestFixtureAttribute]
 public class NameFormatterTests
 {
-    [TestCase("Florence + the Machine", "Florence + the Machine")]
-    [TestCase("Beyoncé X10", "Beyonce X10")]
-    [TestCase("Girlfriends' Guide to Divorce", "Girlfriends Guide to Divorce")]
-    [TestCase("Rule #23: Never Lie to the Kids", "Rule #23 Never Lie to the Kids")]
-    [TestCase("Anne Hathaway/Florence + The Machine", "Anne Hathaway Florence + The Machine")]
-    [TestCase("Chris Rock/Prince", "Chris Rock Prince")]
-    [TestCase("Ke$ha: My Crazy Beautiful Life", "Ke$ha My Crazy Beautiful Life")]
-    [TestCase("Free! - Iwatobi Swim Club", "Free! Iwatobi Swim Club")]
-    [TestCase("Tamara Ecclestone: Billion $$ Girl", "Tamara Ecclestone Billion $$ Girl")]
-    [TestCase("Marvel's Agents of S.H.I.E.L.D.", "Marvels Agents of S.H.I.E.L.D")]
-    [TestCase("Castle (2009)", "Castle 2009")]
-    [TestCase("Law & Order (UK)", "Law and Order UK")]
-    [TestCase("Is this okay?", "Is this okay")]
-    [TestCase("[a] title", "a title")]
-    [TestCase("I'm the Boss", "Im the Boss")]
-    [TestCase("I've Been Caught", "Ive Been Caught")]
-    [TestCase("That'll Be The Day", "Thatll Be The Day")]
-    [TestCase("I'd Rather Be Alone", "Id Rather Be Alone")]
-    [TestCase("I Can't Die", "I Cant Die")]
-    [TestCase("Won`t Get Fooled Again", "Wont Get Fooled Again")]
-    [TestCase("Don’t Blink", "Dont Blink")]
-    [TestCase("The ` Legend of Kings", "The Legend of Kings")]
-    [TestCase("Joker: Folie à deux", "Joker Folie a deux")]
-    [TestCase("Karma's a B*tch!", "Karmas a B-tch!")]
-    [TestCase("$#*! My Dad Says", "$#-! My Dad Says")]
-    [TestCase("backslash \\ backlash", "backslash backlash")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    static NameFormatterTests()
+    {
+        if (typeof(NUnitAssert).Assembly.GetName().Name != "nunit.framework")
+        {
+            throw new InvalidOperationException("The compatibility fixture did not bind the real NUnit assertion assembly.");
+        }
+    }
+
+    [NUnitTestCaseAttribute("Florence + the Machine", "Florence + the Machine")]
+    [NUnitTestCaseAttribute("Beyoncé X10", "Beyonce X10")]
+    [NUnitTestCaseAttribute("Girlfriends' Guide to Divorce", "Girlfriends Guide to Divorce")]
+    [NUnitTestCaseAttribute("Rule #23: Never Lie to the Kids", "Rule #23 Never Lie to the Kids")]
+    [NUnitTestCaseAttribute("Anne Hathaway/Florence + The Machine", "Anne Hathaway Florence + The Machine")]
+    [NUnitTestCaseAttribute("Chris Rock/Prince", "Chris Rock Prince")]
+    [NUnitTestCaseAttribute("Ke$ha: My Crazy Beautiful Life", "Ke$ha My Crazy Beautiful Life")]
+    [NUnitTestCaseAttribute("Free! - Iwatobi Swim Club", "Free! Iwatobi Swim Club")]
+    [NUnitTestCaseAttribute("Tamara Ecclestone: Billion $$ Girl", "Tamara Ecclestone Billion $$ Girl")]
+    [NUnitTestCaseAttribute("Marvel's Agents of S.H.I.E.L.D.", "Marvels Agents of S.H.I.E.L.D")]
+    [NUnitTestCaseAttribute("Castle (2009)", "Castle 2009")]
+    [NUnitTestCaseAttribute("Law & Order (UK)", "Law and Order UK")]
+    [NUnitTestCaseAttribute("Is this okay?", "Is this okay")]
+    [NUnitTestCaseAttribute("[a] title", "a title")]
+    [NUnitTestCaseAttribute("I'm the Boss", "Im the Boss")]
+    [NUnitTestCaseAttribute("I've Been Caught", "Ive Been Caught")]
+    [NUnitTestCaseAttribute("That'll Be The Day", "Thatll Be The Day")]
+    [NUnitTestCaseAttribute("I'd Rather Be Alone", "Id Rather Be Alone")]
+    [NUnitTestCaseAttribute("I Can't Die", "I Cant Die")]
+    [NUnitTestCaseAttribute("Won`t Get Fooled Again", "Wont Get Fooled Again")]
+    [NUnitTestCaseAttribute("Don’t Blink", "Dont Blink")]
+    [NUnitTestCaseAttribute("The ` Legend of Kings", "The Legend of Kings")]
+    [NUnitTestCaseAttribute("Joker: Folie à deux", "Joker Folie a deux")]
+    [NUnitTestCaseAttribute("Karma's a B*tch!", "Karmas a B-tch!")]
+    [NUnitTestCaseAttribute("$#*! My Dad Says", "$#-! My Dad Says")]
+    [NUnitTestCaseAttribute("backslash \\ backlash", "backslash backlash")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void CleansATitleTheWayASceneReleaseWouldSpellIt(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void CleansNothingOutOfNothing()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("The Lord of the Rings")]
-    [TestCase("Law & Order (UK)")]
-    [TestCase("Castle (2009)")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("The Lord of the Rings")]
+    [NUnitTestCaseAttribute("Law & Order (UK)")]
+    [NUnitTestCaseAttribute("Castle (2009)")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void IsADifferentFunctionFromTheComparisonKey(string arg0)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("The Mist", "Mist, The")]
-    [TestCase("A Place to Call Home", "Place to Call Home, A")]
-    [TestCase("An Adventure in Space and Time", "Adventure in Space and Time, An")]
-    [TestCase("The Flash (2010)", "Flash, The (2010)")]
-    [TestCase("A League Of Their Own (AU)", "League Of Their Own, A (AU)")]
-    [TestCase("The Fixer (ZH) (2015)", "Fixer, The (ZH) (2015)")]
-    [TestCase("The Sixth Sense 2 (Thai)", "Sixth Sense 2, The (Thai)")]
-    [TestCase("The Amazing Race (Latin America)", "Amazing Race, The (Latin America)")]
-    [TestCase("The Rat Pack (A&E)", "Rat Pack, The (A&E)")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("The Mist", "Mist, The")]
+    [NUnitTestCaseAttribute("A Place to Call Home", "Place to Call Home, A")]
+    [NUnitTestCaseAttribute("An Adventure in Space and Time", "Adventure in Space and Time, An")]
+    [NUnitTestCaseAttribute("The Flash (2010)", "Flash, The (2010)")]
+    [NUnitTestCaseAttribute("A League Of Their Own (AU)", "League Of Their Own, A (AU)")]
+    [NUnitTestCaseAttribute("The Fixer (ZH) (2015)", "Fixer, The (ZH) (2015)")]
+    [NUnitTestCaseAttribute("The Sixth Sense 2 (Thai)", "Sixth Sense 2, The (Thai)")]
+    [NUnitTestCaseAttribute("The Amazing Race (Latin America)", "Amazing Race, The (Latin America)")]
+    [NUnitTestCaseAttribute("The Rat Pack (A&E)", "Rat Pack, The (A&E)")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void MovesALeadingArticleToTheEnd(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("A")]
-    [TestCase("Anne")]
-    [TestCase("Theodore")]
-    [TestCase("3%")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("A")]
+    [NUnitTestCaseAttribute("Anne")]
+    [NUnitTestCaseAttribute("Theodore")]
+    [NUnitTestCaseAttribute("3%")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void LeavesATitleWithNoLeadingArticleAlone(string arg0)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("The Mist", "Mist, The")]
-    [TestCase("A Place to Call Home", "Place to Call Home, A")]
-    [TestCase("An Adventure in Space and Time", "Adventure in Space and Time, An")]
-    [TestCase("The Flash (2010)", "Flash, The 2010")]
-    [TestCase("A League Of Their Own (AU)", "League Of Their Own, A AU")]
-    [TestCase("The Fixer (ZH) (2015)", "Fixer, The ZH 2015")]
-    [TestCase("The Sixth Sense 2 (Thai)", "Sixth Sense 2, The Thai")]
-    [TestCase("The Amazing Race (Latin America)", "Amazing Race, The Latin America")]
-    [TestCase("The Rat Pack (A&E)", "Rat Pack, The AandE")]
-    [TestCase(null, "")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("The Mist", "Mist, The")]
+    [NUnitTestCaseAttribute("A Place to Call Home", "Place to Call Home, A")]
+    [NUnitTestCaseAttribute("An Adventure in Space and Time", "Adventure in Space and Time, An")]
+    [NUnitTestCaseAttribute("The Flash (2010)", "Flash, The 2010")]
+    [NUnitTestCaseAttribute("A League Of Their Own (AU)", "League Of Their Own, A AU")]
+    [NUnitTestCaseAttribute("The Fixer (ZH) (2015)", "Fixer, The ZH 2015")]
+    [NUnitTestCaseAttribute("The Sixth Sense 2 (Thai)", "Sixth Sense 2, The Thai")]
+    [NUnitTestCaseAttribute("The Amazing Race (Latin America)", "Amazing Race, The Latin America")]
+    [NUnitTestCaseAttribute("The Rat Pack (A&E)", "Rat Pack, The AandE")]
+    [NUnitTestCaseAttribute(null, "")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void MovesTheArticleAndCleansTheResult(string? arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("The Badger's Collection", "Badgers Collection, The")]
-    [TestCase("A Stupid/Idiotic Collection", "Stupid Idiotic Collection, A")]
-    [TestCase("An Astounding & Amazing Collection", "Astounding and Amazing Collection, An")]
-    [TestCase("The Amazing Animal-Hero's Collection (2001)", "Amazing Animal-Heros Collection, The 2001")]
-    [TestCase("A Different Movië (AU)", "Different Movie, A AU")]
-    [TestCase("The Repairër (ZH) (2015)", "Repairer, The ZH 2015")]
-    [TestCase("The Eighth Sensë 2 (Thai)", "Eighth Sense 2, The Thai")]
-    [TestCase("The Hampster Pack (B&F)", "Hampster Pack, The BandF")]
-    [TestCase("The Gásm: I (Almost) Got Away With It (1900)", "Gasm I Almost Got Away With It, The 1900")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("The Badger's Collection", "Badgers Collection, The")]
+    [NUnitTestCaseAttribute("A Stupid/Idiotic Collection", "Stupid Idiotic Collection, A")]
+    [NUnitTestCaseAttribute("An Astounding & Amazing Collection", "Astounding and Amazing Collection, An")]
+    [NUnitTestCaseAttribute("The Amazing Animal-Hero's Collection (2001)", "Amazing Animal-Heros Collection, The 2001")]
+    [NUnitTestCaseAttribute("A Different Movië (AU)", "Different Movie, A AU")]
+    [NUnitTestCaseAttribute("The Repairër (ZH) (2015)", "Repairer, The ZH 2015")]
+    [NUnitTestCaseAttribute("The Eighth Sensë 2 (Thai)", "Eighth Sense 2, The Thai")]
+    [NUnitTestCaseAttribute("The Hampster Pack (B&F)", "Hampster Pack, The BandF")]
+    [NUnitTestCaseAttribute("The Gásm: I (Almost) Got Away With It (1900)", "Gasm I Almost Got Away With It, The 1900")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void CleansACollectionTitleTheSameWay(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("The Mist", "M")]
-    [TestCase("A", "A")]
-    [TestCase("30 Rock", "3")]
-    [TestCase("The '80s Greatest", "8")]
-    [TestCase("좀비버스", "좀")]
-    [TestCase("¡Mucha Lucha!", "M")]
-    [TestCase(".hack", "H")]
-    [TestCase("Ütopya", "U")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("The Mist", "M")]
+    [NUnitTestCaseAttribute("A", "A")]
+    [NUnitTestCaseAttribute("30 Rock", "3")]
+    [NUnitTestCaseAttribute("The '80s Greatest", "8")]
+    [NUnitTestCaseAttribute("좀비버스", "좀")]
+    [NUnitTestCaseAttribute("¡Mucha Lucha!", "M")]
+    [NUnitTestCaseAttribute(".hack", "H")]
+    [NUnitTestCaseAttribute("Ütopya", "U")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void TakesTheFirstCharacterAfterMovingTheArticle(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void FallsBackToAnUnderscoreWhenTheFirstTwoPositionsCarryNoLetter()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("CSI: Vegas", "Smart", "CSI - Vegas")]
-    [TestCase("CSI: Vegas", "Dash", "CSI- Vegas")]
-    [TestCase("CSI: Vegas", "Delete", "CSI Vegas")]
-    [TestCase("CSI: Vegas", "SpaceDash", "CSI - Vegas")]
-    [TestCase("CSI: Vegas", "SpaceDashSpace", "CSI - Vegas")]
-    [TestCase("Movie:Title", "Smart", "Movie-Title")]
-    [TestCase("Movie:Title", "Dash", "Movie-Title")]
-    [TestCase("Movie:Title", "Delete", "MovieTitle")]
-    [TestCase("Movie:Title", "SpaceDash", "Movie -Title")]
-    [TestCase("Movie:Title", "SpaceDashSpace", "Movie - Title")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("CSI: Vegas", "Smart", "CSI - Vegas")]
+    [NUnitTestCaseAttribute("CSI: Vegas", "Dash", "CSI- Vegas")]
+    [NUnitTestCaseAttribute("CSI: Vegas", "Delete", "CSI Vegas")]
+    [NUnitTestCaseAttribute("CSI: Vegas", "SpaceDash", "CSI - Vegas")]
+    [NUnitTestCaseAttribute("CSI: Vegas", "SpaceDashSpace", "CSI - Vegas")]
+    [NUnitTestCaseAttribute("Movie:Title", "Smart", "Movie-Title")]
+    [NUnitTestCaseAttribute("Movie:Title", "Dash", "Movie-Title")]
+    [NUnitTestCaseAttribute("Movie:Title", "Delete", "MovieTitle")]
+    [NUnitTestCaseAttribute("Movie:Title", "SpaceDash", "Movie -Title")]
+    [NUnitTestCaseAttribute("Movie:Title", "SpaceDashSpace", "Movie - Title")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void AppliesTheColonPolicy(string arg0, string arg1, string arg2)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void ReadsCorrectlyForBothSpellingsUnderTheSmartPolicy()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void RemovesTheColonEntirelyWhenIllegalCharactersAreNotReplaced()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("Movie/Title", "Movie+Title")]
-    [TestCase("Movie?Title", "Movie!Title")]
-    [TestCase("Movie\\Title", "Movie+Title")]
-    [TestCase("Movie*Title", "Movie-Title")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("Movie/Title", "Movie+Title")]
+    [NUnitTestCaseAttribute("Movie?Title", "Movie!Title")]
+    [NUnitTestCaseAttribute("Movie\\Title", "Movie+Title")]
+    [NUnitTestCaseAttribute("Movie*Title", "Movie-Title")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void SubstitutesACharacterNoPathComponentMayCarry(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void RemovesIllegalCharactersOutrightWhenAskedTo()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("con.Movie.2021", "con_Movie.2021")]
-    [TestCase("com1.Movie.2021", "com1_Movie.2021")]
-    [TestCase("PRN.Movie.2021", "PRN_Movie.2021")]
-    [TestCase("nul.Movie.2021", "nul_Movie.2021")]
-    [TestCase("aux.Movie.2021", "aux_Movie.2021")]
-    [TestCase("lpt9.Movie.2021", "lpt9_Movie.2021")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("con.Movie.2021", "con_Movie.2021")]
+    [NUnitTestCaseAttribute("com1.Movie.2021", "com1_Movie.2021")]
+    [NUnitTestCaseAttribute("PRN.Movie.2021", "PRN_Movie.2021")]
+    [NUnitTestCaseAttribute("nul.Movie.2021", "nul_Movie.2021")]
+    [NUnitTestCaseAttribute("aux.Movie.2021", "aux_Movie.2021")]
+    [NUnitTestCaseAttribute("lpt9.Movie.2021", "lpt9_Movie.2021")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void EscapesAReservedDeviceName(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("Content.Movie.2021", "Content.Movie.2021")]
-    [TestCase("Movie.con.2021", "Movie.con.2021")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("Content.Movie.2021", "Content.Movie.2021")]
+    [NUnitTestCaseAttribute("Movie.con.2021", "Movie.con.2021")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void DoesNotEscapeAWordThatMerelyContainsOne(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("The Fantastic Life of Mr. Sisko", 16, "The Fantastic…")]
-    [TestCase("The Fantastic Life of Mr. Sisko", -13, "…Mr. Sisko")]
-    [TestCase("Short", 16, "Short")]
-    [TestCase("The Fantastic Life of Mr. Sisko", 0, "The Fantastic Life of Mr. Sisko")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("The Fantastic Life of Mr. Sisko", 16, "The Fantastic…")]
+    [NUnitTestCaseAttribute("The Fantastic Life of Mr. Sisko", -13, "…Mr. Sisko")]
+    [NUnitTestCaseAttribute("Short", 16, "Short")]
+    [NUnitTestCaseAttribute("The Fantastic Life of Mr. Sisko", 0, "The Fantastic Life of Mr. Sisko")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void TruncatesToABudget(string arg0, int arg1, string arg2)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void UsesASingleEllipsisCharacterRatherThanThreePeriods()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void LeavesAValueAloneWhenTheBudgetIsTooSmallToTruncateInto()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("Beyoncé X10", "Beyonce X10")]
-    [TestCase("Ütopya", "Utopya")]
-    [TestCase("Amélie", "Amelie")]
-    [TestCase("Carnivàle", "Carnivale")]
-    [TestCase("", "")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("Beyoncé X10", "Beyonce X10")]
+    [NUnitTestCaseAttribute("Ütopya", "Utopya")]
+    [NUnitTestCaseAttribute("Amélie", "Amelie")]
+    [NUnitTestCaseAttribute("Carnivàle", "Carnivale")]
+    [NUnitTestCaseAttribute("", "")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void FoldsDiacritics(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [TestCase("{Movie Title}", "movietitle")]
-    [TestCase("{Movie.Title}", "movietitle")]
-    [TestCase("{Movie_Title}", "movietitle")]
-    [TestCase("{movie title}", "movietitle")]
-    [TestCase("Movie Title", "movietitle")]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestCaseAttribute("{Movie Title}", "movietitle")]
+    [NUnitTestCaseAttribute("{Movie.Title}", "movietitle")]
+    [NUnitTestCaseAttribute("{Movie_Title}", "movietitle")]
+    [NUnitTestCaseAttribute("{movie title}", "movietitle")]
+    [NUnitTestCaseAttribute("Movie Title", "movietitle")]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void CanonicalizesATokenNameIntoOneKey(string arg0, string arg1)
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void CollapsesARunOfSeparatorsAndTrimsTheTail()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now, but this row is not reachable through any movie seam. It asserts the shared name sanitizer - cleaning, article moves, the colon and illegal-character policies, truncation, diacritic folding - which a rename only reaches once it has an item to render, and the pre-storage item source holds none. The behavior is kind-agnostic and belongs to the shared assembly's own tests; the row is kept so the movie corpus stays visible.")]
     public void RejectsANullTemplateOrTokenSet()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 }

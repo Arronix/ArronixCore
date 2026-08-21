@@ -1,0 +1,194 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arronix.invalid/verification/compatibility/source.schema.json",
+  "title": "Arronix compatibility evidence source",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceId",
+    "title",
+    "evidenceClass",
+    "artifactState",
+    "provenance",
+    "proofUse",
+    "restrictions"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "sourceId": { "$ref": "#/$defs/stableId" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+    "evidenceClass": {
+      "enum": [
+        "upstream-regression",
+        "repository-regression",
+        "generated-clean-room",
+        "sanitized-specification",
+        "field-observation",
+        "platform-filesystem",
+        "hostile-input",
+        "arronix-owner-decision",
+        "architecture-governance",
+        "historical-gatekeeper-record",
+        "derived-shape-inventory"
+      ]
+    },
+    "artifactState": { "enum": ["current", "historical", "missing", "empty", "superseded"] },
+    "locator": { "$ref": "#/$defs/relativePath" },
+    "revision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "value"],
+      "properties": {
+        "kind": { "enum": ["repository-commit", "artifact-sha256", "version", "unversioned"] },
+        "value": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    },
+    "caseCount": { "type": "integer", "minimum": 0 },
+    "derivedFromSourceIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stableId" }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["independence", "access", "currency", "pinState"],
+      "properties": {
+        "independence": {
+          "enum": [
+            "not-applicable",
+            "not-established",
+            "dirty-side",
+            "pending-independent-review",
+            "independent"
+          ]
+        },
+        "access": { "enum": ["normal", "gatekeeper-only", "surveyor-and-gatekeeper"] },
+        "currency": { "enum": ["current-baseline", "current", "historical", "superseded", "absent"] },
+        "pinState": { "enum": ["repository-pinned", "artifact-pinned", "unpinned", "missing"] }
+      }
+    },
+    "proofUse": { "enum": ["eligible", "baseline-only", "ineligible"] },
+    "restrictions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1, "maxLength": 300 }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "artifactState": { "const": "missing" } },
+        "required": ["artifactState"]
+      },
+      "then": {
+        "properties": {
+          "proofUse": { "const": "ineligible" },
+          "provenance": {
+            "properties": {
+              "currency": { "const": "absent" },
+              "pinState": { "const": "missing" }
+            },
+            "required": ["currency", "pinState"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": { "access": { "const": "gatekeeper-only" } },
+            "required": ["access"]
+          }
+        },
+        "required": ["provenance"]
+      },
+      "then": { "properties": { "proofUse": { "const": "ineligible" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "provenance": {
+            "properties": { "independence": { "const": "dirty-side" } },
+            "required": ["independence"]
+          }
+        },
+        "required": ["provenance"]
+      },
+      "then": { "properties": { "proofUse": { "const": "ineligible" } } }
+    },
+    {
+      "if": {
+        "properties": { "evidenceClass": { "const": "arronix-owner-decision" } },
+        "required": ["evidenceClass"]
+      },
+      "then": {
+        "required": ["locator", "revision", "caseCount"],
+        "properties": {
+          "artifactState": { "enum": ["empty", "current"] },
+          "caseCount": { "const": 0 },
+          "proofUse": { "const": "eligible" },
+          "provenance": {
+            "properties": {
+              "independence": { "const": "not-applicable" },
+              "access": { "const": "normal" },
+              "pinState": { "enum": ["repository-pinned", "artifact-pinned"] }
+            },
+            "required": ["independence", "access", "pinState"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidenceClass": { "const": "arronix-owner-decision" },
+          "artifactState": { "const": "empty" }
+        },
+        "required": ["evidenceClass", "artifactState"]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": { "currency": { "const": "current-baseline" } },
+            "required": ["currency"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "evidenceClass": { "const": "arronix-owner-decision" },
+          "artifactState": { "const": "current" }
+        },
+        "required": ["evidenceClass", "artifactState"]
+      },
+      "then": {
+        "properties": {
+          "provenance": {
+            "properties": { "currency": { "const": "current" } },
+            "required": ["currency"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 180
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$",
+      "minLength": 1,
+      "maxLength": 300
+    }
+  }
+}

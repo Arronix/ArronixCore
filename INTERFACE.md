@@ -51,6 +51,10 @@ The external surface has distinct audiences even where migration currently place
 - generated/compiler/Host binding SPI used to cross assembly and type-erasure boundaries; and
 - serializable HTTP, SignalR, and Client wire contracts.
 
+All runtime, SDK, plugin, Host, API, Client, and test projects currently target `net11.0` and require exact
+.NET 11 Preview 7 SDK `11.0.100-preview.7.26381.103` pinned by `global.json`. `Arronix.Generators` alone targets
+`netstandard2.0` as an analyzer dependency; it is not a runtime compatibility escape hatch.
+
 Public visibility does not make generated getters, binder visitors, erased registrations, `System.Type`
 carriers, expression trees, or runtime descriptors part of the supported authoring vocabulary. Normal plugin
 authors must not implement or reason about those mechanics. The typed CLR definitions remain the sole
@@ -128,6 +132,28 @@ and is never reported as accepted.
 - Media extensions do not declare the platform action catalogue or its wire keys.
 - Client binds affordances through `StandardMediaAction`; only the API route and action request serialize string identifiers.
 - A plugin manifest owns package identity, compatibility, dependencies, capabilities requiring admission, and explicit security grants. It is not a second media schema; derivable kinds, fields, tokens, policies, and actions are generated or mechanically validated rather than manually restated.
+- Every known compatibility omission has a stable semantic ledger entry with provenance. Published semantics,
+  bindings, and source digests are compared with the prior committed ledger. A skipped fixture, renamed test,
+  coordinated ledger-and-source weakening, or replacement without independently anchored executable evidence
+  must fail. The same-build solution binlog is the authoritative practical record of actual `Csc` source and
+  embedded inputs plus effective warning policy and configuration. Every execution and required sentinel binds
+  an exact NUnit leaf to the declared CLR method in NUnit's exact executed assembly and its associated Portable
+  PDB; visible method sequence points and exact embedded source bytes for primary and support documents must
+  match the locked repository files. These layers establish same-build provenance, not cryptographic or hermetic
+  build attestation. Test output cannot certify itself by echoing a ledger digest.
+  Replacement topology and outcome are
+  independent contracts: the outcome must match the source disposition and make its claimed requirement,
+  ownership, or scope transition. Verified acyclic one-to-one replacement chains close transitively without
+  changing prior edges; partitions cannot close until aggregate composition has an explicit semantic contract.
+  Required decisions are pinned current owner-decision sources attached to the decided requirement and already
+  present in the prior ledger, not free-form approvals added during closure.
+- The current full-rail skip count is exactly 302. It may only decrease relative to the prior ledger, and a newly
+  passing baseline case cannot silently regress to skipped later. The four published Movie parser rows `t012`,
+  `t013`, `t023`, and `t027` remain isolated from the ordinary representative corpus as immutable support data.
+- The required proof-sentinel registry has eight columns and exactly three durable rows at G01. It is append-only
+  by stable identifier: published rows may not be removed or rebound, and transient implementation outcomes do
+  not qualify as permanent sentinels. A new row is valid only when its exact NUnit leaf passes from its compiled
+  pinned primary and support sources.
 
 ## 6. Side effects
 
@@ -180,7 +206,7 @@ that every stage is currently implemented.
 
 ## 10. Agent guidance
 
-Read `CONTEXT.md`, `docs/design/typed-media-north-star.md`, `docs/design/typed-media-roadmap.md`, and the relevant owner-ledger entries before changing media, quality, provider, plugin, or client boundaries. Use Television as the pressure test for any abstraction that appears sufficient for Movies, and use Books and Music to distinguish true platform commonality from video-family coincidence. Trace every claimed abstraction vertically through registration, DI, runtime use, wire projection, and tests before calling it complete. Preserve typed owner boundaries even when a string projection is easier. Treat owner questions and candidate examples as requests for verification rather than approvals unless the owner explicitly adopts them. Update this file with any public semantic change, `HISTORY.md` for the decision, and `CONTEXT.md` for the resulting current state. Build and run the entire solution; report skipped tests explicitly.
+Read `CONTEXT.md`, `docs/design/typed-media-north-star.md`, `docs/design/typed-media-roadmap.md`, and the relevant owner-ledger entries before changing media, quality, provider, plugin, or client boundaries. Use Television as the pressure test for any abstraction that appears sufficient for Movies, and use Books and Music to distinguish true platform commonality from video-family coincidence. Trace every claimed abstraction vertically through registration, DI, runtime use, wire projection, and tests before calling it complete. Preserve typed owner boundaries even when a string projection is easier. Treat owner questions and candidate examples as requests for verification rather than approvals unless the owner explicitly adopts them. Update this file with any public semantic change, `HISTORY.md` for the decision, and `CONTEXT.md` for the resulting current state. Use the SDK pinned by `global.json` and run `eng/ci/run-tests.sh`; report the exact enabled, passed, failed, skipped, inconclusive, and ratchet counts.
 
 Acceptance requires an independently authored media extension which uses only the supported SDK and chosen
 format/language packages, states every semantic relationship once, and does not implement generated bridges

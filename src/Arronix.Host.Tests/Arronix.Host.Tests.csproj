@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <RootNamespace>Arronix.Host.Tests</RootNamespace>
     <AssemblyName>Arronix.Host.Tests</AssemblyName>
     <IsPackable>false</IsPackable>
@@ -30,6 +30,21 @@
     <ProjectReference Include="..\Arronix.Plugin.Tv\Arronix.Plugin.Tv.csproj" />
     <ProjectReference Include="..\Arronix.Language.Reference\Arronix.Language.Reference.csproj" />
   </ItemGroup>
+
+  <!--
+       Stage the actual Movies build output as an installed plugin. The integration test consumes this
+       directory through discovery and the complete Host loader; referencing Movies in-process is not the
+       proof. G02 changes the asserted admission outcome, not this fixture path.
+  -->
+  <Target Name="StagePackagedMoviesPlugin" AfterTargets="Build">
+    <ItemGroup>
+      <PackagedMoviesPluginFile Include="..\Arronix.Plugin.Movies\bin\$(Configuration)\$(TargetFramework)\**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(PackagedMoviesPluginFile)"
+      DestinationFiles="@(PackagedMoviesPluginFile->'$(OutDir)PackagedPlugins\movies\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
 
   <!--
        The container, the configuration builder and the logger are host concerns the tested assembly takes

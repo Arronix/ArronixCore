@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arronix.invalid/verification/compatibility/requirement.schema.json",
+  "title": "Arronix compatibility semantic requirement",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "requirementId",
+    "title",
+    "statement",
+    "slice",
+    "scope",
+    "owner",
+    "sourceIds",
+    "baselineStatus",
+    "currentReason",
+    "disposition",
+    "target",
+    "closurePolicy",
+    "caseCount"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "requirementId": { "$ref": "#/$defs/stableId" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 180 },
+    "statement": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "slice": { "$ref": "#/$defs/stableId" },
+    "scope": { "enum": ["in-scope", "inventory-control"] },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "state"],
+      "properties": {
+        "id": { "$ref": "#/$defs/stableId" },
+        "state": { "enum": ["assigned", "provisional", "unresolved"] }
+      }
+    },
+    "sourceIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/stableId" }
+    },
+    "baselineStatus": { "enum": ["skipped", "missing-proof", "recorded-exception", "inventory-zero"] },
+    "currentReason": { "type": "string", "minLength": 1, "maxLength": 500 },
+    "disposition": {
+      "enum": [
+        "restore",
+        "ownership-correct-replacement",
+        "evidence-gap",
+        "candidate-divergence",
+        "scope-correction-candidate",
+        "inventory-required",
+        "inventory-zero"
+      ]
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["classificationGate", "closureGate", "prerequisites"],
+      "properties": {
+        "classificationGate": { "$ref": "#/$defs/gate" },
+        "closureGate": { "$ref": "#/$defs/gate" },
+        "prerequisites": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/gate" }
+        }
+      }
+    },
+    "closurePolicy": {
+      "enum": ["all-cases", "inventory-complete", "inventory-nonzero", "owner-decision", "inventory-zero"]
+    },
+    "caseCount": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "disposition": { "enum": ["evidence-gap", "candidate-divergence"] }
+        },
+        "required": ["disposition"]
+      },
+      "then": { "properties": { "baselineStatus": { "const": "missing-proof" } } }
+    },
+    {
+      "if": {
+        "properties": { "disposition": { "const": "scope-correction-candidate" } },
+        "required": ["disposition"]
+      },
+      "then": {
+        "properties": {
+          "baselineStatus": { "const": "recorded-exception" },
+          "closurePolicy": { "const": "owner-decision" }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "disposition": { "const": "inventory-zero" } },
+        "required": ["disposition"]
+      },
+      "then": {
+        "properties": {
+          "baselineStatus": { "const": "inventory-zero" },
+          "closurePolicy": { "const": "inventory-zero" },
+          "caseCount": { "const": 0 }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "baselineStatus": { "const": "skipped" } },
+        "required": ["baselineStatus"]
+      },
+      "then": { "properties": { "caseCount": { "type": "integer", "minimum": 1 } } }
+    }
+  ],
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 220
+    },
+    "gate": { "type": "string", "pattern": "^G[0-9]{2}[A-Z]?$" }
+  }
+}

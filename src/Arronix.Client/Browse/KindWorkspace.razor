@@ -185,11 +185,19 @@ else if (_page is { } loaded && _axis is { } axis && _level is { } current)
     {
         if (envelope.Kind is EventKind.ItemChanged && envelope.MediaKind == Kind.Kind)
         {
-            InvokeAsync(ReloadAsync);
+            InvokeAsync(ReloadFromNotificationAsync);
         }
     }
 
-    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(ReloadAsync);
+    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(ReloadFromNotificationAsync);
+
+    private async Task ReloadFromNotificationAsync()
+    {
+        var reload = ReloadAsync();
+        StateHasChanged();
+        await reload;
+        StateHasChanged();
+    }
 
     private Dictionary<string, object?> PresenterParameters(
         ItemDetailPage page,
@@ -271,7 +279,6 @@ else if (_page is { } loaded && _axis is { } axis && _level is { } current)
 
         _busy = true;
         _error = null;
-        StateHasChanged();
 
         try
         {
@@ -326,7 +333,6 @@ else if (_page is { } loaded && _axis is { } axis && _level is { } current)
         finally
         {
             _busy = false;
-            StateHasChanged();
         }
     }
 

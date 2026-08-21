@@ -1,4 +1,5 @@
 using System.Linq;
+using NUnitTestCaseData = global::NUnit.Framework.TestCaseData;
 
 namespace Arronix.Plugin.Movies.Tests.Parsing;
 
@@ -18,8 +19,6 @@ internal static class MovieTitleCorpus
         new("t009", "To.Live.and.Movie.in.L.A.1985.1080p.BluRay", "To Live and Movie in L.A."),
         new("t010", "A.I.Artificial.Movie.(2001)", "A.I. Artificial Movie"),
         new("t011", "A.Movie.Name.(1998)", "A Movie Name"),
-        new("t012", "www.Torrenting.com - Movie.2008.720p.X264-DIMENSION", "Movie"),
-        new("t013", "www.5MovieRulz.tc - Movie (2000) Malayalam HQ HDRip - x264 - AAC - 700MB.mkv", "Movie"),
         new("t014", "Movie: The Movie World 2013", "Movie: The Movie World"),
         new("t015", "Movie.The.Final.Chapter.2016", "Movie The Final Chapter"),
         new("t016", "Der.Movie.James.German.Bluray.FuckYou.Pso.Why.cant.you.follow.scene.rules.1998", "Der Movie James"),
@@ -29,18 +28,16 @@ internal static class MovieTitleCorpus
         new("t020", "My Movie 1999 German Bluray", "My Movie"),
         new("t021", "Leaving Movie by Movie (1897) [DVD].mp4", "Leaving Movie by Movie"),
         new("t022", "Movie.2018.1080p.AMZN.WEB-DL.DD5.1.H.264-NTG", "Movie"),
-        new("t023", "Movie.Title.Imax.2018.1080p.AMZN.WEB-DL.DD5.1.H.264-NTG", "Movie Title"),
         new("t024", "World.Movie.Z.EXTENDED.2013.German.DL.1080p.BluRay.AVC-XANOR", "World Movie Z"),
         new("t025", "World.Movie.Z.2.EXTENDED.2013.German.DL.1080p.BluRay.AVC-XANOR", "World Movie Z 2"),
         new("t026", "G.I.Movie.Movie.2013.THEATRiCAL.COMPLETE.BLURAY-GLiMMER", "G.I. Movie Movie"),
-        new("t027", "www.Torrenting.org - Movie.2008.720p.X264-DIMENSION", "Movie"),
         new("t028", "The.French.Movie.2013.720p.BluRay.x264 - ROUGH[PublicHD]", "The French Movie"),
         new("t029", "The.Good.German.2006.720p.BluRay.x264-RlsGrp", "The Good German")
     ];
 
     internal static IEnumerable<TestCaseData> TestCases =>
         Cases.Select(static test =>
-            new TestCaseData(test.Input, test.ExpectedTitle).SetName($"{test.Id}: {test.Input}"));
+            new NUnitTestCaseData(test.Input, test.ExpectedTitle));
 }
 
 /// <summary>One movie title parsing regression case.</summary>

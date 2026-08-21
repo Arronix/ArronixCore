@@ -118,7 +118,7 @@ Contract tests covering:
 
 ### Project Configuration
 
-- **Target Framework**: .NET 8.0 *(as delivered; the platform targets `net10.0` today)*
+- **Target Framework**: .NET 8.0 *(as delivered; the platform targets `net11.0` today)*
 - **Language Features**: C# latest with nullable reference types enabled
 - **Version**: 0.1.0 (semantic versioning) *(as delivered; `<Version>` is 0.8.0 today)*
 - **Assembly**: `Arronix.Abstractions.dll`
@@ -205,7 +205,7 @@ is not a contract**: below 1.0.0 the assembly is free to change, and it has.
 
 | Since 0.1.0 | What happened |
 |---|---|
-| Target framework | `net8.0` → `net10.0` |
+| Target framework | `net8.0` → `net11.0` |
 | Assembly `<Version>` | 0.1.0 → **0.8.0**; first-party manifests require `>=0.8 <0.9` |
 | Solution membership | Removed from `src/Sonarr.sln`; `/Arronix.sln` is the only home |
 | Provider contracts | `IIndexerProvider`, `IMetadataProvider`, `IDownloadClientAdapter`, their DTOs and `StableProviderBridge` **deleted outright** in 0.4.0; replaced by `IProvider` + five families |

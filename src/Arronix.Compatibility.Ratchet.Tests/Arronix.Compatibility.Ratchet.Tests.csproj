@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Compatibility.Ratchet.Tests</RootNamespace>
+    <AssemblyName>Arronix.Compatibility.Ratchet.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+    <ProjectReference Include="..\Arronix.Compatibility.Ratchet\Arronix.Compatibility.Ratchet.csproj" />
+  </ItemGroup>
+</Project>

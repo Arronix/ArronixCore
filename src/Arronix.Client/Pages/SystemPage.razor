@@ -58,11 +58,17 @@
     {
         if (envelope.Kind is EventKind.HealthChanged or EventKind.PluginStateChanged)
         {
-            InvokeAsync(LoadAsync);
+            InvokeAsync(LoadFromNotificationAsync);
         }
     }
 
     private void OnStateChanged(object? sender, EventArgs args) => InvokeAsync(StateHasChanged);
+
+    private async Task LoadFromNotificationAsync()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
 
     // Closed vocabulary, every member listed, no fall-through arm.
     private string ConnectionLabel => Connectivity.State switch
@@ -100,7 +106,5 @@
         {
             _error = failure.Message;
         }
-
-        StateHasChanged();
     }
 }

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net11.0</TargetFramework>
     <RootNamespace>Arronix.Plugin.Tv</RootNamespace>
     <AssemblyName>Arronix.Plugin.Tv</AssemblyName>
     <Version>0.1.0</Version>

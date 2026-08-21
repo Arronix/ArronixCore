@@ -1,6 +1,9 @@
 using System.Linq;
-using System.Reflection;
 using Arronix.Architecture.Tests.Repository;
+using NUnitAssert = global::NUnit.Framework.Assert;
+using NUnitIs = global::NUnit.Framework.Is;
+using NUnitTestAttribute = global::NUnit.Framework.TestAttribute;
+using NUnitTestFixtureAttribute = global::NUnit.Framework.TestFixtureAttribute;
 
 namespace Arronix.Architecture.Tests.Topology;
 
@@ -20,7 +23,7 @@ namespace Arronix.Architecture.Tests.Topology;
 /// through a target rather than through an author still ends up in the reference graph.
 /// </para>
 /// </remarks>
-[TestFixture]
+[NUnitTestFixtureAttribute]
 public class ContractAssemblyTopologyTests
 {
     private static readonly string[] ForbiddenReferencePrefixes =
@@ -33,29 +36,30 @@ public class ContractAssemblyTopologyTests
         "Sentry"
     ];
 
-    private static Assembly ContractAssembly => typeof(Arronix.Abstractions.Health.HealthCheck).Assembly;
+    private static global::System.Reflection.Assembly ContractAssembly =>
+        typeof(global::Arronix.Abstractions.Health.HealthCheck).Assembly;
 
-    [Test]
+    [NUnitTestAttribute]
     public void ContractProjectDeclaresNoPackageReference()
     {
         var project = ProjectFile.Load(RepositoryLayout.Abstractions);
 
-        Assert.That(
+        NUnitAssert.That(
             project.PackageReferences,
-            Is.Empty,
+            NUnitIs.Empty,
             "The contract assembly must stay package-free: it is the one assembly both the host and every "
             + "isolated consumer load, and the only assembly the browser client may reference.");
     }
 
-    [Test]
+    [NUnitTestAttribute]
     public void ContractProjectDeclaresNoProjectReference()
     {
         var project = ProjectFile.Load(RepositoryLayout.Abstractions);
 
-        Assert.That(project.ProjectReferences, Is.Empty, "The contract assembly is the bottom of the graph.");
+        NUnitAssert.That(project.ProjectReferences, NUnitIs.Empty, "The contract assembly is the bottom of the graph.");
     }
 
-    [Test]
+    [NUnitTestAttribute]
     public void ContractAssemblyLinksNothingOutsideTheSharedFramework()
     {
         var offenders = ContractAssembly
@@ -66,15 +70,18 @@ public class ContractAssemblyTopologyTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.That(
+        NUnitAssert.That(
             offenders,
-            Is.Empty,
+            NUnitIs.Empty,
             "A dependency reached the contract assembly despite the empty package set.");
     }
 
-    [Test]
+    [NUnitTestAttribute]
     public void ContractAssemblyLinksNoOtherArronixAssembly()
     {
+        RequireAssembly(typeof(NUnitAssert), "nunit.framework");
+        RequireAssembly(typeof(global::Arronix.Abstractions.Health.HealthCheck), "Arronix.Abstractions");
+
         var linked = ContractAssembly
             .GetReferencedAssemblies()
             .Select(static name => name.Name ?? string.Empty)
@@ -82,6 +89,15 @@ public class ContractAssemblyTopologyTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.That(linked, Is.Empty);
+        NUnitAssert.That(linked, NUnitIs.Empty);
+    }
+
+    private static void RequireAssembly(global::System.Type type, string expectedName)
+    {
+        if (!string.Equals(type.Assembly.GetName().Name, expectedName, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                $"Expected '{type.FullName}' from '{expectedName}', but resolved it from '{type.Assembly.FullName}'.");
+        }
     }
 }

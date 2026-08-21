@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
@@ -147,16 +148,16 @@ public sealed class MultiUnitFileTests
     }
 
     [Test]
-    public void NamingRefusesUnitsThatStraddleTheOuterOrdinal()
+    public async Task NamingRefusesUnitsThatStraddleTheOuterOrdinal()
     {
         var lastOfFirstRun = Unit(1, 6);
         var firstOfSecondRun = Unit(2, 1);
 
-        var thrown = Assert.ThrowsAsync<ArgumentException>(() => _naming.GenerateFileNameForUnitsAsync(
-            [MediaItemId.FromInt64(lastOfFirstRun.Id), MediaItemId.FromInt64(firstOfSecondRun.Id)],
-            TvRenamePolicy.OrdinalTemplate));
-
-        Assert.That(thrown!.Message, Does.Contain("must-not-span"));
+        await Assert.ThatAsync(
+            () => _naming.GenerateFileNameForUnitsAsync(
+                [MediaItemId.FromInt64(lastOfFirstRun.Id), MediaItemId.FromInt64(firstOfSecondRun.Id)],
+                TvRenamePolicy.OrdinalTemplate),
+            Throws.TypeOf<ArgumentException>().With.Message.Contains("must-not-span"));
     }
 
     [Test]

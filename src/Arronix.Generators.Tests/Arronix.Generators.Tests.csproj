@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Generators.Tests</RootNamespace>
+    <AssemblyName>Arronix.Generators.Tests</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Generators\Arronix.Generators.csproj" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
+  </ItemGroup>
+</Project>

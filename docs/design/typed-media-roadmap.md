@@ -1,7 +1,9 @@
 # Typed media execution roadmap
 
-**Status:** active  
-**Current gate:** G01 — put the proof rails in CI  
+**Status:** active
+
+**Current gate:** G02 — make the real packaged Movies extension load
+
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
 ## Purpose
@@ -119,6 +121,8 @@ Baseline proof recorded on 2026-08-21:
 
 ### G01 — Put the proof rails in CI
 
+**Status:** complete.
+
 **Outcome:** the clean-repository result and every known omission are continuously visible.
 
 Implement:
@@ -144,7 +148,36 @@ Exit gate:
 - all 302 current skips are registered and no new unregistered skip can merge;
 - a deliberately removed, weakened, renamed, or newly skipped fixture makes the gate fail.
 
+Completion proof recorded on 2026-08-21:
+
+- exact .NET 11 Preview 7 SDK `11.0.100-preview.7.26381.103` is pinned, all 25 solution projects restore from
+  checked-in lock files, and the Release build treats warnings as errors;
+- the one-command rail discovers and runs all 11 test projects: 2,112 passed, 302 skipped, zero failed, and
+  zero inconclusive from 2,414 total cases;
+- the compatibility ledger contains 302 stable cases covering 129 semantic requirements and 12 provenance
+  sources, with no replacement or divergence falsely counted as proof;
+- the ratchet mutation suite and four generator tests exercise malformed inputs, prior-ledger rewriting,
+  coordinated fixture weakening, disappearance, unregistered skips, replacement evidence, deterministic
+  generation, and representative executable generated shapes;
+- the real packaged Movies output is driven through the complete loader and proves the current late token
+  agreement quarantine plus atomic typed-kind withdrawal rather than bypassing it through a direct binder;
+- every discovered test project must emit a non-empty NUnit document, CI compares with the PR base or pre-push
+  ledger, and the same-build solution binlog is the practical authoritative record of actual `Csc` sources,
+  embedded inputs, warning policy, and configuration;
+- each registered execution binds its exact NUnit leaf to the declared CLR method in the exact executed assembly;
+  the matching Portable PDB must bind that method to primary and support documents whose embedded source bytes
+  exactly match the locked files, including async and iterator state machines;
+- the eight-column append-only sentinel registry contains only three durable invariants. The packaged Movies
+  quarantine remains an ordinary integration test because G02 is expected to change that transient outcome;
+- the four published Movie parser rows `t012`, `t013`, `t023`, and `t027` live in a dedicated immutable support
+  document rather than the ordinary representative corpus; and
+- intentional binding, compiler-input, source-remapping, support-source, sentinel-removal, and skip-regression
+  mutations exit non-zero. These checks provide practical same-build provenance rather than cryptographic or
+  hermetic-build causality.
+
 ### G02 — Make the real packaged Movies extension load
+
+**Status:** active.
 
 **Outcome:** the actual Movies and Video build outputs survive discovery, admission, typed binding,
 activation, publication, and withdrawal through the real plugin pipeline.
@@ -1091,8 +1124,7 @@ replacement.
 
 ## Current next task
 
-Take **G01 only**: add the clean-clone CI build/test path, register the 302 current skips by stable semantic
-identity, establish the compatibility-matrix skeleton, and enforce the first skip/replacement ratchets. Do not
-repair the loader, redesign packages, change parsers, or start runtime features in the same gate. When G01
-passes, record its proof, mark it complete here, advance `CONTEXT.md` to G02, and checkpoint before beginning
-the packaged Movies repair.
+Take **G02 only**: make post-admission token agreement consume the admitted typed Movies projection, remove or
+derive any manifest data which is currently a second media schema, and prove active publication plus atomic
+withdrawal through the real packaged loader path. Do not redesign package identity, provider pairing, parsers,
+or Client loading in this gate. The G01 ledger and proof rail remain mandatory throughout the repair.

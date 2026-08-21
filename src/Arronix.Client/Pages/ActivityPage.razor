@@ -127,11 +127,17 @@
     {
         if (envelope.Kind is EventKind.QueueChanged or EventKind.JobCompleted)
         {
-            InvokeAsync(LoadAsync);
+            InvokeAsync(LoadFromNotificationAsync);
         }
     }
 
-    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(LoadAsync);
+    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(LoadFromNotificationAsync);
+
+    private async Task LoadFromNotificationAsync()
+    {
+        await LoadAsync();
+        StateHasChanged();
+    }
 
     private async Task LoadAsync()
     {
@@ -150,8 +156,6 @@
         {
             _error = failure.Message;
         }
-
-        StateHasChanged();
     }
 
     private async Task TriggerAsync(JobView job)

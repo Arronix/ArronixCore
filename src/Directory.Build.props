@@ -7,6 +7,7 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <PlatformTarget>AnyCPU</PlatformTarget>
     <TargetLatestRuntimePatch>true</TargetLatestRuntimePatch>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
 
     <!-- XML documentation comments are needed to enforce IDE0005 on build.
          CS1591 (missing comment on a public member) stays off: documentation is expected on contracts,
@@ -38,6 +39,7 @@
 
   <PropertyGroup Condition="'$(TestProject)'=='true'">
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <EmbedAllSources>true</EmbedAllSources>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
     <SelfContained>false</SelfContained>
   </PropertyGroup>

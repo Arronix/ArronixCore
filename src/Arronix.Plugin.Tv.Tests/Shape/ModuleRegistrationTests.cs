@@ -79,7 +79,10 @@ public sealed class ModuleRegistrationTests
         {
             Assert.That(_registry.ImportPipelines, Is.Empty, "the import capability is not declared");
             Assert.That(_registry.Providers, Has.None.Matches<ProviderTypeRegistration>(p =>
-                p.Family is ProviderFamily.Downloader or ProviderFamily.Notifier or ProviderFamily.Curator));
+                p is
+                {
+                    Family: ProviderFamily.Downloader or ProviderFamily.Notifier or ProviderFamily.Curator
+                }));
             Assert.That(_registry.TelemetrySinks, Is.Empty, "the telemetry-sink capability is not declared");
             Assert.That(_registry.ScheduledJobs, Is.Empty);
         });

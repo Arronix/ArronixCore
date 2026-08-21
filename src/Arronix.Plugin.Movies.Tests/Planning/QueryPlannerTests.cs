@@ -1,3 +1,8 @@
+using NUnitAssert = global::NUnit.Framework.Assert;
+using NUnitIgnoreAttribute = global::NUnit.Framework.IgnoreAttribute;
+using NUnitTestAttribute = global::NUnit.Framework.TestAttribute;
+using NUnitTestFixtureAttribute = global::NUnit.Framework.TestFixtureAttribute;
+
 namespace Arronix.Plugin.Movies.Tests.Planning;
 
 /// <summary>
@@ -14,86 +19,94 @@ namespace Arronix.Plugin.Movies.Tests.Planning;
 /// The corpus is preserved row for row and marked ignored rather than deleted so the gap is visible.
 /// </para>
 /// </remarks>
-[TestFixture]
+[NUnitTestFixtureAttribute]
 public class QueryPlannerTests
 {
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    static QueryPlannerTests()
+    {
+        if (typeof(NUnitAssert).Assembly.GetName().Name != "nunit.framework")
+        {
+            throw new InvalidOperationException("The compatibility fixture did not bind the real NUnit assertion assembly.");
+        }
+    }
+
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void DeclaresTheMediaKindItAnswersFor()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansAnIdentifierTierAndATextFallback()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansOnlyATextTierForATitleSearch()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void CarriesBothIdentifiersInOneQueryWithTheCatalogOneFirst()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void CarriesOnlyTheCatalogIdentifierForAMovieWithNoOther()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void CarriesFreeTextOnAnIdentifierQueryToo()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansOneTextQueryPerTitleSpelling()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void SuppliesTheYearBothAsTextAndAsAnArgument()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansNoTextQueryForAMovieWithNoYear()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansASingleUnnamedBrowseForASweep()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void ScopesEveryQueryToTheKindsCategories()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansNothingForASearchKindThisShapeDoesNotDeclare()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansNothingForAUnitTheCatalogDoesNotHold()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void PlansForEveryUnitInABatch()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void AsksTheSourceForWordsRatherThanForAComparisonKey()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 
-    [Test]
-    [Ignore("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute("The engines are reachable now - the host binds them from this declaration through its public binder and MoviesEngines drives them - so the old reason is gone. What blocks this row is that the bound kind's item source is the host's pre-storage one and holds no rows: this milestone has no persistence and no metadata pipeline, so matching, query planning, catalog projection and any rename that has to resolve an item have nothing to answer with. The storage milestone unblocks it; more visibility does not.")]
     public void RejectsANullRequest()
-        => Assert.Fail("Unreachable: see the fixture remarks.");
+        => NUnitAssert.Fail("Unreachable: see the fixture remarks.");
 }

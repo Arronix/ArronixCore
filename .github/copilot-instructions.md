@@ -7,7 +7,7 @@ Read `CONTEXT.md`, `INTERFACE.md`, and `ARCHITECTURE.md` before changing the rep
 - Arronix is a clean-sheet implementation informed by *arr behavior, not a port of an *arr codebase.
 - Universal contracts and Host remain media- and vendor-neutral.
 - C# media-owned types are the schema. Do not replace a known shape with field dictionaries or string bags.
-- A media kind retains `TItem`, `TTarget`, and `TRelease` through `IMediaType<TItem,TTarget,TRelease>`.
+- A media kind retains `TItem`, `TTarget`, `TRelease`, and its parser through `MediaType<TItem,TTarget,TRelease,TParser>`.
 - Catalogers and Curators are paired with the media-owned item type they return.
 - Format capabilities own representation semantics and vocabularies. Video does not belong in Abstractions or Host.
 - Provider modules register implementation types; Host activates admitted providers through DI.
@@ -17,7 +17,7 @@ Read `CONTEXT.md`, `INTERFACE.md`, and `ARCHITECTURE.md` before changing the rep
 - Client references Abstractions only. Host references no format or media implementation.
 - Media extensions may reference Abstractions and independently owned format capabilities, never Common, Plugins, Host, Api, or Client.
 - No plugin supplies UI markup. Descriptors support discovery and generic presentation; they are not a substitute for typed domain assemblies.
-- Warnings are errors. Run the complete solution build and tests and report skips.
+- Warnings are errors. Use the SDK pinned by `global.json`, run `eng/ci/run-tests.sh`, and report every result count and ratchet failure.
 - Use American English in source and documentation.
 
 ## Contract lifecycle
@@ -30,4 +30,4 @@ When a change alters public interfaces, domain ownership, dependency direction, 
 
 Movies is typed. Television, Music, and Books retain legacy imperative seams during conversion. `IQualityModel`, ladder DTOs, and the untyped parsed-quality string exist only as migration scaffolding. New features use typed releases, format-owned representations, `ReleasePolicy<TRelease>`, and `TargetMatch<TTarget>`; do not extend the legacy quality architecture.
 
-The next pressure point is a generic typed release interpreter and the shared definition-assembly lifecycle required by separate provider plugins and the Blazor client. Do not conceal either gap with string projections or duplicate type loads.
+The active gate is the real packaged Movies loader path. Post-admission checks must consume the admitted typed projection, the manifest must not become a second media schema, and late failure must withdraw published state atomically. Do not move ahead to package identity, provider pairing, parser redesign, or Client loading until this gate passes.

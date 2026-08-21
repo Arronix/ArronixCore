@@ -223,7 +223,7 @@ public class DetectorSelfTests
         Assert.Multiple(() =>
         {
             Assert.That(host.PackageReferences, Is.Not.Empty);
-            Assert.That(host.PackageReferences, Does.Contain("Microsoft.Extensions.Options"));
+            Assert.That(host.PackageReferences, Does.Contain("Microsoft.Extensions.Options.DataAnnotations"));
             Assert.That(host.ProjectReferences, Does.Contain(RepositoryLayout.Abstractions));
             Assert.That(host.ProjectReferences, Does.Contain(RepositoryLayout.Common));
             Assert.That(host.ProjectReferences, Does.Contain(RepositoryLayout.Plugins));

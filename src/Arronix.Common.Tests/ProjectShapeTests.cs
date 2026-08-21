@@ -19,11 +19,7 @@ public class ProjectShapeTests
 
     private static readonly string[] ApprovedPackages =
     [
-        "Microsoft.Extensions.Configuration.Abstractions",
-        "Microsoft.Extensions.DependencyInjection.Abstractions",
         "Microsoft.Extensions.Http",
-        "Microsoft.Extensions.Logging.Abstractions",
-        "Microsoft.Extensions.Options",
         "Microsoft.Extensions.Options.DataAnnotations",
         "System.IO.Hashing",
         "System.Threading.RateLimiting",

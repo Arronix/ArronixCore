@@ -1,0 +1,109 @@
+{
+  "$schema": "schema/baseline.schema.json",
+  "schemaVersion": 1,
+  "baselineId": "baseline.r00.compatibility-skips",
+  "repositoryBaselineCommit": "018e2b0d19db9371f65e208b82e23f9b3dfc4c04",
+  "captureHeadCommit": "87ea0bf62d36e2c448c2b02d1d103b04606832dd",
+  "runs": [
+    {
+      "runId": "run.r00.architecture-nunit",
+      "project": "src/Arronix.Architecture.Tests/Arronix.Architecture.Tests.csproj",
+      "format": "nunit3",
+      "artifactDigest": "sha256:dd5e96d9cc9e6b382675ccb03cc6054f208f821fff99522bbb3ed86327aad77b",
+      "capturedAtUtc": "2026-08-21T09:50:31Z",
+      "total": 178,
+      "passed": 177,
+      "failed": 0,
+      "inconclusive": 0,
+      "skipped": 1
+    },
+    {
+      "runId": "run.r00.movies-nunit",
+      "project": "src/Arronix.Plugin.Movies.Tests/Arronix.Plugin.Movies.Tests.csproj",
+      "format": "nunit3",
+      "artifactDigest": "sha256:22ff84489a6ff2b88428538d149f828f039c2c9768716d681a3f913122a2c91b",
+      "capturedAtUtc": "2026-08-21T09:48:46Z",
+      "total": 663,
+      "passed": 362,
+      "failed": 0,
+      "inconclusive": 0,
+      "skipped": 301
+    }
+  ],
+  "totals": {
+    "capturedCases": 841,
+    "passed": 539,
+    "failed": 0,
+    "inconclusive": 0,
+    "skipped": 302
+  },
+  "currentSkipCount": 302,
+  "initialRecordCounts": {
+    "sources": 12,
+    "requirements": 129,
+    "cases": 302,
+    "replacements": 0
+  },
+  "reasonCounts": {
+    "advertising-prefix": 3,
+    "bracketed-source-prefix": 1,
+    "honorific-punctuation": 1,
+    "literal-deny-list-recorded-exception": 1,
+    "movie-edition-after-year": 3,
+    "obfuscation-recovery-assertion-lost": 1,
+    "parser-assertion-not-restored": 19,
+    "shared-name-sanitizer-owner-gap": 114,
+    "storage-item-source-empty": 158,
+    "video-imax-terminator": 1
+  },
+  "fixtureCounts": [
+    {
+      "fixture": "Arronix.Architecture.Tests.Naming.IntentVocabularyTests",
+      "skipped": 1
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.Catalog.ItemSourceTests",
+      "skipped": 25
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.CrossKind.ForeignReleaseTests",
+      "skipped": 22
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.Matching.ReleaseMatcherTests",
+      "skipped": 33
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.Naming.NameFormatterTests",
+      "skipped": 114
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.Naming.RenamePolicyTests",
+      "skipped": 62
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.Parsing.MovieTitleParserTests",
+      "skipped": 28
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.Parsing.RejectedReleaseTests",
+      "skipped": 1
+    },
+    {
+      "fixture": "Arronix.Plugin.Movies.Tests.Planning.QueryPlannerTests",
+      "skipped": 16
+    }
+  ],
+  "zeroCaseRequirementIds": [
+    "req.evidence.clean-room.independent",
+    "req.evidence.divergence.owner-approved",
+    "req.evidence.platform-filesystem.coverage",
+    "req.evidence.scene-ptp.field-corpus",
+    "req.inventory.upstream-arr.complete"
+  ],
+  "notes": [
+    "The two captures inventory the skipped-test ledger and are not a substitute for the full-solution CI result.",
+    "Only documentation changed between the R00 source baseline and the capture head; the captured test sources are R00-equivalent.",
+    "A lower future skip total is insufficient: every baseline case must remain bound or have a verified explicit disposition."
+  ]
+}

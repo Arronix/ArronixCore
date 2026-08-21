@@ -1,6 +1,6 @@
 # Arronix
 
-Arronix is a clean-sheet, plugin-composed media automation platform for .NET 10. It extracts the orchestration common to the *arr ecosystem without making the common core own the semantics of Movies, Television, Music, Books, Video, Audio, Documents, or any particular external service.
+Arronix is a clean-sheet, plugin-composed media automation platform for .NET 11. It extracts the orchestration common to the *arr ecosystem without making the common core own the semantics of Movies, Television, Music, Books, Video, Audio, Documents, or any particular external service.
 
 The goal is replacement-grade behavioural coverage through a small, strongly typed third-party SDK. Media,
 format, language, and provider authors state their owned differences; Arronix derives the common application
@@ -129,11 +129,18 @@ transliteration rules.
 Build and test:
 
 ```bash
-dotnet build Arronix.sln
-dotnet test Arronix.sln
+bash eng/ci/run-tests.sh
 ```
 
-Warnings are errors repository-wide. First-party plugins currently declare the tested contract range `">=0.8 <0.9"`.
+Exact .NET 11 Preview 7 SDK `11.0.100-preview.7.26381.103` is pinned by `global.json`. The proof rail performs
+locked restore and one Release warnings-as-errors build, retains that build's solution binlog as practical
+evidence of the actual compiler inputs, requires a non-empty result from every discovered test project, and
+binds each registered NUnit leaf to its executed assembly and CLR method. Its Portable PDB checks include exact
+embedded bytes for the locked primary and support sources. An eight-column append-only registry protects three
+durable proof sentinels, while the compatibility ledger enforces exactly 302 current skips; four immutable Movie
+parser rows are isolated from the ordinary representative corpus. This is same-build provenance rather than a
+cryptographic or hermetic-build attestation claim. First-party plugins currently declare the tested contract
+range `">=0.8 <0.9"`.
 
 ## License
 

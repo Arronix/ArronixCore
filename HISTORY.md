@@ -1,5 +1,51 @@
 # Arronix History
 
+## 2026-08-21 — Establish the G01 proof rails and adopt .NET 11 Preview 7
+
+- Advanced every runtime, SDK, plugin, application, and test project to `net11.0`, pinned exact Preview 7 SDK
+  `11.0.100-preview.7.26381.103`, checked in package lock files, and reduced the central package graph to dependencies with real consumers.
+  The generator remains `netstandard2.0` because it is an analyzer, not a runtime compatibility surface.
+- Added one local and hosted-CI rail for locked restore, one Release warnings-as-errors solution build, discovery
+  of every test project, a required non-empty result from each, result artifacts, append-only critical sentinels,
+  and explicit compatibility accounting against the PR base or pre-push ledger. The same-build solution binlog
+  is retained as the practical authoritative record of actual `Csc` sources, embedded inputs, warning policy,
+  and configuration.
+- Made the compatibility ledger canonical: 302 known skips map to 129 semantic requirements and 12 provenance
+  sources. Explicit replacement edges and executable proof are required before an omission can disappear.
+- Added mutation-tested ratchet and generator suites. Published ledger semantics and test sources are immutable
+  across revisions; renamed, removed, newly skipped, weakly rebound, malformed, coordinated source-and-ledger
+  weakening, or same-change replacement evidence now fails rather than silently improving a count. Removed the
+  forgeable design in which a test could certify itself by printing a semantic digest supplied by the ledger.
+- Made the live skip count an exact committed ratchet: every observed reduction must be recorded immediately,
+  after which comparison with the prior ledger rejects any regression.
+- Bound every registered execution and critical sentinel from an exact NUnit leaf to the declared CLR method in
+  NUnit's exact executed assembly and that assembly's matching Portable PDB. Method sequence points, async and
+  iterator state machines, source paths, checksums, and exact embedded source bytes for primary and separately
+  declared support documents now fail closed. Together with the same-build binlog this is practical layered
+  provenance, not a claim of cryptographic identity or hermetic compiler causality.
+- Published an eight-column, append-only required-test registry containing only three durable invariants: the
+  Abstractions dependency boundary, executable generated shape, and rejection of coordinated ratchet weakening.
+  Transient outcomes such as the currently quarantined Movies loader path remain ordinary tests so their repair
+  does not contradict a permanent sentinel.
+- Isolated the four published Movie-title compatibility inputs (`t012`, `t013`, `t023`, and `t027`) from the
+  ordinary representative title corpus. Their dedicated support document can remain immutable while normal
+  parser coverage evolves.
+- Separated replacement topology (`one-to-one` or `partition`) from semantic outcome. Equivalent, ownership
+  correction, recovered evidence, approved divergence, and scope correction now have disposition-, requirement-,
+  semantic-, provenance-, and history-specific rules. Owner decisions are pinned sources, and replacement-witness
+  is an introduction role so a permanent witness can itself be replaced later. Verified acyclic one-to-one
+  chains close to a fixed point; recovered witnesses can keep their evidence-gap ownership, while a pinned owner
+  decision attached to the requirement may retain rather than alter a scope-correction candidate's locked
+  semantics. Partition records remain non-closing until aggregate composition can be represented rather than
+  inferred from unrelated opaque digests.
+- Added a real packaged Movies integration proof. It deliberately records the current late token-agreement
+  quarantine and atomic typed-kind withdrawal, leaving repair of that production path as G02 rather than
+  granting direct binder tests false completion status.
+- Closed G01 at 2,112 passed, 302 registered skips, zero failed, and zero inconclusive across 11 test projects.
+
+This establishes proof discipline rather than feature parity. A registered omission remains missing
+capability, and the packaged Movies extension remains quarantined until G02 repairs its typed admission path.
+
 ## 2026-08-21 — Adopt a gated typed-media execution roadmap
 
 - Recorded the `018e2b0d1` typed Movies checkpoint as R00 and replaced the flat outstanding-action list with a

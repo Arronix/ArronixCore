@@ -77,7 +77,7 @@ One project reference and eight packages, all Microsoft-owned, none appearing in
 - `System.Threading.RateLimiting`
 - `System.IO.Hashing`
 
-JSON is `System.Text.Json` only, in-box on `net10.0` and deliberately absent from central package management.
+JSON is `System.Text.Json` only, in-box on `net11.0` and deliberately absent from central package management.
 
 Package versions are managed centrally in `Directory.Packages.props` at the repository root; every
 `PackageReference` here is version-less.

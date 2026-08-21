@@ -83,11 +83,19 @@ else if (_missing)
     {
         if (envelope.Kind is EventKind.ItemChanged && envelope.Item?.Id.Value == ItemId)
         {
-            InvokeAsync(LoadAsync);
+            InvokeAsync(LoadFromNotificationAsync);
         }
     }
 
-    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(LoadAsync);
+    private void OnRecovered(object? sender, EventArgs args) => InvokeAsync(LoadFromNotificationAsync);
+
+    private async Task LoadFromNotificationAsync()
+    {
+        var load = LoadAsync();
+        StateHasChanged();
+        await load;
+        StateHasChanged();
+    }
 
     private void OpenChild(ItemDetail child)
         => Navigation.NavigateTo(
@@ -137,7 +145,6 @@ else if (_missing)
         finally
         {
             _busy = false;
-            StateHasChanged();
         }
     }
 }

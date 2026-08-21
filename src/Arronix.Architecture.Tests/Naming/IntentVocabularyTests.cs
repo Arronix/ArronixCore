@@ -1,6 +1,11 @@
 using System.Linq;
 using System.Reflection;
 using Arronix.Architecture.Tests.Repository;
+using NUnitAssert = global::NUnit.Framework.Assert;
+using NUnitIgnoreAttribute = global::NUnit.Framework.IgnoreAttribute;
+using NUnitIs = global::NUnit.Framework.Is;
+using NUnitTestAttribute = global::NUnit.Framework.TestAttribute;
+using NUnitTestFixtureAttribute = global::NUnit.Framework.TestFixtureAttribute;
 
 namespace Arronix.Architecture.Tests.Naming;
 
@@ -25,9 +30,17 @@ namespace Arronix.Architecture.Tests.Naming;
 /// the test suite rather than in a comment nobody reads.
 /// </para>
 /// </remarks>
-[TestFixture]
+[NUnitTestFixtureAttribute]
 public class IntentVocabularyTests
 {
+    static IntentVocabularyTests()
+    {
+        if (typeof(NUnitAssert).Assembly.GetName().Name != "nunit.framework")
+        {
+            throw new InvalidOperationException("The compatibility fixture did not bind the real NUnit assertion assembly.");
+        }
+    }
+
     /// <summary>
     /// Terms that name nothing except interface technology or an interface control.
     /// </summary>
@@ -92,7 +105,7 @@ public class IntentVocabularyTests
 
     private static Assembly ContractAssembly => typeof(Arronix.Abstractions.Health.HealthCheck).Assembly;
 
-    [Test]
+    [NUnitTestAttribute]
     public void ContractSurfaceNamesNoInterfaceTechnologyOrControl()
     {
         var offenders = DeclaredIdentifiers()
@@ -104,15 +117,15 @@ public class IntentVocabularyTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.That(
+        NUnitAssert.That(
             offenders,
-            Is.Empty,
+            NUnitIs.Empty,
             "A contract identifier names an interface technology or an interface control. Extensions "
             + "declare semantic intent; the front end - which may be a terminal, a phone or a browser - "
             + "decides what that intent looks like.");
     }
 
-    [Test]
+    [NUnitTestAttribute]
     public void ContractSourceMentionsNoInterfaceTechnologyOrControlAnywhere()
     {
         // Identifiers, prose and documentation together, with no exception granted to any of them. A
@@ -126,10 +139,10 @@ public class IntentVocabularyTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.That(offenders, Is.Empty);
+        NUnitAssert.That(offenders, NUnitIs.Empty);
     }
 
-    [Test]
+    [NUnitTestAttribute]
     public void EveryPinnedExceptionIsStillPresent()
     {
         // An allow-list that outlives what it allows is a license nobody is using. If one of these is
@@ -143,11 +156,11 @@ public class IntentVocabularyTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.That(stale, Is.Empty, "An allow-listed exception no longer exists and should be removed.");
+        NUnitAssert.That(stale, NUnitIs.Empty, "An allow-listed exception no longer exists and should be removed.");
     }
 
-    [Test]
-    [Ignore(
+    [NUnitTestAttribute]
+    [NUnitIgnoreAttribute(
         "RECORDED VIOLATION, not a disabled test. Read literally - no exceptions, identifiers and doc "
         + "comments alike - this rule fails today on two counts, both pre-existing and both judged benign "
         + "but neither silently waived. (1) Arronix.Abstractions.Http.UnexpectedHtmlResponseException, plus "
@@ -180,7 +193,7 @@ public class IntentVocabularyTests
             .Order(StringComparer.Ordinal)
             .ToArray();
 
-        Assert.That(offenders, Is.Empty);
+        NUnitAssert.That(offenders, NUnitIs.Empty);
     }
 
     private static IReadOnlyList<(string Simple, string Path)> DeclaredIdentifiers()

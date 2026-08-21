@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net11.0": {
+      "arronix.abstractions": {
+        "type": "Project"
+      },
+      "arronix.format.video": {
+        "type": "Project",
+        "dependencies": {
+          "Arronix.Abstractions": "[0.8.0, )"
+        }
+      }
+    }
+  }
+}

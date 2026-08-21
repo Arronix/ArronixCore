@@ -1,0 +1,147 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arronix.invalid/verification/compatibility/case.schema.json",
+  "title": "Arronix compatibility executable case binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "caseId",
+    "requirementId",
+    "sourceId",
+    "binding",
+    "expected",
+    "disposition"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "caseId": { "$ref": "#/$defs/stableId" },
+    "requirementId": { "$ref": "#/$defs/stableId" },
+    "sourceId": { "$ref": "#/$defs/stableId" },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "framework",
+        "project",
+        "fixture",
+        "method",
+        "fullNameDigest",
+        "sourceFile",
+        "sourceFileDigest"
+      ],
+      "properties": {
+        "framework": { "const": "nunit" },
+        "project": { "$ref": "#/$defs/relativePath" },
+        "fixture": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_.]+$", "maxLength": 220 },
+        "method": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]+$", "maxLength": 160 },
+        "fullNameDigest": { "$ref": "#/$defs/digest" },
+        "sourceFile": { "$ref": "#/$defs/relativePath" },
+        "sourceFileDigest": { "$ref": "#/$defs/digest" },
+        "supportDocuments": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/supportDocument" }
+        }
+      }
+    },
+    "expected": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "kind", "semanticDigest"],
+          "properties": {
+            "state": { "const": "known-regression" },
+            "kind": { "enum": ["invariant", "structured-value", "rejection", "diagnostic", "governance"] },
+            "semanticDigest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "gapReason"],
+          "properties": {
+            "state": { "const": "unknown-lost" },
+            "gapReason": { "type": "string", "minLength": 1, "maxLength": 300 }
+          }
+        }
+      ]
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runId", "outcome", "reasonCode", "reasonDigest"],
+      "properties": {
+        "runId": { "$ref": "#/$defs/stableId" },
+        "outcome": { "const": "skipped" },
+        "reasonCode": { "$ref": "#/$defs/stableId" },
+        "reasonDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "introduced": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registeredAtGate", "expectedResult", "role"],
+      "properties": {
+        "registeredAtGate": { "$ref": "#/$defs/gate" },
+        "expectedResult": { "const": "passed" },
+        "role": { "enum": ["coverage", "replacement-witness"] }
+      }
+    },
+    "disposition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "classificationGate", "closureGate"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "restore",
+            "ownership-correct-replacement",
+            "evidence-gap",
+            "candidate-divergence",
+            "scope-correction-candidate",
+            "proven"
+          ]
+        },
+        "classificationGate": { "$ref": "#/$defs/gate" },
+        "closureGate": { "$ref": "#/$defs/gate" }
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "required": ["baseline"],
+      "not": { "required": ["introduced"] }
+    },
+    {
+      "required": ["introduced"],
+      "not": { "required": ["baseline"] }
+    }
+  ],
+  "$defs": {
+    "stableId": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 240
+    },
+    "relativePath": {
+      "type": "string",
+      "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\).+$",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "supportDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceFile", "sourceFileDigest"],
+      "properties": {
+        "sourceFile": { "$ref": "#/$defs/relativePath" },
+        "sourceFileDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "gate": { "type": "string", "pattern": "^G[0-9]{2}[A-Z]?$" }
+  }
+}
