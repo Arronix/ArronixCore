@@ -1,5 +1,8 @@
 # Typed media north star
 
+This document defines the destination and governing authoring rules. The dependency-ordered route from the
+current repository state is maintained in the [typed media execution roadmap](typed-media-roadmap.md).
+
 ## Outcome
 
 A media extension is one ordinary object whose generic base closes the media-owned item, acquisition

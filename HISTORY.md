@@ -1,5 +1,25 @@
 # Arronix History
 
+## 2026-08-21 — Adopt a gated typed-media execution roadmap
+
+- Recorded the `018e2b0d1` typed Movies checkpoint as R00 and replaced the flat outstanding-action list with a
+  dependency-ordered roadmap whose gates are taken one at a time and closed only by production-path evidence.
+- Put continuous clean-clone and compatibility proof before the next mutation, then real package admission and
+  CLR type identity before provider, parser, or Client claims. A separately shipped provider is not viable while
+  it can load a second `Movie` type or the Movies package is quarantined by its own loader.
+- Allowed one narrow durable Movies catalog slice to expose materialization and identity faults early, but
+  required typed interpretation, matching, and policy to pass through Television, Music, and Books before the
+  cross-media relational shape and semantic defaults freeze.
+- Ordered durable catalog state, acquisition, transfer, probing/import, actions, workbenches, API, and Client as
+  complete packaged Movies, Television, Music, and Books verticals before legacy removal or
+  replacement-readiness claims.
+- Made CI skip accounting, the compatibility matrix, independent SDK consumption, production provider packages,
+  and operational recovery explicit gates rather than untracked follow-up work.
+
+This decision changes execution and acceptance discipline, not the current public interface. The typed-media
+north star remains the destination; subsystem design documents remain research inputs which must be revalidated
+instead of being executed when they conflict with current context, owner intent, or the interface contract.
+
 ## 2026-08-21 — Make plugin authoring and vertical coherence governing acceptance criteria
 
 - Adopted the third-party authoring experience as a product contract: an extension author should be able to own a complete Sonarr-, Radarr-, Lidarr-, Readarr-, or new-media-style domain through a few intuitive, strongly typed abstractions while Arronix derives common application machinery.

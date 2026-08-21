@@ -78,27 +78,29 @@ coverage.
 - A model, descriptor, generated projection, unit test, or registration seam is not by itself a completed feature. Completion requires the same semantics to survive authoring, generic capture, plugin admission, DI activation, Host execution, persistence where applicable, API/wire projection, Client consumption, tests, and boundary documentation. Any bypass or parallel legacy path must be reported as active migration work.
 - Full *arr feature coverage and observable Scene/PTP ecosystem compatibility are acceptance concerns. Reuse the established behaviour and regression corpora as evidence; record intentional differences explicitly rather than simplifying difficult cases out of the model.
 - Prefer a coherent common abstraction over feature-local adapters. A repeated workaround is evidence that the common primitive or ownership boundary is incomplete; it must not become precedent merely because it lets one feature ship sooner.
-- `CONTEXT.md`, `INTERFACE.md`, `HISTORY.md`, `docs/design/typed-media-north-star.md`, and `docs/owner-ledger.md` are the durable context for bounded work. A fresh task reads the relevant parts before proposing or changing a boundary; it does not ask the owner to reconstruct hundreds of turns of prior reasoning.
+- `CONTEXT.md`, `INTERFACE.md`, `HISTORY.md`, `docs/design/typed-media-north-star.md`, `docs/design/typed-media-roadmap.md`, and `docs/owner-ledger.md` are the durable context for bounded work. A fresh task reads the relevant parts before proposing or changing a boundary; it does not ask the owner to reconstruct hundreds of turns of prior reasoning.
 - Distinguish owner assertions and approvals from hypotheses, examples, and requests to investigate. A forcefully phrased question is not an approval. Agent proposals and intermediate mechanisms do not become architecture unless the owner adopts them.
 - Record unresolved contradictions and missing vertical wiring honestly. Do not close, omit, or relabel them because the local feature works, the implementation is old, or the next task would be easier without them.
 
-## Outstanding actions
+## Active execution gate
 
-1. Repair token agreement for typed media registrations and add a packaged Movies test spanning loader, admission, activation, and withdrawal behavior.
-2. Convert Television through the typed media path, including its nested episode shape and set coverage. Use it to settle the typed aggregate/unit declaration rather than adding more string descriptors.
-3. Convert Books and Music, then remove the legacy imperative media and `IQualityModel` seams.
-4. Add format-owned recognizer composition to typed parsers, so `TParser` can materialize its media-owned `TRelease` without copying codec, container, language, or other capability vocabularies into the media assembly.
-5. Wire typed `TargetMatch`, `ReleasePolicy`, and `ReleaseSelector` into the production acquisition flow.
-6. Define how media definition assemblies are shared with separate cataloger/curator plugins and loaded into the Blazor client. Do not solve this with duplicate type loads or string projections.
-7. Add production provider packages as pairs with the media item type they serve; no vendor-specific integration belongs in a media type assembly.
-8. Replace in-memory persistence and complete authentication before claiming a runnable product.
-9. Add CI. Current verification is local only.
-10. Replace the current kind-blind workbench execution seam with typed producer/committer registration plus an explicit wire projector.
-11. Implement and register the execution capabilities behind the remaining standard actions. Do not treat their derived descriptors as evidence that search, refresh, rename, remove, exclusion, or group workflows execute yet.
-12. Build and maintain a feature-coverage and ecosystem-compatibility matrix against the source *arr applications, with differential tests and explicit intentional divergences. Use it to prevent architectural cleanup from silently deleting hard-earned behaviour.
-13. Validate the public SDK with at least one independently authored media extension and paired providers. The author should need to state only owned semantics and genuine differences, with no knowledge of Host compilation, runtime erasure, or Client projection internals.
-14. Separate the semantic authoring SDK from generated/compiler and Host binding SPI. Generated members such as `CompiledShapes`, erased registrations, visitor bridges, `Type` carriers, and expression-based heterogeneous definitions may need to remain cross-assembly visible, but normal authors must neither implement nor reason about them.
-15. Remove repeated relationship declarations from plugin registration and manifests. A provider or generated adapter should carry its already-closed item relationship once; manifests own package identity, compatibility, dependencies, and security grants rather than restating derivable media schema, tokens, policies, or actions.
+The dependency-ordered migration is maintained in `docs/design/typed-media-roadmap.md`. It replaces the former
+flat outstanding-action list: only one gate is active, every gate has a production-path exit test, and later
+work does not substitute for closing an earlier dependency.
+
+- R00 is the checkpoint at `018e2b0d1`, with 1,998 passed, 302 skipped, and zero failed tests.
+- G01 is active: add continuous clean-clone proof, register every current skip by stable semantic identity, and
+  establish compatibility-matrix and replacement ratchets before the next mutation.
+- G02 is next but not active: make the real packaged Movies extension survive loader discovery, typed admission,
+  activation, token agreement, publication, and atomic withdrawal without making the manifest a second schema.
+- G03 then establishes package dependency/version rules and one exact CLR identity before any separately shipped
+  typed provider is treated as viable.
+
+The later gates cover provider pairing, hidden binding SPI, dynamic typed Client loading, compatibility
+evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
+durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
+and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
+duplicated checklist drifting from current state.
 
 ## Technical debt
 
