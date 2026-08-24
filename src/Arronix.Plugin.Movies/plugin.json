@@ -3,8 +3,19 @@
   "id": "movies",
   "name": "Movies",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.8 <0.9" },
+  "contracts": {
+    "arronix": ">=0.8 <0.9"
+  },
   "entryAssembly": "Arronix.Plugin.Movies.dll",
+  "contractAssemblies": [
+    "Arronix.Media.Movies.dll"
+  ],
+  "dependencies": [
+    {
+      "package": "arronix.format.video",
+      "range": ">=0.1 <0.2"
+    }
+  ],
   "description": "The reference media extension, declared as typed C#. It directly closes the common MediaItem, ReleaseTarget and Release types over movie-owned vocabularies and the shared Video representation.",
   "capabilities": [
     "media-kind",

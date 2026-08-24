@@ -4,6 +4,13 @@
     <RootNamespace>Arronix.Format.Video</RootNamespace>
     <AssemblyName>Arronix.Format.Video</AssemblyName>
     <Version>0.1.0</Version>
+    <!--
+         A shared contract binds by exact CLR identity, so its AssemblyVersion is the compatibility
+         identity: declared explicitly and kept stable while the package version moves independently.
+         Letting the package version drive it would change the identity every dependant binds to on every
+         release, which is the opposite of what sharing an assembly is for.
+    -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <Description>The video format domain: the representation and quality facts a Release&lt;Video&gt; carries. This is the shared, shipped-once assembly every video media kind and every provider that supplies representation facts compiles against.</Description>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
@@ -29,5 +36,14 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+  </ItemGroup>
+
+  <!--
+       Video is an installable package in its own right: one shared contract assembly, no entry assembly
+       and no capability, because it runs no code. Its dependants require it by package identifier and
+       receive the exact assembly this declaration names.
+  -->
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

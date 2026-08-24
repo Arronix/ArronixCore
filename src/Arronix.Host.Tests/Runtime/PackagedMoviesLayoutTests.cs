@@ -35,29 +35,18 @@ internal sealed class PackagedMoviesLayoutTests
     private const string SharedContractAssembly = "Arronix.Media.Movies.dll";
 
     /// <summary>
-    /// The video package assembly this package still carries privately.
+    /// Assemblies no media extension payload may contain.
     /// </summary>
     /// <remarks>
-    /// A recorded consequence, not an endorsement. The movies extension composes video, and with no
-    /// dependency declaration and no admitted-contract resolution yet, MSBuild copies the video domain
-    /// assembly into this folder and the loader loads it privately. The moment Television is installed
-    /// beside Movies as a separate package, each gets its own copy and therefore its own <c>Video</c> type,
-    /// and nothing casts between them. Removing this name is the observable result of the manifest
-    /// dependency and loader work; this list is what will change when it lands.
-    /// </remarks>
-    private static readonly string[] PrivatelyCarriedVideoPackage = ["Arronix.Format.Video.dll"];
-
-    /// <summary>
-    /// Assemblies no media extension payload may contain, whatever else changes.
-    /// </summary>
-    /// <remarks>
-    /// Unlike the list above, this one is not waiting on the loader. A format's executable half has its own
-    /// update and unload cadence and a media declaration needs nothing from it, so a copy appearing here
-    /// would mean a reference was taken that should not have been - pinning two independently updatable
-    /// assemblies together and shipping a second copy of code the video package already owns.
+    /// Both halves of the video package, for different reasons. The domain assembly is published by the
+    /// installed video package and admitted once for the installation, so a copy here would be a second CLR
+    /// identity for every type these dependants are supposed to share. The executable half has its own
+    /// update and unload cadence and a media declaration needs nothing from it, so a copy here would mean a
+    /// reference was taken that pins two independently updatable assemblies together.
     /// </remarks>
     private static readonly string[] NeverInAMediaExtensionPayload =
     [
+        "Arronix.Format.Video.dll",
         "Arronix.Format.Video.Contributions.dll",
     ];
 
@@ -89,22 +78,19 @@ internal sealed class PackagedMoviesLayoutTests
             + "with the type without taking the extension");
 
         assemblies.Should().BeEquivalentTo(
-            new[] { EntryAssembly, SharedContractAssembly }
-                .Concat(PrivatelyCarriedVideoPackage)
-                .Concat(ShadowedByTheLoadContext),
+            new[] { EntryAssembly, SharedContractAssembly }.Concat(ShadowedByTheLoadContext),
             "the package payload is a stated shape. An assembly appearing here that nobody wrote down is "
             + "either a new dependency or a private copy of somebody else's contract, and the difference "
             + "matters enough to be declared rather than discovered.");
     }
 
     /// <remarks>
-    /// The manifest names the entry assembly and says nothing about the shared one. That silence is the
-    /// current state, not the destination: which assemblies a package offers for sharing is a promise about
-    /// resolution that the loader must act on before any code runs, so it belongs in the manifest. Until
-    /// the manifest schema carries it, this fixture is the only place the shape is stated at all.
+    /// The manifest is where a package states its graph position, because the loader must act on it before
+    /// any of the package's code runs. It names the one entry assembly it activates, the contract assembly
+    /// it publishes for its dependants, and the exact package plus compatible range it requires.
     /// </remarks>
     [Test]
-    public void TheManifestNamesTheEntryAssemblyAndNotYetTheSharedOne()
+    public void TheManifestNamesItsEntryAssemblyItsSharedContractAndItsVideoDependency()
     {
         using var manifest = JsonDocument.Parse(
             File.ReadAllText(Path.Combine(PackageFolder, "plugin.json")));
@@ -113,10 +99,46 @@ internal sealed class PackagedMoviesLayoutTests
 
         using var assertions = new AssertionScope();
         root.GetProperty("entryAssembly").GetString().Should().Be(EntryAssembly);
-        root.TryGetProperty("dependencies", out _).Should().BeFalse(
-            "package dependencies enter the manifest with the loader work, not with the assembly split");
-        root.TryGetProperty("facets", out _).Should().BeFalse(
-            "so does the declaration of which assemblies this package offers for sharing");
+
+        root.GetProperty("contractAssemblies")
+            .EnumerateArray()
+            .Select(entry => entry.GetString())
+            .Should().Equal(SharedContractAssembly);
+
+        var dependency = root.GetProperty("dependencies").EnumerateArray().Should().ContainSingle().Which;
+        dependency.GetProperty("package").GetString().Should().Be("arronix.format.video");
+        dependency.GetProperty("range").GetString().Should().Be(">=0.1 <0.2");
+    }
+
+    /// <remarks>
+    /// The video package as an installed package rather than a copy inside its dependants: one declaration,
+    /// one shared contract assembly, no entry assembly and no capability, because it runs no code.
+    /// </remarks>
+    [Test]
+    public void TheVideoPackageShipsOneManifestAndOneSharedContractAndNoEntryAssembly()
+    {
+        var folder = Path.Combine(AppContext.BaseDirectory, "PackagedPlugins", "arronix.format.video");
+
+        using var manifest = JsonDocument.Parse(File.ReadAllText(Path.Combine(folder, "plugin.json")));
+        var root = manifest.RootElement;
+
+        using var assertions = new AssertionScope();
+
+        root.GetProperty("id").GetString().Should().Be("arronix.format.video");
+        root.TryGetProperty("entryAssembly", out _).Should().BeFalse(
+            "a contract-only package activates nothing, and inventing a no-op module for it would also "
+            + "require it to claim a privilege nothing uses");
+        root.TryGetProperty("capabilities", out _).Should().BeFalse(
+            "a package that runs no code can hold no privilege");
+        root.GetProperty("contractAssemblies")
+            .EnumerateArray()
+            .Select(entry => entry.GetString())
+            .Should().Equal("Arronix.Format.Video.dll");
+
+        ManagedFileNamesIn(folder).Should().BeEquivalentTo(
+            ["Arronix.Format.Video.dll", "Arronix.Abstractions.dll"],
+            "the video payload is its shared contract plus the universal contracts the load context "
+            + "resolves from the host");
     }
 
     /// <remarks>
@@ -163,15 +185,14 @@ internal sealed class PackagedMoviesLayoutTests
             "the build must stage the payload before this rule can assert anything about it");
 
         assemblies.Should().Contain(
-            "Arronix.Format.Video.dll",
-            "both dependants compose video, so the domain assembly is expected in the payload and its "
-            + "absence would mean this rule was checking the wrong folder");
+            "Arronix.Abstractions.dll",
+            "the universal contracts are in every payload, so their absence would mean this rule was "
+            + "checking the wrong folder");
 
         assemblies.Should().NotIntersectWith(
             NeverInAMediaExtensionPayload,
-            "a media declaration needs a format's domain semantics and nothing from its executable half, "
-            + "so a copy here means a reference was taken that pins two independently updatable assemblies "
-            + "together");
+            "video is an installed package: a media extension compiles against its domain assembly and "
+            + "receives the admitted copy at run time, and needs nothing at all from its executable half");
     }
 
     /// <summary>

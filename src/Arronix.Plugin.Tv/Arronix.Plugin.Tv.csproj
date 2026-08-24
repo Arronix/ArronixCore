@@ -21,7 +21,8 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
-    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" />
+    <!-- Compilation only: video is an installed package, never a private copy in this payload. -->
+    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" Private="false" />
   </ItemGroup>
 
   <ItemGroup>

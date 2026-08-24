@@ -42,6 +42,7 @@ internal sealed class PackagedAdmissionFixtureTests
 {
     private static readonly PluginId FixturePlugin = PluginId.FromString("g02.admission.fixture");
     private static readonly PluginId MoviesPlugin = PluginId.FromString("movies");
+    private static readonly PluginId VideoPackage = PluginId.FromString("arronix.format.video");
     private static readonly MediaKindId FixtureKind = MediaKindId.FromString("g02-fixture");
     private const string FixtureJobId = "g02.admission.fixture.proof";
     private const string ModuleDisposedMessage = "G02 admission fixture module disposed asynchronously.";
@@ -566,7 +567,7 @@ internal sealed class PackagedAdmissionFixtureTests
         await bootstrapper.StartAsync(CancellationToken.None);
 
         var started = bootstrapper.States.ToDictionary(state => state.Id);
-        var active = runtime.Active.Should().ContainSingle().Which;
+        var active = SurvivingMovies(runtime);
         var admittedKinds = provider.GetRequiredService<MediaKindRegistry>().All
             .Select(kind => kind.Kind)
             .ToArray();
@@ -608,7 +609,7 @@ internal sealed class PackagedAdmissionFixtureTests
         await bootstrapper.StartAsync(CancellationToken.None);
 
         var started = bootstrapper.States.ToDictionary(state => state.Id);
-        var active = runtime.Active.Should().ContainSingle().Which;
+        var active = SurvivingMovies(runtime);
         var admittedKinds = provider.GetRequiredService<MediaKindRegistry>().All
             .Select(kind => kind.Kind)
             .ToArray();
@@ -672,7 +673,7 @@ internal sealed class PackagedAdmissionFixtureTests
         await bootstrapper.StartAsync(CancellationToken.None);
 
         var started = bootstrapper.States.ToDictionary(state => state.Id);
-        var active = runtime.Active.Should().ContainSingle().Which;
+        var active = SurvivingMovies(runtime);
         var admittedKinds = provider.GetRequiredService<MediaKindRegistry>().All
             .Select(kind => kind.Kind)
             .ToArray();
@@ -759,6 +760,22 @@ internal sealed class PackagedAdmissionFixtureTests
     private string RestageThrowingJobEnvelopeBesideMovies()
         => RestageFixtureBesideMovies("throwing-job-envelope", "0.1.2");
 
+    /// <summary>
+    /// Asserts that the quarantined fixture left exactly the movies package and the video package it
+    /// requires, and returns the movies result.
+    /// </summary>
+    /// <param name="runtime">The runtime registry.</param>
+    /// <returns>The movies result.</returns>
+    /// <remarks>
+    /// Stronger than asserting one survivor: it names both survivors, so a dependency silently dropping out
+    /// of the installation would fail here rather than reading as a tidy single-package result.
+    /// </remarks>
+    private static PluginLoadResult SurvivingMovies(PluginRuntimeRegistry runtime)
+    {
+        runtime.Active.Select(result => result.Id).Should().BeEquivalentTo([VideoPackage, MoviesPlugin]);
+        return runtime.Active.Should().ContainSingle(result => result.Id == MoviesPlugin).Which;
+    }
+
     private string RestageForbiddenProviderBesideMovies()
         => RestageFixtureBesideMovies("forbidden-provider", "0.1.3");
 
@@ -773,6 +790,13 @@ internal sealed class PackagedAdmissionFixtureTests
 
         CopyPackage(Path.Combine(_packagedRoot, FixturePlugin.Value), fixture);
         CopyPackage(Path.Combine(AppContext.BaseDirectory, "PackagedPlugins", "movies"), movies);
+
+        // Movies requires the video package. Installing it without its dependency would be testing a
+        // refused installation, and the folder name is deliberately unordered relative to the other two so
+        // activation order comes from the graph rather than from the directory walk.
+        CopyPackage(
+            Path.Combine(AppContext.BaseDirectory, "PackagedPlugins", "arronix.format.video"),
+            Path.Combine(root, "m-video"));
 
         var manifestPath = Path.Combine(fixture, "plugin.json");
         var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();

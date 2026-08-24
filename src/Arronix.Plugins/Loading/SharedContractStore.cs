@@ -410,8 +410,10 @@ internal sealed class SharedContractStore
             // running it while holding the registry lock would let a third party stall every other caller.
             context?.Unload();
         }
-#pragma warning disable CA1031 // A hostile unloading handler is reported, not rethrown into shutdown.
-        catch (Exception failure)
+// A hostile unloading handler is reported rather than rethrown into shutdown, but a process-fatal
+// condition is not an ordinary shutdown refusal and keeps propagating.
+#pragma warning disable CA1031
+        catch (Exception failure) when (IsContainableLoadFailure(failure))
 #pragma warning restore CA1031
         {
             refusal = $"The shared contract context could not be released: {failure.Message}";

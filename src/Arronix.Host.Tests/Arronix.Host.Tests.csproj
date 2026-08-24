@@ -31,6 +31,13 @@
     <ProjectReference Include="..\Arronix.Plugin.Music\Arronix.Plugin.Music.csproj" />
     <ProjectReference Include="..\Arronix.Plugin.Tv\Arronix.Plugin.Tv.csproj" />
     <ProjectReference Include="..\Arronix.Language.Reference\Arronix.Language.Reference.csproj" />
+
+    <!--
+         Referenced explicitly because the media extensions above no longer copy it: they compile against
+         video and take it from its installed package at run time. The in-process shape tests still need
+         the assembly beside them.
+    -->
+    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" />
   </ItemGroup>
 
   <!--
@@ -51,6 +58,19 @@
       Projects="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj"
       Targets="Publish"
       Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)PackagedPlugins\movies\" />
+  </Target>
+
+  <!--
+       Video is staged beside Movies as an installed package rather than copied into it. It is the
+       contract-only shape: one shared contract assembly, no entry assembly, no capability. Movies requires
+       it by identifier, and the loader hands both packages the one assembly this folder holds.
+  -->
+  <Target Name="StagePackagedVideoPackage" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)PackagedPlugins\arronix.format.video" />
+    <MSBuild
+      Projects="..\Arronix.Format.Video\Arronix.Format.Video.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)PackagedPlugins\arronix.format.video\" />
   </Target>
 
   <!--

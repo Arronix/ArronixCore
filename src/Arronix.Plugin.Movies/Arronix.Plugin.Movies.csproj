@@ -24,7 +24,12 @@
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
     <ProjectReference Include="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj" />
-    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" />
+    <!--
+         Referenced for compilation and deliberately not copied into this package's payload. Video is an
+         installed package of its own; a private copy here would give this extension a second CLR identity
+         for every type its dependants are supposed to share with it.
+    -->
+    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" Private="false" />
     <ProjectReference Include="..\Arronix.Generators\Arronix.Generators.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />

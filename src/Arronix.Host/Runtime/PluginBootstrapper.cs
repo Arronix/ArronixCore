@@ -68,6 +68,7 @@ public sealed partial class PluginBootstrapper : IHostedService
     private readonly ILogger<PluginBootstrapper> _log;
     private readonly PluginPublicationGate _publication;
     private readonly PackageDependencyRegistry _dependencies;
+    private readonly SharedContractStore _contracts;
     private readonly IPluginAdmissionCheck _admission;
 
     private readonly ConcurrentDictionary<PluginId, HostAdmissionAttempt> _committed = new();
@@ -175,6 +176,7 @@ public sealed partial class PluginBootstrapper : IHostedService
         _log = log;
         _publication = publication;
         _dependencies = loader.Dependencies;
+        _contracts = loader.SharedContracts;
         _admission = new AdmissionCheck(this);
     }
 
@@ -380,16 +382,25 @@ public sealed partial class PluginBootstrapper : IHostedService
 
         var retained = _dependencies.RetainedPackages;
 
-        if (retained.Count == 0)
+        if (retained.Count > 0)
         {
-            return true;
+            ExtensionWithdrawalsRetained(
+                _log,
+                string.Join(", ", retained.Select(package => package.ToString())));
+            return false;
         }
 
-        ExtensionWithdrawalsRetained(
-            _log,
-            string.Join(", ", retained.Select(package => package.ToString())));
+        // The installation's shared contract context is the last thing holding extension types. Every
+        // package has given up its hold by here, so the store either accepts the unload request or names
+        // what is still holding it; reporting a clean stop while it is still serving would be the same
+        // untruth as reporting an active extension as stopped.
+        if (!_contracts.TryRequestUnload(out var refusal))
+        {
+            SharedContractsRetained(_log, refusal ?? "no reason was given");
+            return false;
+        }
 
-        return false;
+        return _contracts.UnloadRequested;
     }
 
     private LifecycleState CurrentLifecycleState
@@ -521,7 +532,7 @@ public sealed partial class PluginBootstrapper : IHostedService
             // other admitted packages still hold survives it; only this package's hold is released.
             if (lifetime is not null)
             {
-                foreach (var failure in await lifetime.DisposeAsync().ConfigureAwait(false))
+                foreach (var failure in await lifetime.DisposeAsync(released).ConfigureAwait(false))
                 {
                     released = false;
                     ExtensionCleanupFailed(_log, plugin.ToString(), failure);
@@ -1550,6 +1561,13 @@ public sealed partial class PluginBootstrapper : IHostedService
         Message = "Extension '{Extension}' still has a scheduled job executing after its shutdown deadline; "
             + "its registrations, instances, and load context remain live until process exit.")]
     private static partial void ExtensionTeardownDeferred(ILogger logger, string extension);
+
+    [LoggerMessage(
+        EventId = 9210,
+        Level = LogLevel.Error,
+        Message = "Extension shutdown finished with the installation's shared contract context still "
+            + "serving: {Refusal}")]
+    private static partial void SharedContractsRetained(ILogger logger, string refusal);
 
     [LoggerMessage(
         EventId = 9209,

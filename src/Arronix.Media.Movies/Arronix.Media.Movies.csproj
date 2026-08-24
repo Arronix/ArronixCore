@@ -4,6 +4,13 @@
     <RootNamespace>Arronix.Media.Movies</RootNamespace>
     <AssemblyName>Arronix.Media.Movies</AssemblyName>
     <Version>0.1.0</Version>
+    <!--
+         A shared contract binds by exact CLR identity, so its AssemblyVersion is the compatibility
+         identity: declared explicitly and kept stable while the package version moves independently.
+         Letting the package version drive it would change the identity every dependant binds to on every
+         release, which is the opposite of what sharing an assembly is for.
+    -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <Description>The movies media domain: the Movie item and the release lifecycle it closes over. This is the shared, shipped-once assembly a separately installed cataloger or curator pairs with; the Movies extension that parses, defines and registers is a separate, isolated assembly in the same package.</Description>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>

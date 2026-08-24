@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "arronix.format.video",
+  "name": "Video Format",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.8 <0.9" },
+  "description": "The video format domain, installed once and shared by every package that composes video. It ships one shared contract assembly and runs no code of its own.",
+  "contractAssemblies": [
+    "Arronix.Format.Video.dll"
+  ]
+}

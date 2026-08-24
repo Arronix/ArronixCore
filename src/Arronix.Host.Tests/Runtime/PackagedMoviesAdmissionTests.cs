@@ -94,6 +94,16 @@ internal sealed class PackagedMoviesAdmissionTests
             File.Copy(file, Path.Combine(folder, Path.GetFileName(file)), overwrite: true);
         }
 
+        // The video package Movies requires goes with it. Restaging Movies alone would test an
+        // installation missing a dependency, which is a different scenario with its own fixture.
+        var video = Path.Combine(root, "arronix.format.video");
+        Directory.CreateDirectory(video);
+
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(_packagedRoot, "arronix.format.video")))
+        {
+            File.Copy(file, Path.Combine(video, Path.GetFileName(file)), overwrite: true);
+        }
+
         var manifest = Path.Combine(folder, "plugin.json");
         File.WriteAllText(manifest, rewrite(File.ReadAllText(manifest)));
 
@@ -112,6 +122,19 @@ internal sealed class PackagedMoviesAdmissionTests
         }
     }
 
+    /// <summary>
+    /// Reads the movies package's own state out of an installation that also holds the video package it
+    /// requires.
+    /// </summary>
+    /// <param name="bootstrapper">The lifecycle under test.</param>
+    /// <returns>The movies state.</returns>
+    /// <remarks>
+    /// Movies depends on the installed video package, so an installation carrying Movies carries at least
+    /// two. Asserting on a single state would have been asserting that the dependency is not installed.
+    /// </remarks>
+    private static PluginRuntimeState MoviesState(PluginBootstrapper bootstrapper)
+        => bootstrapper.States.Should().ContainSingle(state => state.Id == MoviesPlugin).Which;
+
     [Test]
     public async Task TheRealPackagedMoviesExtensionReachesActiveAndPublishesItsKind()
     {
@@ -120,7 +143,7 @@ internal sealed class PackagedMoviesAdmissionTests
 
         await bootstrapper.StartAsync(CancellationToken.None);
 
-        var state = bootstrapper.States.Should().ContainSingle().Which;
+        var state = MoviesState(bootstrapper);
         var kinds = provider.GetRequiredService<MediaKindRegistry>();
         kinds.TryGet(Movies, out var registered).Should().BeTrue();
         var publishedKinds = kinds.All.Select(kind => kind.Kind.Value).ToArray();
@@ -153,7 +176,8 @@ internal sealed class PackagedMoviesAdmissionTests
 
         var registered = provider.GetRequiredService<MediaKindRegistry>().Require(Movies);
         var runtime = registered.MediaType.Should().NotBeNull().And.Subject.As<IMediaTypeRuntime>();
-        var loaded = provider.GetRequiredService<PluginRuntimeRegistry>().Active.Should().ContainSingle().Which;
+        var loaded = provider.GetRequiredService<PluginRuntimeRegistry>()
+            .Active.Should().ContainSingle(result => result.Id == MoviesPlugin).Which;
 
         await bootstrapper.StopAsync(CancellationToken.None);
 
@@ -162,13 +186,25 @@ internal sealed class PackagedMoviesAdmissionTests
         loaded.LoadContext!.Name.Should().Be("arronix-plugin:movies");
         loaded.Admitted.Kinds.Should().Equal(Movies);
 
-        AssemblyLoadContext.GetLoadContext(runtime.ItemType.Assembly).Should().BeSameAs(
-            loaded.LoadContext,
-            "the admitted kind must be the one the isolated package supplied, not one bound in process");
+        loaded.LoadContext!.Assemblies.Select(assembly => assembly.GetName().Name).Should()
+            .Contain("Arronix.Plugin.Movies", "the extension's executable half is its own")
+            .And.NotContain(
+                "Arronix.Media.Movies",
+                "the package's own shared contract is admitted once for the installation, so its context "
+                + "holds no copy of it")
+            .And.NotContain(
+                "Arronix.Format.Video",
+                "the video contract comes from the package Movies depends on, not from a private copy");
+
+        AssemblyLoadContext.GetLoadContext(runtime.ItemType.Assembly)!.Name.Should().Be(
+            "arronix-shared-contracts",
+            "the admitted item type is the one copy the installation shares, so every dependant of the "
+            + "movies package closes its generics over the same runtime type");
+
         runtime.ItemType.Should().NotBeSameAs(
             typeof(global::Arronix.Media.Movies.Movie),
-            "the item type resolved through the plugin load context is a different runtime type from the "
-            + "test project's compile-time reference to the same source");
+            "the shared copy is admitted from the installed package's own bytes, which is a different "
+            + "runtime type from the test project's compile-time reference to the same source");
     }
 
     /// <remarks>
@@ -220,7 +256,7 @@ internal sealed class PackagedMoviesAdmissionTests
 
         await Bootstrapper().StartAsync(CancellationToken.None);
 
-        var state = Bootstrapper().States.Should().ContainSingle().Which;
+        var state = MoviesState(Bootstrapper());
 
         using var assertions = new AssertionScope();
         state.State.Should().Be(PluginState.Quarantined);
@@ -255,7 +291,7 @@ internal sealed class PackagedMoviesAdmissionTests
         await bootstrapper.StartAsync(CancellationToken.None);
 
         using var assertions = new AssertionScope();
-        var state = bootstrapper.States.Should().ContainSingle().Which;
+        var state = MoviesState(bootstrapper);
         state.State.Should().Be(PluginState.Quarantined);
         state.ErrorCode.Should().Be(CoreErrorCode.PluginPolicyDeclarationInvalid);
         state.Defects.Should().Contain(defect => defect.Contains("westerns", StringComparison.Ordinal));
@@ -282,7 +318,7 @@ internal sealed class PackagedMoviesAdmissionTests
         provider.GetRequiredService<MediaKindRegistry>().All.Should().BeEmpty();
         provider.GetRequiredService<TokenRegistry>().Claims.Should().BeEmpty(
             "teardown reverses activation, and token ownership is part of what activation took");
-        bootstrapper.States.Should().ContainSingle().Which.State.Should().Be(PluginState.Stopped);
+        bootstrapper.States.Should().OnlyContain(state => state.State == PluginState.Stopped);
     }
 
     private PluginBootstrapper Bootstrapper()

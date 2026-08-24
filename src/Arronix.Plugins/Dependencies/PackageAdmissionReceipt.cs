@@ -208,13 +208,19 @@ internal sealed class PackageAdmissionLease
     /// <summary>
     /// Releases the executable runtime and then this package's contract hold.
     /// </summary>
+    /// <param name="hostObjectsReleased">
+    /// Whether everything Host activated for this package was disposed without a reported failure. Host
+    /// disposes its own activated providers, languages and jobs before this runs, and those objects hold
+    /// types from the shared contracts too.
+    /// </param>
     /// <returns>Everything that could not be released, or an empty list.</returns>
     /// <remarks>
-    /// The contract hold is retained when the executable half reported a failure. An unload request that
-    /// threw leaves the package in an indeterminate state, and a shared contract with possibly live
-    /// dependant types must not become releasable on the assumption that teardown got far enough.
+    /// The contract hold is retained when anything holding its types failed to release. An unload request
+    /// that threw, or a Host-owned disposer that threw, leaves the package in an indeterminate state, and a
+    /// shared contract with possibly live dependant types must not become releasable on the assumption that
+    /// teardown got far enough.
     /// </remarks>
-    internal async ValueTask<IReadOnlyList<string>> DisposeAsync()
+    internal async ValueTask<IReadOnlyList<string>> DisposeAsync(bool hostObjectsReleased = true)
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
         {
@@ -228,15 +234,17 @@ internal sealed class PackageAdmissionLease
             failures.AddRange(await runtime.DisposeAsync().ConfigureAwait(false));
         }
 
-        if (failures.Count == 0)
+        if (failures.Count == 0 && hostObjectsReleased)
         {
             Contracts.Release();
         }
         else if (Contracts.IsHeld)
         {
             failures.Add(
-                $"shared contracts: the hold held by '{Receipt.Id}' is retained because its executable half "
-                + "did not release cleanly.");
+                $"shared contracts: the hold held by '{Receipt.Id}' is retained because "
+                + (hostObjectsReleased
+                    ? "its executable half did not release cleanly."
+                    : "objects Host activated for it could not be disposed."));
         }
 
         return failures.AsReadOnly();
