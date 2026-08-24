@@ -10,42 +10,24 @@ namespace Arronix.Plugins.Registry;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This registry participates in the one extension publication boundary rather than owning a second lock.
-/// A dependant's edges become visible in the same write lease that publishes its media kinds, token claims,
-/// providers, languages, jobs, health contribution and runtime result, and they disappear in the same lease
-/// that withdraws them. There is no window in which a dependant is published and its edges are not.
+/// The registry participates in the one extension publication boundary rather than owning a second lock,
+/// so a dependant's edges become visible in the same write lease that publishes its kinds, tokens,
+/// providers and runtime result, and disappear in the same lease that withdraws them.
 /// </para>
 /// <para>
-/// The pin is the whole point. Unloading a package while a dependant still holds types from it does not
-/// fail loudly: the context is marked for a collection that cannot happen, and the dependant is left
-/// holding types from a context the platform has declared gone. So a rooted receipt with a live inbound
-/// edge is not withdrawn — the same refusal shape as a job still executing, for the same reason.
+/// A rooted receipt with a live inbound edge is not withdrawn. Unloading a package while a dependant holds
+/// types from it does not fail loudly: the context is marked for a collection that cannot happen, and the
+/// dependant is left holding types from a context the platform has declared gone.
 /// </para>
 /// <para>
-/// Because an edge is removed only by its own dependant's successful withdrawal, the surviving edge set is
-/// exactly the set of live pins. A dependant that was deferred, or whose withdrawal did not complete for
-/// any reason, keeps its edges and therefore keeps everything it can reach rooted, transitively, with no
-/// second bookkeeping to fall out of step.
+/// Withdrawal is two-phase for the mirror reason. The first phase marks the package withdrawing and keeps
+/// every pin it holds, because its own disposers run outside the gate and against its dependencies' types.
+/// The second removes them, and only once the code is definitively gone.
 /// </para>
 /// <para>
-/// Withdrawal is two-phase for the mirror-image reason. Stopping a package hides it, disposes its
-/// instances and unloads its context, and the middle step runs extension code outside the gate. Removing
-/// its edges when it is hidden would unpin its dependencies while its own disposers are still executing
-/// against their types, and would release them outright if that unload then failed. So the first phase only
-/// marks the package withdrawing — nothing new may bind to it — and it keeps every pin and edge it holds.
-/// The second phase removes them, and it runs only once the code is definitively gone. A package whose
-/// unload did not complete keeps holding its dependencies, which is the honest answer rather than the tidy
-/// one.
-/// </para>
-/// <para>
-/// Preparation pins close the window before an edge exists. A dependant is prepared outside the gate — it
-/// reads bytes, loads assemblies and runs its own registration — and until it commits there is no edge, so
-/// nothing would stop its dependency being withdrawn underneath it. Rechecking at commit is too late: the
-/// dependant has already executed against types from a package the platform has released. So a dependant
-/// pins the exact receipts it is being prepared against, under this gate, before it reads or runs
-/// anything. A pin counts as a live dependant, so withdrawal defers rather than races; a successful commit
-/// converts the pins into published edges in one lease; and every failed, refused or canceled path
-/// releases them.
+/// A preparation pin closes the window before an edge exists. A dependant pins the exact receipts it is
+/// being prepared against before it reads a byte; a pin counts as a live dependant, and a successful commit
+/// converts the pins into edges in one lease.
 /// </para>
 /// </remarks>
 internal sealed class PackageDependencyRegistry

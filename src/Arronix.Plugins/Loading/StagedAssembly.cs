@@ -13,21 +13,14 @@ namespace Arronix.Plugins.Loading;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The loader used to read a candidate assembly twice: once as metadata, to decide whether it was
-/// admissible, and again as bytes, to load it. Two reads of a path an extension owns is a race — the file
-/// inspected and the file loaded are only the same file if nobody replaced it in between — and the decision
-/// was made against the first read while the code came from the second.
+/// The bytes are read once and everything is derived from them: identity, content hash, module identifier,
+/// reference table and pre-execution shape, and the load itself. Two reads of a path a package owns is a
+/// race in which the file inspected and the file loaded need not be the same file.
 /// </para>
 /// <para>
-/// Staging closes that. The bytes are read once, the identity, content hash, module identifier, reference
-/// table and pre-execution shape are all derived from those bytes, and the load happens from the same
-/// array. Nothing reopens the path, so no file stays locked and no second read can disagree with the first.
-/// </para>
-/// <para>
-/// Nothing here executes the assembly. Metadata reading is not loading, and the two questions this type
-/// answers about execution — does the file carry a module initializer, and does it carry an entry point —
-/// exist precisely because loading an assembly is <i>not</i> free of side effects. A module initializer runs
-/// when the assembly loads, whether or not anything calls into it.
+/// Nothing here executes the assembly. The two questions it answers about execution — a module initializer
+/// and an entry point — exist because loading is not free of side effects: a module initializer runs when
+/// the assembly loads, whether or not anything calls into it.
 /// </para>
 /// </remarks>
 internal sealed class StagedAssembly
