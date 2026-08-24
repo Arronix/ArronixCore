@@ -49,17 +49,32 @@ public class MediaExtensionTopologyTests
             + "milestone ships, so the extension-topology rules below would be checking nothing.");
     }
 
+    /// <param name="projectName">The extension under test.</param>
+    /// <remarks>
+    /// The permitted set is the universal contracts, the domain assembly of any format package the
+    /// extension composes, and its own media domain - the assembly it publishes for others to pair with.
+    /// A format package's executable half is deliberately absent: everything a declaration needs from a
+    /// format is domain semantics, so referencing the executable half would only copy an independently
+    /// updatable assembly into this package's payload.
+    /// It may not reference another kind's media domain - <see cref="PackageFacetTopologyTests"/> holds
+    /// that line - and it may still reference no platform assembly at all.
+    /// </remarks>
     [Test]
     [TestCaseSource(nameof(MediaExtensions))]
     public void MediaExtensionReferencesOnlyContractsAndTypedFormatAssemblies(string projectName)
     {
         var project = ProjectFile.Load(projectName);
+        var permitted = new[]
+        {
+            RepositoryLayout.Abstractions,
+            RepositoryLayout.VideoFormat,
+        }.Concat(new[] { RepositoryLayout.MediaDomainOf(projectName) }.OfType<string>()).ToArray();
 
         Assert.That(
             project.RuntimeProjectReferences,
-            Is.SubsetOf(new[] { RepositoryLayout.Abstractions, RepositoryLayout.VideoFormat }),
-            $"'{projectName}' may reference contracts and typed format assemblies, but not the platform "
-            + "library, loader, runtime or HTTP surface.");
+            Is.SubsetOf(permitted),
+            $"'{projectName}' may reference contracts, typed format assemblies and its own media domain, "
+            + "but not the platform library, loader, runtime or HTTP surface.");
 
         Assert.That(project.RuntimeProjectReferences, Does.Contain(RepositoryLayout.Abstractions));
         Assert.That(
@@ -97,6 +112,11 @@ public class MediaExtensionTopologyTests
     public void MediaExtensionLinksNoPlatformAssembly(string projectName)
     {
         var assembly = LoadExtensionAssembly(projectName);
+        var permitted = new[]
+        {
+            RepositoryLayout.Abstractions,
+            RepositoryLayout.VideoFormat,
+        }.Concat(new[] { RepositoryLayout.MediaDomainOf(projectName) }.OfType<string>()).ToArray();
 
         var linked = assembly
             .GetReferencedAssemblies()
@@ -108,7 +128,7 @@ public class MediaExtensionTopologyTests
 
         Assert.That(
             linked,
-            Is.SubsetOf(new[] { RepositoryLayout.Abstractions, RepositoryLayout.VideoFormat }),
+            Is.SubsetOf(permitted),
             $"The compiled '{projectName}' links a platform assembly. The declaration and the binary have "
             + "to agree, because the loader's reference-graph check judges the binary.");
     }

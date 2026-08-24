@@ -157,11 +157,18 @@
           "Arronix.Abstractions": "[0.8.0, )"
         }
       },
+      "arronix.media.movies": {
+        "type": "Project",
+        "dependencies": {
+          "Arronix.Abstractions": "[0.8.0, )"
+        }
+      },
       "arronix.plugin.movies": {
         "type": "Project",
         "dependencies": {
           "Arronix.Abstractions": "[0.8.0, )",
-          "Arronix.Format.Video": "[0.1.0, )"
+          "Arronix.Format.Video": "[0.1.0, )",
+          "Arronix.Media.Movies": "[0.1.0, )"
         }
       },
       "arronix.plugins": {

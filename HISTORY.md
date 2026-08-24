@@ -1,5 +1,129 @@
 # Arronix History
 
+## 2026-08-24 — Stage package payloads from the computed closure rather than from a build directory
+
+- Replaced the payload staging source. The Movies, Television and G02 fixture packages were staged by
+  copying their projects' `bin` directories recursively, which is not the same thing as producing a payload:
+  MSBuild does not delete an assembly that a removed `ProjectReference` stopped producing, so the source
+  directory can hold a file the project no longer depends on, a recursive copy carries it, and clearing the
+  destination first does not help because the stale file is on the other side. The three targets publish
+  into their cleared directories now, so a payload is the runtime closure computed from the current
+  reference set rather than a listing of whatever a directory still contains.
+- Verified the difference directly rather than reasoning about it. With
+  `Arronix.Format.Video.Contributions.dll` planted in both the Movies and Television output directories, the
+  recursive copy produced a five-assembly Movies payload and publish produced the correct four.
+- Added the regression the payload rules were missing. Every staged payload is compared against its own
+  `deps.json` — the same computation the publish performs, written down — so an assembly that arrived by any
+  other route is caught whatever its name, including after a future change back to a recursive copy. A
+  detector fixture plants a stale assembly in a copy of the staged payload and asserts that rule fails,
+  because a rule that has only seen correct payloads cannot be told apart from a rule that does not look.
+- Added a rule refusing the cause as well as the symptom: no project may stage files by listing another
+  project's build output directory.
+- Replaced the two one-directional lock-file rules with one that compares each lock file against the
+  evaluated transitive project-reference closure in both directions, guarded by a case proving that closure
+  is actually computed. A name the graph no longer reaches and a project the lock file does not record are
+  different mistakes, and `--locked-mode` reports neither.
+- Each new rule was checked against the defect it describes: reintroducing the `bin` glob, adding an
+  unreachable project to a lock file, and removing a recorded one each fail exactly one rule.
+- The exact .NET 11 proof rail finished with 2,289 passed, 302 registered skips, zero failed, and zero
+  inconclusive from 2,591 cases across all 11 test projects; the ledger is unchanged at 302 cases and zero
+  replacements, and compatibility and required-sentinel ratchets pass.
+
+## 2026-08-24 — Close the media/format dependency boundary and correct the namespace record
+
+- Moved video's owner semantics into the shared domain assembly. `VideoFormat.Definition` and
+  `VideoReleasePolicyDefaults` are what a media declaration composes — the family it names in its
+  constructor and the preferences it folds into its own compiled policy — and both are deterministic
+  in-memory logic over values, so both now live in `Arronix.Format.Video`.
+  `Arronix.Format.Video.Contributions` keeps video's executable work: the release-term recognition
+  vocabulary today, and the recognizers, probing and registration that follow.
+- Removed the reference from `Arronix.Plugin.Movies` and `Arronix.Plugin.Tv` to
+  `Arronix.Format.Video.Contributions`. Neither needs it now, and taking it copied an independently
+  updatable assembly into each package's payload for nothing. Neither payload carries it any more.
+- Spelled the video halves in two namespaces. Public domain types are `Arronix.Format.Video`;
+  executable-only types are `Arronix.Format.Video.Contributions`. No type is declared in both, so the
+  boundary is legible at the using site and not only in the reference list.
+- Made the shared extension vocabulary read-only at the boundary. `VideoFormat.Definition` is one canonical
+  object handed to every video media type, and its `FileExtensions` was a collection expression behind an
+  `IReadOnlyList<string>` — an array any caller could cast back and edit, mutating a vocabulary every
+  dependant reads. It is a `ReadOnlyCollection<string>` now, with cases asserting the wrapper rather than
+  the interface.
+- Added the rules that make the boundary hard to regress: a media extension declares no reference to a
+  format's executable half, links none in its compiled reference table, and — asserted against the staged
+  Movies and Television payloads, which the build clears and re-copies — ships none in its package output.
+- Added rules for one canonical identity: every package domain type is declared exactly once across the
+  solution, read from built metadata rather than the loaded set, and the movies domain publishes exactly
+  `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline` under `Arronix.Media.Movies`.
+- Repaired the checked-in lock files. Splitting the video package left `arronix.format.video.contracts` in
+  `src/Arronix.Format.Video/packages.lock.json` after the project was gone, and a `--locked-mode` restore
+  reported success anyway: that validation covers packages, not the project entries a lock file records.
+  The lock files were regenerated by re-evaluating the graph, and architecture rules now check that a lock
+  file names only projects that exist and records every project reference its project file declares.
+- Corrected the record on the movies namespace. The previous commit did rename it to `Arronix.Media.Movies`;
+  the entry above it said otherwise, and that was wrong. There is one declaration, no forwarding type, and
+  no compatibility shape. No compatibility-ledger transition was performed, because no locked public source
+  changed.
+- The exact .NET 11 proof rail finished with 2,282 passed, 302 registered skips, zero failed, and zero
+  inconclusive from 2,584 cases across all 11 test projects; the ledger is unchanged at 302 cases and zero
+  replacements, and compatibility and required-sentinel ratchets pass.
+
+## 2026-08-24 — Split the movies and video packages into shared contract and isolated executable assemblies
+
+- Adopted one package with two kinds of assembly. A package may ship zero or more shared contract assemblies
+  and zero or one isolated executable entry assembly, and one dependency names a package id with a
+  compatible range rather than separate contract and plugin edges or an arbitrary facet name. A shared
+  contract assembly carries typed owner semantics and pure deterministic behavior only; its intended
+  lifetime is one copy per installation in a Host-owned collectible contract context, released once every
+  dependant has withdrawn.
+- Split the movies package. `Arronix.Media.Movies` now declares `Movie`, `MovieReleaseStage`, and
+  `MovieReleaseTimeline`; `Arronix.Plugin.Movies` keeps the `Movies` definition, `MovieReleaseParser`, the
+  plugin module, and — because the generator emits into the assembly declaring the `MediaType` subclass —
+  the generated `CompiledShapes` catalog and its reader delegates. The generator needed no change.
+- Named the shared half for the domain that owns it. `Movie` is a media-domain type, not a plugin
+  implementation contract; a cataloger pairs with it without caring that an extension exists, so the
+  assembly is `Arronix.Media.Movies` rather than a `.Contracts` suffix on the extension's name. The file
+  holding the lifecycle was renamed `MovieReleaseLifecycle.cs`, since it declares the typed timeline and its
+  stage vocabulary rather than parser vocabulary.
+- Split the video package the same way round. `Arronix.Format.Video` keeps its name and becomes the shared
+  domain surface — the representation and quality facts a `Release<Video>` carries — because that is the
+  assembly a third-party media or provider author should reach for. The new
+  `Arronix.Format.Video.Contributions` takes `VideoReleaseVocabulary`, `VideoReleasePolicyDefaults`, and
+  `VideoFormat.Definition`: recognition vocabulary, policy contribution, and the file-extension vocabulary,
+  all of which grow as recognition work lands and none of which anything outside a media definition
+  consumes. Both assemblies keep the `Arronix.Format.Video` namespace, because the format capability owns
+  one vocabulary and which assembly a type ships in is a lifetime decision rather than a second vocabulary.
+  Video remains one package.
+- Chose the placement rule deliberately: deterministic value semantics belong with their owner, execution
+  with a lifecycle does not. `MovieReleaseTimeline.StageOn` and `VideoResolution.CompareTo` are media- and
+  format-owned meaning and stay in the shared half; hoisting them into Host to keep those assemblies
+  data-only would move domain semantics out of the domain that owns them.
+- Added `Arronix.Architecture.Tests.MovieCatalogerFixture`, which stands in for a separately shipped vendor
+  package. It implements `ICataloger<Movie>` and `ICurator<Movie>`, declares and links exactly
+  `Arronix.Abstractions` and `Arronix.Media.Movies`, returns a fully shaped `Movie` with its media-owned
+  lifecycle, and owns its identifier marker spelling. Before the split no such assembly could exist:
+  referencing `Movie` meant referencing the module and parser too.
+- Added structural and metadata rules rather than leaving the boundary to review. A shared contract assembly
+  may not declare `IPluginModule`, `IProvider`, `IReleaseParser<>`, `IMediaTypeDefinition`, or a
+  `MediaType<,,,>` subclass; may not hold a writable static or a static delegate; may not run anything when
+  loaded; may not spell a regular expression or an I/O call; and may not reference Host, the loader, the
+  generator, a format executable assembly, or a media extension. The isolated assemblies are checked for
+  still holding the module, definition, parser, vocabulary, family definition, and policy defaults, and the
+  staged movies package payload is asserted against a written-down file list.
+- Renamed the type namespace with the assembly: `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline`
+  are declared in `Arronix.Media.Movies`, with no forwarding type and no compatibility shape keeping the old
+  spelling alive. The Movies regression sources that name `Movie` are byte-locked by the compatibility
+  ledger, so the test project states the import once in its `GlobalUsings.cs` rather than per file; no
+  locked source changed and no ledger transition was needed. (An earlier draft of this entry said the
+  namespace had been left behind. It had not; the correction is recorded in the 2026-08-24 entry above.)
+- This is compile-time and package shape only, and claims nothing about runtime identity. The manifest still
+  declares no package dependency, `PluginLoadContext` still unifies only `Arronix.Abstractions`, both shared
+  assemblies still load privately per dependant, and the movies package still carries a private copy of the
+  video package. G03 remains open: admitted-contract resolution, duplicate-copy refusal, version ranges,
+  ordering, and dependency-aware withdrawal are not here.
+- The exact .NET 11 proof rail finished with 2,206 passed, 302 registered skips, zero failed, and zero
+  inconclusive from 2,508 cases across all 11 test projects; compatibility and required-sentinel ratchets
+  pass.
+
 ## 2026-08-24 — Make admission transactional, remove Movies' second schema, and close G02
 
 - Replaced provisional Host publication with attempt-scoped preparation. Host derives and activates complete

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Format.Video.Contributions</RootNamespace>
+    <AssemblyName>Arronix.Format.Video.Contributions</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>The isolated half of the video package: video's executable work. It holds the release-term recognition vocabulary today and is the home for the recognizers, probing and registration that follow. Nothing a media declaration needs lives here.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       Video's executable half, and deliberately nobody's compile-time dependency. A media declaration
+       composes video by naming its family and its policy defaults, both of which are domain semantics and
+       both of which live in Arronix.Format.Video; what is here is recognition work, which reads text and
+       will grow into recognizers and probing.
+
+       Its types are in the Arronix.Format.Video.Contributions namespace so the boundary is visible at the
+       using site as well as in the reference list, and so no identity is declared twice: a type is in the
+       domain namespace or in this one, never both.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" />
+  </ItemGroup>
+</Project>

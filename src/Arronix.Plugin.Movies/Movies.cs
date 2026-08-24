@@ -7,6 +7,7 @@ using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Releases;
 using Arronix.Abstractions.Shape;
 using Arronix.Format.Video;
+using Arronix.Media.Movies;
 using Arronix.Plugin.Movies.Definition;
 
 namespace Arronix.Plugin.Movies;

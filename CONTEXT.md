@@ -17,11 +17,16 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
   attempt-scoped transaction through which Host prepares an admitted inventory for the loader to publish.
 - `Arronix.Host` owns DI composition, generic engines, registries, scheduling, storage, and plugin activation.
 - `Arronix.Api` and `Arronix.Client` are the HTTP and Blazor WebAssembly edges.
-- `Arronix.Format.Video` owns video representation types, vocabulary, extensions, and default release-policy contributions.
+- The video package is two assemblies. `Arronix.Format.Video` is the shared domain surface and owns video's owner semantics: the representation and quality facts a `Release<Video>` carries, the format family a media type names in its constructor, and the release preferences video contributes to a dependant's compiled policy. `Arronix.Format.Video.Contributions` is the isolated half and owns video's executable work, currently the release-term recognition vocabulary. A media declaration references only the domain assembly.
+- The movies package is two assemblies. `Arronix.Media.Movies` is the shared half and owns `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline`; `Arronix.Plugin.Movies` is the isolated entry assembly and owns the `Movies` definition, `MovieReleaseParser`, the plugin module, and the generated projections.
 - `Arronix.Language.Reference` is a separately loadable language capability with English, German, and French implementations.
 - `Arronix.Generators` emits closed entity readers and descriptor projections while a media extension compiles. It is an analyzer-only build dependency and is never loaded as a plugin runtime dependency.
 - `Arronix.Compatibility.Ratchet` validates the canonical compatibility ledger against fresh test results and its prior committed form. The ledger under `verification/compatibility` gives every known omission a stable semantic identity, immutable published binding and expectation, provenance source, and explicit replacement path. The same-build solution binlog is the authoritative practical record of the actual `Csc` inputs, embedded inputs, warning policy, and build configuration. Each registered execution must resolve from its exact NUnit leaf to the declared CLR method in NUnit's exact executed assembly; the associated Portable PDB must bind that method to the primary and support documents, whose embedded source bytes must exactly match the locked repository files. This is layered same-build provenance, not a cryptographic or hermetic-build attestation claim. Replacement topology is independent of its semantic outcome; outcome must match the source disposition and requirement transition. Acyclic one-to-one replacement chains close to a fixed point, so a published witness can later be retired without rewriting earlier edges. Partition records remain non-closing until aggregate semantic composition is modeled. Required owner decisions resolve to pinned prior-ledger sources attached to the decided requirement. Passing tests do not self-attest proof through an output marker.
-- Media extensions may reference Abstractions and the format capabilities they compose. Host and Client do not reference Video.
+- Media extensions may reference Abstractions, the format capabilities they compose, and their own media domain assembly. An extension does not reference another kind's media domain. Host and Client reference neither half of Video.
+- First-party package payloads are staged by publishing each extension into a cleared directory, so a
+  staged payload is the computed runtime closure rather than a listing of a build directory that MSBuild
+  never prunes. Each staged payload is checked against its own `deps.json`, and that check is itself proved
+  to fail on a planted stale assembly.
 - `eng/ci/run-tests.sh` is the local and hosted-CI proof rail: locked restore, one Release warnings-as-errors solution build with its binlog retained as compiler-input evidence, a non-empty NUnit result from every discovered test project, exact NUnit-leaf/method/assembly/PDB/source binding, an exact 302-skip ratchet, and current-plus-prior compatibility validation. The eight-column required-test registry is append-only and contains only three durable proof sentinels. Package lock files and the consumed-only central package graph are checked in.
 
 ## Active invariants
@@ -79,6 +84,16 @@ coverage.
 - Television has typed target/release and coverage pressure tests, but its production shape/parser/matcher/naming implementation still uses the legacy imperative seams.
 - Books and Music still use legacy imperative media seams.
 - Legacy `IQualityModel`, ladder DTOs, and the untyped `ParsedRelease.Quality` path remain for unconverted implementations and compatibility adapters. Ladder-shaped residue also remains in shared `FieldValue`, `FormatFamily`, `MediaFileFacts`, `NotificationMessage`, Host registration, and storage surfaces; the migration has not yet isolated or removed all of it.
+- The movies and video packages are split into a shared contract assembly plus an isolated executable
+  assembly. `Arronix.Media.Movies` carries `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline`;
+  `Arronix.Format.Video` carries video's owner semantics. A separately shipped provider compiles
+  `ICataloger<Movie>` and `ICurator<Movie>` against Abstractions plus the movies media domain and links no
+  part of the Movies extension; Movies and Television compile their typed releases against the one video
+  domain assembly and reference neither the other's media domain nor video's executable half, which no
+  media extension payload carries. This is compile-time and package shape only. The manifest
+  declares no package dependency, `PluginLoadContext` still unifies only `Arronix.Abstractions`, and both
+  shared assemblies still load privately per dependant — so the movies package still carries a private copy
+  of the video package and one CLR identity across packages is not yet true and is not claimed.
 - The packaged Movies extension survives the complete loader pipeline. `IPluginAdmissionCheck.Prepare` returns
   an attempt whose `AdmittedInventory` has one entry per prepared `MediaKindId`, carrying that kind's derived
   `NamingToken` collection read from its `RegisteredMediaKind`. Late declaration agreement, scheduled-job
@@ -139,7 +154,10 @@ work does not substitute for closing an earlier dependency.
   is no longer a second media definition. It does not claim that the parser, selector, production providers,
   persistence, or Client vertical works.
 - G03 is active: establish package dependency/version rules and one exact CLR identity before any separately
-  shipped typed provider is treated as viable.
+  shipped typed provider is treated as viable. The Movies/Video assembly and package topology it depends on
+  is in place and proved by compile-time and package-shape tests
+  (`docs/research/g04/movies-video-package-topology.md`); the manifest dependency declaration, admitted-contract
+  resolution, duplicate-copy refusal, and dependency-aware withdrawal are not, so the gate remains open.
 
 The later gates cover provider pairing, hidden binding SPI, dynamic typed Client loading, compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
@@ -161,11 +179,23 @@ duplicated checklist drifting from current state.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-24) reports 2,168 passed, 302 skipped, zero failed,
-  and zero inconclusive from 2,470 total cases across 11 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-24) reports 2,289 passed, 302 skipped, zero failed,
+  and zero inconclusive from 2,591 total cases across 11 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.
+- The Movies test project imports the movies media domain through one project-level `global using`. The
+  regression sources that name `Movie` are locked by the compatibility ledger, so the import is stated once
+  in `GlobalUsings.cs` rather than repeated per file; no locked source changed and no ledger transition was
+  required.
+- `--locked-mode` restore validates the package graph but not the project entries a lock file records, so a
+  renamed or deleted project can stay named in one and still restore cleanly. An architecture rule now
+  checks each lock file against the evaluated transitive project closure in both directions.
+- `MovieReleaseParser.EditionRegex` is a `public const string`. C# inlines a `const` into referencing
+  assemblies at compile time, so it must become `static readonly` before anything outside its own package
+  reads it. Nothing outside the package does today.
+- The video package is not installable: it has no manifest, and the current schema requires `entryAssembly`
+  and `capabilities`, which a contract-first package with no module cannot supply.
 - General hot-unload containment remains later work: consumers outside the scheduler may retain raw provider,
   language, health-contributor, or job references after withdrawal; a hostile `DisposeAsync` can decline to
   complete; and actual collectible-context garbage collection is not promised merely because Arronix has

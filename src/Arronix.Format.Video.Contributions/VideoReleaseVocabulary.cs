@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace Arronix.Format.Video;
+namespace Arronix.Format.Video.Contributions;
 
 /// <summary>Channel-relative meanings of common video release terms.</summary>
 /// <remarks>

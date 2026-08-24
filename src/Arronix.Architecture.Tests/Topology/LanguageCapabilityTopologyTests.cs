@@ -20,13 +20,21 @@ public sealed class LanguageCapabilityTopologyTests
         });
     }
 
+    /// <remarks>
+    /// Both assemblies of the movies package are read. The rule is about what the movies kind declares, and
+    /// splitting the package into a media domain and an isolated extension moved source across an assembly
+    /// boundary without moving it out of the kind.
+    /// </remarks>
     [Test]
     public void MoviesDoesNotCarryALanguageNormalizationDeclaration()
     {
         var source = string.Join(
             '\n',
-            RepositoryLayout.Files("Arronix.Plugin.Movies", "*.cs").Select(File.ReadAllText));
+            new[] { RepositoryLayout.MoviesExtension, RepositoryLayout.MoviesDomain }
+                .SelectMany(project => RepositoryLayout.Files(project, "*.cs"))
+                .Select(File.ReadAllText));
 
+        Assert.That(source, Is.Not.Empty, "no movies source was read, so the rule would pass by finding nothing");
         Assert.That(source, Does.Not.Contain("Normalization = new NormalizationOptions"));
     }
 }

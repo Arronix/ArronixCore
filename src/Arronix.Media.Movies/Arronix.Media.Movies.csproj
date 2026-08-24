@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Media.Movies</RootNamespace>
+    <AssemblyName>Arronix.Media.Movies</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>The movies media domain: the Movie item and the release lifecycle it closes over. This is the shared, shipped-once assembly a separately installed cataloger or curator pairs with; the Movies extension that parses, defines and registers is a separate, isolated assembly in the same package.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       Named for the domain that owns these types, not for the mechanism that delivers them. Movie is what
+       a movie is; a cataloger pairs with it without caring that an extension exists.
+
+       This assembly is admitted once per installation into a Host-owned collectible context and released
+       only once every dependant has withdrawn, so its release cadence belongs to the dependency graph
+       rather than to this package. That is why it references the universal contracts and nothing else -
+       not even the video format, since Movie's own shape names no representation - and why it declares no
+       MediaType and takes no analyzer: a definition moved here would put its generated reader delegates on
+       that shared cadence instead of the extension's own.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

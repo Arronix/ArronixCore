@@ -1,7 +1,7 @@
 
 using Arronix.Abstractions.Media;
 
-namespace Arronix.Plugin.Movies;
+namespace Arronix.Media.Movies;
 
 /// <summary>A movie's position in its release lifecycle.</summary>
 /// <remarks>Values are ordered from least to most available.</remarks>

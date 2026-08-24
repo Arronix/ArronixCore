@@ -197,18 +197,27 @@ promised.
 ## 7. Dependency boundaries
 
 - `Arronix.Abstractions` depends on nothing.
-- format assemblies depend on Abstractions.
-- language implementation assemblies depend on Abstractions.
-- media extensions depend at runtime on Abstractions and the format capabilities they compose. They may take `Arronix.Generators` only as an analyzer with `ReferenceOutputAssembly=false`.
+- a package may ship zero or more shared contract assemblies and zero or one isolated executable entry assembly. A shared contract assembly depends on Abstractions and on other shared contract assemblies only; it carries typed owner semantics and pure deterministic behavior, never `IPluginModule`, parser or registration execution, provider implementations, I/O, mutable process state, or module initializers. Its intended lifetime is one copy per installation in a Host-owned collectible contract context, released once every dependant has withdrawn.
+- the video package is `Arronix.Format.Video` (video's owner semantics: the representation and quality facts a `Release<Video>` carries, the format family a media type names in its constructor, and the release preferences it contributes to a dependant's compiled policy) plus `Arronix.Format.Video.Contributions` (video's executable work, currently the release-term recognition vocabulary). Public domain types are spelled in `Arronix.Format.Video`; executable-only types are spelled in `Arronix.Format.Video.Contributions`, and no type is declared in both. The movies package is `Arronix.Media.Movies` (the shared `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline`) plus `Arronix.Plugin.Movies` (the isolated definition, parser, module, and generated projections).
+- language implementation assemblies depend on Abstractions and publish no shared contract assembly.
+- media extensions depend at runtime on Abstractions, the domain assembly of each format capability they compose, and their own media domain assembly. An extension never references another kind's media domain, and never a format capability's executable half: everything a media declaration needs from a format is domain semantics, so no media extension payload carries a format's executable assembly. They may take `Arronix.Generators` only as an analyzer with `ReferenceOutputAssembly=false`; a shared contract assembly takes no analyzer at all.
 - `Arronix.Common` and `Arronix.Plugins` depend toward Abstractions.
 - Host depends on Abstractions, Common, and Plugins, but not on a media or format implementation.
 - Client depends on Abstractions only.
 - vendor provider implementations must not be placed in Host, Abstractions, a format assembly, or a media definition.
 
-Direct plugin-to-plugin type sharing is not yet a supported stable contract. This is a blocking SDK gap:
-separate provider packages need stable media-definition package identity and dependency/version rules, one
-CLR type identity across Host and dynamically loaded Client code, and compiler-checked pairing without
-duplicate loads or a fallback to string projection.
+A separately shipped provider now compiles against a media domain without taking the extension: an
+`ICataloger<Movie>` or `ICurator<Movie>` needs Abstractions and `Arronix.Media.Movies`, and two media
+packages compile their typed releases against the one `Arronix.Format.Video`, and each package domain type
+is declared exactly once across the solution. That is the compile-time and package-shape half only.
+
+Direct plugin-to-plugin type sharing is still not a supported stable contract, and this remains a blocking
+SDK gap. The manifest declares no package dependency, the loader unifies only `Arronix.Abstractions`, and
+shared contract assemblies still load privately into each dependant's context — so the movies package
+currently carries a private copy of the video package, and one CLR type identity across packages, Host, and
+dynamically loaded Client code is not yet true. Package identity with dependency and version rules,
+admitted-contract resolution, duplicate-copy refusal, and dependency-aware withdrawal are the remaining
+work.
 
 ## 8. Lifecycle and execution
 

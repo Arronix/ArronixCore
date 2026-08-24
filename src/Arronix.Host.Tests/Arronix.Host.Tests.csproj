@@ -37,16 +37,34 @@
        Stage the actual Movies build output as an installed plugin. The integration test consumes this
        directory through discovery and the complete Host loader; referencing Movies in-process is not the
        proof. G02 changes the asserted admission outcome, not this fixture path.
+
+       Staged by publishing rather than by copying the project's bin directory, and the difference is the
+       whole reliability of every payload rule below. MSBuild does not delete an assembly that a removed
+       ProjectReference stopped producing, so a bin folder can keep a file the project no longer depends
+       on - and a recursive copy would carry it into the payload, where a test would faithfully report a
+       dependency that does not exist. Publish computes the runtime closure from the current reference set
+       instead of listing a directory, so a stale file in bin cannot reach the payload at all.
   -->
   <Target Name="StagePackagedMoviesPlugin" AfterTargets="Build">
     <RemoveDir Directories="$(OutDir)PackagedPlugins\movies" />
-    <ItemGroup>
-      <PackagedMoviesPluginFile Include="..\Arronix.Plugin.Movies\bin\$(Configuration)\$(TargetFramework)\**\*" />
-    </ItemGroup>
-    <Copy
-      SourceFiles="@(PackagedMoviesPluginFile)"
-      DestinationFiles="@(PackagedMoviesPluginFile->'$(OutDir)PackagedPlugins\movies\%(RecursiveDir)%(Filename)%(Extension)')"
-      SkipUnchangedFiles="true" />
+    <MSBuild
+      Projects="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)PackagedPlugins\movies\" />
+  </Target>
+
+  <!--
+       Stage the television payload beside the movies one, in a directory the loader never discovers. The
+       payload rules are about what an installable package contains, and a rule proved against one package
+       is a rule about that package: Television is the second video dependant, so it is the case that would
+       show a format's executable half leaking back into a payload through some other route.
+  -->
+  <Target Name="StageMediaExtensionPayloads" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)PackagePayloads" />
+    <MSBuild
+      Projects="..\Arronix.Plugin.Tv\Arronix.Plugin.Tv.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)PackagePayloads\tv\" />
   </Target>
 
   <!--
@@ -56,13 +74,10 @@
   -->
   <Target Name="StageG02AdmissionFixturePlugin" AfterTargets="Build">
     <RemoveDir Directories="$(OutDir)G02PackagedPlugins\g02.admission.fixture" />
-    <ItemGroup>
-      <G02AdmissionFixtureFile Include="..\Arronix.Host.Tests.G02AdmissionFixture\bin\$(Configuration)\$(TargetFramework)\**\*" />
-    </ItemGroup>
-    <Copy
-      SourceFiles="@(G02AdmissionFixtureFile)"
-      DestinationFiles="@(G02AdmissionFixtureFile->'$(OutDir)G02PackagedPlugins\g02.admission.fixture\%(RecursiveDir)%(Filename)%(Extension)')"
-      SkipUnchangedFiles="true" />
+    <MSBuild
+      Projects="..\Arronix.Host.Tests.G02AdmissionFixture\Arronix.Host.Tests.G02AdmissionFixture.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)G02PackagedPlugins\g02.admission.fixture\" />
   </Target>
 
   <!--

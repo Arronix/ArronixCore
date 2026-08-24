@@ -1,3 +1,5 @@
+using Arronix.Format.Video.Contributions;
+
 namespace Arronix.Format.Video.Tests;
 
 [TestFixture]

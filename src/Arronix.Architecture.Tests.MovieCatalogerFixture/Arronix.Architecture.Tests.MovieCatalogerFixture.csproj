@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Architecture.Tests.MovieCatalogerFixture</RootNamespace>
+    <AssemblyName>Arronix.Architecture.Tests.MovieCatalogerFixture</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>Stands in for a separately shipped movie provider package. It compiles ICataloger&lt;Movie&gt; and ICurator&lt;Movie&gt; against the universal contracts and the movies media domain only, so the reference set it needs is a checkable fact rather than a claim.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+       The whole point of the fixture is what is missing here. A vendor package pairs with a media kind by
+       closing a generic over that kind's item type, and it must be able to do so without taking on the
+       media extension's parser, module, definition or generated reader delegates - which have a different
+       isolation, update and unload lifetime. Adding Arronix.Plugin.Movies to this list would still
+       compile; the architecture tests fail instead, because compiling is exactly what makes the mistake
+       invisible.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj" />
+  </ItemGroup>
+</Project>

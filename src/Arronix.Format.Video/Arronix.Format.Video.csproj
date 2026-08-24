@@ -4,12 +4,29 @@
     <RootNamespace>Arronix.Format.Video</RootNamespace>
     <AssemblyName>Arronix.Format.Video</AssemblyName>
     <Version>0.1.0</Version>
-    <Description>Typed video representation contracts and declarative release vocabulary.</Description>
+    <Description>The video format domain: the representation and quality facts a Release&lt;Video&gt; carries. This is the shared, shipped-once assembly every video media kind and every provider that supplies representation facts compiles against.</Description>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
+  <!--
+       The clean semantic surface of the video package, and the one a media declaration or a provider
+       reaches for. It holds video's owner semantics: the representation a release carries, the format
+       family a media type names in its constructor, and the release preferences video contributes to a
+       dependant's compiled policy. All of that is deterministic in-memory domain logic over values.
+
+       What it does not hold is anything with a lifecycle: no recognition vocabulary, no parser, no module,
+       no registration execution. Those live in Arronix.Format.Video.Contributions, which references this
+       and never the reverse.
+
+       This assembly is admitted once per installation into a Host-owned collectible context and released
+       only once every dependant has withdrawn, so its release cadence belongs to the dependency graph
+       rather than to this package. That is why it references the universal contracts and nothing else -
+       anything it referenced would have to resolve to one copy too - and why it declares no MediaType and
+       takes no analyzer: a definition moved here would put its generated reader delegates on that shared
+       cadence.
+  -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
   </ItemGroup>

@@ -13,6 +13,11 @@
   <!--
        A media extension references contracts plus the format capabilities it composes, never Common,
        Plugins, Host, Api or Client. It takes zero package references. Architecture tests enforce both.
+
+       Television is the second dependant of the video package, and it closes its typed release over the
+       same Video the movies package does. Like Movies it references only the domain assembly: everything a
+       media declaration needs from video is domain semantics, and Arronix.Format.Video.Contributions holds
+       what it does not need.
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />

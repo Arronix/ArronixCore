@@ -122,6 +122,13 @@
       "arronix.abstractions": {
         "type": "Project"
       },
+      "arronix.architecture.tests.moviecatalogerfixture": {
+        "type": "Project",
+        "dependencies": {
+          "Arronix.Abstractions": "[0.8.0, )",
+          "Arronix.Media.Movies": "[0.1.0, )"
+        }
+      },
       "arronix.common": {
         "type": "Project",
         "dependencies": {
@@ -151,6 +158,12 @@
           "System.Threading.RateLimiting": "[11.0.0-preview.7.26381.103, )"
         }
       },
+      "arronix.media.movies": {
+        "type": "Project",
+        "dependencies": {
+          "Arronix.Abstractions": "[0.8.0, )"
+        }
+      },
       "arronix.plugin.books": {
         "type": "Project",
         "dependencies": {
@@ -161,7 +174,8 @@
         "type": "Project",
         "dependencies": {
           "Arronix.Abstractions": "[0.8.0, )",
-          "Arronix.Format.Video": "[0.1.0, )"
+          "Arronix.Format.Video": "[0.1.0, )",
+          "Arronix.Media.Movies": "[0.1.0, )"
         }
       },
       "arronix.plugin.music": {

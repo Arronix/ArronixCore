@@ -16,7 +16,7 @@ Arronix.Abstractions
              Media extension┘
 ```
 
-Host does not reference a format or media implementation. Client references Abstractions only. A media extension may reference the format capabilities it composes.
+Host does not reference a format or media implementation. Client references Abstractions only. A media extension may reference the domain assembly of each format capability it composes, and its own media domain; it references neither another kind's media domain nor a format capability's executable half.
 
 The architecture succeeds when a third party can express a complete media domain through a small set of
 ordinary, strongly typed SDK concepts while Arronix derives the common operations, orchestration, runtime
@@ -99,14 +99,22 @@ wiring are still in migration.
 
 ## 4. Format capabilities and Video
 
-Video is not a universal abstraction. `Arronix.Format.Video` owns:
+Video is not a universal abstraction. The video package owns it, and ships as two assemblies with two
+release cadences.
 
-- the Video format identity and file-extension vocabulary;
+`Arronix.Format.Video` is the shared domain surface — video's owner semantics, and everything a media
+declaration composes:
+
 - `Video` and `VideoLineage`;
 - resolution, revision, video stream, every audio track, and defects;
 - open codec and dynamic-range identifiers;
-- common release-token interpretations;
+- the Video format identity and its file-extension vocabulary;
 - video-owned default release-policy contributions.
+
+`Arronix.Format.Video.Contributions` is the isolated half — video's executable work, which grows as
+recognition work lands and which no media extension references:
+
+- common release-token interpretations, and the recognizers and probing that follow them.
 
 Video lineage records only observable facts from a public channel artifact:
 
@@ -187,7 +195,21 @@ reference-free `Stopped` result. Owned instances are then disposed outside the p
 async-preferred reverse order, with the module and collectible load context last. A genuinely overrun job
 retains the plugin's Active roots rather than allowing executing code to be unloaded.
 
-Format dependencies are part of an extension's local dependency closure. Only Abstractions and framework assemblies unify with the default context today. A future shared media-definition assembly model is required before independent cataloger packages can safely compile against media-owned item types or the Blazor client can load those exact types dynamically.
+One installable package may ship zero or more shared contract assemblies and zero or one isolated
+executable entry assembly, and one dependency names a package id with a compatible range. A shared contract
+assembly carries typed owner semantics and pure deterministic behavior only: no `IPluginModule`, no parser
+or registration execution, no provider implementation, no I/O, no mutable process state, no module
+initializer. Its intended lifetime is one copy per installation in a Host-owned collectible contract
+context, released once every dependant has withdrawn.
+
+The movies and video packages are split that way today: `Arronix.Media.Movies` and `Arronix.Format.Video`
+hold the shared types, and `Arronix.Plugin.Movies` and `Arronix.Format.Video.Contributions` hold the
+executable halves. That makes the split expressible; it does not yet make
+it effective. Format and media dependencies are still part of an extension's local dependency closure, only
+Abstractions and framework assemblies unify with the default context, and both shared assemblies still load
+privately per dependant. The manifest dependency declaration and the admitted-contract resolution step are
+required before independent cataloger packages observe one CLR identity or the Blazor client loads those
+exact types dynamically.
 
 ## 9. Migration state
 

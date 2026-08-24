@@ -16,7 +16,8 @@ Read `CONTEXT.md`, `INTERFACE.md`, and `ARCHITECTURE.md` before changing the rep
 - Use Television, not only Movies, to pressure-test changes to typed media and release coverage.
 - Do not add vendor-specific identifiers, routes, endpoints, or implementations to a media definition.
 - Client references Abstractions only. Host references no format or media implementation.
-- Media extensions may reference Abstractions and independently owned format capabilities, never Common, Plugins, Host, Api, or Client.
+- Media extensions may reference Abstractions, independently owned format capabilities, and their own media domain assembly, never Common, Plugins, Host, Api, Client, or another kind's media domain.
+- A package ships zero or more shared contract assemblies and zero or one isolated executable entry assembly. A shared contract assembly (`Arronix.Media.Movies`, `Arronix.Format.Video`) holds typed owner semantics and pure deterministic behavior only; the executable half carries a name that says so (`Arronix.Plugin.Movies`, `Arronix.Format.Video.Contributions`). A media extension references a format's domain assembly and never its executable half: no `IPluginModule`, parser or registration execution, provider implementation, I/O, mutable process state, or module initializer.
 - No plugin supplies UI markup. Descriptors support discovery and generic presentation; they are not a substitute for typed domain assemblies.
 - Warnings are errors. Use the SDK pinned by `global.json`, run `eng/ci/run-tests.sh`, and report every result count and ratchet failure.
 - Use American English in source and documentation.
@@ -33,6 +34,12 @@ When a change alters public interfaces, domain ownership, dependency direction, 
 ## Current migration constraint
 
 Movies is typed. Television, Music, and Books retain legacy imperative seams during conversion. `IQualityModel`, ladder DTOs, and the untyped parsed-quality string exist only as migration scaffolding. New features use typed releases, format-owned representations, `ReleasePolicy<TRelease>`, and `TargetMatch<TTarget>`; do not extend the legacy quality architecture.
+
+The movies and video packages are split into a shared contract assembly plus an isolated executable
+assembly, proved by compile-time and package-shape tests. That is packaging only: the manifest declares no
+package dependency, the loader unifies only `Arronix.Abstractions`, and shared assemblies still load
+privately per dependant, so one CLR identity across packages is not yet true. See
+`docs/research/g04/movies-video-package-topology.md`.
 
 The real packaged Movies loader path is closed: late checks consume an authoritative prepared projection;
 one gate publishes Host values, token claims, and Active runtime state only after all checks pass; exact stop

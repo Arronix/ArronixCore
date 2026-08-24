@@ -4,7 +4,7 @@
     <RootNamespace>Arronix.Plugin.Movies</RootNamespace>
     <AssemblyName>Arronix.Plugin.Movies</AssemblyName>
     <Version>0.1.0</Version>
-    <Description>Reference media extension for feature films. It directly closes the common MediaItem, ReleaseTarget and Release types over movie-owned vocabularies and the independently owned Video representation.</Description>
+    <Description>The isolated entry assembly of the movies package: the Movies definition, its release parser and its plugin module. The Movie item type a separately shipped provider pairs with lives in Arronix.Media.Movies.</Description>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
@@ -13,9 +13,17 @@
   <!--
        A media extension references contracts plus the format capabilities it composes, never Common,
        Plugins, Host, Api or Client. It takes zero package references. Architecture tests enforce both.
+
+       Only Arronix.Format.Video is referenced, and that is the whole point: a media declaration needs
+       video's domain semantics - the representation it closes Release&lt;Video&gt; over, the family
+       definition it names in its constructor, and the policy defaults it composes - and needs none of
+       video's executable half. Referencing Arronix.Format.Video.Contributions here would copy an
+       independently updatable assembly into this package's payload; architecture and payload tests refuse
+       it.
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj" />
     <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" />
     <ProjectReference Include="..\Arronix.Generators\Arronix.Generators.csproj"
                       OutputItemType="Analyzer"

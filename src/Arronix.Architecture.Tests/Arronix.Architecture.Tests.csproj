@@ -43,4 +43,14 @@
     <ProjectReference Include="..\Arronix.Plugin.Music\Arronix.Plugin.Music.csproj" />
     <ProjectReference Include="..\Arronix.Plugin.Tv\Arronix.Plugin.Tv.csproj" />
   </ItemGroup>
+
+  <!--
+       The provider fixture is referenced for the same reason the extensions are: the pairing rule is
+       asserted against a real assembly that was really compiled without the Movies extension in its
+       reference set. Its own project file is the declaration half of that rule, and its metadata is the
+       binary half.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Architecture.Tests.MovieCatalogerFixture\Arronix.Architecture.Tests.MovieCatalogerFixture.csproj" />
+  </ItemGroup>
 </Project>

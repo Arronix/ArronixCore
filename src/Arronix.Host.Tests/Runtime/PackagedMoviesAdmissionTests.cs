@@ -166,7 +166,7 @@ internal sealed class PackagedMoviesAdmissionTests
             loaded.LoadContext,
             "the admitted kind must be the one the isolated package supplied, not one bound in process");
         runtime.ItemType.Should().NotBeSameAs(
-            typeof(Plugin.Movies.Movie),
+            typeof(global::Arronix.Media.Movies.Movie),
             "the item type resolved through the plugin load context is a different runtime type from the "
             + "test project's compile-time reference to the same source");
     }

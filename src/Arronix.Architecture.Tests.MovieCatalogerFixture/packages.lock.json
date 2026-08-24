@@ -5,12 +5,6 @@
       "arronix.abstractions": {
         "type": "Project"
       },
-      "arronix.format.video": {
-        "type": "Project",
-        "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
-        }
-      },
       "arronix.media.movies": {
         "type": "Project",
         "dependencies": {

@@ -10,7 +10,9 @@
     <TestProject>true</TestProject>
   </PropertyGroup>
 
+  <!-- The video package's test project, so it references both halves of it. -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" />
+    <ProjectReference Include="..\Arronix.Format.Video.Contributions\Arronix.Format.Video.Contributions.csproj" />
   </ItemGroup>
 </Project>

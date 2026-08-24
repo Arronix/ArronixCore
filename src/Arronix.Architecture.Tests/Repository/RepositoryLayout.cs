@@ -42,8 +42,20 @@ internal static class RepositoryLayout
     /// <summary>The browser client's project name.</summary>
     public const string Client = "Arronix.Client";
 
-    /// <summary>The typed video representation assembly.</summary>
+    /// <summary>The video format domain: the shared representation and quality facts a release carries.</summary>
     public const string VideoFormat = "Arronix.Format.Video";
+
+    /// <summary>The isolated half of the video package: recognition vocabulary, family data, policy defaults.</summary>
+    public const string VideoFormatContributions = "Arronix.Format.Video.Contributions";
+
+    /// <summary>The movies media domain: the item type a separately shipped provider pairs with.</summary>
+    public const string MoviesDomain = "Arronix.Media.Movies";
+
+    /// <summary>The isolated entry assembly of the movies package.</summary>
+    public const string MoviesExtension = "Arronix.Plugin.Movies";
+
+    /// <summary>The stand-in for a separately shipped movie provider package.</summary>
+    public const string MovieCatalogerFixture = "Arronix.Architecture.Tests.MovieCatalogerFixture";
 
     /// <summary>The reference language implementation assembly.</summary>
     public const string ReferenceLanguages = "Arronix.Language.Reference";
@@ -53,6 +65,9 @@ internal static class RepositoryLayout
 
     /// <summary>The prefix every media extension project shares.</summary>
     public const string ExtensionPrefix = "Arronix.Plugin.";
+
+    /// <summary>The prefix a media domain assembly shares, one per media kind that publishes one.</summary>
+    public const string MediaDomainPrefix = "Arronix.Media.";
 
     private static readonly string[] ExcludedDirectorySegments = ["obj", "bin"];
 
@@ -94,6 +109,44 @@ internal static class RepositoryLayout
     /// add it here. Test projects are excluded - they are consumers of an extension, not extensions.
     /// </remarks>
     public static IReadOnlyList<string> MediaExtensionProjects { get; } = DiscoverMediaExtensions();
+
+    /// <summary>
+    /// Gets the assemblies a package may ship for sharing: one per capability that publishes a contract.
+    /// </summary>
+    /// <remarks>
+    /// Listed rather than globbed, and the two are deliberately unalike. A shared contract assembly binds
+    /// its release cadence to every dependant of its package, so publishing one is a deliberate act with an
+    /// owner behind it. Discovering them by a name pattern would let a project take on that cadence by
+    /// being named a certain way, which is the opposite of the rule.
+    /// </remarks>
+    public static IReadOnlyList<string> SharedContractProjects { get; } =
+    [
+        MoviesDomain,
+        VideoFormat
+    ];
+
+    /// <summary>
+    /// Gets the media domain assembly a media extension publishes, when it publishes one.
+    /// </summary>
+    /// <param name="extensionProject">The media extension project, for example <c>Arronix.Plugin.Movies</c>.</param>
+    /// <returns>The domain project name, or <see langword="null"/> when that kind publishes none.</returns>
+    /// <remarks>
+    /// The relationship is by convention rather than by declaration, and only for reading: the rule that
+    /// uses it says an extension may reference <i>its own</i> media domain, not any media domain, so it
+    /// needs to know which one is its own. Books, Music and Television publish none yet - their item types
+    /// are still legacy shapes - and a null result means the extension may reference no media domain at all.
+    /// </remarks>
+    public static string? MediaDomainOf(string extensionProject)
+    {
+        if (!extensionProject.StartsWith(ExtensionPrefix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var candidate = MediaDomainPrefix + extensionProject[ExtensionPrefix.Length..];
+
+        return SharedContractProjects.Contains(candidate, StringComparer.Ordinal) ? candidate : null;
+    }
 
     /// <summary>
     /// Gets every project this delivery owns, test projects included.
@@ -147,6 +200,26 @@ internal static class RepositoryLayout
             .Where(static path => !IsBuildIntermediate(path))
             .Order(StringComparer.Ordinal)
             .ToArray();
+    }
+
+    /// <summary>
+    /// Locates one file in a project's build output.
+    /// </summary>
+    /// <param name="projectName">The project.</param>
+    /// <param name="fileName">The bare file name.</param>
+    /// <returns>The absolute path, or <see langword="null"/> when the project has not been built.</returns>
+    public static string? BuildOutputFile(string projectName, string fileName)
+    {
+        var here = new DirectoryInfo(AppContext.BaseDirectory);
+        var framework = here.Name;
+        var configuration = here.Parent?.Name;
+
+        if (configuration is null || !string.Equals(here.Parent?.Parent?.Name, "bin", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return Path.Combine(ProjectDirectory(projectName), "bin", configuration, framework, fileName);
     }
 
     /// <summary>
