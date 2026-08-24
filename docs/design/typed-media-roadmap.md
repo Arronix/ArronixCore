@@ -2,7 +2,7 @@
 
 **Status:** active
 
-**Current gate:** G03 — define package dependencies and one CLR type identity
+**Current gate:** G04 — close the typed provider-pairing contract
 
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
@@ -245,7 +245,7 @@ This gate does **not** claim the parser, selector, providers, persistence, or Cl
 
 ### G03 — Define package dependencies and one CLR type identity
 
-**Status:** active.
+**Status:** complete.
 
 **Outcome:** independently shipped media, format, language, and provider packages can close generic contracts
 over the exact same domain types.
@@ -274,6 +274,49 @@ Exit gate:
 - missing dependency, incompatible range, cycle, and duplicate-copy attempts fail before activation with
   actionable diagnostics;
 - an admitted dependency cannot be unloaded while dependants remain active, and withdrawal is deterministic.
+
+Completion proof recorded on 2026-08-24:
+
+- one immutable `InstalledPackage` is the canonical installed-package declaration, carrying exact package
+  identity, version, source, folder, optional entry assembly, published shared contract assemblies, typed
+  direct requirements and a closed availability state. Every collection is a read-only copy, the mutable
+  declaration is not retained, and the object has reference identity only, so two installation attempts of
+  one identifier can never compare equal;
+- one `PackageDependencyResolver` produces one immutable `ResolvedPackageGraph`. There is no edgeless
+  fallback: a host with no resolution authority does not compose. Duplicate, missing, incompatible, cyclic,
+  disabled and transitively ineligible packages are refused with deterministic member-path diagnostics; the
+  whole rendered result is invariant over 5,040 permutations of a mixed installation, 720 of a cyclic one
+  and 720 of one carrying an unavailable package;
+- operator-disabled is a typed closed state entering resolution before any assembly is opened, and an
+  undefined state value is refused rather than treated as another kind of unavailability. A disabled package
+  keeps `PluginDisabled` and its own defect list; its dependants are refused with the real root cause named;
+- `Arronix.Format.Video` ships as the installed package `arronix.format.video` — one shared contract
+  assembly, no entry assembly, no capability. Movies publishes `Arronix.Media.Movies.dll` and requires the
+  video package; neither Movies nor Television carries a private copy of it;
+- the installation admits each declared contract once into one Host-owned collectible context, staged and
+  metadata-validated in graph order and loaded as one transaction. A publisher failing at the real load
+  boundary takes its whole set with it, and every package that required it is refused over the declared
+  package edge whether or not its own metadata named the failed assemblies;
+- global admission is not global visibility: a package binds only to contracts published by itself or by a
+  package in its exact transitive dependency closure, enforced in metadata before load and by a
+  package-scoped resolver at runtime. An out-of-closure request is refused rather than resolved from a
+  private copy or the default context;
+- a separately packaged provider implements `ICataloger<Movie>` and its closed `Movie` is reference-equal to
+  the registered movies kind's item type; two independently packaged dependants receive the same admitted
+  `Video` assembly and type; the contract-only video package is rooted and cannot be released while a
+  dependant lives; teardown is observed to release a dependant's code before its dependency's, and a clean
+  stop is not reported until the contract context is released;
+- a package carrying a private copy of an admitted contract — including a different build of the same
+  identity — is refused with both module identifiers and both content hashes;
+- a stale assembly planted in a project's real build output cannot enter a staged payload through the actual
+  publish, and inverting that staging to a recursive copy makes the proof fail;
+- the full rail reports 2,527 passed, 302 registered skips, zero failed and zero inconclusive from 2,829
+  cases across 11 test projects; compatibility and required-sentinel ratchets pass.
+
+Deliberately not claimed: one CLR identity across Host and dynamically loaded Client code (G07 owns the
+browser half), signing and package integrity, side-by-side contract versions, and reload involving shared
+contracts. Television declares its video dependency and its payload is proved free of private copies, but its
+runtime proof is deferred to G13 rather than fabricated here.
 
 ## Phase 1 — Make the SDK genuinely consumable
 

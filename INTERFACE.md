@@ -139,14 +139,21 @@ and is never reported as accepted.
 - Artwork may be carried by a typed workbench row. A consumer chooses its presentation; the semantic contract does not infer layout.
 - Media extensions do not declare the platform action catalogue or its wire keys.
 - Client binds affordances through `StandardMediaAction`; only the API route and action request serialize string identifiers.
-- The current plugin manifest owns its schema version, package identity and description, contract range, entry
-  assembly, and requested capabilities. It is not a second media schema: derivable kinds, fields, tokens,
-  policies, and actions are generated or mechanically validated rather than manually restated. A manifest
-  may omit every derivable media fact; one which does state kinds or tokens is held to them exactly and in
-  both directions against the prepared projection. `Arronix.Plugin.Movies` therefore ships only those current
-  manifest-owned fields. Capabilities stay explicit because least privilege is stated before extension code
-  runs. Operator-specific network/filesystem access is runtime configuration, not a manifest grant; explicit
-  package dependencies are future G03 ownership and do not exist in the current schema.
+- The plugin manifest is schema version 1 and owns its schema version, package identity and description,
+  contract range, optional entry assembly, published shared contract assemblies, direct package
+  dependencies, and requested capabilities. It is not a second media schema: derivable kinds, fields,
+  tokens, policies, and actions are generated or mechanically validated rather than manually restated. A
+  manifest may omit every derivable media fact; one which does state kinds or tokens is held to them exactly
+  and in both directions against the prepared projection. Capabilities stay explicit because least privilege
+  is stated before extension code runs, and operator-specific network/filesystem access is runtime
+  configuration rather than a manifest grant.
+- A package carries zero or one entry assembly and zero or more shared contract assemblies, and must carry
+  at least one of the two. A contract-only package declares no capability, because a package that runs no
+  code can hold no privilege. An entry assembly may not also be declared as a shared contract.
+- One dependency is one edge: an exact package identifier and one compatible version range. There are no
+  named facets, no separate contract and plugin edges, and no transitive restatement — the closure is
+  derived. Omitting a list member and writing `null` for it are different statements: an explicit null is a
+  declaration defect reported against its own member path.
 - Once Host preparation runs, its admitted projection is the authority on what an extension is prepared to
   supply. Host answers the loader with an inventory keyed per media kind, each entry carrying that kind's own
   derived naming tokens; late agreement, scheduled-job kind association, duplicate-kind checking, and token
@@ -206,18 +213,29 @@ promised.
 - Client depends on Abstractions only.
 - vendor provider implementations must not be placed in Host, Abstractions, a format assembly, or a media definition.
 
-A separately shipped provider now compiles against a media domain without taking the extension: an
-`ICataloger<Movie>` or `ICurator<Movie>` needs Abstractions and `Arronix.Media.Movies`, and two media
-packages compile their typed releases against the one `Arronix.Format.Video`, and each package domain type
-is declared exactly once across the solution. That is the compile-time and package-shape half only.
+A separately shipped provider compiles against a media domain without taking the extension: an
+`ICataloger<Movie>` or `ICurator<Movie>` needs Abstractions and `Arronix.Media.Movies`, two media packages
+compile their typed releases against the one `Arronix.Format.Video`, and each package domain type is
+declared exactly once across the solution.
 
-Direct plugin-to-plugin type sharing is still not a supported stable contract, and this remains a blocking
-SDK gap. The manifest declares no package dependency, the loader unifies only `Arronix.Abstractions`, and
-shared contract assemblies still load privately into each dependant's context — so the movies package
-currently carries a private copy of the video package, and one CLR type identity across packages, Host, and
-dynamically loaded Client code is not yet true. Package identity with dependency and version rules,
-admitted-contract resolution, duplicate-copy refusal, and dependency-aware withdrawal are the remaining
-work.
+Package-to-package type sharing is now a runtime fact as well as a compile-time one. `Arronix.Format.Video`
+ships as the installed package `arronix.format.video`, which publishes one shared contract assembly and runs
+no code; Movies and Television require it by identifier and carry no private copy. The installation admits
+each declared contract once, into one Host-owned collectible context, and hands every publisher and every
+dependant in its declared closure the same `Assembly` object. Two independently installed dependants
+therefore see one `Video` type, and a separately packaged provider closes `ICataloger<Movie>` over the same
+runtime type the registered movies kind publishes as its item.
+
+Global admission is not global visibility. A package binds only to contracts published by itself or by a
+package in its exact transitive dependency closure; a contract whose metadata reaches outside that closure
+is refused before it loads, and a runtime request for an admitted contract a package did not declare is
+refused rather than resolved from its own payload or the default context. A package carrying a private copy
+of an admitted contract is refused with both module identifiers and both content hashes.
+
+Still open: one CLR identity across Host and dynamically loaded Client code (G07 owns the browser half),
+signing and package integrity, side-by-side contract versions, and any reload that involves shared contracts
+— an admitted store takes a second graph only when neither shares anything, because matching identifiers,
+versions and file names do not prove matching bytes, identities or dependency closures.
 
 ## 8. Lifecycle and execution
 
@@ -231,13 +249,34 @@ scheduled-job association, naming-token ownership, and installation-wide identit
 does one shared gate publish the token plan, exact Host attempt, and Active runtime result. Any failure
 quarantines and completely releases that attempt without terminating Host.
 
-The bootstrapper explicitly stops and drains the scheduler before plugin teardown; reverse hosted-service
-ordering provides the same sequence and concurrent hosted-service stop cannot bypass it. For each non-running
-Active plugin, Host verifies the exact runtime-to-admission receipt, atomically withdraws Host, token, and runtime
-state, records a reference-free `Stopped` result, then disposes owned instances outside the publication gate.
-Async disposal is preferred, direct registrations are released once in reverse order, the module is last,
-and the collectible load context is unloaded after it. A job which exceeds its shutdown deadline retains the
-Active receipt and roots because unloading executing extension code would be unsound.
+Admission runs over the whole installation before any package's code exists: declarations are proved into
+one immutable installed-package snapshot each, operator configuration becomes a typed availability state,
+the one resolver produces the one resolved graph, and the installation's shared contracts are staged,
+metadata-validated in graph order and loaded as one transaction over a provisional context. A publisher that
+fails at the real load boundary takes its whole set with it, and every package that required it is refused
+over the declared edge whether or not its own metadata named the failed assemblies.
+
+Packages are then admitted in graph order. A package pins the exact receipts of its dependencies before it
+reads a byte, so a withdrawal racing its preparation is refused rather than leaving it executing against a
+released package. Publication is one transaction under one gate: Host authorization, token claims, the Host
+attempt, the package edges and the runtime result commit together or not at all, and the transition to
+shutdown takes the same write lease so a package cannot root itself after Stop has begun.
+
+Teardown reverses the order packages were actually published in. Under the gate a package is hidden and
+marked withdrawing while keeping every pin it holds; outside it, its instances and load context are released
+and then its hold on the installation contract context — which it gives up while its dependencies are still
+pinned, because its own contract assembly may reference theirs. Only a release that reported no failure
+re-enters the gate to remove its edges and unpin. A disposer, unload, contract-release, authority-mismatch,
+in-flight-work or dependent-pin failure retains the exact identifier, receipt, edges and pins and yields
+`StopIncomplete`, including on repeated stops; an empty active set is not proof that nothing remains held,
+and a clean stop is not reported until the shared contract context has been released.
+
+A package-level lease owns the exact package receipt and the contract hold, and wraps an optional executable
+runtime lease. A contract-only package is a first-class active package: rooted, diagnosable,
+dependency-bearing and withdrawable, with no load context, registration ledger or Host admission attempt
+invented for it. One global contract context cannot physically unload one assembly, so a package's release
+is modelled as giving up a claim on that context, and unloading is requested only after every holder is
+gone. `AssemblyLoadContext.Unload()` is a request; collection is never claimed.
 
 Replacement-grade execution must continue from those admitted types through catalog/curation, acquisition
 targeting, semantic queries, raw indexer listings, media interpretation plus format/language contributions,

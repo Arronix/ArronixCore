@@ -36,13 +36,13 @@ When a change alters public interfaces, domain ownership, dependency direction, 
 Movies is typed. Television, Music, and Books retain legacy imperative seams during conversion. `IQualityModel`, ladder DTOs, and the untyped parsed-quality string exist only as migration scaffolding. New features use typed releases, format-owned representations, `ReleasePolicy<TRelease>`, and `TargetMatch<TTarget>`; do not extend the legacy quality architecture.
 
 The movies and video packages are split into a shared contract assembly plus an isolated executable
-assembly, proved by compile-time and package-shape tests. That is packaging only: the manifest declares no
-package dependency, the loader unifies only `Arronix.Abstractions`, and shared assemblies still load
-privately per dependant, so one CLR identity across packages is not yet true. See
-`docs/research/g04/movies-video-package-topology.md`.
+assembly, and video ships as the installed package `arronix.format.video`. A manifest declares its published
+contract assemblies and its direct package dependencies; one resolver produces one resolved graph; the
+installation admits each shared contract once into one Host-owned collectible context; and a package binds
+only to contracts published by itself or by a package in its exact transitive dependency closure. See
+`docs/research/g04/integrated-package-runtime.md`.
 
-The real packaged Movies loader path is closed: late checks consume an authoritative prepared projection;
-one gate publishes Host values, token claims, and Active runtime state only after all checks pass; exact stop
-withdraws the matching receipt; and Movies' manifest is no longer a second media schema. The active gate is
-package dependency and version rules with one exact CLR type identity. Do not move ahead to provider pairing,
-parser redesign, or Client loading until it passes.
+The real packaged Movies loader path is closed and package dependency, version rules and one exact CLR type
+identity are closed with it. The active gate is G04: close the typed provider-pairing contract. Do not move
+ahead to parser redesign or Client loading until it passes, and do not report G04 complete on the strength
+of the G03 identity work.

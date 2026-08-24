@@ -1,5 +1,76 @@
 # Arronix History
 
+## 2026-08-24 — Close G03: one installation model, one resolved graph, one shared contract identity
+
+The four G04-branch candidates were reconciled into one runtime rather than merged. Where they overlapped,
+the overlapping model was deleted rather than kept beside its replacement.
+
+**One canonical installation model.** `InstalledPackage` is the only description of an installed package.
+It carries the exact package identity, version, source, folder, optional entry assembly, published shared
+contract assemblies, typed direct requirements and a closed availability state, and it is the exact object
+every later phase consumes — resolution, contract admission, executable loading, publication and teardown.
+Every collection is copied into a read-only collection, declared file names are proved bare at the boundary,
+the mutable declaration is not retained, and the type has reference identity only, because two installation
+attempts of one identifier are exactly what exact-receipt withdrawal exists to tell apart. The candidates'
+`PackageCandidate`, `ResolvedPackage`, `ResolvedRequirement`, `PluginPackage`, `SharedContractPlan` and
+`PluginDependencyPlan` are gone. `ValidatedManifest` no longer holds the deserialized declaration; it
+projects the canonical snapshot and snapshots only the orthogonal validated metadata.
+
+**One resolver and one graph.** `PackageDependencyResolver` runs the resolution engine and maps its
+diagnostics into failure classes and member paths; `ResolvedPackageGraph` is the one durable result. The
+edgeless graph source is deleted: once packages can declare dependencies, a host with no resolution
+authority does not compose rather than assuming an installation shape. Operator-disabled is a typed closed
+state entering resolution before any assembly is opened, and an undefined state value is refused rather than
+silently treated as another kind of unavailability. The candidate's null-versus-empty-origin tie becomes a
+stronger claim: a package that cannot say where it came from is refused outright, so the two spellings that
+let discovery order decide an operator-facing message are unrepresentable.
+
+**One shared contract authority, required.** `SharedContractStore` is registered in DI and takes the
+resolved graph as its plan; `NoSharedContracts`, `ISharedContractPlanSource` and the nullable contract-loader
+seam are gone. An installation that shares nothing has an empty admitted set, not an absent authority.
+Admission stages and metadata-validates in graph order, loads the accepted set into a provisional collectible
+context, and installs that context only on a completely successful load — because a load context's binding
+cache answers before any resolver runs, so an assembly left out of a dictionary is still there. A publisher
+that fails at the real load boundary takes its whole set with it, and every package that required it is
+refused over the **declared package edge**, whether or not its own metadata named the failed assemblies.
+
+**Global admission is not global visibility.** A package binds only to contracts published by itself or by a
+package in its exact transitive dependency closure. The rule is enforced twice: a contract whose metadata
+reaches outside its publisher's closure is refused before it loads, and each executable package receives a
+package-scoped resolver rather than the store, which refuses an out-of-closure request instead of falling
+through to a private copy or the default context. `PluginLoadContext` now refuses anything its four rules do
+not resolve, rather than handing it to the default context where Host already lives.
+
+**Video is a real package.** `Arronix.Format.Video` ships `plugin.json` declaring package id
+`arronix.format.video`, one shared contract assembly, no entry assembly and no capability. Movies publishes
+`Arronix.Media.Movies.dll` and requires the video package; neither Movies nor Television carries a private
+copy of it. Both shared contract assemblies declare a stable `AssemblyVersion` independent of package
+version, because a shared contract's binding identity must not change on every release.
+
+**Package lifetime is separate from executable lifetime.** A `PackageAdmissionLease` owns the exact package
+receipt and the contract-context hold and wraps an optional `PluginRuntimeLease`. A contract-only package is
+a first-class active package — rooted, diagnosable, dependency-bearing and withdrawable — with no load
+context, ledger or Host admission attempt invented for it. One Host-owned authorization admits every package
+including that one, and the transition to shutdown takes the same publication write lease, so a package
+cannot root itself after Stop has begun. A retained attempt occupies its identifier before a replacement
+executes a line. A clean stop is not reported until the contract context is released, and a failure anywhere
+in a package's release retains its identifier, receipt, edges and pins and yields `StopIncomplete`, including
+on repeated stops.
+
+**Containment is split by boundary.** Staging and loading a file has an enumerable failure surface, so that
+boundary uses a closed allowlist and anything unexpected stops admission. Running a package's own code, or a
+callback it registered, has none, so that boundary contains everything except conditions in which the process
+is unsound. Both inspect the whole exception chain, so a type initializer that ran out of memory is not
+absorbed as an ordinary refusal.
+
+Recorded as unresolved rather than decided: prerelease range semantics (`>=0.1 <0.2` admits
+`0.2.0-preview.1` by ordinary precedence, inherited from `VersionRange` and belonging there if it is wrong),
+side-by-side contract versions, signing and package integrity, reload involving shared contracts, and the
+browser half of one CLR identity, which G07 owns. Television declares its video dependency and its payload is
+proved free of private copies; its runtime proof is deferred to G13 rather than fabricated.
+
+Evidence, exact tests and residual risks: `docs/research/g04/integrated-package-runtime.md`.
+
 ## 2026-08-24 — Stage package payloads from the computed closure rather than from a build directory
 
 - Replaced the payload staging source. The Movies, Television and G02 fixture packages were staged by
