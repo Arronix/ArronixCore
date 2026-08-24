@@ -68,7 +68,20 @@ internal sealed class InstalledPackage
 
         foreach (var assembly in contractAssemblies ?? [])
         {
-            contracts.Add(PackageFileName.Required(assembly, nameof(contractAssemblies)));
+            var name = PackageFileName.Required(assembly, nameof(contractAssemblies));
+
+            // Sharing an assembly says its types are one identity everywhere. The entry assembly carries the
+            // module, the parser and the provider implementations, whose isolation, update and unload
+            // lifetime is exactly what a package boundary exists to keep separate.
+            if (EntryAssemblyFileName is { } entry
+                && string.Equals(name, entry, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"'{name}' is this package's entry assembly and cannot also be a shared contract assembly.",
+                    nameof(contractAssemblies));
+            }
+
+            contracts.Add(name);
         }
 
         var declared = new List<PackageRequirement>(requirements?.Count ?? 0);
