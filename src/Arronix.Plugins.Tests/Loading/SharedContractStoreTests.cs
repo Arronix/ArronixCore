@@ -234,6 +234,103 @@ internal sealed class SharedContractStoreTests
         scope.Resolve(new AssemblyName(SharedName) { Version = One }).Should().NotBeNull();
     }
 
+    /// <remarks>
+    /// The metadata half of the visibility rule. The runtime half is proved above; this one refuses the
+    /// package before it is loaded, so a contract cannot even be admitted against a closure the installation
+    /// did not grant it.
+    /// </remarks>
+    [Test]
+    public void AContractReferencingAnAdmittedContractOutsideItsOwnClosureIsRefusedBeforeLoading()
+    {
+        var publisher = Publisher("publisher", SharedName, One);
+
+        var sourcePath = Path.Combine(publisher.Folder, SharedName + ".dll");
+        var referenced = LoadIsolated(sourcePath).GetType(EmittedContract.ItemTypeName)!;
+
+        // A second publisher whose own contract binds to the first publisher's types, without declaring the
+        // dependency that would make them visible to it.
+        var stranger = Package("stranger", Path.Combine(_root, "stranger"), contracts: [OtherName + ".dll"]);
+        EmittedContract.Write(stranger.Folder, OtherName, One, reference: referenced);
+
+        var admission = Store().Admit(Graph(publisher, stranger));
+
+        using var assertions = new AssertionScope();
+
+        admission.Admitted.Should().ContainSingle().Which.Publisher.Should()
+            .Be(PluginId.FromString("publisher"));
+
+        admission.Refusals[PluginId.FromString("stranger")]
+            .Defects.Should().ContainSingle()
+            .Which.Should().Contain("outside package 'stranger's declared dependency closure");
+    }
+
+    /// <remarks>
+    /// A shared contract is not an executable facet. The positive control comes first, so the refusal cannot
+    /// pass because the detector never fired.
+    /// </remarks>
+    [Test]
+    public void AnAssemblyWithAManagedEntryPointIsRefusedAsASharedContract()
+    {
+        var folder = Path.Combine(_root, "publisher");
+        var executable = EmittedContract.WriteExecutable(folder, "Emitted.Executable.Contract", One);
+
+        StagedAssembly.TryStage(executable, out var staged, out _).Should().BeTrue();
+        staged!.HasEntryPoint.Should().BeTrue(
+            "the fixture really does declare an entry point, so the refusal below means something");
+
+        var refusal = RefusalOf(Package(
+            "publisher",
+            folder,
+            contracts: [Path.GetFileName(executable)]));
+
+        using var assertions = new AssertionScope();
+        refusal.Code.Should().Be(CoreErrorCode.PluginIsolationViolation);
+        refusal.Defects.Should().ContainSingle().Which.Should().Contain("managed entry point");
+    }
+
+    /// <remarks>
+    /// Admission cannot be made atomic by withholding entries from a dictionary: a load context keeps its own
+    /// binding cache, and that cache answers before any resolver runs. So the transaction is the context, and
+    /// a publisher whose second contract fails at the real load boundary leaves neither of its contracts
+    /// behind — including the sibling that had already loaded, which is precisely the poisoning this exists
+    /// to prevent.
+    /// </remarks>
+    [Test]
+    public void APublisherWhoseSecondContractCannotLoadLeavesNeitherBindingBehind()
+    {
+        var publisher = Package(
+            "publisher",
+            Path.Combine(_root, "publisher"),
+            contracts: [SharedName + ".dll", OtherName + ".dll"]);
+
+        EmittedContract.Write(publisher.Folder, SharedName, One);
+        EmittedContract.WriteUnloadable(publisher.Folder, OtherName, One);
+
+        var unrelated = Publisher("unrelated", "Emitted.Unrelated.Contract", One);
+
+        var store = Store();
+        var admission = store.Admit(Graph(publisher, unrelated));
+
+        using var assertions = new AssertionScope();
+
+        admission.Refusals.Keys.Should().Equal(PluginId.FromString("publisher"));
+        admission.Admitted.Select(contract => contract.Identity.Name).Should().BeEquivalentTo(
+            ["Emitted.Unrelated.Contract"],
+            "a genuinely independent publisher is preserved");
+
+        store.Admitted.Should().NotContain(contract => contract.Identity.Name == SharedName);
+
+        // The surviving context is a different object, so the withdrawn sibling is not answering its own
+        // name from a binding cache no map of ours governs.
+        var scope = store.OpenScope(unrelated);
+        scope.Resolve(new AssemblyName(SharedName) { Version = One }).Should().BeNull();
+
+        // The control: the first contract really was loadable, so the withdrawal was the transaction's doing.
+        var alone = Package("publisher", publisher.Folder, contracts: [SharedName + ".dll"]);
+        Store().Admit(Graph(alone)).Admitted.Select(contract => contract.Identity.Name)
+            .Should().BeEquivalentTo([SharedName]);
+    }
+
     [Test]
     public void ResolvingAnAdmittedContractUnderAnotherIdentityThrowsRatherThanBinding()
     {

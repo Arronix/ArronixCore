@@ -1,3 +1,4 @@
+using FluentAssertions.Execution;
 using System.Reflection;
 using System.Runtime.Loader;
 using Arronix.Abstractions.Health;
@@ -28,6 +29,55 @@ public sealed class PluginLoadContextTests
             typeof(PluginLoadContextTests).Assembly.Location,
             nativeLibraryResolver: null,
             PackageContractScope.Empty(Plugin));
+
+    /// <summary>
+    /// Exact shared-framework names are matched exactly, and lookalikes are not.
+    /// </summary>
+    /// <remarks>
+    /// <c>Microsoft.CSharp</c> and <c>Microsoft.VisualBasic</c> are whole assembly names rather than
+    /// prefixes. Matching them as prefixes would hand <c>Microsoft.CSharpEvil</c> to the default context on
+    /// the strength of its first fourteen characters, which is the whole of the isolation this rule exists
+    /// to keep.
+    /// </remarks>
+    /// <param name="name">The assembly name.</param>
+    /// <param name="shared">Whether it belongs to the shared framework.</param>
+    [TestCase("Microsoft.CSharp", true)]
+    [TestCase("Microsoft.VisualBasic", true)]
+    [TestCase("System.Text.Json", true)]
+    [TestCase("Microsoft.Win32.Registry", true)]
+    [TestCase("Microsoft.CSharpEvil", false)]
+    [TestCase("Microsoft.VisualBasicHijack", false)]
+    [TestCase("Systematic.Deception", false)]
+    public void SharedFrameworkClassificationDistinguishesExactNamesFromPrefixes(string name, bool shared)
+        => PluginLoadContext.IsSharedFramework(name).Should().Be(shared);
+
+    /// <summary>
+    /// The host contract assembly is classified the way the runtime binds simple names.
+    /// </summary>
+    /// <param name="name">The assembly name.</param>
+    /// <param name="host">Whether it is the host contract assembly.</param>
+    [TestCase("Arronix.Abstractions", true)]
+    [TestCase("arronix.abstractions", true)]
+    [TestCase("ARRONIX.ABSTRACTIONS", true)]
+    [TestCase("Arronix.AbstractionsEvil", false)]
+    public void TheHostContractAssemblyIsRecognizedCaseInsensitively(string name, bool host)
+        => PluginLoadContext.IsHostContract(name).Should().Be(host);
+
+    /// <summary>
+    /// The blocked list cannot be edited by a caller that reaches for it.
+    /// </summary>
+    [Test]
+    public void TheBlockedPrefixListCannotBeEditedByACaller()
+    {
+        var prefixes = PluginLoadContext.BlockedAssemblyPrefixes;
+
+        using var assertions = new AssertionScope();
+        prefixes.Should().NotBeEmpty();
+        ((object)prefixes).Should().NotBeAssignableTo<string[]>(
+            "an exported array is an exported mutable deny list");
+        PluginLoadContext.IsBlocked("arronix.host.runtime").Should().BeTrue(
+            "the runtime binds simple names case-insensitively, so the deny list must too");
+    }
 
     [TestCase("Arronix.Common")]
     [TestCase("Arronix.Plugins")]

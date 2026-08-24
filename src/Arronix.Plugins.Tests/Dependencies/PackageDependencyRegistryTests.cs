@@ -238,6 +238,49 @@ public sealed class PackageDependencyRegistryTests
         _registry.RootedPackages.Should().Equal(PluginId.FromString("core"), PluginId.FromString("app"));
     }
 
+    /// <remarks>
+    /// The edges a receipt publishes are the dependant's own liability, so a caller that could cast the
+    /// published collection back to the array behind it could give a package edges it never declared.
+    /// </remarks>
+    [Test]
+    public void APublishedReceiptsEdgesCannotBeCastBackAndEdited()
+    {
+        var core = Publish(Receipt("core"));
+        var app = Receipt("app", Edge("app", core));
+
+        using var assertions = new AssertionScope();
+        ((object)app.Edges).Should().NotBeAssignableTo<PackageDependencyEdge[]>();
+
+        var edit = () => ((IList<PackageDependencyEdge>)app.Edges).Clear();
+        edit.Should().Throw<NotSupportedException>();
+    }
+
+    /// <remarks>
+    /// The edges must be a one-for-one, ordered binding of the package's own declared requirements. A
+    /// receipt built from a structurally equal requirement would describe a dependency this package did not
+    /// declare.
+    /// </remarks>
+    [Test]
+    public void AReceiptCarriesExactlyTheEdgesItsDeclarationStates()
+    {
+        var core = Publish(Receipt("core"));
+        var package = new InstalledPackage(
+            PluginId.FromString("app"),
+            SemanticVersion.Parse("1.0.0"),
+            "/extensions/app/plugin.json",
+            "/extensions/app",
+            requirements: [new PackageRequirement(core.Id, Any)]);
+
+        var missing = () => new PackageAdmissionReceipt(package, []);
+        var cloned = () => new PackageAdmissionReceipt(
+            package,
+            [new PackageDependencyEdge(package.Id, new PackageRequirement(core.Id, Any), core)]);
+
+        using var assertions = new AssertionScope();
+        missing.Should().Throw<ArgumentException>().WithMessage("*exactly the edges*");
+        cloned.Should().Throw<ArgumentException>().WithMessage("*at that position*");
+    }
+
     /// <summary>Opens the package-level lease that owns a receipt and its contract hold.</summary>
     private PackageAdmissionLease Lease(PackageAdmissionReceipt receipt)
     {

@@ -1,6 +1,8 @@
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 
 namespace Arronix.Plugins.Tests.Support;
@@ -78,6 +80,56 @@ internal static class EmittedContract
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, assemblyName + ".dll");
         builder.Save(path);
+        return path;
+    }
+
+    /// <summary>Writes an assembly that declares a managed entry point.</summary>
+    /// <param name="folder">Where to write it.</param>
+    /// <param name="assemblyName">The assembly name, which is also its file name.</param>
+    /// <param name="version">The assembly version.</param>
+    /// <returns>The full path of the written assembly.</returns>
+    /// <remarks>
+    /// Emitted rather than borrowed from the build output, because every assembly this repository produces
+    /// is named under a prefix the loader blocks outright — so borrowing one would prove the deny list
+    /// fires, not that an entry point is refused.
+    /// </remarks>
+    public static string WriteExecutable(string folder, string assemblyName, Version version)
+    {
+        var builder = new PersistedAssemblyBuilder(
+            new AssemblyName(assemblyName) { Version = version },
+            typeof(object).Assembly);
+        var module = builder.DefineDynamicModule(assemblyName);
+
+        var type = module.DefineType(
+            ItemTypeName,
+            TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed,
+            typeof(object));
+
+        var main = type.DefineMethod(
+            "Main",
+            MethodAttributes.Public | MethodAttributes.Static,
+            typeof(void),
+            Type.EmptyTypes);
+        main.GetILGenerator().Emit(OpCodes.Ret);
+        type.CreateType();
+
+        var metadata = builder.GenerateMetadata(out var il, out _);
+
+        var pe = new ManagedPEBuilder(
+            new PEHeaderBuilder(imageCharacteristics: Characteristics.ExecutableImage | Characteristics.Dll),
+            new MetadataRootBuilder(metadata),
+            il,
+            entryPoint: MetadataTokens.MethodDefinitionHandle(main.MetadataToken & 0x00FFFFFF),
+            flags: CorFlags.ILOnly);
+
+        var image = new BlobBuilder();
+        pe.Serialize(image);
+
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, assemblyName + ".dll");
+        using var file = new FileStream(path, FileMode.Create, FileAccess.Write);
+        image.WriteContentTo(file);
+
         return path;
     }
 
