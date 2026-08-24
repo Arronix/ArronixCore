@@ -204,16 +204,16 @@ public sealed class ArronixApiClient
             cancellationToken);
     }
 
-    /// <summary>Reads the providers that can be configured.</summary>
+    /// <summary>Reads the providers that can be configured, each with its qualified identifier.</summary>
     /// <param name="family">The family to narrow to.</param>
     /// <param name="kind">The media kind to narrow to.</param>
     /// <param name="cancellationToken">Abandons the request.</param>
     /// <returns>The providers.</returns>
-    public Task<IReadOnlyList<ProviderDescriptor>> GetProvidersAsync(
+    public Task<IReadOnlyList<ProviderCatalogEntry>> GetProvidersAsync(
         ProviderFamily? family = null,
         MediaKindId? kind = null,
         CancellationToken cancellationToken = default)
-        => GetListAsync<ProviderDescriptor>(
+        => GetListAsync<ProviderCatalogEntry>(
             ApiPaths.Providers(
                 family?.ToString(),
                 kind?.Value),

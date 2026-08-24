@@ -191,6 +191,45 @@ internal sealed partial class EmptyFormatWorks() : MediaType<Work, WorkTarget, W
 {
 }
 
+/// <summary>
+/// A second, otherwise valid media kind closed over the same item type as <see cref="Works"/>.
+/// </summary>
+/// <remarks>
+/// It exists to be refused. An item type is how the platform finds a kind — a paired cataloger resolves to
+/// one that way, and so does identifier recognition — so two kinds owning one type is an ambiguity, and a
+/// fixture that can produce it is what proves the refusal is real rather than assumed.
+/// </remarks>
+internal sealed partial class RivalWorks() : MediaType<Work, WorkTarget, WorkRelease, WorkParser>(
+    Id,
+    "Rival work",
+    "Rival works",
+    formats: [new FormatUse<WorkRepresentation>(WorkFormat.Definition)],
+    availability: new OrderedSelectionDefinition<Work, WorkStage>(
+        work => work.Stage,
+        "Minimum availability",
+        WorkStage.Published))
+{
+    internal static MediaKindId Id { get; } = MediaKindId.FromString("rival-works");
+
+    public override IReadOnlyList<SearchDefinition> Searches { get; } =
+    [
+        new("work", "Work", [SearchTerm.WorkTitle], [SearchTerm.FreeText])
+    ];
+
+    // The smallest declarations the shape gate demands, so this kind is refused for owning another kind's
+    // item type rather than for being incomplete.
+    public override MatchingDefinition<Work> Matching { get; } = new()
+    {
+        Layers = [new("own-title", work => new[] { work.Title })],
+        Ambiguity = AmbiguityPolicy.Reject
+    };
+
+    public override QueryDefinition<Work> Querying { get; } = new()
+    {
+        Tiers = [new("sweep", "work") { Origins = [SearchOrigin.Rss], HasNoTerms = true }]
+    };
+}
+
 internal sealed partial class Works() : MediaType<Work, WorkTarget, WorkRelease, WorkParser>(
     Id,
     "Work",

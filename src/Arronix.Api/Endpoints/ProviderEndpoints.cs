@@ -50,7 +50,9 @@ internal static class ProviderEndpoints
 
         providers.MapGet("/", ListProviders)
             .WithName("ListProviders")
-            .WithSummary("Lists every provider a loaded extension registered, with its settings declaration.");
+            .WithSummary(
+                "Lists every provider a loaded extension registered, with its qualified identifier, family "
+                + "and settings declaration.");
 
         providers.MapGet("/definitions", ListDefinitions)
             .WithName("ListProviderDefinitions")
@@ -83,7 +85,7 @@ internal static class ProviderEndpoints
         return group;
     }
 
-    private static Results<Ok<IReadOnlyList<ProviderDescriptor>>, ProblemHttpResult> ListProviders(
+    private static Results<Ok<IReadOnlyList<ProviderCatalogEntry>>, ProblemHttpResult> ListProviders(
         string? family,
         string? kind,
         ProviderRegistry providers,
@@ -104,7 +106,7 @@ internal static class ProviderEndpoints
                     $"'{family}' is not one of {string.Join(", ", Enum.GetNames<ProviderFamily>())}.");
             }
 
-            registered = registered.Where(provider => provider.Descriptor.Family == parsed);
+            registered = registered.Where(provider => provider.Family == parsed);
         }
 
         if (!string.IsNullOrWhiteSpace(kind))
@@ -120,8 +122,11 @@ internal static class ProviderEndpoints
             registered = registered.Where(provider => provider.Id.Plugin == media.Plugin);
         }
 
-        IReadOnlyList<ProviderDescriptor> descriptors = [.. registered.Select(static provider => provider.Descriptor)];
-        return TypedResults.Ok(descriptors);
+        // The qualified identifier and the family are host-owned facts, so they are served with the
+        // declaration. A consumer that had only the declaration could not name the provider a configuration
+        // must point at, and reconstructing the qualified form from a local name is a guess.
+        IReadOnlyList<ProviderCatalogEntry> entries = [.. registered.Select(static provider => provider.Catalog)];
+        return TypedResults.Ok(entries);
     }
 
     private static Ok<IReadOnlyList<ProviderDefinition>> ListDefinitions(ProviderDefinitionStore store)

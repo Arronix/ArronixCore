@@ -49,10 +49,6 @@ internal sealed class FakeHealthContributor : IHealthContributor
 
 internal sealed class FakeIndexer : IIndexer
 {
-    public ProviderId Id { get; set; }
-
-    public ProviderFamily Family => ProviderFamily.Indexer;
-
     public Task<ValidationOutcome> TestAsync(
         ProviderInvocation invocation,
         CancellationToken cancellationToken = default)
@@ -103,10 +99,6 @@ internal sealed class FakeCatalogItem : IMediaItem
 
 internal sealed class FakeCataloger : ICataloger<FakeCatalogItem>
 {
-    public ProviderId Id { get; set; }
-
-    public ProviderFamily Family => ProviderFamily.Cataloger;
-
     public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
 
     public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
@@ -141,6 +133,28 @@ internal sealed class FakeCataloger : ICataloger<FakeCatalogItem>
         => throw new NotSupportedException();
 }
 
+/// <summary>A curated list over the same item type, so both families can be registered from one fixture.</summary>
+internal sealed class FakeCurator : ICurator<FakeCatalogItem>
+{
+    public TimeSpan MinimumRefreshInterval => TimeSpan.FromHours(1);
+
+    public Task<ValidationOutcome> TestAsync(
+        ProviderInvocation invocation,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<IReadOnlyList<FacetValue>> GetOptionsAsync(
+        ProviderInvocation invocation,
+        string optionSourceId,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+
+    public Task<CuratedListFetch<FakeCatalogItem>> FetchAsync(
+        ProviderInvocation invocation,
+        CancellationToken cancellationToken = default)
+        => throw new NotSupportedException();
+}
+
 /// <summary>
 /// Builds the provider declarations the registry records.
 /// </summary>
@@ -149,7 +163,6 @@ internal static class Declarations
     public static ProviderDescriptor Indexer(string localId) => new()
     {
         LocalId = localId,
-        Family = ProviderFamily.Indexer,
         Name = localId,
         Settings = []
     };
@@ -157,11 +170,9 @@ internal static class Declarations
     public static ProviderDescriptor Cataloger(string localId) => new()
     {
         LocalId = localId,
-        Family = ProviderFamily.Cataloger,
         Name = localId,
         Settings = []
     };
-
 }
 
 /// <summary>

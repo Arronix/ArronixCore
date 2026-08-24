@@ -28,23 +28,11 @@ public sealed class BooksIndexer : IIndexer
     /// <summary>The search profile identifier covering spoken copies.</summary>
     public const string SpokenProfileId = "spoken";
 
-    private readonly ProviderId _id;
-
     /// <summary>
     /// Initializes the provider.
     /// </summary>
     /// <param name="context">The capability-scoped plugin context supplied by DI.</param>
-    public BooksIndexer(IPluginContext context)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        _id = ProviderId.Create(context.PluginId, LocalId);
-    }
-
-    /// <inheritdoc />
-    public ProviderId Id => _id;
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Indexer;
+    public BooksIndexer(IPluginContext context) => ArgumentNullException.ThrowIfNull(context);
 
     /// <summary>Gets the settings this provider declares.</summary>
     public static IReadOnlyList<SettingsField> SettingsSchema { get; } =
@@ -83,7 +71,6 @@ public sealed class BooksIndexer : IIndexer
     public static ProviderDescriptor Describe() => new()
     {
         LocalId = LocalId,
-        Family = ProviderFamily.Indexer,
         Name = "Book index",
         Description = "The seeded release index this reference extension ships with.",
         Settings = SettingsSchema,
@@ -230,7 +217,7 @@ public sealed class BooksIndexer : IIndexer
                         string.Create(
                             CultureInfo.InvariantCulture,
                             $"https://localhost/releases/{manifestation.Id}.torrent")),
-                    _id.ToString(),
+                    invocation.Definition.Provider.ToString(),
                     BooksShape.Kind,
                     size,
                     new DateTime(manifestation.ReleaseDate.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc),

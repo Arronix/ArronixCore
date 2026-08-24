@@ -19,6 +19,10 @@ namespace Arronix.Architecture.Tests.MovieCatalogerFixture;
 /// referenced, and none is needed - which is the property the package split exists to create.
 /// </para>
 /// <para>
+/// Nothing here names an identifier or a family either. Both are the host's to mint, so a provider that
+/// restated them could disagree with the installation and nothing would notice.
+/// </para>
+/// <para>
 /// The transport is deliberately absent. This fixture proves what a provider must be able to compile
 /// against; a real vendor cataloger with an HTTP boundary is G05's work, and calling this one provider
 /// coverage would be a category error.
@@ -26,14 +30,6 @@ namespace Arronix.Architecture.Tests.MovieCatalogerFixture;
 /// </remarks>
 public sealed class IndependentMovieCataloger : ICataloger<Movie>
 {
-    private static readonly PluginId Package = PluginId.FromString("fixture.movies.provider");
-
-    /// <inheritdoc />
-    public ProviderId Id { get; } = ProviderId.Create(Package, "independent");
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Cataloger;
-
     /// <inheritdoc />
     public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
 
@@ -130,14 +126,6 @@ public sealed class IndependentMovieCataloger : ICataloger<Movie>
 /// <summary>A curated movie list, paired to the same item type by the same single generic argument.</summary>
 public sealed class IndependentMovieCurator : ICurator<Movie>
 {
-    private static readonly PluginId Package = PluginId.FromString("fixture.movies.provider");
-
-    /// <inheritdoc />
-    public ProviderId Id { get; } = ProviderId.Create(Package, "independent-list");
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Curator;
-
     /// <inheritdoc />
     public TimeSpan MinimumRefreshInterval => TimeSpan.FromHours(6);
 
@@ -168,15 +156,11 @@ public sealed class IndependentMovieCurator : ICurator<Movie>
 /// The provider package's entry module.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The package requires the movies package by identifier and never references its executable assembly, so
-/// the <c>Movie</c> these generics close over is the one the installation admitted rather than a copy
-/// shipped here.
-/// </para>
-/// <para>
-/// The registration still repeats the item type that <c>ICataloger&lt;Movie&gt;</c> already closes. Removing
-/// that repetition is G04's work on provider pairing; this gate proves the identity, not the ergonomics.
-/// </para>
+/// One closed registration each, naming neither <c>Movie</c> nor the family: the item type comes from the
+/// contract each implementation closed, and the family is the registration that was called. The package
+/// requires the movies package by identifier and never references its executable assembly, so the
+/// <c>Movie</c> those contracts close over is the one the installation admitted rather than a copy shipped
+/// here.
 /// </remarks>
 public sealed class IndependentMovieProviderModule : IPluginModule
 {
@@ -195,17 +179,15 @@ public sealed class IndependentMovieProviderModule : IPluginModule
         ArgumentNullException.ThrowIfNull(context);
 
         context.Registry
-            .AddCataloger<Movie, IndependentMovieCataloger>(new ProviderDescriptor
+            .AddCataloger<IndependentMovieCataloger>(new ProviderDescriptor
             {
                 LocalId = "independent",
-                Family = ProviderFamily.Cataloger,
                 Name = "Independent movie cataloger",
                 Settings = [],
             })
-            .AddCurator<Movie, IndependentMovieCurator>(new ProviderDescriptor
+            .AddCurator<IndependentMovieCurator>(new ProviderDescriptor
             {
                 LocalId = "independent-curator",
-                Family = ProviderFamily.Curator,
                 Name = "Independent movie curator",
                 Settings = [],
             });

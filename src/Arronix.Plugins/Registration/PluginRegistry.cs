@@ -202,16 +202,14 @@ public sealed class PluginRegistry : IPluginRegistry
         => AdmitProvider(ProviderTypeRegistration.For<INotifier, TNotifier>(descriptor, ProviderFamily.Notifier), Capability.Notification);
 
     /// <inheritdoc />
-    public IPluginRegistry AddCataloger<TItem, TCataloger>(ProviderDescriptor descriptor)
-        where TItem : class, IMediaItem
-        where TCataloger : class, ICataloger<TItem>
-        => AdmitProvider(ProviderTypeRegistration.ForCataloger<TItem, TCataloger>(descriptor), Capability.Metadata);
+    public IPluginRegistry AddCataloger<TCataloger>(ProviderDescriptor descriptor)
+        where TCataloger : class, IClosedCataloger
+        => AdmitProvider(ProviderTypeRegistration.ForCataloger<TCataloger>(descriptor), Capability.Metadata);
 
     /// <inheritdoc />
-    public IPluginRegistry AddCurator<TItem, TCurator>(ProviderDescriptor descriptor)
-        where TItem : class, IMediaItem
-        where TCurator : class, ICurator<TItem>
-        => AdmitProvider(ProviderTypeRegistration.ForCurator<TItem, TCurator>(descriptor), Capability.Curation);
+    public IPluginRegistry AddCurator<TCurator>(ProviderDescriptor descriptor)
+        where TCurator : class, IClosedCurator
+        => AdmitProvider(ProviderTypeRegistration.ForCurator<TCurator>(descriptor), Capability.Curation);
 
     /// <inheritdoc />
     public IPluginRegistry AddScheduledJob(IScheduledJob job, string schedule)

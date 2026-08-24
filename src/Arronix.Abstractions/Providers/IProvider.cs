@@ -6,23 +6,21 @@ namespace Arronix.Abstractions.Providers;
 /// What every provider can do, whatever family it belongs to.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Two members, both of which every surveyed provider family already implements in some form: prove the
 /// configuration works, and supply values that can only be known by asking the service. The second
 /// generalizes the ad-hoc "fetch the list of categories" request each surveyed application invented
 /// separately for a different family.
+/// </para>
+/// <para>
+/// A provider states neither its identifier nor its family. Identity is minted by the host from the
+/// contributing extension and the local name the declaration chose, and family is fixed by the registration
+/// the implementation is admitted through. A provider that needs its own qualified identifier during a call
+/// reads <see cref="ProviderDefinition.Provider"/> from the invocation, which is that one authority.
+/// </para>
 /// </remarks>
 public interface IProvider
 {
-    /// <summary>
-    /// Gets the provider's identifier, assigned by the registry.
-    /// </summary>
-    ProviderId Id { get; }
-
-    /// <summary>
-    /// Gets the kind of external service this provider integrates with.
-    /// </summary>
-    ProviderFamily Family { get; }
-
     /// <summary>
     /// Proves that a definition can reach and authenticate against the service.
     /// </summary>

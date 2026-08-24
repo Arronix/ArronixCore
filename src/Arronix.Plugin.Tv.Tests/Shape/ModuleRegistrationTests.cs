@@ -344,19 +344,17 @@ public sealed class ModuleRegistrationTests
             return this;
         }
 
-        public IPluginRegistry AddCataloger<TItem, TCataloger>(ProviderDescriptor descriptor)
-            where TItem : class, IMediaItem
-            where TCataloger : class, ICataloger<TItem>
+        public IPluginRegistry AddCataloger<TCataloger>(ProviderDescriptor descriptor)
+            where TCataloger : class, IClosedCataloger
         {
-            Providers.Add(ProviderTypeRegistration.ForCataloger<TItem, TCataloger>(descriptor));
+            Providers.Add(ProviderTypeRegistration.ForCataloger<TCataloger>(descriptor));
             return this;
         }
 
-        public IPluginRegistry AddCurator<TItem, TCurator>(ProviderDescriptor descriptor)
-            where TItem : class, IMediaItem
-            where TCurator : class, ICurator<TItem>
+        public IPluginRegistry AddCurator<TCurator>(ProviderDescriptor descriptor)
+            where TCurator : class, IClosedCurator
         {
-            Providers.Add(ProviderTypeRegistration.ForCurator<TItem, TCurator>(descriptor));
+            Providers.Add(ProviderTypeRegistration.ForCurator<TCurator>(descriptor));
             return this;
         }
 

@@ -6,10 +6,11 @@ This records what the repository now does, the exact tests that hold it, and wha
 record of a change, not a proposal: every rule below is asserted by a named fixture.
 
 The branch names say G04; the gate this closes is **G03** — package dependency and version rules with one
-exact CLR type identity. The separate G04 gate (typed provider pairing, materialization, registration
-ergonomics) is not started and nothing here claims it. In particular the fixture provider still writes
-`AddCataloger<Movie, IndependentMovieCataloger>`, repeating an item relationship `ICataloger<Movie>` already
-closes; removing that repetition is G04's work.
+exact CLR type identity. Nothing here claims the separate G04 gate. G04's pairing half has since been
+integrated onto this work from `claude/g04-provider-pairing` — the fixture provider now writes
+`AddCataloger<IndependentMovieCataloger>` and states its item relationship only in `ICataloger<Movie>` — and
+is described in `docs/research/g04/provider-pairing-contract.md`. That gate remains open on durable identity
+and catalog materialization.
 
 ## Candidate branches consumed
 

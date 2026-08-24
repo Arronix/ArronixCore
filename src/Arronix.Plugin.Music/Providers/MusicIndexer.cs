@@ -37,23 +37,11 @@ public sealed class MusicIndexer : IIndexer
     /// <summary>The search profile identifier covering searches across a performer's output.</summary>
     public const string CatalogProfileId = "catalog";
 
-    private readonly ProviderId _id;
-
     /// <summary>
     /// Initializes the provider.
     /// </summary>
     /// <param name="context">The capability-scoped plugin context supplied by DI.</param>
-    public MusicIndexer(IPluginContext context)
-    {
-        ArgumentNullException.ThrowIfNull(context);
-        _id = ProviderId.Create(context.PluginId, LocalId);
-    }
-
-    /// <inheritdoc />
-    public ProviderId Id => _id;
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Indexer;
+    public MusicIndexer(IPluginContext context) => ArgumentNullException.ThrowIfNull(context);
 
     /// <summary>Gets the settings this provider declares.</summary>
     public static IReadOnlyList<SettingsField> SettingsSchema { get; } =
@@ -105,7 +93,6 @@ public sealed class MusicIndexer : IIndexer
     public static ProviderDescriptor Describe() => new()
     {
         LocalId = LocalId,
-        Family = ProviderFamily.Indexer,
         Name = "Music index",
         Description = "The seeded release index this reference extension ships with.",
         Settings = SettingsSchema,
@@ -237,7 +224,7 @@ public sealed class MusicIndexer : IIndexer
                         string.Create(
                             CultureInfo.InvariantCulture,
                             $"https://localhost/releases/{pressing.Id}.torrent")),
-                    _id.ToString(),
+                    invocation.Definition.Provider.ToString(),
                     MusicShape.Kind,
                     recordings * 35L * 1024 * 1024,
                     new DateTime(pressing.ReleaseDate.Year, 1, 1, 0, 0, 0, DateTimeKind.Utc),

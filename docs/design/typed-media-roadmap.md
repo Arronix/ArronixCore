@@ -340,6 +340,12 @@ Resolve and implement:
 - admission against the exact active media type, while retaining the non-generic cataloger floor only for
   genuinely kind-blind external-identifier recognition.
 
+Landed so far: the pairing half. A provider names its item type once, in the contract it closes; family,
+item type and identity each have one authority; and admission refuses an incoherent or unpairable provider
+contract before any implementation in the package is constructed. The gate stays open on durable identity
+and catalog materialization, whose alternatives are recorded unchosen in
+`docs/research/g04/media-item-identity-decision.md`.
+
 Exit gate:
 
 - a cataloger or curator author names `Movie` once;

@@ -1235,11 +1235,12 @@ public sealed class PluginLoader
 
         var seen = new HashSet<(ProviderFamily Family, string LocalId)>();
 
-        foreach (var descriptor in DescribedProviders(ledger))
+        foreach (var registration in ledger.Registered<ProviderTypeRegistration>())
         {
-            if (!seen.Add((descriptor.Family, descriptor.LocalId)))
+            if (!seen.Add((registration.Family, registration.Descriptor.LocalId)))
             {
-                found.Add($"More than one {descriptor.Family} is registered as '{descriptor.LocalId}'.");
+                found.Add(
+                    $"More than one {registration.Family} is registered as '{registration.Descriptor.LocalId}'.");
             }
         }
 
@@ -1276,14 +1277,6 @@ public sealed class PluginLoader
 
         defects = [];
         return true;
-    }
-
-    private static IEnumerable<ProviderDescriptor> DescribedProviders(PluginRegistrationLedger ledger)
-    {
-        foreach (var registration in ledger.Registered<ProviderTypeRegistration>())
-        {
-            yield return registration.Descriptor;
-        }
     }
 
     /// <summary>Records one already-built result exactly once.</summary>

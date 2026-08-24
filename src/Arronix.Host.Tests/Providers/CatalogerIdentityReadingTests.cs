@@ -63,17 +63,12 @@ internal sealed class CatalogerIdentityReadingTests
     private static ProviderDescriptor Descriptor(string localId) => new()
     {
         LocalId = localId,
-        Family = ProviderFamily.Cataloger,
         Name = localId,
         Settings = []
     };
 
     private sealed class ReadingCataloger(params ExternalIdReading[] readings) : ICataloger<Work>
     {
-        public ProviderId Id => ProviderId.Create(PluginId.FromString("example.catalog"), "catalog");
-
-        public ProviderFamily Family => ProviderFamily.Cataloger;
-
         public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
 
         public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => readings;

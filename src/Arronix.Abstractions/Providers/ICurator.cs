@@ -3,8 +3,10 @@ using Arronix.Abstractions.Media;
 namespace Arronix.Abstractions.Providers;
 
 /// <summary>An external list that proposes items in the media type's own shape.</summary>
-/// <typeparam name="TItem">The media-owned item type.</typeparam>
-public interface ICurator<TItem> : IProvider
+/// <typeparam name="TItem">
+/// The media-owned item type, named once here and read back from this contract by registration.
+/// </typeparam>
+public interface ICurator<TItem> : IProvider, IClosedCurator
     where TItem : class, IMediaItem
 {
     TimeSpan MinimumRefreshInterval { get; }

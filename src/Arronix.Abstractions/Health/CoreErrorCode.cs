@@ -63,6 +63,21 @@ public enum CoreErrorCode
     /// </summary>
     PluginDependencyUnavailable = 2013,
 
+    /// <summary>
+    /// A cataloger or curator closed its contract over a media item type no active media kind supplies.
+    /// Distinct from a dependency failure: the required package may be installed and active and still not
+    /// declare a kind over that exact type.
+    /// </summary>
+    PluginMediaPairingUnsatisfied = 2014,
+
+    /// <summary>
+    /// A provider registration is structurally incoherent: its family, its recorded closed contract, its
+    /// recorded item type and the interfaces its implementation actually implements do not describe one
+    /// relationship. Distinct from a contract version or assembly identity mismatch, which is
+    /// <see cref="PluginContractMismatch"/>.
+    /// </summary>
+    PluginProviderContractInvalid = 2015,
+
     /// <summary>Media kind not found.</summary>
     MediaKindNotFound = 3000,
 
@@ -71,6 +86,13 @@ public enum CoreErrorCode
 
     /// <summary>Two plugins claim the same media kind.</summary>
     MediaKindConflict = 3002,
+
+    /// <summary>
+    /// Two admitted media kinds are closed over the same item type. Paired providers, external-identifier
+    /// recognition and every other item-type lookup resolve a kind from that type, so two owners of one
+    /// type make those answers depend on iteration order rather than on the installation.
+    /// </summary>
+    MediaItemTypeConflict = 3003,
 
     /// <summary>Parsing failed.</summary>
     ParsingFailed = 4000,

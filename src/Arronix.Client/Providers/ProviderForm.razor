@@ -12,12 +12,12 @@
 
 <form class="provider-form" @onsubmit="SaveAsync" @onsubmit:preventDefault="true">
     <header class="provider-form-head">
-        <h2>@Descriptor.Name</h2>
-        @if (!string.IsNullOrWhiteSpace(Descriptor.Description))
+        <h2>@Entry.Descriptor.Name</h2>
+        @if (!string.IsNullOrWhiteSpace(Entry.Descriptor.Description))
         {
-            <p class="provider-form-detail">@Descriptor.Description</p>
+            <p class="provider-form-detail">@Entry.Descriptor.Description</p>
         }
-        @if (Descriptor.InfoLink is { } info)
+        @if (Entry.Descriptor.InfoLink is { } info)
         {
             <a href="@info" target="_blank" rel="noopener noreferrer">About this provider</a>
         }
@@ -108,15 +108,10 @@
     private ValidationOutcome? _validation;
     private int? _boundTo;
 
-    /// <summary>Gets or sets what the provider declared about itself.</summary>
+    /// <summary>Gets or sets the provider being configured: its identity, family and declaration.</summary>
     [Parameter]
     [EditorRequired]
-    public required ProviderDescriptor Descriptor { get; set; }
-
-    /// <summary>Gets or sets the provider's qualified identifier.</summary>
-    [Parameter]
-    [EditorRequired]
-    public required ProviderId Provider { get; set; }
+    public required ProviderCatalogEntry Entry { get; set; }
 
     /// <summary>Gets or sets the configuration being edited, or <see langword="null"/> for a new one.</summary>
     [Parameter]
@@ -133,9 +128,9 @@
     private int? ExistingId => Definition is { Id: > 0 } definition ? definition.Id : null;
 
     private IReadOnlyList<SettingsField> AdvancedFields
-        => Descriptor.Settings.Where(setting => setting.Advanced).ToList();
+        => Entry.Descriptor.Settings.Where(setting => setting.Advanced).ToList();
 
-    private IEnumerable<IGrouping<string, SettingsField>> Sections => Descriptor.Settings
+    private IEnumerable<IGrouping<string, SettingsField>> Sections => Entry.Descriptor.Settings
         .Where(setting => !setting.Advanced)
         .GroupBy(setting => setting.Section ?? string.Empty, StringComparer.Ordinal);
 
@@ -149,7 +144,7 @@
         _boundTo = Definition?.Id ?? 0;
         _settings.Clear();
 
-        foreach (var field in Descriptor.Settings)
+        foreach (var field in Entry.Descriptor.Settings)
         {
             _settings[field.FieldId] = field.DefaultValue ?? string.Empty;
         }
@@ -166,7 +161,7 @@
         }
         else
         {
-            _name = Descriptor.Name;
+            _name = Entry.Descriptor.Name;
             _enabled = true;
         }
     }
@@ -185,8 +180,8 @@
     private ProviderDefinition Build() => new()
     {
         Id = Definition?.Id ?? 0,
-        Provider = Provider,
-        Family = Descriptor.Family,
+        Provider = Entry.Provider,
+        Family = Entry.Family,
         Name = _name,
         Enabled = _enabled,
         Settings = new Dictionary<string, string>(_settings, StringComparer.Ordinal),

@@ -27,10 +27,12 @@ public interface ICataloger : IProvider
 /// <typeparam name="TItem">The media-owned item type.</typeparam>
 /// <remarks>
 /// The generic is the boundary: a movie cataloger returns <c>Movie</c>, a television cataloger returns its
-/// series aggregate, and neither can substitute a field dictionary. Registration pairs this contract to
-/// the media kind whose typed definition declares the same item type.
+/// series aggregate, and neither can substitute a field dictionary. <typeparamref name="TItem"/> is the only
+/// place an author names it — registration reads the pairing back from this contract as the implementation
+/// actually implements it — and admission accepts the provider only while a media kind supplying that exact
+/// item type is active.
 /// </remarks>
-public interface ICataloger<TItem> : ICataloger
+public interface ICataloger<TItem> : ICataloger, IClosedCataloger
     where TItem : class, IMediaItem
 {
     CatalogerCapabilities Capabilities { get; }

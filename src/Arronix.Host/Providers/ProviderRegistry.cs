@@ -30,6 +30,7 @@ public sealed class RegisteredProvider
         Provider = provider;
         Plugin = plugin;
         MediaItemType = mediaItemType;
+        Catalog = new ProviderCatalogEntry(id, family, descriptor);
     }
 
     /// <summary>Gets the host-minted identifier.</summary>
@@ -49,6 +50,13 @@ public sealed class RegisteredProvider
 
     /// <summary>Gets the paired media item type for a typed cataloger or curator.</summary>
     public Type? MediaItemType { get; }
+
+    /// <summary>Gets the entry a consumer configures this provider from.</summary>
+    /// <remarks>
+    /// Built here because both of the facts a consumer cannot derive — the qualified identifier and the
+    /// family — are host-owned, and the third is the extension's own declaration.
+    /// </remarks>
+    public ProviderCatalogEntry Catalog { get; }
 }
 
 /// <summary>

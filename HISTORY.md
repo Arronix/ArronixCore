@@ -1,5 +1,91 @@
 # Arronix History
 
+## 2026-08-24 — Read a provider's pairing from the contract it implements, not from a value it claims
+
+- Closed a hole in the pairing SPI that the same day's earlier entry claimed was closed. The two pairing
+  interfaces carried `static abstract` members which `ICataloger<TItem>` and `ICurator<TItem>` answered from
+  their own type argument, and registration trusted those answers. An interface can be implemented directly,
+  so a class implementing only the non-generic cataloger floor plus the marker — never
+  `ICataloger<Movie>` — satisfied the constraint, reported `Movie` and `ICataloger<Movie>`, passed the media
+  pairing check, and reached its constructor. Only the post-construction contract check caught it, which is
+  after the thing the check exists to prevent. It was reproduced with a scratch compiler probe before being
+  fixed and again afterwards.
+- Removed the static members rather than adding an agreement check between them and the truth. The markers
+  are now empty: `IClosedCataloger` and `IClosedCurator` name a family so that the constraint makes the
+  ordinary mistake a compiler error, and nothing more. The pairing is read from the closed contracts the
+  implementation actually implements, once, when the registration is built — one-time type inspection, said
+  plainly in the code and in the boundary documents rather than presented as something the compiler proved.
+  Zero such contracts and several are both refused, the latter naming both, because choosing one would make
+  the erased registration disagree with a contract the author wrote.
+- Made Host prove the whole relationship before it constructs anything, rather than one link of it. The
+  recorded contract must be exactly one closed construction of its family's contract; its type argument must
+  be exactly the recorded item type; the implementation must implement that one contract and no sibling of
+  it; and a family with no media pairing must not carry one. Such a failure refuses the package with
+  `PluginProviderContractInvalid` before activation; the post-construction check stays as defense in depth.
+  That code is new, and separate from `PluginMediaPairingUnsatisfied`: a registration that does not describe
+  one relationship is a defect in the extension's code, while a coherent one whose item type nothing
+  supplies is a defect in the installation, and an operator fixes them differently. Neither is
+  `PluginContractMismatch`, which means a contract version or assembly identity mismatch everywhere else in
+  the loader. This is
+  Host repeating a check the registry already makes, deliberately: Host is the boundary that constructs.
+- Made two media kinds closed over one item type an explicit refusal instead of a silent first-win. The map
+  from item type to kind was built with `TryAdd`, so a second kind over the same type was dropped and every
+  lookup keyed on that type — paired providers, identifier recognition — silently answered with whichever
+  kind was seen first. It is refused at kind admission now, before any activation and whether or not the
+  extension supplies a provider, with `MediaItemTypeConflict` naming both kinds. Active kinds are walked
+  first and in registry order, so the incumbent is always named as the owner.
+- Repaired the identity decision record's option analysis rather than its conclusion, which stays open. Its
+  wrapper option claimed to keep `Key` required while leaving the key to Host, and those cannot both hold of
+  a constructed item; it is now split into a factory-carrying form, whose cost is the author-driven callback
+  shape this project has rejected before, and a fact-carrying form, which is the parallel candidate schema
+  the roadmap refuses. A fifth option was added: move durable identity off the item entirely into a thin
+  Host-owned envelope around the exact media-owned item, with its public-contract and migration cost stated
+  neutrally. The smallest-owner-answer section now offers every mechanism the document discusses.
+- The integrated .NET 11 proof rail finished with 2,569 passed, 302 registered skips, zero
+  inconclusive and zero failures, from 2,871 cases across 11 test projects. Skips are unchanged at
+  the ratcheted 302, the ledger at 302 cases and zero replacements, and the three required sentinels
+  pass. The manifest-ownership allow-list failure this work saw at its base commit is fixed by the G03
+  close it is integrated onto and does not reproduce here.
+
+## 2026-08-24 — Give provider family, item type and identity one authority each, and refuse an unpairable provider before it runs
+
+- Removed `IProvider.Id` and `IProvider.Family`. Every provider implemented both and nothing ever read
+  either: Host mints the qualified identifier in `ProviderRegistry.Register` from the contributing extension
+  and the declaration's local name, and the registration a provider is admitted through already fixes its
+  family. The restatement was not merely redundant, it was wrong in the tree — the movie curator fixture
+  called itself `independent-list` while its declaration said `independent-curator`, and nothing compared
+  them. A provider that needs its own identifier during a call now reads it from
+  `ProviderInvocation.Definition.Provider`, which is the one authority.
+- Removed `ProviderDescriptor.Family` for the same reason, and served the two host-owned facts to consumers
+  instead. `GET /providers` returns `ProviderCatalogEntry` — the minted `ProviderId`, the family from the
+  registration, and the extension's own declaration — which also closed a defect the client had documented
+  against itself: it was reconstructing a qualified identifier by parsing a local name, could never succeed,
+  and rendered every provider in settings as unavailable. The client's catalog, form and settings page now
+  carry one entry instead of a descriptor plus a separately threaded identifier.
+- Made the closed cataloger and curator contract the single authority for the item type.
+  `AddCataloger<TItem,TCataloger>` and `AddCurator<TItem,TCurator>` became `AddCataloger<TCataloger>` and
+  `AddCurator<TCurator>`, and an author names the item type once, in the contract. The first attempt read the
+  pairing from static abstract members on the contracts; that was corrected the same day, because a value on
+  a directly implementable interface is a claim rather than a fact. See the entry above.
+- Kept the two family markers deliberately without a common base, so that a curator cannot satisfy a
+  cataloger registration and one class can be both while each registration keeps its own pairing.
+- Made admission refuse a provider whose closed item type no active media kind supplies, before any
+  implementation in the package is constructed. A package dependency proves a package is installed; it
+  cannot prove some kind is closed over the exact CLR type a cataloger's contract names, and that second
+  claim is what a typed cataloger is built on. The check runs across every registration first, so one
+  unpairable provider means none of the package's providers gets a constructor call, and the refusal carries
+  the new `CoreErrorCode.PluginMediaPairingUnsatisfied` with the item types the installation does supply.
+  It is a new member rather than a reuse of `PluginContractMismatch`, which is documented as a contract
+  *version* mismatch, or of the dependency codes, which are about packages rather than about types.
+- Recorded, rather than answered, the durable identity question. A cataloger must return an item whose `Key`
+  is a required `MediaItemId`, and that type documents itself as host-minted and not chosen from outside the
+  platform; both cannot hold. No candidate type, optional key, provider-minted identifier or parallel schema
+  was introduced. The alternatives, what each forecloses for collision, merge, redirect and retry, and the
+  one-sentence owner answer that unblocks the rest are in
+  `docs/research/g04/media-item-identity-decision.md`, and the contradiction now fails a test if either side
+  of it is quietly changed. The independent G05 TMDb pressure test reached the same three blocked members
+  from the provider side.
+
 ## 2026-08-24 — Close G03: one installation model, one resolved graph, one shared contract identity
 
 The four G04-branch candidates were reconciled into one runtime rather than merged. Where they overlapped,

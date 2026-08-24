@@ -32,12 +32,6 @@ public sealed class VideoDependantNotifier : INotifier
     public Video? Witness => null;
 
     /// <inheritdoc />
-    public ProviderId Id { get; } = ProviderId.Create(Package, "video-witness");
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Notifier;
-
-    /// <inheritdoc />
     public IReadOnlyList<NotificationEvent> SupportedEvents { get; } = [NotificationEvent.ApplicationUpdated];
 
     /// <inheritdoc />
@@ -80,7 +74,6 @@ public sealed class VideoDependantModule : IPluginModule
         context.Registry.AddNotifier<VideoDependantNotifier>(new ProviderDescriptor
         {
             LocalId = "video-witness",
-            Family = ProviderFamily.Notifier,
             Name = "Video witness",
             Settings = [],
         });

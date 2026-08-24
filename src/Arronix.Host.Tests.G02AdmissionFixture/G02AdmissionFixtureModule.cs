@@ -179,16 +179,9 @@ public sealed class G02FixtureNotifier : INotifier, IDisposable, IAsyncDisposabl
     public G02FixtureNotifier(IPluginContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        Id = ProviderId.Create(context.PluginId, LocalId);
         _telemetry = context.Telemetry;
         _clock = context.Clock;
     }
-
-    /// <inheritdoc />
-    public ProviderId Id { get; }
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Notifier;
 
     /// <inheritdoc />
     public IReadOnlyList<NotificationEvent> SupportedEvents { get; } = [NotificationEvent.ApplicationUpdated];
@@ -271,14 +264,6 @@ public sealed class G02ForbiddenServiceProviderNotifier : INotifier
 
         throw new InvalidOperationException("G02 forbidden IServiceProvider constructor was invoked.");
     }
-
-    /// <inheritdoc />
-    public ProviderId Id { get; } = ProviderId.Create(
-        PluginId.FromString("g02.admission.fixture"),
-        LocalId);
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Notifier;
 
     /// <inheritdoc />
     public IReadOnlyList<NotificationEvent> SupportedEvents { get; } = [NotificationEvent.ApplicationUpdated];
@@ -527,7 +512,6 @@ public sealed class G02AdmissionFixtureModule : IPluginModule, IHealthContributo
             LocalId = StringComparer.Ordinal.Equals(context.PluginVersion, ForbiddenServiceProviderVersion)
                 ? G02ForbiddenServiceProviderNotifier.LocalId
                 : G02FixtureNotifier.LocalId,
-            Family = ProviderFamily.Notifier,
             Name = "Proof notifier",
             Settings = []
         };

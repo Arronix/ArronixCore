@@ -89,7 +89,7 @@ internal sealed class PackagedIdentityAndLifecycleTests
         var cataloger = provider.GetRequiredService<ProviderRegistry>().All
             .Should().ContainSingle(registration =>
                 registration.Plugin == ProviderPackage
-                && registration.Descriptor.Family == ProviderFamily.Cataloger)
+                && registration.Family == ProviderFamily.Cataloger)
             .Which;
 
         var closedItemType = cataloger.Provider.GetType()

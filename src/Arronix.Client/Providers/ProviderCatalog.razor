@@ -3,11 +3,9 @@
 @*
     What can be configured, grouped by the kind of external service it integrates with.
 
-    <b>A gap, stated.</b> A catalog entry declares the identifier the extension gave it, but not which
-    extension gave it. The identifier a configuration must carry is the qualified one, so an entry whose
-    identifier does not already arrive qualified cannot be added from here at all. That is a missing
-    member on the contract, not a missing feature here, and it is reported alongside this work rather than
-    worked around by guessing at an extension's name.
+    Each entry arrives with the qualified identifier a configuration must carry and the family it belongs
+    to, both minted host-side. Neither is reconstructed here: the earlier attempt to read an extension's
+    identity out of a local name could not succeed, and every entry rendered as unavailable because of it.
 *@
 
 @foreach (var family in Families)
@@ -15,38 +13,27 @@
     <section class="catalog">
         <h3>@FamilyName(family.Key)</h3>
         <ul class="catalog-list">
-            @foreach (var descriptor in family)
+            @foreach (var entry in family)
             {
                 <li class="catalog-entry">
                     <div>
-                        <p class="catalog-name">@descriptor.Name</p>
-                        @if (!string.IsNullOrWhiteSpace(descriptor.Description))
+                        <p class="catalog-name">@entry.Descriptor.Name</p>
+                        @if (!string.IsNullOrWhiteSpace(entry.Descriptor.Description))
                         {
-                            <p class="catalog-detail">@descriptor.Description</p>
+                            <p class="catalog-detail">@entry.Descriptor.Description</p>
                         }
                     </div>
 
-                    @if (ProviderId.TryParse(descriptor.LocalId, out var id))
-                    {
-                        <button type="button" class="button"
-                                @onclick="@(() => OnAdd.InvokeAsync(new CatalogChoice(descriptor, id)))">
-                            Add
-                        </button>
-                    }
-                    else
-                    {
-                        <span class="catalog-blocked"
-                              title="The catalog does not say which extension supplies this provider">
-                            unavailable
-                        </span>
-                    }
+                    <button type="button" class="button" @onclick="@(() => OnAdd.InvokeAsync(entry))">
+                        Add
+                    </button>
                 </li>
             }
         </ul>
     </section>
 }
 
-@if (Descriptors.Count == 0)
+@if (Entries.Count == 0)
 {
     <EmptyState Title="No providers available"
                 Detail="Providers arrive with extensions. Install one to configure it here." />
@@ -55,14 +42,14 @@
 @code {
     /// <summary>Gets or sets the providers that can be configured.</summary>
     [Parameter]
-    public IReadOnlyList<ProviderDescriptor> Descriptors { get; set; } = [];
+    public IReadOnlyList<ProviderCatalogEntry> Entries { get; set; } = [];
 
     /// <summary>Gets or sets the callback raised when the user chooses one to configure.</summary>
     [Parameter]
-    public EventCallback<CatalogChoice> OnAdd { get; set; }
+    public EventCallback<ProviderCatalogEntry> OnAdd { get; set; }
 
-    private IEnumerable<IGrouping<ProviderFamily, ProviderDescriptor>> Families
-        => Descriptors.GroupBy(descriptor => descriptor.Family).OrderBy(family => family.Key);
+    private IEnumerable<IGrouping<ProviderFamily, ProviderCatalogEntry>> Families
+        => Entries.GroupBy(entry => entry.Family).OrderBy(family => family.Key);
 
     // Closed vocabulary, every member listed, no fall-through arm: a provider family added to the
     // contract fails this build rather than appearing in settings under a blank heading.
@@ -74,9 +61,4 @@
         ProviderFamily.Cataloger => "Metadata",
         ProviderFamily.Curator => "Import Lists",
     };
-
-    /// <summary>A provider the user has chosen to configure.</summary>
-    /// <param name="Descriptor">What the provider declared about itself.</param>
-    /// <param name="Provider">Its qualified identifier.</param>
-    public sealed record CatalogChoice(ProviderDescriptor Descriptor, ProviderId Provider);
 }
