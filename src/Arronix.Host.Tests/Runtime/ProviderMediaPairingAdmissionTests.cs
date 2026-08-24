@@ -206,7 +206,9 @@ internal sealed class ProviderMediaPairingAdmissionTests
         using var assertions = new AssertionScope();
 
         result.IsAdmitted.Should().BeFalse();
-        result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
+        result.ErrorCode.Should().Be(
+            CoreErrorCode.PluginProviderContractInvalid,
+            "the registration does not describe one relationship, which is not a version mismatch");
         result.Defects.Should().ContainSingle().Which.Should().Match(
             "*claimed*FloorOnlyCataloger*implements no*ICataloger`1*claim rather than a relationship*");
 
@@ -239,7 +241,7 @@ internal sealed class ProviderMediaPairingAdmissionTests
         using var assertions = new AssertionScope();
 
         result.IsAdmitted.Should().BeFalse();
-        result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginProviderContractInvalid);
         result.Defects.Should().ContainSingle().Which.Should().Match(
             "*crossed*not closed over the recorded item type*UnpairedItem*");
         WorkCataloger.Constructions.Should().Be(0);
@@ -269,10 +271,60 @@ internal sealed class ProviderMediaPairingAdmissionTests
         using var assertions = new AssertionScope();
 
         result.IsAdmitted.Should().BeFalse();
-        result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginProviderContractInvalid);
         result.Defects.Should().ContainSingle().Which.Should().Match(
             "*indexer*has no media pairing*Work*");
         WorkCataloger.Constructions.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The two provider refusals are different diagnoses and carry different codes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both refusals concern one cataloger and one item type, which is exactly why they are worth telling
+    /// apart. "This registration does not describe one relationship" is a defect in the extension's own
+    /// code; "this relationship is fine, and nothing installed supplies that item type" is a defect in the
+    /// installation, and the operator fixes it by installing a package. An operator handed one code for
+    /// both learns which of the two it is by reading prose.
+    /// </para>
+    /// <para>
+    /// Neither is a contract <i>version</i> mismatch, which is what
+    /// <see cref="CoreErrorCode.PluginContractMismatch"/> means everywhere else in the loader — the
+    /// declared contract range, and shared-contract assembly identity. That code is asserted absent here
+    /// rather than merely unmentioned, because reusing it is the mistake this case exists to prevent.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void AnIncoherentRegistrationAndAnUnsuppliedItemTypeAreDifferentDiagnoses()
+    {
+        var incoherent = Prepare(
+            registry => registry.AddMediaType<Works>(),
+            ledger => ledger.RecordProvider(
+                new ProviderTypeRegistration
+                {
+                    Descriptor = Descriptor("incoherent"),
+                    Family = ProviderFamily.Cataloger,
+                    ContractType = typeof(ICataloger<Work>),
+                    ImplementationType = typeof(FloorOnlyCataloger),
+                    MediaItemType = typeof(Work),
+                },
+                Capability.Metadata));
+
+        var unsupplied = Prepare(registry => registry.AddCataloger<UnpairedCataloger>(Descriptor("unsupplied")));
+
+        using var assertions = new AssertionScope();
+
+        incoherent.ErrorCode.Should().Be(CoreErrorCode.PluginProviderContractInvalid);
+        unsupplied.ErrorCode.Should().Be(CoreErrorCode.PluginMediaPairingUnsatisfied);
+        incoherent.ErrorCode.Should().NotBe(unsupplied.ErrorCode);
+
+        new[] { incoherent.ErrorCode, unsupplied.ErrorCode }.Should().NotContain(
+            CoreErrorCode.PluginContractMismatch,
+            "that code means a contract version or assembly identity mismatch, which neither of these is");
+
+        FloorOnlyCataloger.Constructions.Should().Be(0);
+        UnpairedCataloger.Constructions.Should().Be(0);
     }
 
     /// <summary>Two kinds in one attempt cannot own one item type.</summary>

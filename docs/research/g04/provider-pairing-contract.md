@@ -114,7 +114,8 @@ in a package **before** it constructs any of them, in two passes.
 media pairing, the registration must carry no item type); the recorded `ContractType` must be an interface
 that is one constructed — not open — form of that family's contract; its single type argument must be
 exactly the recorded `MediaItemType`; and the `ImplementationType` must implement that contract and no
-sibling construction of it. A failure refuses the package with `CoreErrorCode.PluginContractMismatch`.
+sibling construction of it. A failure refuses the package with
+`CoreErrorCode.PluginProviderContractInvalid`.
 
 This deliberately repeats what the registration already derived. Host is the boundary that constructs, so
 Host is where being wrong costs an extension constructor call; `ContractType.IsInstanceOfType(provider)`
@@ -129,9 +130,19 @@ prove that some kind is closed over the exact CLR type a cataloger's contract na
 Both passes run before any activation, so one unsound or unpairable provider means **none** of the
 package's providers is constructed.
 
-`CoreErrorCode` gained `PluginMediaPairingUnsatisfied = 2014`. The existing `PluginContractMismatch` is
-documented as a *contract version* mismatch and the dependency codes are about packages, so reusing either
-for an unsupplied item type would have made an operator's diagnostic less precise than the check.
+`CoreErrorCode` gained two members, and the reason there are two is that the two refusals are two different
+operator problems:
+
+| Code | Means | The operator's move |
+|---|---|---|
+| `PluginProviderContractInvalid = 2015` | the registration does not describe one relationship | report it to whoever wrote the extension |
+| `PluginMediaPairingUnsatisfied = 2014` | the relationship is sound; nothing installed supplies that item type | install the media package that declares it |
+
+Neither reuses `PluginContractMismatch = 2001`. That code means a contract *version* or assembly *identity*
+mismatch, and it is what `SharedContractStore`, `SharedContractIdentityException` and the loader's declared
+contract-range check already emit; folding a structurally incoherent provider registration into it would
+collapse two diagnoses an operator has to tell apart. `AnIncoherentRegistrationAndAnUnsuppliedItemTypeAreDifferentDiagnoses`
+asserts the split, including that 2001 is not what either refusal carries.
 
 Files: `src/Arronix.Host/Runtime/PluginBootstrapper.cs`,
 `src/Arronix.Abstractions/Health/CoreErrorCode.cs`.
@@ -194,12 +205,12 @@ supplied one.
 
 ## 3. Tests and exact counts
 
-### New cases: 32, all passing
+### New cases: 33, all passing
 
 | File | Cases | What it holds |
 |---|---|---|
 | `src/Arronix.Architecture.Tests/Topology/ProviderPairingAuthorityTests.cs` | 19 | the detector's own control; per-implementation rules that no provider publishes an identifier or a family, and that every marked provider implements exactly one closed contract of that family (5 implementations × 2); the registration methods take one type argument and name the family; the two markers are independent and carry nothing; a registration derives item type, contract and family from the contract alone; one class serving both families keeps a pairing per family; **a marker implemented without a closed contract is refused at registration**; **an implementation closing two contracts of one family is refused and both are named**; and neither consumer edge mints or parses a provider identity outside serialization (2 cases) |
-| `src/Arronix.Host.Tests/Runtime/ProviderMediaPairingAdmissionTests.cs` | 9 | a provider is admitted against a kind prepared in the same attempt; one whose item type no installed kind supplies is refused with `PluginMediaPairingUnsatisfied` and never constructed; one unresolvable pairing stops every provider in the package being constructed; the refusal names the item types the installation does supply; **a contract no implementation backs is refused with `PluginContractMismatch` and the whole package's constructors stay at zero**; **a contract and item type that disagree are refused before construction**; **a non-media family carrying an item type is refused**; **two kinds in one attempt cannot share an item type**; **a kind cannot take an item type an active kind already owns** |
+| `src/Arronix.Host.Tests/Runtime/ProviderMediaPairingAdmissionTests.cs` | 10 | a provider is admitted against a kind prepared in the same attempt; one whose item type no installed kind supplies is refused with `PluginMediaPairingUnsatisfied` and never constructed; one unresolvable pairing stops every provider in the package being constructed; the refusal names the item types the installation does supply; **a contract no implementation backs is refused with `PluginProviderContractInvalid` and the whole package's constructors stay at zero**; **a contract and item type that disagree are refused before construction**; **a non-media family carrying an item type is refused**; **two kinds in one attempt cannot share an item type**; **a kind cannot take an item type an active kind already owns**; **an incoherent registration and an unsupplied item type carry different codes, and neither is the contract-version code** |
 | `src/Arronix.Host.Tests/Providers/CatalogMaterializationBoundaryTests.cs` | 3 | a typed cataloger result projects through the kind-blind runtime as the exact item with its media-owned lifecycle intact; no Host seam consumes a shaped cataloger or curator result; a durable item key is required of the provider and minted by nobody |
 | `src/Arronix.Plugins.Tests/Registration/RegistryAdmissionTests.cs` | 1 | a curator registration retains the same item type through its own contract, with the family from the registration |
 
@@ -208,13 +219,13 @@ no longer say what they need it to say. That is the point: they put in front of 
 registration the registry refuses to build, and assert Host refuses it too, before construction.
 
 Per-project totals after the change (base → now): Architecture `313 → 332` passed (1 registered skip
-unchanged), Host `528 → 540`, Plugins `492 → 493`.
+unchanged), Host `528 → 541`, Plugins `492 → 493`.
 
 ### Focused runs
 
 ```
 Arronix.Plugins.Tests          493 passed,   0 skipped, 0 failed
-Arronix.Host.Tests             540 passed,   0 skipped, 0 failed
+Arronix.Host.Tests             541 passed,   0 skipped, 0 failed
 Arronix.Architecture.Tests     332 passed,   1 skipped, 0 failed
 Arronix.Abstractions.Tests     119 passed,   0 skipped, 0 failed
 Arronix.Plugin.Tv.Tests         87 passed,   0 skipped, 0 failed
@@ -224,7 +235,7 @@ Arronix.Plugin.Music.Tests      66 passed,   0 skipped, 0 failed
 ### Full rail — `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet ./eng/ci/run-tests.sh`
 
 ```
-projects=11 total=2851 enabled=2549 passed=2548 failed=1 skipped=302 inconclusive=0
+projects=11 total=2852 enabled=2550 passed=2549 failed=1 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0
 requiredTests=3 compileLogs=1 compileProjects=11 compileItems=260 boundSources=15
 error execution.failed: The run contains 1 failed cases.

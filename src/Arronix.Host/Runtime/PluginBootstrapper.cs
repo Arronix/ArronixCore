@@ -1240,7 +1240,13 @@ public sealed partial class PluginBootstrapper : IHostedService
     /// <param name="mediaKinds">The kinds this attempt admitted, which are not published yet.</param>
     /// <param name="registrations">Every provider the extension registered.</param>
     /// <param name="defects">One actionable defect per unsound registration.</param>
-    /// <param name="errorCode">The failure class, meaningful only when this returns false.</param>
+    /// <param name="errorCode">
+    /// The failure class, meaningful only when this returns false:
+    /// <see cref="CoreErrorCode.PluginProviderContractInvalid"/> when a registration does not describe one
+    /// coherent relationship, and <see cref="CoreErrorCode.PluginMediaPairingUnsatisfied"/> when it does but
+    /// no admitted kind supplies its item type. They are different operator problems and stay different
+    /// diagnoses.
+    /// </param>
     /// <returns><see langword="true"/> when every registration is sound and pairs with an installed kind.</returns>
     /// <remarks>
     /// <para>
@@ -1266,7 +1272,7 @@ public sealed partial class PluginBootstrapper : IHostedService
         out IReadOnlyList<string> defects,
         out CoreErrorCode errorCode)
     {
-        errorCode = CoreErrorCode.PluginContractMismatch;
+        errorCode = CoreErrorCode.PluginProviderContractInvalid;
 
         var structural = registrations
             .Select(registration => (Registration: registration, Defect: ContractDefectOf(registration)))

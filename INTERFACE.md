@@ -107,8 +107,12 @@ The Host service provider is never an activation source. Before any implementati
 constructed, Host checks every provider registration in it twice over: that the recorded contract is one
 closed construction of its family's contract, closed over the recorded item type, and implemented by the
 recorded implementation and no sibling of it; and that some active media kind supplies that exact item type.
-A structural failure refuses the package with `PluginContractMismatch`, an unsupplied item type with
-`PluginMediaPairingUnsatisfied`. A post-construction contract check remains as defense in depth.
+A registration that does not describe one coherent relationship refuses the package with
+`PluginProviderContractInvalid`; a coherent one whose item type nothing supplies refuses it with
+`PluginMediaPairingUnsatisfied`. They are different operator problems — a defect in the extension's code
+and a defect in the installation — and neither is `PluginContractMismatch`, which stays reserved for
+contract version and assembly identity incompatibility. A post-construction contract check remains as
+defense in depth.
 
 Installed format capabilities must contribute representation recognition, probing, and policy for their
 owned facts; language capabilities contribute linguistic mechanics. A media parser owns media structure

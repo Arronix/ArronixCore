@@ -20,8 +20,13 @@
 - Made Host prove the whole relationship before it constructs anything, rather than one link of it. The
   recorded contract must be exactly one closed construction of its family's contract; its type argument must
   be exactly the recorded item type; the implementation must implement that one contract and no sibling of
-  it; and a family with no media pairing must not carry one. A structural failure refuses the package with
-  `PluginContractMismatch` before activation; the post-construction check stays as defense in depth. This is
+  it; and a family with no media pairing must not carry one. Such a failure refuses the package with
+  `PluginProviderContractInvalid` before activation; the post-construction check stays as defense in depth.
+  That code is new, and separate from `PluginMediaPairingUnsatisfied`: a registration that does not describe
+  one relationship is a defect in the extension's code, while a coherent one whose item type nothing
+  supplies is a defect in the installation, and an operator fixes them differently. Neither is
+  `PluginContractMismatch`, which means a contract version or assembly identity mismatch everywhere else in
+  the loader. This is
   Host repeating a check the registry already makes, deliberately: Host is the boundary that constructs.
 - Made two media kinds closed over one item type an explicit refusal instead of a silent first-win. The map
   from item type to kind was built with `TryAdd`, so a second kind over the same type was dropped and every
@@ -36,8 +41,8 @@
   the roadmap refuses. A fifth option was added: move durable identity off the item entirely into a thin
   Host-owned envelope around the exact media-owned item, with its public-contract and migration cost stated
   neutrally. The smallest-owner-answer section now offers every mechanism the document discusses.
-- The exact .NET 11 proof rail finished with 2,548 passed, 302 registered skips, zero inconclusive, and the
-  one pre-existing G03 failure, from 2,851 cases across 11 test projects. Skips are unchanged at the
+- The exact .NET 11 proof rail finished with 2,549 passed, 302 registered skips, zero inconclusive, and the
+  one pre-existing G03 failure, from 2,852 cases across 11 test projects. Skips are unchanged at the
   ratcheted 302, the ledger at 302 cases and zero replacements, and the three required sentinels pass.
 
 ## 2026-08-24 — Give provider family, item type and identity one authority each, and refuse an unpairable provider before it runs

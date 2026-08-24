@@ -70,6 +70,14 @@ public enum CoreErrorCode
     /// </summary>
     PluginMediaPairingUnsatisfied = 2014,
 
+    /// <summary>
+    /// A provider registration is structurally incoherent: its family, its recorded closed contract, its
+    /// recorded item type and the interfaces its implementation actually implements do not describe one
+    /// relationship. Distinct from a contract version or assembly identity mismatch, which is
+    /// <see cref="PluginContractMismatch"/>.
+    /// </summary>
+    PluginProviderContractInvalid = 2015,
+
     /// <summary>Media kind not found.</summary>
     MediaKindNotFound = 3000,
 

@@ -56,7 +56,8 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
   public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed. Plugin
   activation never resolves from Host DI. Before any implementation in a package is constructed, Host proves
   every registration's contract, item type and implementation agree, and that an installed kind supplies
-  that item type; a post-construction contract check remains as defense in depth.
+  that item type; the two refusals carry distinct codes because they are distinct operator problems, and
+  neither is the contract-version code. A post-construction contract check remains as defense in depth.
 - Host admission prepares complete kind, provider, language, job, and health candidates without publishing
   them. A successful preparation carries one exact `IPluginAdmissionAttempt`; after every remaining loader
   check passes, one shared Host-owned publication gate commits its Host receipt, per-kind token claims, and Active
@@ -208,8 +209,8 @@ duplicated checklist drifting from current state.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-24, on `claude/g04-provider-pairing`) reports 2,548
-  passed, 302 skipped, zero inconclusive and one failed from 2,851 total cases across 11 test projects. Of
+- The current one-command full-solution run (2026-08-24, on `claude/g04-provider-pairing`) reports 2,549
+  passed, 302 skipped, zero inconclusive and one failed from 2,852 total cases across 11 test projects. Of
   the skips, 301 are Movies cases and one is an architecture case; all are registered in the compatibility
   ledger. The failure is the G03 record described under the active gate above, and it reproduces at base
   commit `bbed12a69`. This verifies the current solution graph and enabled tests, not the unwired production
