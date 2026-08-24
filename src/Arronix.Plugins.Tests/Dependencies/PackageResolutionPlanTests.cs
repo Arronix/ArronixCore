@@ -498,7 +498,7 @@ public sealed class PackageResolutionPlanTests
     /// Runs the one production resolver over installed packages.
     /// </summary>
     /// <param name="installed">The installed packages.</param>
-    /// <param name="disabled">Ignored; availability is carried on the package itself.</param>
+    /// <param name="disabled">The identifiers an operator switched off, applied to the snapshots.</param>
     /// <returns>The resolved graph.</returns>
     private static ResolvedPackageGraph Resolve(
         IReadOnlyList<InstalledPackage> installed,

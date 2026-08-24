@@ -70,17 +70,25 @@ public sealed class PluginLoadContext : AssemblyLoadContext
         "System.",
         "Microsoft.Extensions.",
         "Microsoft.AspNetCore.",
-        "Microsoft.CSharp",
-        "Microsoft.VisualBasic",
         "Microsoft.Win32."
     ];
 
+    /// <summary>
+    /// Shared-framework assemblies whose names are exact rather than prefixes.
+    /// </summary>
+    /// <remarks>
+    /// <c>Microsoft.CSharp</c> and <c>Microsoft.VisualBasic</c> are whole assembly names. Matching them as
+    /// prefixes would hand <c>Microsoft.CSharpEvil</c> to the default context on the strength of its first
+    /// fourteen characters.
+    /// </remarks>
     private static readonly string[] SharedFrameworkNames =
     [
         "System",
         "mscorlib",
         "netstandard",
-        "WindowsBase"
+        "WindowsBase",
+        "Microsoft.CSharp",
+        "Microsoft.VisualBasic"
     ];
 
     private readonly AssemblyDependencyResolver _resolver;

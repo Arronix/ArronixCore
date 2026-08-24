@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Linq;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
@@ -103,7 +104,7 @@ internal sealed class PackageAdmissionReceipt
         }
 
         Package = package;
-        Edges = [.. edges];
+        Edges = edges.ToList().AsReadOnly();
     }
 
     /// <summary>Gets the canonical installed package this attempt belongs to.</summary>
@@ -116,7 +117,7 @@ internal sealed class PackageAdmissionReceipt
     internal SemanticVersion Version => Package.Version;
 
     /// <summary>Gets the edges this dependant owns, in declaration order.</summary>
-    internal IReadOnlyList<PackageDependencyEdge> Edges { get; }
+    internal ReadOnlyCollection<PackageDependencyEdge> Edges { get; }
 
     /// <summary>Gets the exact executable admission receipt, or <see langword="null"/> when there is none.</summary>
     internal IPluginAdmissionAttempt? HostAdmission => _hostAdmission;
