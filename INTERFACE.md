@@ -34,7 +34,8 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `TargetMatch<TTarget>` describes typed coverage of an acquisition target.
 - `ReleaseOption<TTarget,TRelease>` joins a listing, interpreted release, and target match.
 - `ReleasePolicy<TRelease>` provides hard admission, lexicographic preference, and bounded facet comparison.
-- `ICataloger<TItem>` supplies authoritative shaped items. Its `ICataloger` floor recognizes identifiers from its own namespace when they occur in release text. `ICurator<TItem>` proposes shaped items for inclusion.
+- `ICataloger<TItem>` supplies authoritative shaped items. Its `ICataloger` floor recognizes identifiers from its own namespace when they occur in release text. `ICurator<TItem>` proposes shaped items for inclusion. Each contract answers its own closed pairing, so `TItem` is named once by the author and read back by registration.
+- `ProviderCatalogEntry` is what a consumer configures a provider from: the host-minted `ProviderId`, the family its registration fixed, and the extension's own `ProviderDescriptor`.
 - `IIndexer`, `IDownloader`, and `INotifier` remain media-neutral provider families.
 - `ItemInfo` is the common title/overview value and `Localized<T>` attaches a language to a typed payload. `Rating`, `RatingScale`, and `ContentCertification` preserve common semantics without naming a media kind or vendor.
 - `WorkbenchProposal<TRow>` and `WorkbenchCommit<TRow>` retain workflow-owned rows; their non-generic counterparts are wire projections.
@@ -56,8 +57,8 @@ All runtime, SDK, plugin, Host, API, Client, and test projects currently target 
 `netstandard2.0` as an analyzer dependency; it is not a runtime compatibility escape hatch.
 
 Public visibility does not make generated getters, binder visitors, erased registrations, `System.Type`
-carriers, expression trees, or runtime descriptors part of the supported authoring vocabulary. Normal plugin
-authors must not implement or reason about those mechanics. The typed CLR definitions remain the sole
+carriers, provider pairing interfaces, expression trees, or runtime descriptors part of the supported
+authoring vocabulary. Normal plugin authors must not implement or reason about those mechanics. The typed CLR definitions remain the sole
 semantic source; generated binding data and serializable descriptors are one-way projections.
 
 The public `IPluginAdmissionCheck` and `IPluginAdmissionAttempt` types are a cross-assembly Host/loader
@@ -79,13 +80,16 @@ captures one definition instance. `TParser` implements the static
 Provider plugins register implementation types, including shaped pairs:
 
 ```csharp
-registry.AddCataloger<TItem, TCataloger>(descriptor);
-registry.AddCurator<TItem, TCurator>(descriptor);
+registry.AddCataloger<TCataloger>(descriptor);
+registry.AddCurator<TCurator>(descriptor);
 ```
 
-That repeated `TItem` is current registration SPI, not the ergonomic end state. An author should state a
-closed media/provider relationship once; compiler or Host infrastructure should infer or generate the
-erased registration without another manually synchronized type argument.
+The media relationship is stated once, in the contract the implementation closes. Registration reads it back
+through `ICatalogerPairing` and `ICuratorPairing`, so there is no second type argument to keep in step, a
+type that closed no media contract fails at the call site, and one class may serve both families while each
+registration keeps its own pairing. The declaration carries neither the family nor a qualified identifier:
+the registration called fixes the family, and Host mints the identifier from the contributing extension and
+the declaration's `LocalId`.
 
 Language plugins register implementation types for constrained Host activation:
 
@@ -95,7 +99,10 @@ registry.AddLanguage<TLanguage>();
 
 Only after manifest and capability admission, Host constructs provider and language implementations through
 an exact public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed.
-The Host service provider is never an activation source.
+The Host service provider is never an activation source. A media-paired provider is admitted only while some
+active media kind supplies the exact item type its contract closed over; that is checked across every
+registration in a package before any of them is constructed, and a mismatch refuses the package with
+`PluginMediaPairingUnsatisfied`.
 
 Installed format capabilities must contribute representation recognition, probing, and policy for their
 owned facts; language capabilities contribute linguistic mechanics. A media parser owns media structure
@@ -117,6 +124,17 @@ and is never reported as accepted.
   assembly version and plugin manifest range; no per-type experimental marker, diagnostic registry, or
   compiler opt-in exists. Public visibility on cross-assembly Host infrastructure does not make it SDK.
 - A media type owns its entity shape; catalogers and curators return that exact type.
+- A provider's media relationship has one authority: the closed contract its implementation states. Its
+  family has one authority: the registration it is admitted through. Its identity has one authority: the
+  qualified identifier Host mints from the contributing extension and the declared local name. No provider,
+  declaration, or consumer restates any of the three, and a provider needing its own identifier during a
+  call reads it from the invocation's definition.
+- Admission is against the exact active media type. A cataloger or curator whose closed item type no active
+  media kind supplies is refused before its implementation is constructed. The non-generic `ICataloger`
+  floor remains only for kind-blind external-identifier recognition.
+- Durable media item identity at the catalog boundary is an open owner decision, recorded in
+  `docs/research/g04/media-item-identity-decision.md`. No Host seam consumes a shaped cataloger or curator
+  result until it is answered.
 - A cataloger owns its external identifier namespace and marker spellings. Media parsers consume validated `ExternalIdReading` values and never duplicate vendor marker regular expressions.
 - Every item and group exposes `Key`, `ExternalIds`, `Title`, `TitleLanguage`, `Overview`, and `Artwork` through `IMediaEntity`; media-specific facts extend that floor as ordinary typed properties.
 - The common item class remains fully visible and strongly typed. Release dates and availability behaviour live in a media-owned lifecycle object; typed release stage, catalog presence, and plural collection membership are common item facts.

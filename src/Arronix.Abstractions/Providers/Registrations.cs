@@ -1,5 +1,3 @@
-using Arronix.Abstractions.Media;
-
 namespace Arronix.Abstractions.Providers;
 
 /// <summary>A provider declaration paired with implementation and contract types for Host activation.</summary>
@@ -19,6 +17,12 @@ public sealed record ProviderTypeRegistration
 
     public required Type ImplementationType { get; init; }
 
+    /// <summary>Gets the media item type a paired provider closed its contract over.</summary>
+    /// <remarks>
+    /// Read from the contract rather than declared beside it, and <see langword="null"/> for the families
+    /// that have no media pairing. Admission compares it with the item type of an active media kind before
+    /// the implementation is constructed.
+    /// </remarks>
     public Type? MediaItemType { get; init; }
 
     public static ProviderTypeRegistration For<TContract, TImplementation>(
@@ -37,19 +41,49 @@ public sealed record ProviderTypeRegistration
         };
     }
 
-    public static ProviderTypeRegistration ForCataloger<TItem, TImplementation>(ProviderDescriptor descriptor)
-        where TItem : class, IMediaItem
-        where TImplementation : class, ICataloger<TItem>
+    /// <summary>Records a cataloger, reading its item and contract types off the contract it closed.</summary>
+    /// <typeparam name="TImplementation">The cataloger implementation.</typeparam>
+    /// <param name="descriptor">The provider declaration.</param>
+    /// <returns>The registration.</returns>
+    /// <remarks>
+    /// Neither type is passed in. The implementation closed <see cref="ICataloger{TItem}"/> over its item
+    /// type at its own compile time and <see cref="ICatalogerPairing"/> reads exactly that back, so there is
+    /// no second type argument to keep in step and no way for the erased pairing to disagree with the
+    /// contract. The family is fixed here because this method <i>is</i> the cataloger registration.
+    /// </remarks>
+    public static ProviderTypeRegistration ForCataloger<TImplementation>(ProviderDescriptor descriptor)
+        where TImplementation : class, ICataloger, ICatalogerPairing
     {
-        var registration = For<ICataloger<TItem>, TImplementation>(descriptor, ProviderFamily.Cataloger);
-        return registration with { MediaItemType = typeof(TItem) };
+        ArgumentNullException.ThrowIfNull(descriptor);
+        return new ProviderTypeRegistration
+        {
+            Descriptor = descriptor,
+            Family = ProviderFamily.Cataloger,
+            ContractType = TImplementation.PairedContractType,
+            ImplementationType = typeof(TImplementation),
+            MediaItemType = TImplementation.PairedItemType,
+        };
     }
 
-    public static ProviderTypeRegistration ForCurator<TItem, TImplementation>(ProviderDescriptor descriptor)
-        where TItem : class, IMediaItem
-        where TImplementation : class, ICurator<TItem>
+    /// <summary>Records a curator, reading its item and contract types off the contract it closed.</summary>
+    /// <typeparam name="TImplementation">The curator implementation.</typeparam>
+    /// <param name="descriptor">The provider declaration.</param>
+    /// <returns>The registration.</returns>
+    /// <remarks>
+    /// The curator half of <see cref="ForCataloger{TImplementation}"/>. One class may serve both families;
+    /// each registration reads its own family's pairing, so the two never collapse into one.
+    /// </remarks>
+    public static ProviderTypeRegistration ForCurator<TImplementation>(ProviderDescriptor descriptor)
+        where TImplementation : class, IProvider, ICuratorPairing
     {
-        var registration = For<ICurator<TItem>, TImplementation>(descriptor, ProviderFamily.Curator);
-        return registration with { MediaItemType = typeof(TItem) };
+        ArgumentNullException.ThrowIfNull(descriptor);
+        return new ProviderTypeRegistration
+        {
+            Descriptor = descriptor,
+            Family = ProviderFamily.Curator,
+            ContractType = TImplementation.PairedContractType,
+            ImplementationType = typeof(TImplementation),
+            MediaItemType = TImplementation.PairedItemType,
+        };
     }
 }

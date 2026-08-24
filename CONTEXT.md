@@ -43,9 +43,14 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
 - `ItemInfo` is the common localized title/overview payload. `Localized<ItemInfo>` is used when no media-specific localized facts exist.
 - The plugin SDK has no second non-generic `IMediaType`. Host-only `IMediaTypeRuntime` is the kind-blind bridge.
 - `ICataloger<TItem>` and `ICurator<TItem>` return the media type's own shaped items. Field dictionaries are not an alternative contract. The non-generic `ICataloger` floor recognizes its own external-identifier markers locally; media parsers receive those typed readings and do not embed catalog-vendor marker vocabulary.
+- A provider author names the media item type once, in the contract the implementation closes. Registration
+  reads that pairing back; the registration called fixes the family; Host mints the qualified identifier.
+  No provider, declaration, or consumer restates any of the three.
 - Provider registrations carry implementation types. After admission, Host constructs them through an exact
   public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed. Plugin
-  activation never resolves from Host DI.
+  activation never resolves from Host DI. A media-paired registration is checked against the item types of
+  the kinds this attempt admitted plus the kinds already active, across the whole package, before any
+  implementation is constructed.
 - Host admission prepares complete kind, provider, language, job, and health candidates without publishing
   them. A successful preparation carries one exact `IPluginAdmissionAttempt`; after every remaining loader
   check passes, one shared Host-owned publication gate commits its Host receipt, per-kind token claims, and Active
@@ -124,7 +129,14 @@ coverage.
 - The typed Movie parser currently materializes common release text facts but does not compose format-owned recognizers into a populated `Video` representation. No production typed cataloger supplies catalog-owned embedded-identifier readings. The manifest's related capability claims therefore outrun the executable production path.
 - Typed release policy and deterministic selection exist, but production acquisition does not yet materialize typed releases and call the selector end to end.
 - No production typed cataloger or curator ships yet. Their typed registration, constrained Host activation,
-  and catalog-owned identifier-reading boundary exist and are tested.
+  media-contract admission, and catalog-owned identifier-reading boundary exist and are tested.
+- Catalog materialization is unbuilt and is blocked on one owner decision. A typed provider result crosses
+  into Host as the exact item type and projects through the kind-blind runtime, but no Host member takes or
+  returns a shaped `ICataloger<TItem>` or `ICurator<TItem>` result, because a cataloger cannot supply the
+  `MediaItemId` a valid item requires and nothing in Host mints one. The alternatives, their consequences,
+  and the smallest owner answer are in `docs/research/g04/media-item-identity-decision.md`; the independent
+  G05 TMDb pressure test on `claude/g05-tmdb-proof` reaches the same three blocked members from the provider
+  side.
 - Typed workbench proposal/commit values and generic standard rows exist, but the current `IMediaItemSource` execution seam still projects proposals and commits through the kind-blind wire form.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
@@ -158,6 +170,16 @@ work does not substitute for closing an earlier dependency.
   is in place and proved by compile-time and package-shape tests
   (`docs/research/g04/movies-video-package-topology.md`); the manifest dependency declaration, admitted-contract
   resolution, duplicate-copy refusal, and dependency-aware withdrawal are not, so the gate remains open.
+  `Arronix.Plugin.Movies.Tests.Shape.ManifestOwnershipTests.CarriesNothingButWhatItOwns` fails at
+  `bbed12a69` and on every branch from it: the Movies manifest now declares `contractAssemblies` and
+  `dependencies`, which the test's owned-property allow-list and `INTERFACE.md`'s manifest paragraph both
+  still exclude. It is a G03 record that has not caught up with G03's own landed schema, not a defect in
+  what it guards.
+- G04 is partly closed on `claude/g04-provider-pairing`: provider family, item type, and identity each have
+  one authority; the closed pairing is read from the contract and checked at the call site; and admission
+  refuses a mismatched or inactive media contract before provider code runs. Its remaining exit criteria —
+  a documented durable identity, collision, merge, and retry rule, and a fully valid item Host can produce —
+  wait on the owner decision recorded in `docs/research/g04/media-item-identity-decision.md`.
 
 The later gates cover provider pairing, hidden binding SPI, dynamic typed Client loading, compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
@@ -172,10 +194,8 @@ duplicated checklist drifting from current state.
 - The format-capability loading and versioning lifecycle needs a first-class manifest/package design before independently distributed format packages are promised.
 - `ReleasePolicy<T>.Compile` still exposes builder callback choreography to media authors. Format defaults and media policy fragments must compose without making authors drive an internal compiler mechanism.
 - Movies still declares likely-standard workbenches, browse defaults, and title ordering. Audit them against Television, Music, and Books and derive any behaviour which is not a genuine media difference.
-- `AddCataloger<TItem,TCataloger>` and `AddCurator<TItem,TCurator>` repeat an item relationship already closed by the implementation contract. Registration ergonomics should infer or generate the erased pairing.
-- Provider identity and family still have multiple declarative authorities: family-specific registration,
-  `ProviderDescriptor.Family`, and `IProvider.Id`/`Family`. G04 must make the Host-qualified identifier and
-  closed provider registration the single sources rather than checking repeated values for agreement.
+- `ICatalogerPairing` and `ICuratorPairing` are public because an interface cannot inherit a less accessible
+  one. They are binding SPI an author never implements, and G06 owns moving or hiding that class of surface.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.

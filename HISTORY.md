@@ -1,5 +1,54 @@
 # Arronix History
 
+## 2026-08-24 — Give provider family, item type and identity one authority each, and refuse an unpairable provider before it runs
+
+- Removed `IProvider.Id` and `IProvider.Family`. Every provider implemented both and nothing ever read
+  either: Host mints the qualified identifier in `ProviderRegistry.Register` from the contributing extension
+  and the declaration's local name, and the registration a provider is admitted through already fixes its
+  family. The restatement was not merely redundant, it was wrong in the tree — the movie curator fixture
+  called itself `independent-list` while its declaration said `independent-curator`, and nothing compared
+  them. A provider that needs its own identifier during a call now reads it from
+  `ProviderInvocation.Definition.Provider`, which is the one authority.
+- Removed `ProviderDescriptor.Family` for the same reason, and served the two host-owned facts to consumers
+  instead. `GET /providers` returns `ProviderCatalogEntry` — the minted `ProviderId`, the family from the
+  registration, and the extension's own declaration — which also closed a defect the client had documented
+  against itself: it was reconstructing a qualified identifier by parsing a local name, could never succeed,
+  and rendered every provider in settings as unavailable. The client's catalog, form and settings page now
+  carry one entry instead of a descriptor plus a separately threaded identifier.
+- Made the closed cataloger and curator pairing the single authority for the item type.
+  `AddCataloger<TItem,TCataloger>` and `AddCurator<TItem,TCurator>` became `AddCataloger<TCataloger>` and
+  `AddCurator<TCurator>`; the item type and the closed contract are read back from `ICatalogerPairing` and
+  `ICuratorPairing`, which `ICataloger<TItem>` and `ICurator<TItem>` answer from their own type argument.
+  An author names the item type once, in the contract, and a type that closed no media contract fails at the
+  registration call site rather than after admission.
+- Kept those two pairing interfaces deliberately without a common base. A shared base declaring the members
+  once is smaller, and it makes a single class serving both families ambiguous at its own compile time —
+  `CS8705`, with no most specific implementation and nothing sensible for the author to do about it. Two
+  independent interfaces let one class be both a cataloger and a curator while each registration keeps its
+  own pairing, which is asserted rather than assumed.
+- Made admission refuse a provider whose closed item type no active media kind supplies, before any
+  implementation in the package is constructed. A package dependency proves a package is installed; it
+  cannot prove some kind is closed over the exact CLR type a cataloger's contract names, and that second
+  claim is what a typed cataloger is built on. The check runs across every registration first, so one
+  unpairable provider means none of the package's providers gets a constructor call, and the refusal carries
+  the new `CoreErrorCode.PluginMediaPairingUnsatisfied` with the item types the installation does supply.
+  It is a new member rather than a reuse of `PluginContractMismatch`, which is documented as a contract
+  *version* mismatch, or of the dependency codes, which are about packages rather than about types.
+- Recorded, rather than answered, the durable identity question. A cataloger must return an item whose `Key`
+  is a required `MediaItemId`, and that type documents itself as host-minted and not chosen from outside the
+  platform; both cannot hold. No candidate type, optional key, provider-minted identifier or parallel schema
+  was introduced. The alternatives, what each forecloses for collision, merge, redirect and retry, and the
+  one-sentence owner answer that unblocks the rest are in
+  `docs/research/g04/media-item-identity-decision.md`, and the contradiction now fails a test if either side
+  of it is quietly changed. The independent G05 TMDb pressure test reached the same three blocked members
+  from the provider side.
+- The exact .NET 11 proof rail finished with 2,541 passed, 302 registered skips, zero inconclusive, and one
+  failure from 2,844 cases across 11 test projects. That failure,
+  `Arronix.Plugin.Movies.Tests.Shape.ManifestOwnershipTests.CarriesNothingButWhatItOwns`, is pre-existing at
+  base commit `bbed12a69`, reproduces there with this branch's changes stashed, and belongs to G03: the
+  Movies manifest declares `contractAssemblies` and `dependencies`, which the test's allow-list has not
+  caught up with.
+
 ## 2026-08-24 — Stage package payloads from the computed closure rather than from a build directory
 
 - Replaced the payload staging source. The Movies, Television and G02 fixture packages were staged by

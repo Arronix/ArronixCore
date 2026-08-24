@@ -63,6 +63,13 @@ public enum CoreErrorCode
     /// </summary>
     PluginDependencyUnavailable = 2013,
 
+    /// <summary>
+    /// A cataloger or curator closed its contract over a media item type no active media kind supplies.
+    /// Distinct from a dependency failure: the required package may be installed and active and still not
+    /// declare a kind over that exact type.
+    /// </summary>
+    PluginMediaPairingUnsatisfied = 2014,
+
     /// <summary>Media kind not found.</summary>
     MediaKindNotFound = 3000,
 

@@ -721,11 +721,11 @@ public sealed partial class PluginBootstrapper : IHostedService
                 return PluginAdmissionResult.Refused(CoreErrorCode.JobSchedulingFailed, defects);
             }
 
-            if (!TryPrepareProviders(manifest, ledger, activation, out providers, out defects))
+            if (!TryPrepareProviders(manifest, mediaKinds, ledger, activation, out providers, out defects, out var providerCode))
             {
                 DisposeActivated(languages);
                 languages = [];
-                return PluginAdmissionResult.Refused(CoreErrorCode.PluginLoadFailure, defects);
+                return PluginAdmissionResult.Refused(providerCode, defects);
             }
 
             var health = _pluginHealth.Prepare(manifest.Id, ledger.Registered<IHealthContributor>());
@@ -1043,16 +1043,45 @@ public sealed partial class PluginBootstrapper : IHostedService
         return found.Count == 0;
     }
 
+    /// <remarks>
+    /// <para>
+    /// The media pairing is checked across every registration before any implementation is constructed. A
+    /// provider whose closed item type no installed media kind supplies has nothing to be right about, and
+    /// running its constructor to find that out would run extension code the installation has already
+    /// decided it cannot use.
+    /// </para>
+    /// <para>
+    /// The item types compared are the ones actually supplied: the kinds this attempt just admitted, plus
+    /// the kinds already active in the installation. A declared package dependency is a separate and earlier
+    /// check; it proves a package is present, not that a media kind closed over that exact CLR type is.
+    /// </para>
+    /// </remarks>
+    [SuppressMessage(
+        "Design",
+        "CA1021:Avoid out parameters",
+        Justification = "One private step returning a verdict, what it prepared, a machine-readable code and the complete defect list.")]
     private bool TryPrepareProviders(
         ValidatedManifest manifest,
+        IReadOnlyList<RegisteredMediaKind> mediaKinds,
         PluginRegistrationLedger ledger,
         PluginActivationScope? activation,
         out IReadOnlyList<RegisteredProvider> prepared,
-        out IReadOnlyList<string> defects)
+        out IReadOnlyList<string> defects,
+        out CoreErrorCode errorCode)
     {
         var found = new List<string>();
         var providers = new List<RegisteredProvider>();
         var registrations = ledger.Registered<ProviderTypeRegistration>();
+
+        errorCode = CoreErrorCode.PluginLoadFailure;
+
+        if (!TryCheckMediaPairings(mediaKinds, registrations, out var pairingDefects))
+        {
+            prepared = [];
+            defects = pairingDefects;
+            errorCode = CoreErrorCode.PluginMediaPairingUnsatisfied;
+            return false;
+        }
 
         if (activation is null && registrations.Count > 0)
         {
@@ -1119,6 +1148,58 @@ public sealed partial class PluginBootstrapper : IHostedService
         }
 
         prepared = providers;
+        defects = found;
+        return found.Count == 0;
+    }
+
+    /// <summary>
+    /// Proves every media-paired registration names an item type an installed media kind actually supplies.
+    /// </summary>
+    /// <param name="mediaKinds">The kinds this attempt admitted, which are not published yet.</param>
+    /// <param name="registrations">Every provider the extension registered.</param>
+    /// <param name="defects">One actionable defect per unpairable registration.</param>
+    /// <returns><see langword="true"/> when every pairing resolves.</returns>
+    [SuppressMessage(
+        "Design",
+        "CA1021:Avoid out parameters",
+        Justification = "One private step returning a verdict and the complete defect list.")]
+    private bool TryCheckMediaPairings(
+        IReadOnlyList<RegisteredMediaKind> mediaKinds,
+        IReadOnlyList<ProviderTypeRegistration> registrations,
+        out IReadOnlyList<string> defects)
+    {
+        var found = new List<string>();
+
+        // Only a typed kind publishes an item type, so a legacy shape-declared kind pairs with nothing and
+        // says so rather than appearing to match everything.
+        var supplied = new Dictionary<Type, MediaKindId>();
+
+        foreach (var kind in mediaKinds.Concat(_kinds.All))
+        {
+            if (kind.MediaType is { } runtime)
+            {
+                supplied.TryAdd(runtime.ItemType, kind.Kind);
+            }
+        }
+
+        foreach (var registration in registrations)
+        {
+            if (registration.MediaItemType is not { } item || supplied.ContainsKey(item))
+            {
+                continue;
+            }
+
+            var installed = supplied.Count == 0
+                ? "no typed media kind is installed"
+                : $"the installed typed kinds supply {string.Join(", ", supplied.Select(entry => $"'{entry.Value}' ({entry.Key.FullName})").Order(StringComparer.Ordinal))}";
+
+            found.Add(
+                $"provider[{registration.Descriptor.LocalId}]: '{registration.ImplementationType.Name}' closed "
+                + $"its {registration.Family} contract over '{item.AssemblyQualifiedName}', which no active "
+                + $"media kind supplies — {installed}. Install the media package that declares that item "
+                + "type, or pair the provider with a kind this installation has.");
+        }
+
         defects = found;
         return found.Count == 0;
     }

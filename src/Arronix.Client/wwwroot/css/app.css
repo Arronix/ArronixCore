@@ -687,7 +687,6 @@ tbody tr:hover { background: var(--surface-2); }
 .catalog-entry { align-items: center; justify-content: space-between; }
 .catalog-name { margin: 0; font-weight: 600; }
 .catalog-detail { margin: 0; color: var(--text-quiet); font-size: 0.85rem; }
-.catalog-blocked { color: var(--text-faint); font-size: 0.8rem; font-style: italic; }
 
 /* --- provider form ------------------------------------------------------ */
 

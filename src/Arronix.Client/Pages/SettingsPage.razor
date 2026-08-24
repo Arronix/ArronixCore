@@ -21,8 +21,7 @@
 
 @if (_editing is { } editing)
 {
-    <ProviderForm Descriptor="editing.Descriptor"
-                  Provider="editing.Provider"
+    <ProviderForm Entry="editing.Entry"
                   Definition="editing.Definition"
                   OnSaved="OnSavedAsync"
                   OnCanceled="@(() => _editing = null)" />
@@ -44,13 +43,13 @@ else
 
         <section class="column">
             <h2>Available</h2>
-            <ProviderCatalog Descriptors="_descriptors" OnAdd="AddAsync" />
+            <ProviderCatalog Entries="_providers" OnAdd="AddAsync" />
         </section>
     </div>
 }
 
 @code {
-    private IReadOnlyList<ProviderDescriptor> _descriptors = [];
+    private IReadOnlyList<ProviderCatalogEntry> _providers = [];
     private IReadOnlyList<ProviderDefinition> _definitions = [];
     private Editing? _editing;
     private string? _error;
@@ -65,7 +64,7 @@ else
 
         try
         {
-            _descriptors = await Api.GetProvidersAsync();
+            _providers = await Api.GetProvidersAsync();
             _definitions = await Api.GetProviderDefinitionsAsync();
         }
         catch (HostUnreachableException)
@@ -82,16 +81,15 @@ else
         }
     }
 
-    private void AddAsync(ProviderCatalog.CatalogChoice choice)
-        => _editing = new Editing(choice.Descriptor, choice.Provider, null);
+    private void AddAsync(ProviderCatalogEntry entry) => _editing = new Editing(entry, null);
 
     private void EditAsync(ProviderDefinition definition)
     {
-        var descriptor = _descriptors.FirstOrDefault(candidate =>
-            string.Equals(candidate.LocalId, definition.Provider.Local, StringComparison.Ordinal)
-            || string.Equals(candidate.LocalId, definition.Provider.Value, StringComparison.Ordinal));
+        // The stored configuration names the qualified identifier the catalog now serves, so the match is
+        // an equality on one identity rather than a comparison of two spellings of a local name.
+        var entry = _providers.FirstOrDefault(candidate => candidate.Provider == definition.Provider);
 
-        if (descriptor is null)
+        if (entry is null)
         {
             // The configuration outlived its implementation. The platform keeps it rather than deleting
             // it, so the client says so rather than pretending it is not there.
@@ -99,7 +97,7 @@ else
             return;
         }
 
-        _editing = new Editing(descriptor, definition.Provider, definition);
+        _editing = new Editing(entry, definition);
     }
 
     private async Task OnSavedAsync()
@@ -108,8 +106,5 @@ else
         await LoadAsync();
     }
 
-    private sealed record Editing(
-        ProviderDescriptor Descriptor,
-        ProviderId Provider,
-        ProviderDefinition? Definition);
+    private sealed record Editing(ProviderCatalogEntry Entry, ProviderDefinition? Definition);
 }

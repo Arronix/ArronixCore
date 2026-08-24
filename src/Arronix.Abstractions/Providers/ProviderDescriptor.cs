@@ -5,9 +5,17 @@ namespace Arronix.Abstractions.Providers;
 /// Declares what one provider implementation is and how it is configured.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The descriptor is the implementation's declaration; a <see cref="ProviderDefinition"/> is one
 /// configured instance of it. Keeping them apart is what makes a provider stateless: the implementation
 /// holds no configuration, so two definitions of the same provider cannot interfere with each other.
+/// </para>
+/// <para>
+/// It declares what the platform cannot derive. Provider family comes from the registration the descriptor
+/// is passed to, and the qualified identifier is minted by the host from
+/// <see cref="LocalId"/>; a consumer reads both from <see cref="ProviderCatalogEntry"/> rather than from
+/// a value the declaration restated.
+/// </para>
 /// </remarks>
 public sealed record ProviderDescriptor
 {
@@ -15,11 +23,6 @@ public sealed record ProviderDescriptor
     /// Gets the identifier within the declaring extension. The registry qualifies it.
     /// </summary>
     public required string LocalId { get; init; }
-
-    /// <summary>
-    /// Gets the kind of external service this provider integrates with.
-    /// </summary>
-    public required ProviderFamily Family { get; init; }
 
     /// <summary>
     /// Gets the provider's display name.

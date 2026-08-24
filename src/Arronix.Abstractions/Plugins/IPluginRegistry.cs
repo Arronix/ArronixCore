@@ -168,20 +168,24 @@ public interface IPluginRegistry
     /// <summary>
     /// Registers a cataloger. Requires <see cref="Capability.Metadata"/>.
     /// </summary>
+    /// <typeparam name="TCataloger">The implementation, which closed <see cref="ICataloger{TItem}"/> over its item type.</typeparam>
     /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
-    IPluginRegistry AddCataloger<TItem, TCataloger>(ProviderDescriptor descriptor)
-        where TItem : class, IMediaItem
-        where TCataloger : class, ICataloger<TItem>;
+    /// <remarks>
+    /// The item type is not repeated here. It is read from the contract the implementation already closed,
+    /// so the pairing has one authority and a type that is not a cataloger fails at this call site.
+    /// </remarks>
+    IPluginRegistry AddCataloger<TCataloger>(ProviderDescriptor descriptor)
+        where TCataloger : class, ICataloger, ICatalogerPairing;
 
     /// <summary>
     /// Registers a curator. Requires <see cref="Capability.Curation"/>.
     /// </summary>
+    /// <typeparam name="TCurator">The implementation, which closed <see cref="ICurator{TItem}"/> over its item type.</typeparam>
     /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
-    IPluginRegistry AddCurator<TItem, TCurator>(ProviderDescriptor descriptor)
-        where TItem : class, IMediaItem
-        where TCurator : class, ICurator<TItem>;
+    IPluginRegistry AddCurator<TCurator>(ProviderDescriptor descriptor)
+        where TCurator : class, IProvider, ICuratorPairing;
 
     /// <summary>
     /// Registers a background job. Ungated.

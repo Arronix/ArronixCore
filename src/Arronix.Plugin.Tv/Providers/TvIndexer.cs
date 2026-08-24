@@ -56,13 +56,17 @@ public sealed class TvIndexer : IIndexer
     private readonly TvCatalog _catalog;
     private readonly TimeProvider _clock;
 
+    // The extension's own release-identifier namespace, not a contract member: identity is the host's to
+    // mint, and this qualified spelling is only used to keep synthetic release keys unique.
+    private readonly ProviderId _id;
+
     /// <summary>Creates the indexer.</summary>
     /// <param name="context">The capability-scoped plugin context supplied by DI.</param>
     public TvIndexer(IPluginContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        Id = ProviderId.Create(context.PluginId, LocalId);
+        _id = ProviderId.Create(context.PluginId, LocalId);
         _catalog = TvCatalog.CreateSeeded();
         _clock = context.Clock;
     }
@@ -71,23 +75,16 @@ public sealed class TvIndexer : IIndexer
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(clock);
-        Id = ProviderId.Create(plugin, LocalId);
+        _id = ProviderId.Create(plugin, LocalId);
         _catalog = catalog;
         _clock = clock;
     }
-
-    /// <inheritdoc />
-    public ProviderId Id { get; }
-
-    /// <inheritdoc />
-    public ProviderFamily Family => ProviderFamily.Indexer;
 
     /// <summary>Builds the descriptor, including the declarative settings schema.</summary>
     /// <returns>The descriptor.</returns>
     public static ProviderDescriptor Describe() => new()
     {
         LocalId = LocalId,
-        Family = ProviderFamily.Indexer,
         Name = "Episodic catalog feed",
         Description = "Answers episodic searches from the extension's own catalog. Issues no network request.",
         Protocols = [DownloadProtocol.Torrent, DownloadProtocol.Usenet],
@@ -401,10 +398,10 @@ public sealed class TvIndexer : IIndexer
     }
 
     private ReleaseListing Candidate(string title, string key, long size, DateTime published) => new(
-        ReleaseId.FromString($"{Id}/{key}"),
+        ReleaseId.FromString($"{_id}/{key}"),
         title,
         new Uri($"https://catalog.invalid/download/{Uri.EscapeDataString(key)}"),
-        Id.ToString(),
+        _id.ToString(),
         TvIds.MediaKind,
         size,
         published,

@@ -39,17 +39,41 @@ public sealed class RegistryAdmissionTests
         ledger.Entries.Select(entry => entry.Ordinal).Should().Equal(0, 1, 2);
     }
 
+    /// <remarks>
+    /// The item type is not passed to the call. It is read back off the contract the implementation closed,
+    /// which is the only place an author states it, and the family comes from the registration that was
+    /// called rather than from the declaration handed to it.
+    /// </remarks>
     [Test]
     public void ACatalogerRegistrationRetainsTheMediaOwnedItemTypeAndImplementationType()
     {
         var (registry, ledger) = Create(Capability.Metadata);
 
-        registry.AddCataloger<FakeCatalogItem, FakeCataloger>(Declarations.Cataloger("typed"));
+        registry.AddCataloger<FakeCataloger>(Declarations.Cataloger("typed"));
 
         var registration = ledger.Registered<Abstractions.Providers.ProviderTypeRegistration>().Single();
         registration.ContractType.Should().Be(typeof(Abstractions.Providers.ICataloger<FakeCatalogItem>));
         registration.ImplementationType.Should().Be(typeof(FakeCataloger));
         registration.MediaItemType.Should().Be(typeof(FakeCatalogItem));
+        registration.Family.Should().Be(Abstractions.Providers.ProviderFamily.Cataloger);
+    }
+
+    /// <remarks>
+    /// The curator half of the same rule. Both registrations read one contract each, so a package supplying
+    /// both states its item type twice - once per contract - and never in a registration argument.
+    /// </remarks>
+    [Test]
+    public void ACuratorRegistrationRetainsTheSameItemTypeThroughItsOwnContract()
+    {
+        var (registry, ledger) = Create(Capability.Curation);
+
+        registry.AddCurator<FakeCurator>(Declarations.Cataloger("typed-list"));
+
+        var registration = ledger.Registered<Abstractions.Providers.ProviderTypeRegistration>().Single();
+        registration.ContractType.Should().Be(typeof(Abstractions.Providers.ICurator<FakeCatalogItem>));
+        registration.ImplementationType.Should().Be(typeof(FakeCurator));
+        registration.MediaItemType.Should().Be(typeof(FakeCatalogItem));
+        registration.Family.Should().Be(Abstractions.Providers.ProviderFamily.Curator);
     }
 
     [Test]
