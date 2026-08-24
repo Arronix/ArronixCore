@@ -172,8 +172,11 @@ internal sealed class PackagedIdentityAndLifecycleTests
             .Where(entry => entry.EndsWith(":Arronix.Format.Video", StringComparison.Ordinal))
             .ToArray();
 
-        var contexts = AssemblyLoadContext.All
-            .Where(context => context.Name == SharedContractStore.ContextName)
+        // Derived from what was actually admitted rather than scanned out of the process, so a context
+        // another fixture left behind cannot make this pass or fail.
+        var contexts = admitted
+            .Select(contract => AssemblyLoadContext.GetLoadContext(contract.Assembly))
+            .Distinct()
             .ToArray();
 
         await bootstrapper.StopAsync(CancellationToken.None);
@@ -187,9 +190,13 @@ internal sealed class PackagedIdentityAndLifecycleTests
         admitted.Should().ContainSingle(contract => contract.Identity.Name == "Arronix.Format.Video")
             .Which.Publisher.Should().Be(VideoPackage);
 
-        contexts.Should().ContainSingle("one installation has one shared contract context")
-            .Which.IsCollectible.Should().BeTrue(
-                "yielding a contract to the default context would make it permanently unloadable");
+        var context = contexts.Should().ContainSingle(
+            "every admitted contract is in one context, or the installation has more than one identity for "
+            + "the types it shares").Which;
+
+        context!.Name.Should().Be(SharedContractStore.ContextName);
+        context.IsCollectible.Should().BeTrue(
+            "yielding a contract to the default context would make it permanently unloadable");
 
         privateCopies.Should().BeEmpty(
             "a dependant that loaded its own copy would have a second Video type, and nothing would cast");
@@ -238,10 +245,17 @@ internal sealed class PackagedIdentityAndLifecycleTests
     }
 
     /// <summary>
-    /// Teardown reverses the order packages were actually published in, and matches receipts exactly.
+    /// Teardown is observed to run dependants before their dependencies, and leaves nothing rooted.
     /// </summary>
+    /// <remarks>
+    /// The witness is each package's own load context announcing that it was asked to unload, which happens
+    /// once, during that package's own withdrawal. It is a record of what teardown did rather than of what
+    /// the graph says it should do. The video package has no context to announce anything, so its release is
+    /// witnessed the other way: it is still holding the contract context after every dependant has stopped,
+    /// and stops holding it last.
+    /// </remarks>
     [Test]
-    public async Task TeardownReversesPublicationOrderAndLeavesNothingRooted()
+    public async Task TeardownIsObservedToRunDependantsBeforeTheirDependencies()
     {
         var root = Install("video", "movies", "movies-provider", "video-dependant");
         using var provider = BuildProvider(root);
@@ -251,6 +265,7 @@ internal sealed class PackagedIdentityAndLifecycleTests
 
         var loader = provider.GetRequiredService<PluginLoader>();
         var runtime = provider.GetRequiredService<PluginRuntimeRegistry>();
+        var unloaded = new List<string>();
 
         var published = runtime.Active
             .Select(result => new
@@ -262,26 +277,45 @@ internal sealed class PackagedIdentityAndLifecycleTests
             .Select(entry => entry.Id)
             .ToList();
 
+        foreach (var active in runtime.Active.Where(result => result.LoadContext is not null))
+        {
+            var id = active.Id!.Value.ToString();
+            active.LoadContext!.Unloading += _ =>
+            {
+                lock (unloaded)
+                {
+                    unloaded.Add(id);
+                }
+            };
+        }
+
+        var holdersBeforeStop = loader.SharedContracts.Holders.Select(id => id.Value).ToArray();
+
         await bootstrapper.StopAsync(CancellationToken.None);
 
         using var assertions = new AssertionScope();
 
-        published.Should().ContainInOrder(
-            "arronix.format.video",
-            "movies",
-            "fixture.movies.provider");
-
-        published.Should().ContainInOrder(
-            "arronix.format.video",
-            "fixture.video.dependant");
-
+        published.Should().ContainInOrder("arronix.format.video", "movies", "fixture.movies.provider");
+        published.Should().ContainInOrder("arronix.format.video", "fixture.video.dependant");
         published[0].Should().Be(
             "arronix.format.video",
             "every other package requires it, so it publishes first whatever order the folders were walked in");
 
+        unloaded.Should().BeEquivalentTo(
+            ["fixture.movies.provider", "movies", "fixture.video.dependant"],
+            "the three packages with executable halves each unload exactly once");
+
+        unloaded.IndexOf("fixture.movies.provider").Should().BeLessThan(
+            unloaded.IndexOf("movies"),
+            "a dependant's code is released before the code of the package whose types it holds");
+
+        holdersBeforeStop.Should().Contain("arronix.format.video");
+
         bootstrapper.States.Should().OnlyContain(state => state.State == PluginState.Stopped);
         loader.Dependencies.RootedPackages.Should().BeEmpty();
         loader.Dependencies.RetainedPackages.Should().BeEmpty();
+        loader.SharedContracts.Holders.Should().BeEmpty(
+            "the contract-only package gives up its hold last, once nothing else is holding one");
         loader.SharedContracts.UnloadRequested.Should().BeTrue();
         loader.SharedContracts.Admitted.Should().BeEmpty(
             "a released context can never serve another dependant, so reporting its former contents as "
@@ -326,45 +360,53 @@ internal sealed class PackagedIdentityAndLifecycleTests
     }
 
     /// <summary>
-    /// A package that binds to a different identity of an admitted contract is refused with both identities
-    /// printed.
+    /// A package carrying a different build of an admitted contract is refused, naming both builds.
     /// </summary>
+    /// <remarks>
+    /// The planted file has the same simple name, version, culture and public key token as the admitted
+    /// contract and different bytes, which is exactly what a name-and-version comparison cannot see. The
+    /// diagnostic has to carry both module identifiers and both content hashes or an operator cannot tell
+    /// which copy to remove.
+    /// </remarks>
     [Test]
-    public async Task APackageCarryingADifferentBuildOfAnAdmittedContractIsRefusedWithBothIdentities()
+    public async Task APackageCarryingADifferentBuildOfAnAdmittedContractIsRefusedNamingBothBuilds()
     {
         var root = Install("video", "movies", "video-dependant");
 
-        // A different build of the same assembly name: the compiler stamps a new MVID into every build, so
-        // the two files are the same identity and different bytes. That is the case a name comparison
-        // cannot see.
-        var rebuilt = Path.Combine(
-            AppContext.BaseDirectory,
-            "G04PackagedPlugins",
-            "fixture.video.dependant",
-            "Arronix.Fixture.VideoDependant.dll");
-        var planted = Path.Combine(root, "fixture.video.dependant", "Arronix.Format.Video.dll");
-        File.Copy(
-            Path.Combine(AppContext.BaseDirectory, "Arronix.Format.Video.dll"),
-            planted,
-            overwrite: true);
+        var admittedPath = Path.Combine(root, "arronix.format.video", "Arronix.Format.Video.dll");
+        var plantedPath = Path.Combine(root, "fixture.video.dependant", "Arronix.Format.Video.dll");
+        RebuiltAssembly.Write(admittedPath, plantedPath);
 
-        File.Exists(rebuilt).Should().BeTrue("the fixture must be staged before this case means anything");
+        StagedAssembly.TryStage(admittedPath, out var admitted, out _).Should().BeTrue();
+        StagedAssembly.TryStage(plantedPath, out var planted, out _).Should().BeTrue();
+
+        planted!.Identity.Should().Be(
+            admitted!.Identity,
+            "the two files are the same CLR identity, which is what makes this the hard case");
+        planted.ModuleVersionId.Should().NotBe(admitted.ModuleVersionId);
+        planted.ContentHash.Should().NotBe(admitted.ContentHash);
 
         using var provider = BuildProvider(root);
         var bootstrapper = Bootstrapper(provider);
 
         await bootstrapper.StartAsync(CancellationToken.None);
 
-        var states = bootstrapper.States.ToDictionary(state => state.Id!.Value);
+        var states = bootstrapper.States.ToDictionary(state => state.Id!.Value.ToString());
 
         await bootstrapper.StopAsync(CancellationToken.None);
 
         using var assertions = new AssertionScope();
 
         states["fixture.video.dependant"].State.Should().Be(PluginState.Quarantined);
-        states["fixture.video.dependant"].Defects.Should().Contain(defect =>
-            defect.Contains("Arronix.Format.Video", StringComparison.Ordinal));
-        states["movies"].State.Should().Be(PluginState.Active);
+        states["fixture.video.dependant"].ErrorCode.Should().Be(CoreErrorCode.PluginIsolationViolation);
+
+        var defect = states["fixture.video.dependant"].Defects.Should().ContainSingle().Which;
+        defect.Should().Contain("private copy");
+        defect.Should().Contain(admitted.ModuleVersionId.ToString()).And.Contain(admitted.ContentHash);
+        defect.Should().Contain(planted.ModuleVersionId.ToString()).And.Contain(planted.ContentHash);
+
+        states["movies"].State.Should().Be(PluginState.Active, "the fault is not theirs");
+        states["arronix.format.video"].State.Should().Be(PluginState.Active);
     }
 
     private static PluginLoadContext ActiveContextOf(PluginRuntimeRegistry runtime, PluginId package)
