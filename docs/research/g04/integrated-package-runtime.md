@@ -201,6 +201,14 @@ Neither absorbs cancellation, exhausted memory, exhausted stack, corrupted memor
 failure, and both inspect the whole exception chain, so a type initializer that ran out of memory is not
 absorbed as an ordinary refusal.
 
+The policy governs every place package code runs before registration, including the two reflection
+boundaries: the entry module's constructor, whose failure reflection wraps in a
+`TargetInvocationException`, and the identifier getter, which the loader calls directly.
+`ModuleActivationContainmentTests` proves both against a real emitted package that declares its own
+exception type — so "unfamiliar" is literal rather than a stand-in — and throws process-fatal conditions
+both wrapped and direct. A module constructed before a failing identifier getter is still disposed before its
+context is unloaded, whether that getter's failure was contained or propagated.
+
 ## 9. The required exit proofs
 
 | # | Claim | Fixture |
@@ -232,6 +240,7 @@ Each guard was locally inverted, the suite run, and the guard restored. The work
 | A failed contract publisher no longer withdraws its package dependants | `AContractThatCannotLoadWithdrawsItsPackageDependantsWhateverTheirMetadataSays` fails |
 | `PluginLoadContext` never resolves an admitted contract | 8 fail, including all three identity proofs |
 | Staging copies the build directory instead of publishing | `APlantedStaleAssemblyInTheSourceBuildOutputCannotEnterAStagedPayload` fails, naming the planted file |
+| Module construction and identity getters catch without the containment policy | 4 fail: all three process-fatal propagation cases and the disposal proof for the propagating one |
 
 ## 11. What was deleted
 
@@ -249,16 +258,16 @@ type), `PluginDependencyPlan`, `PluginDependencyPlanEntry`, `PluginDependencyRef
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=11 total=2829 enabled=2527 passed=2527 failed=0 skipped=302 inconclusive=0
-cases=302 replacements=0 requiredTests=3 compileLogs=1 compileProjects=11 compileItems=260 boundSources=15
+projects=11 total=2836 enabled=2534 passed=2534 failed=0 skipped=302 inconclusive=0
+cases=302 replacements=0 requiredTests=3 compileLogs=1 compileProjects=11 compileItems=261 boundSources=15
 ```
 
-Against the G02 close (2,168 passed of 2,470, 302 skipped) this is +359 enabled cases. The registered skip
+Against the G02 close (2,168 passed of 2,470, 302 skipped) this is +366 enabled cases. The registered skip
 count is unchanged at 302 — 301 Movies cases and one architecture case — and both ratchets pass. Per project:
 
 | Project | Passed | Skipped |
 | --- | --- | --- |
-| `Arronix.Plugins.Tests` | 492 | 0 |
+| `Arronix.Plugins.Tests` | 499 | 0 |
 | `Arronix.Host.Tests` | 532 | 0 |
 | `Arronix.Architecture.Tests` | 317 | 1 |
 | `Arronix.Plugin.Movies.Tests` | 370 | 301 |

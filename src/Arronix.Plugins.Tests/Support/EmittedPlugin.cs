@@ -22,6 +22,36 @@ internal enum EmittedBehavior
 }
 
 /// <summary>
+/// Where an emitted fixture extension fails, and with what.
+/// </summary>
+/// <remarks>
+/// The loader's containment policy is about which failures belong to a package and which mean the process
+/// is no longer sound, so a fixture has to be able to throw both kinds from both places package code runs
+/// before registration: the module constructor, which reflection wraps, and the identifier getter, which the
+/// loader calls directly.
+/// </remarks>
+internal enum EmittedFault
+{
+    /// <summary>Construct and report an identifier normally.</summary>
+    None = 0,
+
+    /// <summary>Throw an exception type declared by the fixture itself, from the constructor.</summary>
+    ConstructorThrowsNovel = 1,
+
+    /// <summary>Throw <see cref="OutOfMemoryException"/> from the constructor, which reflection wraps.</summary>
+    ConstructorThrowsOutOfMemory = 2,
+
+    /// <summary>Throw <see cref="OperationCanceledException"/> from the constructor, which reflection wraps.</summary>
+    ConstructorThrowsCanceled = 3,
+
+    /// <summary>Throw the fixture's own exception type from the identifier getter.</summary>
+    IdGetterThrowsNovel = 4,
+
+    /// <summary>Throw <see cref="OutOfMemoryException"/> directly from the identifier getter.</summary>
+    IdGetterThrowsOutOfMemory = 5
+}
+
+/// <summary>
 /// Compiles a real extension assembly onto disk, so the loader can be proved against a genuine one.
 /// </summary>
 /// <remarks>
@@ -47,20 +77,28 @@ internal static class EmittedPlugin
     /// <param name="behavior">What its configure method does.</param>
     /// <param name="assemblyName">The assembly name, which is also its file name.</param>
     /// <param name="moduleCount">How many entry modules to expose, to prove ambiguity is a defect.</param>
+    /// <param name="fault">Where the module fails before registration, and with what.</param>
+    /// <param name="disposalMarker">
+    /// A file the module writes when it is disposed, so a test can observe that a module constructed before
+    /// a later failure was still released.
+    /// </param>
     /// <returns>The full path of the written assembly.</returns>
     public static string Write(
         string folder,
         string pluginId,
         EmittedBehavior behavior = EmittedBehavior.DoNothing,
         string assemblyName = "Emitted.Plugin",
-        int moduleCount = 1)
+        int moduleCount = 1,
+        EmittedFault fault = EmittedFault.None,
+        string? disposalMarker = null)
     {
         var builder = new PersistedAssemblyBuilder(new AssemblyName(assemblyName), typeof(object).Assembly);
         var module = builder.DefineDynamicModule(assemblyName);
+        var novel = DefineNovelException(module);
 
         for (var index = 0; index < moduleCount; index++)
         {
-            DefineModuleType(module, $"Emitted.PluginModule{index}", pluginId, behavior);
+            DefineModuleType(module, $"Emitted.PluginModule{index}", pluginId, behavior, fault, novel, disposalMarker);
         }
 
         Directory.CreateDirectory(folder);
@@ -69,11 +107,43 @@ internal static class EmittedPlugin
         return path;
     }
 
+    /// <summary>
+    /// Declares an exception type in the fixture's own assembly, which the platform has never seen.
+    /// </summary>
+    /// <remarks>
+    /// A package may throw anything, so the containment rule for package code cannot be an allowlist. This
+    /// type is what makes that testable: no policy anywhere names it.
+    /// </remarks>
+    private static ConstructorBuilder DefineNovelException(ModuleBuilder module)
+    {
+        var type = module.DefineType(
+            "Emitted.NovelPackageFailure",
+            TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed,
+            typeof(Exception));
+
+        var constructor = type.DefineConstructor(
+            MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            CallingConventions.Standard,
+            Type.EmptyTypes);
+
+        var il = constructor.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Ldstr, "this package failed in a way nothing has seen before");
+        il.Emit(OpCodes.Call, typeof(Exception).GetConstructor([typeof(string)])!);
+        il.Emit(OpCodes.Ret);
+
+        type.CreateType();
+        return constructor;
+    }
+
     private static void DefineModuleType(
         ModuleBuilder module,
         string typeName,
         string pluginId,
-        EmittedBehavior behavior)
+        EmittedBehavior behavior,
+        EmittedFault fault,
+        ConstructorBuilder novel,
+        string? disposalMarker)
     {
         var type = module.DefineType(
             typeName,
@@ -82,13 +152,78 @@ internal static class EmittedPlugin
 
         type.AddInterfaceImplementation(typeof(IPluginModule));
 
-        EmitIdProperty(type, pluginId);
+        if (disposalMarker is not null)
+        {
+            type.AddInterfaceImplementation(typeof(IDisposable));
+            EmitDispose(type, disposalMarker);
+        }
+
+        EmitConstructor(type, fault, novel);
+        EmitIdProperty(type, pluginId, fault, novel);
         EmitConfigure(type, behavior);
 
         type.CreateType();
     }
 
-    private static void EmitIdProperty(TypeBuilder type, string pluginId)
+    /// <summary>Emits the parameterless constructor the loader activates through.</summary>
+    private static void EmitConstructor(TypeBuilder type, EmittedFault fault, ConstructorBuilder novel)
+    {
+        var constructor = type.DefineConstructor(
+            MethodAttributes.Public | MethodAttributes.SpecialName | MethodAttributes.RTSpecialName,
+            CallingConventions.Standard,
+            Type.EmptyTypes);
+
+        var il = constructor.GetILGenerator();
+        il.Emit(OpCodes.Ldarg_0);
+        il.Emit(OpCodes.Call, typeof(object).GetConstructor(Type.EmptyTypes)!);
+
+        switch (fault)
+        {
+            case EmittedFault.ConstructorThrowsNovel:
+                il.Emit(OpCodes.Newobj, novel);
+                il.Emit(OpCodes.Throw);
+                break;
+
+            case EmittedFault.ConstructorThrowsOutOfMemory:
+                il.Emit(OpCodes.Newobj, typeof(OutOfMemoryException).GetConstructor(Type.EmptyTypes)!);
+                il.Emit(OpCodes.Throw);
+                break;
+
+            case EmittedFault.ConstructorThrowsCanceled:
+                il.Emit(OpCodes.Newobj, typeof(OperationCanceledException).GetConstructor(Type.EmptyTypes)!);
+                il.Emit(OpCodes.Throw);
+                break;
+
+            default:
+                il.Emit(OpCodes.Ret);
+                break;
+        }
+    }
+
+    /// <summary>Emits a disposer that records having run, so release is observable across a load context.</summary>
+    private static void EmitDispose(TypeBuilder type, string marker)
+    {
+        var dispose = type.DefineMethod(
+            nameof(IDisposable.Dispose),
+            MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig
+                | MethodAttributes.NewSlot | MethodAttributes.Final,
+            typeof(void),
+            Type.EmptyTypes);
+
+        var il = dispose.GetILGenerator();
+        il.Emit(OpCodes.Ldstr, marker);
+        il.Emit(OpCodes.Ldstr, "disposed");
+        il.Emit(OpCodes.Call, typeof(File).GetMethod(nameof(File.WriteAllText), [typeof(string), typeof(string)])!);
+        il.Emit(OpCodes.Ret);
+
+        type.DefineMethodOverride(dispose, typeof(IDisposable).GetMethod(nameof(IDisposable.Dispose))!);
+    }
+
+    private static void EmitIdProperty(
+        TypeBuilder type,
+        string pluginId,
+        EmittedFault fault,
+        ConstructorBuilder novel)
     {
         var getter = type.DefineMethod(
             "get_Id",
@@ -98,9 +233,25 @@ internal static class EmittedPlugin
             Type.EmptyTypes);
 
         var il = getter.GetILGenerator();
-        il.Emit(OpCodes.Ldstr, pluginId);
-        il.Emit(OpCodes.Call, typeof(PluginId).GetMethod(nameof(PluginId.FromString), [typeof(string)])!);
-        il.Emit(OpCodes.Ret);
+
+        switch (fault)
+        {
+            case EmittedFault.IdGetterThrowsNovel:
+                il.Emit(OpCodes.Newobj, novel);
+                il.Emit(OpCodes.Throw);
+                break;
+
+            case EmittedFault.IdGetterThrowsOutOfMemory:
+                il.Emit(OpCodes.Newobj, typeof(OutOfMemoryException).GetConstructor(Type.EmptyTypes)!);
+                il.Emit(OpCodes.Throw);
+                break;
+
+            default:
+                il.Emit(OpCodes.Ldstr, pluginId);
+                il.Emit(OpCodes.Call, typeof(PluginId).GetMethod(nameof(PluginId.FromString), [typeof(string)])!);
+                il.Emit(OpCodes.Ret);
+                break;
+        }
 
         var property = type.DefineProperty("Id", PropertyAttributes.None, typeof(PluginId), null);
         property.SetGetMethod(getter);

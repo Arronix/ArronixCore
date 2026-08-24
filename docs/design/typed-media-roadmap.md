@@ -310,7 +310,7 @@ Completion proof recorded on 2026-08-24:
   identity — is refused with both module identifiers and both content hashes;
 - a stale assembly planted in a project's real build output cannot enter a staged payload through the actual
   publish, and inverting that staging to a recursive copy makes the proof fail;
-- the full rail reports 2,527 passed, 302 registered skips, zero failed and zero inconclusive from 2,829
+- the full rail reports 2,534 passed, 302 registered skips, zero failed and zero inconclusive from 2,836
   cases across 11 test projects; compatibility and required-sentinel ratchets pass.
 
 Deliberately not claimed: one CLR identity across Host and dynamically loaded Client code (G07 owns the

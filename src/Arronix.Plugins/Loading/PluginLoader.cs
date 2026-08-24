@@ -1041,13 +1041,19 @@ public sealed class PluginLoader
         {
             module = (IPluginModule)Activator.CreateInstance(candidates[0])!;
         }
+        // The constructor is package code and reflection wraps whatever it threw, so the filter walks the
+        // chain: an unfamiliar package exception quarantines, and a wrapped process-fatal condition or a
+        // cancellation propagates rather than being recorded as an ordinary construction defect.
         catch (TargetInvocationException failure)
+            when (LoadFailurePolicy.IsContainablePackageFailure(failure))
         {
             error = $"The entry module of extension '{manifest.Id}' threw while being constructed: {failure.InnerException?.Message ?? failure.Message}";
             return false;
         }
         catch (MissingMethodException failure)
         {
+            // Raised by reflection rather than by the package: there is no constructor to have thrown, so
+            // there is no chain to inspect.
             error = $"The entry module of extension '{manifest.Id}' could not be constructed: {failure.Message}";
             return false;
         }
@@ -1057,10 +1063,11 @@ public sealed class PluginLoader
         {
             moduleId = module.Id;
         }
-// The identifier getter is extension code. A throwing getter quarantines and the caller still retains the
-// constructed module so its asynchronous disposal runs before the load context is unloaded.
+// The identifier getter is package code, so an unfamiliar exception quarantines while a process-fatal
+// condition or a cancellation propagates. Either way the caller retains the constructed module, because
+// `module` was written to its variable before the getter ran, so disposal happens before the context unloads.
 #pragma warning disable CA1031
-        catch (Exception failure)
+        catch (Exception failure) when (LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
         {
             error = $"The entry module of extension '{manifest.Id}' threw while reporting its identity: {failure.Message}";

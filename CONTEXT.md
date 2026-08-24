@@ -163,10 +163,12 @@ work does not substitute for closing an earlier dependency.
   admits each shared contract once into one Host-owned collectible context, and a separately packaged
   provider closes `ICataloger<Movie>` over the same runtime type the registered movies kind publishes. See
   `docs/research/g04/integrated-package-runtime.md` for the evidence and the residual risks.
-- G04 is next: close the typed provider-pairing contract. It is not started, and nothing here claims it. The Movies/Video assembly and package topology it depends on
-  is in place and proved by compile-time and package-shape tests
-  (`docs/research/g04/movies-video-package-topology.md`); the manifest dependency declaration, admitted-contract
-  resolution, duplicate-copy refusal, and dependency-aware withdrawal are not, so the gate remains open.
+- G04 is next: close the typed provider-pairing contract. It is not started, and nothing here claims it. The
+  package topology, manifest dependency declaration, admitted-contract resolution, duplicate-copy refusal and
+  dependency-aware withdrawal it builds on are all in place and proved
+  (`docs/research/g04/integrated-package-runtime.md`). What G04 owns and this work deliberately did not touch
+  is the provider-pairing surface itself: a cataloger registration still repeats the item type its closed
+  `ICataloger<TItem>` already states.
 
 The later gates cover provider pairing, hidden binding SPI, dynamic typed Client loading, compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
@@ -188,8 +190,8 @@ duplicated checklist drifting from current state.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-24) reports 2,527 passed, 302 skipped, zero failed,
-  and zero inconclusive from 2,829 total cases across 11 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-24) reports 2,534 passed, 302 skipped, zero failed,
+  and zero inconclusive from 2,836 total cases across 11 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

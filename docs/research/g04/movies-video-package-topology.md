@@ -1,6 +1,10 @@
 # G04 — the Movies and Video package topology, as built
 
-**Status:** implemented on branch `claude/g04-package-topology`. Base commit `1b8ce1b3f` (G02 closed).
+**Status:** superseded as current state by
+[`integrated-package-runtime.md`](integrated-package-runtime.md). This remains an accurate record of the
+`claude/g04-package-topology` branch at base commit `1b8ce1b3f`, including its section 7 list of what that
+change deliberately did not do. Those items are now done; read the integrated report for what the repository
+does today.
 
 This document records the assembly and package topology that now exists in the repository for the movies
 and video packages, the rules it is held to, and what it deliberately does not do. It is a record of a

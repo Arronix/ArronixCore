@@ -204,12 +204,15 @@ context, released once every dependant has withdrawn.
 
 The movies and video packages are split that way today: `Arronix.Media.Movies` and `Arronix.Format.Video`
 hold the shared types, and `Arronix.Plugin.Movies` and `Arronix.Format.Video.Contributions` hold the
-executable halves. That makes the split expressible; it does not yet make
-it effective. Format and media dependencies are still part of an extension's local dependency closure, only
-Abstractions and framework assemblies unify with the default context, and both shared assemblies still load
-privately per dependant. The manifest dependency declaration and the admitted-contract resolution step are
-required before independent cataloger packages observe one CLR identity or the Blazor client loads those
-exact types dynamically.
+executable halves. `Arronix.Format.Video` ships as the installed package `arronix.format.video`, Movies
+publishes its media domain and requires the video package, and the installation admits each declared contract
+once into one Host-owned collectible context — so a separately packaged cataloger observes one CLR identity
+for `Movie`, and two independently installed dependants observe one for `Video`. A package binds only to
+contracts published by itself or by a package in its exact transitive dependency closure.
+
+The remaining half is the browser: loading those exact types into the Blazor client, with the package
+identity, content hash, dependency-closure hash and cache protocol that requires, is G07's work and is not
+claimed here.
 
 ## 9. Migration state
 
