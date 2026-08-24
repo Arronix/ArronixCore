@@ -45,14 +45,4 @@ public sealed class PluginCandidate
     /// Gets the declaration as read.
     /// </summary>
     public PluginManifest Manifest { get; }
-
-    /// <summary>
-    /// Gets the full path of the entry assembly, resolved inside the extension's own folder.
-    /// </summary>
-    /// <returns>The path.</returns>
-    /// <remarks>
-    /// The file name has already been proved to carry no separator and no parent-directory segment, so the
-    /// combination cannot leave the folder.
-    /// </remarks>
-    public string ResolveEntryAssemblyPath() => Path.Combine(Folder, Manifest.EntryAssembly);
 }

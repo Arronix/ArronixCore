@@ -146,7 +146,7 @@ public sealed class PartitionedCacheTests
     [Test]
     public void APlatformEventIsAlwaysPublishableHoweverStrictTheBoundary()
     {
-        var context = new PluginLoadContext(Plugin, GetType().Assembly.Location);
+        var context = new PluginLoadContext(Plugin, GetType().Assembly.Location, nativeLibraryResolver: null, PackageContractScope.Empty(Plugin));
         var publisher = new FilteredEventPublisher(new RecordingEventPublisher(), Plugin, context);
 
         publisher.MayPublish(typeof(IDomainEvent)).Should().BeTrue();
@@ -157,7 +157,7 @@ public sealed class PartitionedCacheTests
     public async Task AnEventTypeFromNeitherThePlatformNorTheExtensionIsRefused()
     {
         var inner = new RecordingEventPublisher();
-        var context = new PluginLoadContext(Plugin, GetType().Assembly.Location);
+        var context = new PluginLoadContext(Plugin, GetType().Assembly.Location, nativeLibraryResolver: null, PackageContractScope.Empty(Plugin));
         var publisher = new FilteredEventPublisher(inner, Plugin, context);
 
         var publish = async () => await publisher.PublishAsync(new ForeignEvent());

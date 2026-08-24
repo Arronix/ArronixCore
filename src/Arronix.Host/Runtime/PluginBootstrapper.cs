@@ -19,6 +19,7 @@ using Arronix.Host.Languages;
 using Arronix.Host.Media;
 using Arronix.Host.Providers;
 using Arronix.Host.Scheduling;
+using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
@@ -40,9 +41,10 @@ namespace Arronix.Host.Runtime;
 /// surveyed application needs a "retry startup with extensions disabled" escape hatch.
 /// </para>
 /// <para>
-/// Activation order is by extension identifier. Extensions have no dependencies on each other, because
-/// direct interaction between them is forbidden, so a topological sort would be sorting an edgeless graph;
-/// ordinal order is deterministic, which is what actually matters for reproducing a fault.
+/// Activation order is the resolved package graph's order: a package follows everything it requires, and
+/// packages that require nothing of each other are ordered by identifier. Teardown reverses the order
+/// packages were actually published in. Order alone is not the safety property, though — a dependency is
+/// released only when nothing still depends on it, which is checked under the same lease that withdraws it.
 /// </para>
 /// <para>
 /// Failure is quarantine, never fatal. Zero extensions loading is a valid state and the host serves an empty
@@ -65,13 +67,14 @@ public sealed partial class PluginBootstrapper : IHostedService
     private readonly TimeProvider _clock;
     private readonly ILogger<PluginBootstrapper> _log;
     private readonly PluginPublicationGate _publication;
+    private readonly PackageDependencyRegistry _dependencies;
     private readonly IPluginAdmissionCheck _admission;
 
     private readonly ConcurrentDictionary<PluginId, HostAdmissionAttempt> _committed = new();
     private readonly SemaphoreSlim _lifecycle = new(1, 1);
     private int _lifecycleState;
 
-    private enum LifecycleState
+    internal enum LifecycleState
     {
         Created,
         Starting,
@@ -99,6 +102,11 @@ public sealed partial class PluginBootstrapper : IHostedService
     /// <param name="log">Where the lifecycle reports what it did.</param>
     /// <param name="publication">The shared extension-publication boundary.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The package dependency registry is taken from the loader rather than injected beside it. Teardown
+    /// has to read exactly the pins and edges admission wrote; two instances that merely resolved from the
+    /// same container would satisfy any equality check written about them and still be two registries.
+    /// </remarks>
     public PluginBootstrapper(
         PluginLoader loader,
         PluginRuntimeRegistry runtime,
@@ -130,7 +138,8 @@ public sealed partial class PluginBootstrapper : IHostedService
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(publication);
 
-        if (!ReferenceEquals(loader.PublicationGate, publication)
+        if (!ReferenceEquals(loader.Dependencies.PublicationGate, publication)
+            || !ReferenceEquals(loader.PublicationGate, publication)
             || !ReferenceEquals(runtime.PublicationGate, publication)
             || !ReferenceEquals(kinds.PublicationGate, publication)
             || !ReferenceEquals(languages.PublicationGate, publication)
@@ -165,11 +174,15 @@ public sealed partial class PluginBootstrapper : IHostedService
         _clock = clock;
         _log = log;
         _publication = publication;
+        _dependencies = loader.Dependencies;
         _admission = new AdmissionCheck(this);
     }
 
     /// <summary>Gets the internal loader-to-Host admission seam for lifecycle tests.</summary>
     internal IPluginAdmissionCheck Admission => _admission;
+
+    /// <summary>Gets where the extension lifecycle has got to.</summary>
+    internal LifecycleState ShutdownState => CurrentLifecycleState;
 
     /// <summary>
     /// Gets what became of every extension, ordered by identifier.
@@ -203,7 +216,7 @@ public sealed partial class PluginBootstrapper : IHostedService
 
             SetLifecycleState(LifecycleState.Starting);
 
-            var results = _loader.LoadAll(_admission, cancellationToken);
+            var results = await _loader.LoadAllAsync(_admission, cancellationToken).ConfigureAwait(false);
 
             foreach (var result in results)
             {
@@ -266,6 +279,7 @@ public sealed partial class PluginBootstrapper : IHostedService
 
             SetLifecycleState(LifecycleState.Stopping);
             var failures = new List<Exception>();
+            IReadOnlyList<PluginId> incomplete = [];
 
             try
             {
@@ -283,7 +297,7 @@ public sealed partial class PluginBootstrapper : IHostedService
 
             try
             {
-                await TeardownExtensionsAsync().ConfigureAwait(false);
+                incomplete = await TeardownExtensionsAsync().ConfigureAwait(false);
             }
 // Host infrastructure faults are accumulated so reconciliation and health projection still reach the
 // post-withdrawal state. Third-party cleanup faults are already contained by TeardownExtensionsAsync.
@@ -317,8 +331,10 @@ public sealed partial class PluginBootstrapper : IHostedService
                 failures.Add(failure);
             }
 
-            var stoppedCompletely = failures.Count == 0 && _runtime.Active.Count == 0;
-            SetLifecycleState(stoppedCompletely ? LifecycleState.Stopped : LifecycleState.StopIncomplete);
+            SetLifecycleState(
+                IsWithdrawalComplete(failures.Count, incomplete)
+                    ? LifecycleState.Stopped
+                    : LifecycleState.StopIncomplete);
 
             if (failures.Count == 1)
             {
@@ -336,6 +352,46 @@ public sealed partial class PluginBootstrapper : IHostedService
         }
     }
 
+    /// <summary>
+    /// Decides whether extension shutdown genuinely finished.
+    /// </summary>
+    /// <param name="infrastructureFailures">How many Host infrastructure faults shutdown accumulated.</param>
+    /// <param name="incomplete">The packages this pass could not finish withdrawing.</param>
+    /// <returns><see langword="true"/> only when the platform is holding nothing.</returns>
+    /// <remarks>
+    /// <para>
+    /// An empty active set is not sufficient, and this is the one place that is easy to get wrong. A package
+    /// is recorded stopped before its instances are disposed and its context unloaded, because the runtime
+    /// record has to stop naming it before anything runs outside the gate. So a package whose disposal,
+    /// unload, or contract release then failed is absent from the active set while its receipt, its
+    /// identifier, and its dependency pins are all still held.
+    /// </para>
+    /// <para>
+    /// The retained set is what closes that gap, and it stays true across repeated stops: a package held back
+    /// on one pass is no longer active, so no later pass would see it in the active set either.
+    /// </para>
+    /// </remarks>
+    private bool IsWithdrawalComplete(int infrastructureFailures, IReadOnlyList<PluginId> incomplete)
+    {
+        if (infrastructureFailures > 0 || incomplete.Count > 0 || _runtime.Active.Count > 0)
+        {
+            return false;
+        }
+
+        var retained = _dependencies.RetainedPackages;
+
+        if (retained.Count == 0)
+        {
+            return true;
+        }
+
+        ExtensionWithdrawalsRetained(
+            _log,
+            string.Join(", ", retained.Select(package => package.ToString())));
+
+        return false;
+    }
+
     private LifecycleState CurrentLifecycleState
         => (LifecycleState)Volatile.Read(ref _lifecycleState);
 
@@ -345,16 +401,48 @@ public sealed partial class PluginBootstrapper : IHostedService
     private void SetLifecycleState(LifecycleState state)
         => Volatile.Write(ref _lifecycleState, (int)state);
 
-    private async Task TeardownExtensionsAsync()
+    /// <summary>
+    /// Withdraws every active extension, dependants before their dependencies.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The order is the reverse of the order packages were actually published in, taken from the dependency
+    /// registry rather than recomputed from declarations at shutdown, so a file edited while the host ran
+    /// cannot reorder teardown. For an installation whose packages require nothing of each other this is
+    /// exactly reverse identifier order, which is what it has always been.
+    /// </para>
+    /// <para>
+    /// Order is not the safety property. Deferral is precisely the case where the order is not followed, so
+    /// the precondition for releasing a package is checked rather than assumed: no run of its own still in
+    /// flight, and no dependant still holding it. A deferred package keeps its edges, so everything it can
+    /// reach stays rooted transitively; an authority mismatch is treated as not-withdrawn for the same
+    /// reason, because a bookkeeping anomaly must not silently unpin a dependency.
+    /// </para>
+    /// <para>
+    /// Each package is withdrawn in two phases around its disposal, because disposal runs extension code
+    /// and unloads a context and neither may happen under the gate. Under the gate it is hidden and marked
+    /// withdrawing while keeping every dependency it holds; its instances and context are then released
+    /// outside the gate; and only a release that reported no failure re-enters the gate to give up its
+    /// dependencies. Releasing them at the first step would unpin a dependency while this package's own
+    /// disposers were still executing against its types, and would leave it unpinned outright when that
+    /// unload failed.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<PluginId>> TeardownExtensionsAsync()
     {
-        foreach (var active in _runtime.Active.Reverse())
+        var incomplete = new List<PluginId>();
+
+        foreach (var active in WithdrawalOrder())
         {
             var plugin = active.Id
                 ?? throw new InvalidOperationException("An active extension result must carry its identifier.");
 
+            var packageLease = active.PackageLease;
+            var receipt = packageLease?.Receipt;
             HostAdmissionAttempt? attempt = null;
-            PluginRuntimeLease? lifetime = null;
+            PackageAdmissionLease? lifetime = null;
             var deferred = false;
+            IReadOnlyList<PluginId> pinnedBy = [];
 
             using (_publication.EnterWrite())
             {
@@ -365,15 +453,34 @@ public sealed partial class PluginBootstrapper : IHostedService
                 {
                     deferred = true;
                 }
-                else if (!_committed.TryGetValue(plugin, out attempt)
-                    || !ReferenceEquals(active.RuntimeLease?.AdmissionAttempt, attempt))
+                // The same question one level up, and for the same reason. A dependant that is still
+                // rooted holds resolved type handles from this package; unloading it would not fail
+                // loudly, it would mark a context for a collection that cannot happen and leave the
+                // dependant holding types from a context the platform has declared gone.
+                else if (receipt is not null && _dependencies.HasLiveDependants(receipt, out var pinning))
+                {
+                    deferred = true;
+                    pinnedBy = pinning;
+                }
+                else if (!TryMatchCommittedAuthority(plugin, packageLease?.Runtime, out attempt))
                 {
                     ExtensionTeardownAuthorityMismatch(_log, plugin.ToString());
+                    incomplete.Add(plugin);
                     continue;
                 }
                 else
                 {
-                    attempt.Unpublish();
+                    // Phase one: nothing new binds to this package from here, and it goes on holding
+                    // everything it depends on until its own code is gone.
+                    attempt?.Unpublish();
+
+                    if (receipt is not null && !_dependencies.BeginWithdrawal(receipt, out var acquired))
+                    {
+                        throw new InvalidOperationException(
+                            $"Extension '{plugin}' acquired dependants [{string.Join(", ", acquired)}] while "
+                            + "holding the publication gate.");
+                    }
+
                     if (!_runtime.TryStop(active, _clock.GetUtcNow(), out lifetime))
                     {
                         throw new InvalidOperationException(
@@ -384,32 +491,121 @@ public sealed partial class PluginBootstrapper : IHostedService
 
             if (deferred)
             {
-                ExtensionTeardownDeferred(_log, plugin.ToString());
+                if (pinnedBy.Count > 0)
+                {
+                    ExtensionTeardownPinned(
+                        _log,
+                        plugin.ToString(),
+                        string.Join(", ", pinnedBy.Select(dependant => dependant.ToString())));
+                }
+                else
+                {
+                    ExtensionTeardownDeferred(_log, plugin.ToString());
+                }
+
+                incomplete.Add(plugin);
                 continue;
             }
 
+            // Phase two: extension disposers and a collectible unload, outside the gate.
+            var released = true;
+
             if (attempt is not null)
             {
-                await attempt.DisposeOwnedAsync().ConfigureAwait(false);
+                released = await attempt.DisposeOwnedAsync().ConfigureAwait(false);
             }
 
+            // The package lease disposes the executable half and then gives up this package's hold on the
+            // installation contract context - deliberately before anything is unpinned, because a package's
+            // own contract assembly may reference contracts its dependencies published. A shared contract
+            // other admitted packages still hold survives it; only this package's hold is released.
             if (lifetime is not null)
             {
                 foreach (var failure in await lifetime.DisposeAsync().ConfigureAwait(false))
                 {
+                    released = false;
                     ExtensionCleanupFailed(_log, plugin.ToString(), failure);
                 }
             }
+
+            if (receipt is null)
+            {
+                if (!released)
+                {
+                    incomplete.Add(plugin);
+                }
+
+                continue;
+            }
+
+            if (!released)
+            {
+                // A disposer that threw, a context that would not unload, and a contract hold that could
+                // not be given up all mean the same thing: something of this package may still be resident
+                // and reachable. Its dependencies stay pinned rather than being released on the assumption
+                // that the failure was harmless. Retrying would not learn anything new, so this state is
+                // deliberately terminal for the process, and the loop continues with the next package.
+                ExtensionWithdrawalIncomplete(_log, plugin.ToString());
+                incomplete.Add(plugin);
+                continue;
+            }
+
+            // Phase three: with this package's code and contract hold definitively released, it stops
+            // holding what it depended on.
+            _dependencies.CompleteWithdrawal(receipt);
         }
+
+        return incomplete;
+    }
+
+    /// <summary>
+    /// Orders the active extensions dependants-first, by reversing the order they were published in.
+    /// </summary>
+    private IReadOnlyList<PluginLoadResult> WithdrawalOrder()
+        =>
+        [
+            .. _runtime.Active
+                .Select(active => new
+                {
+                    Active = active,
+                    Published = _dependencies.PublicationOrderOf(active.PackageLease?.Receipt),
+                })
+                .OrderByDescending(entry => entry.Published ?? long.MinValue)
+                .ThenByDescending(
+                    entry => entry.Active.Id?.ToString() ?? entry.Active.Source,
+                    StringComparer.Ordinal)
+                .Select(entry => entry.Active),
+        ];
+
+    /// <summary>
+    /// Determines whether this runtime lease and Host's committed attempt name the same object.
+    /// </summary>
+    /// <param name="plugin">The extension being withdrawn.</param>
+    /// <param name="lease">Its runtime lifetime receipt.</param>
+    /// <param name="attempt">Host's committed attempt, when there is one.</param>
+    /// <returns><see langword="false"/> when the two sides disagree and neither may be withdrawn alone.</returns>
+    /// <remarks>
+    /// A package that contributes no executable code has no attempt on either side, which agrees. What
+    /// this refuses is a runtime lease and a committed attempt that name different objects, or one side
+    /// holding an attempt the other does not.
+    /// </remarks>
+    private bool TryMatchCommittedAuthority(
+        PluginId plugin,
+        PluginRuntimeLease? lease,
+        out HostAdmissionAttempt? attempt)
+    {
+        attempt = _committed.TryGetValue(plugin, out var committed) ? committed : null;
+        return ReferenceEquals(lease?.AdmissionAttempt, attempt);
     }
 
     private async Task<bool> RecoverFailedStartupAsync()
     {
         var recovered = true;
+        IReadOnlyList<PluginId> incomplete = [];
 
         try
         {
-            await TeardownExtensionsAsync().ConfigureAwait(false);
+            incomplete = await TeardownExtensionsAsync().ConfigureAwait(false);
         }
 // Recovery is best-effort across Host infrastructure faults. Extension cleanup itself is contained inside
 // the teardown path; this catch prevents a secondary fault from hiding the original startup exception.
@@ -446,7 +642,9 @@ public sealed partial class PluginBootstrapper : IHostedService
             StartupRecoveryFailed(_log, "health invalidation", failure.Message);
         }
 
-        return recovered && _runtime.Active.Count == 0;
+        // The same criterion shutdown uses, for the same reason: recovery that unwound everything it could
+        // is not the same thing as a platform holding nothing.
+        return IsWithdrawalComplete(recovered ? 0 : 1, incomplete);
     }
 
     /// <inheritdoc />
@@ -1178,17 +1376,21 @@ public sealed partial class PluginBootstrapper : IHostedService
             _owner.DisposeActivated(_languages);
         }
 
-        internal async ValueTask DisposeOwnedAsync()
+        /// <summary>Disposes every value this attempt activated.</summary>
+        /// <returns><see langword="false"/> when a disposer threw and its object may still be live.</returns>
+        internal async ValueTask<bool> DisposeOwnedAsync()
         {
             lock (this)
             {
                 if (_disposed)
                 {
-                    return;
+                    return true;
                 }
 
                 _disposed = true;
             }
+
+            var released = true;
 
             foreach (var instance in _providers
                          .Reverse()
@@ -1211,12 +1413,15 @@ public sealed partial class PluginBootstrapper : IHostedService
                 catch (Exception failure)
 #pragma warning restore CA1031
                 {
+                    released = false;
                     ExtensionCleanupFailed(
                         _owner._log,
                         instance.GetType().FullName ?? instance.GetType().Name,
                         failure.Message);
                 }
             }
+
+            return released;
         }
 
         private void RollbackPublished(
@@ -1271,7 +1476,7 @@ public sealed partial class PluginBootstrapper : IHostedService
         var state = new PluginRuntimeState(
             id,
             result.State,
-            result.Manifest?.Declaration.Name,
+            result.Manifest?.Name,
             result.Manifest?.Version.ToString(),
             result.Manifest?.GrantedCapabilities ?? CapabilitySet.None,
             result.ErrorCode,
@@ -1295,7 +1500,7 @@ public sealed partial class PluginBootstrapper : IHostedService
         return new PluginRuntimeState(
             id,
             result.State,
-            result.Manifest?.Declaration.Name,
+            result.Manifest?.Name,
             result.Manifest?.Version.ToString(),
             result.Manifest?.GrantedCapabilities ?? CapabilitySet.None,
             result.ErrorCode,
@@ -1345,6 +1550,30 @@ public sealed partial class PluginBootstrapper : IHostedService
         Message = "Extension '{Extension}' still has a scheduled job executing after its shutdown deadline; "
             + "its registrations, instances, and load context remain live until process exit.")]
     private static partial void ExtensionTeardownDeferred(ILogger logger, string extension);
+
+    [LoggerMessage(
+        EventId = 9209,
+        Level = LogLevel.Error,
+        Message = "Extension shutdown finished with [{Packages}] still held, so their code may remain "
+            + "resident and every extension they depend on remains rooted.")]
+    private static partial void ExtensionWithdrawalsRetained(ILogger logger, string packages);
+
+    [LoggerMessage(
+        EventId = 9208,
+        Level = LogLevel.Error,
+        Message = "Extension '{Extension}' was hidden and stopped, but its instances or load context could "
+            + "not be released, so it goes on holding every extension it depends on.")]
+    private static partial void ExtensionWithdrawalIncomplete(ILogger logger, string extension);
+
+    [LoggerMessage(
+        EventId = 9207,
+        Level = LogLevel.Error,
+        Message = "Extension '{Extension}' is still required by [{Dependants}]; its registrations, "
+            + "instances, and load context remain live until every dependant has been withdrawn.")]
+    private static partial void ExtensionTeardownPinned(
+        ILogger logger,
+        string extension,
+        string dependants);
 
     [LoggerMessage(
         EventId = 9205,

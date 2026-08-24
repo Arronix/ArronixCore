@@ -5,12 +5,12 @@
   "description": "EDITOR AID ONLY. The runtime gate is Arronix.Plugins.Manifest.PluginManifestReader plus PluginManifestValidator, which read into required members with unmapped members disallowed. This document exists so an editor can offer completion; it is never consulted at load time and must not be treated as authoritative if the two ever disagree.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "id", "name", "version", "contracts", "entryAssembly", "capabilities"],
+  "required": ["schemaVersion", "id", "name", "version", "contracts"],
   "properties": {
     "schemaVersion": {
-      "description": "The version of this manifest format. Only 0 is understood today.",
+      "description": "The version of this manifest format. Only 1 is understood.",
       "type": "integer",
-      "const": 0
+      "const": 1
     },
     "id": {
       "description": "Lower-case alphanumeric segments separated by dots, starting with a letter.",
@@ -45,14 +45,43 @@
       }
     },
     "entryAssembly": {
-      "description": "The bare file name of the assembly holding the single IPluginModule. Resolved inside the extension's own folder; separators and parent-directory segments are rejected.",
+      "description": "The bare file name of the assembly holding the single IPluginModule, when the package carries executable behavior. Resolved inside the extension's own folder; separators and parent-directory segments are rejected. A package may declare zero or one. A package that declares none must publish at least one contract assembly and must declare no capability, because it runs no code of its own.",
       "type": "string",
       "pattern": "^[^\\\\/:]+\\.(dll|DLL)$"
     },
-    "capabilities": {
-      "description": "The privileges the extension declares. Enforcement is bidirectional: a declared capability must have a matching registration, and a gated registration must have a declared capability.",
+    "contractAssemblies": {
+      "description": "The bare file names of the assemblies this package publishes for its dependants to bind against. Zero or more, resolved inside the package's own folder, compared case-insensitively for duplicates, and never the entry assembly: shared contract types and executable plugin code have different isolation, update and unload lifetimes.",
       "type": "array",
-      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[^\\\\/:]+\\.(dll|DLL)$"
+      }
+    },
+    "dependencies": {
+      "description": "The packages this one requires. One edge per required package: an exact identifier and one compatible version range. Requiring a package grants its shared contract assemblies and, when it carries executable behavior, requires that exact package to be admitted first. Direct edges only; the transitive closure is derived.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["package", "range"],
+        "properties": {
+          "package": {
+            "description": "The exact identifier of the required package. Never this package's own.",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9]*(\\.[a-z0-9]+)*$"
+          },
+          "range": {
+            "description": "The compatible versions of it, in the same range grammar as contracts.arronix. A predicate against the one installed version, never a selector among several.",
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "capabilities": {
+      "description": "The privileges the extension declares. Enforcement is bidirectional: a declared capability must have a matching registration, and a gated registration must have a declared capability. A package with an entry assembly must declare at least one; a package without one must declare none.",
+      "type": "array",
       "uniqueItems": true,
       "items": {
         "type": "string",

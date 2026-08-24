@@ -48,6 +48,21 @@ public enum CoreErrorCode
     /// <summary>The plugin is present but disabled by configuration or by an operator.</summary>
     PluginDisabled = 2010,
 
+    /// <summary>
+    /// A declared package dependency is not installed, is installed at a version the declared range does
+    /// not admit, or is declared more than once.
+    /// </summary>
+    PluginDependencyUnsatisfied = 2011,
+
+    /// <summary>The plugin lies on a package dependency cycle.</summary>
+    PluginDependencyCycle = 2012,
+
+    /// <summary>
+    /// The plugin is well-formed, but a package it requires cannot itself be activated. The fault is
+    /// reported against that package.
+    /// </summary>
+    PluginDependencyUnavailable = 2013,
+
     /// <summary>Media kind not found.</summary>
     MediaKindNotFound = 3000,
 

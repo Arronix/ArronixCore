@@ -1,10 +1,13 @@
 using Arronix.Plugins.Configuration;
+using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Registration;
 using Arronix.Plugins.Registry;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace Arronix.Plugins.Composition;
 
@@ -73,7 +76,28 @@ public static class ArronixPluginsServiceCollectionExtensions
         services.TryAddSingleton<IPluginRuntimeRegistry>(
             provider => provider.GetRequiredService<PluginRuntimeRegistry>());
 
-        services.TryAddSingleton<PluginLoader>();
+        services.TryAddSingleton<PackageDependencyRegistry>();
+
+        // The one authority on what the installation requires of itself, and the one authority on the
+        // shared contract assemblies it admits. Both are required: an installation that declares no
+        // dependency resolves to an empty graph and an installation that shares nothing admits an empty
+        // set, and neither is the same statement as having no authority at all.
+        services.TryAddSingleton<IPackageGraphSource, PackageDependencyResolver>();
+        services.TryAddSingleton(provider => new SharedContractStore(
+            provider.GetService<ILogger<SharedContractStore>>()));
+
+        services.TryAddSingleton(provider => new PluginLoader(
+            provider.GetRequiredService<IOptions<PluginRuntimeOptions>>(),
+            provider.GetRequiredService<PluginPlatformServices>(),
+            provider.GetRequiredService<PluginRuntimeRegistry>(),
+            provider.GetRequiredService<TokenRegistry>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<ILogger<PluginLoader>>(),
+            provider.GetRequiredService<PluginPublicationGate>(),
+            provider.GetRequiredService<IPackageGraphSource>(),
+            provider.GetRequiredService<SharedContractStore>(),
+            provider.GetRequiredService<PackageDependencyRegistry>(),
+            provider.GetService<IMediaTypeCapabilityReader>()));
 
         return services;
     }

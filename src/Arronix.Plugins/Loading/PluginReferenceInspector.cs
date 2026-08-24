@@ -1,6 +1,4 @@
 using System.IO;
-using System.Reflection.Metadata;
-using System.Reflection.PortableExecutable;
 
 namespace Arronix.Plugins.Loading;
 
@@ -60,23 +58,34 @@ public static class PluginReferenceInspector
             throw new FileNotFoundException("The assembly to inspect was not found.", assemblyPath);
         }
 
-        using var stream = File.OpenRead(assemblyPath);
-        using var peReader = new PEReader(stream);
-
-        if (!peReader.HasMetadata)
+        if (!StagedAssembly.TryStage(assemblyPath, out var staged, out var error))
         {
-            throw new BadImageFormatException("The file carries no managed metadata.", assemblyPath);
+            throw new BadImageFormatException(error, assemblyPath);
         }
 
-        var metadata = peReader.GetMetadataReader();
-        var references = new List<string>(metadata.AssemblyReferences.Count);
+        return Report(staged!);
+    }
+
+    /// <summary>
+    /// Projects an already-staged assembly's reference table into a report.
+    /// </summary>
+    /// <param name="staged">The staged assembly.</param>
+    /// <returns>The report.</returns>
+    /// <remarks>
+    /// The loader takes this overload, because it has already read the candidate's bytes once and must not
+    /// read the path a second time: the file it decided about and the file it loads have to be the same
+    /// file.
+    /// </remarks>
+    internal static AssemblyReferenceReport Report(StagedAssembly staged)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+
+        var references = new List<string>(staged.References.Count);
         var violations = new List<string>();
 
-        foreach (var handle in metadata.AssemblyReferences)
+        foreach (var reference in staged.References)
         {
-            var reference = metadata.GetAssemblyReference(handle);
-            var name = metadata.GetString(reference.Name);
-
+            var name = reference.Name ?? string.Empty;
             references.Add(name);
 
             // List<string>.Contains compares with the default string comparer, which is ordinal.
@@ -86,7 +95,7 @@ public static class PluginReferenceInspector
             }
         }
 
-        return new AssemblyReferenceReport(assemblyPath, references, violations);
+        return new AssemblyReferenceReport(staged.Path, references.AsReadOnly(), violations.AsReadOnly());
     }
 
     /// <summary>
@@ -113,7 +122,7 @@ public static class PluginReferenceInspector
         }
         catch (BadImageFormatException failure)
         {
-            error = $"'{assemblyPath}' is not a managed assembly: {failure.Message}";
+            error = failure.Message;
         }
         catch (IOException failure)
         {

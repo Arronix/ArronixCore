@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
+using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Loading;
 
 
@@ -136,7 +137,7 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
     internal bool TryStop(
         PluginLoadResult expected,
         DateTimeOffset changedAt,
-        out PluginRuntimeLease? lifetime)
+        out PackageAdmissionLease? lifetime)
     {
         ArgumentNullException.ThrowIfNull(expected);
 
@@ -151,7 +152,7 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
             return false;
         }
 
-        lifetime = active.RuntimeLease;
+        lifetime = active.PackageLease;
         lifetime?.UnpublishTokenClaims();
         _results[key] = active.Stop(changedAt);
         return true;

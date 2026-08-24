@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -41,7 +42,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
     /// <summary>
     /// The assemblies an extension may never resolve. Prefix matched, ordinal.
     /// </summary>
-    private static readonly string[] BlockedPrefixes =
+    private static readonly ImmutableArray<string> BlockedPrefixes =
     [
         "Arronix.Common",
         "Arronix.Plugins",
@@ -80,6 +81,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
 
     private readonly AssemblyDependencyResolver _resolver;
     private readonly INativeLibraryResolver? _nativeResolver;
+    private readonly PackageContractScope _contracts;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PluginLoadContext"/> class.
@@ -89,19 +91,28 @@ public sealed class PluginLoadContext : AssemblyLoadContext
     /// <param name="nativeLibraryResolver">
     /// An optional resolver consulted when a native library is not found beside the extension.
     /// </param>
+    /// <param name="contracts">
+    /// This package's scoped view of the installation's shared contracts. Package-scoped rather than the
+    /// whole store: a package resolves only what it and its declared closure published. A caller that
+    /// deliberately shares nothing states that with <see cref="PackageContractScope.Empty"/>.
+    /// </param>
     /// <exception cref="ArgumentException"><paramref name="entryAssemblyPath"/> is blank.</exception>
-    public PluginLoadContext(
+    /// <exception cref="ArgumentNullException"><paramref name="contracts"/> is <see langword="null"/>.</exception>
+    internal PluginLoadContext(
         PluginId plugin,
         string entryAssemblyPath,
-        INativeLibraryResolver? nativeLibraryResolver = null)
+        INativeLibraryResolver? nativeLibraryResolver,
+        PackageContractScope contracts)
         : base(name: $"arronix-plugin:{plugin}", isCollectible: true)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(entryAssemblyPath);
+        ArgumentNullException.ThrowIfNull(contracts);
 
         Plugin = plugin;
         EntryAssemblyPath = entryAssemblyPath;
         _resolver = new AssemblyDependencyResolver(entryAssemblyPath);
         _nativeResolver = nativeLibraryResolver;
+        _contracts = contracts;
     }
 
     /// <summary>
@@ -117,7 +128,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
     /// <summary>
     /// Gets the assembly names an extension may never resolve.
     /// </summary>
-    public static IReadOnlyList<string> BlockedAssemblyPrefixes => BlockedPrefixes;
+    public static ImmutableArray<string> BlockedAssemblyPrefixes => BlockedPrefixes;
 
     /// <summary>
     /// Determines whether an assembly name is one an extension may never resolve.
@@ -126,7 +137,16 @@ public sealed class PluginLoadContext : AssemblyLoadContext
     /// <returns><see langword="true"/> when the name is blocked.</returns>
     public static bool IsBlocked(string? assemblyName)
         => assemblyName is not null
-            && BlockedPrefixes.Any(prefix => assemblyName.StartsWith(prefix, StringComparison.Ordinal));
+            && BlockedPrefixes.Any(prefix => assemblyName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Determines whether an assembly name is the one contract assembly that must unify with the host's own
+    /// instance.
+    /// </summary>
+    /// <param name="assemblyName">The simple assembly name.</param>
+    /// <returns><see langword="true"/> when the name is the host contract assembly.</returns>
+    internal static bool IsHostContract(string? assemblyName)
+        => string.Equals(assemblyName, SharedContractAssembly, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Loads the extension's entry assembly.
@@ -147,6 +167,22 @@ public sealed class PluginLoadContext : AssemblyLoadContext
         }
 
         return LoadFromBytes(EntryAssemblyPath);
+    }
+
+    /// <summary>Loads the entry assembly from bytes the loader already staged.</summary>
+    /// <param name="staged">The staged entry assembly.</param>
+    /// <returns>The entry assembly, loaded into this context.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="staged"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The pipeline decides admissibility from metadata and then loads. Those must be one read of one file:
+    /// two reads of a path the package owns is a race in which the assembly judged and the assembly that
+    /// runs need not be the same one.
+    /// </remarks>
+    internal Assembly LoadEntryAssembly(StagedAssembly staged)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+
+        return staged.LoadInto(this);
     }
 
     /// <inheritdoc />
@@ -173,9 +209,30 @@ public sealed class PluginLoadContext : AssemblyLoadContext
             return null;
         }
 
-        // 3. The extension's own dependency closure.
+        // 3. The shared contracts this package may bind to: not a path, not a version match, not a copy of
+        //    the same bytes, but the one Assembly object every publisher and dependant in the closure was
+        //    given. Above the private resolver, so a private copy that reached a folder cannot win.
+        var shared = _contracts.Resolve(assemblyName);
+        if (shared is not null)
+        {
+            return shared;
+        }
+
+        // 4. The extension's own private closure.
         var path = _resolver.ResolveAssemblyToPath(assemblyName);
-        return path is null ? null : LoadFromBytes(path);
+
+        if (path is not null)
+        {
+            return LoadFromBytes(path);
+        }
+
+        // 5. Nothing else. Returning null here hands the request to the default context, where Host, the
+        //    API and everything the host itself loaded already live, so a package with an unresolved
+        //    dependency would silently bind to whatever the process happens to have.
+        throw new FileNotFoundException(
+            $"Extension '{Plugin}' requested '{assemblyName}', which is neither the host contract assembly, "
+            + "the shared framework, a shared contract it depends on, nor part of its own payload.",
+            assemblyName.Name);
     }
 
     /// <inheritdoc />
@@ -191,7 +248,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
         return resolved is not null ? NativeLibrary.Load(resolved) : nint.Zero;
     }
 
-    private static bool IsSharedFramework(string? name)
+    internal static bool IsSharedFramework(string? name)
     {
         if (name is null)
         {
@@ -200,7 +257,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
 
         foreach (var candidate in SharedFrameworkNames)
         {
-            if (string.Equals(name, candidate, StringComparison.Ordinal))
+            if (string.Equals(name, candidate, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -208,7 +265,7 @@ public sealed class PluginLoadContext : AssemblyLoadContext
 
         foreach (var prefix in SharedFrameworkPrefixes)
         {
-            if (name.StartsWith(prefix, StringComparison.Ordinal))
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }

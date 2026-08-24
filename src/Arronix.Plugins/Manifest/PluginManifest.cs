@@ -22,7 +22,7 @@ namespace Arronix.Plugins.Manifest;
 public sealed record PluginManifest
 {
     /// <summary>
-    /// Gets the version of the manifest format itself. The only accepted value today is zero.
+    /// Gets the version of the manifest format itself. The only accepted value today is one.
     /// </summary>
     public required int SchemaVersion { get; init; }
 
@@ -47,15 +47,48 @@ public sealed record PluginManifest
     public required ContractRequirements Contracts { get; init; }
 
     /// <summary>
-    /// Gets the file name of the assembly holding the entry module. A bare file name: the loader resolves
-    /// it inside the extension's own folder and never outside it.
+    /// Gets the file name of the assembly holding the entry module, or <see langword="null"/> when the
+    /// package carries no executable behavior. A bare file name: the loader resolves it inside the
+    /// extension's own folder and never outside it.
     /// </summary>
-    public required string EntryAssembly { get; init; }
+    /// <remarks>
+    /// Zero or one. A package that publishes shared contract assemblies and nothing else has no module to
+    /// name, and requiring it to invent a no-op one would also require it to claim a privilege nothing
+    /// uses — which the forward capability check refuses.
+    /// </remarks>
+    public string? EntryAssembly { get; init; }
+
+    /// <summary>
+    /// Gets the file names of the assemblies this package publishes for its dependants to compile and
+    /// bind against.
+    /// </summary>
+    /// <remarks>
+    /// Zero or more, each a bare file name inside the package's own folder, and never the entry assembly.
+    /// A shared contract assembly and an executable entry assembly have different isolation, update and
+    /// unload lifetimes: sharing the types a dependant closes its generics over must not also share the
+    /// module, parser or provider implementations shipped beside them.
+    /// </remarks>
+    public IReadOnlyList<string> ContractAssemblies { get; init; } = [];
+
+    /// <summary>
+    /// Gets the packages this package requires, each an exact identifier and one compatible version range.
+    /// </summary>
+    /// <remarks>
+    /// Direct edges only. The transitive closure is derived by the loader and is output rather than input:
+    /// a package restating its dependencies' dependencies would be a second authority over them, and one
+    /// that goes stale the first time either package moves.
+    /// </remarks>
+    public IReadOnlyList<PackageDependencyDeclaration> Dependencies { get; init; } = [];
 
     /// <summary>
     /// Gets the capabilities the extension declares, by wire name.
     /// </summary>
-    public required IReadOnlyList<string> Capabilities { get; init; }
+    /// <remarks>
+    /// An extension carrying an entry module must declare at least one; a package that runs no code of its
+    /// own must declare none. Both are checked by the validator, which can name the member at fault, rather
+    /// than by the reader, which can only say the file was unreadable.
+    /// </remarks>
+    public IReadOnlyList<string> Capabilities { get; init; } = [];
 
     /// <summary>
     /// Gets an optional sentence describing what the extension is for.

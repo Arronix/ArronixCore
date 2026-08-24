@@ -4,6 +4,7 @@ using System.Reflection;
 using Arronix.Abstractions.Serialization;
 using Arronix.Plugins.Composition;
 using Arronix.Plugins.Configuration;
+using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
@@ -161,7 +162,10 @@ public sealed class CompositionTests
             tokens,
             TimeProvider.System,
             NullLogger<PluginLoader>.Instance,
-            publication);
+            publication,
+            new PackageDependencyResolver(),
+            new SharedContractStore(),
+            new PackageDependencyRegistry(publication));
 
         construct.Should().Throw<InvalidOperationException>()
             .WithMessage("*must share one publication boundary*");

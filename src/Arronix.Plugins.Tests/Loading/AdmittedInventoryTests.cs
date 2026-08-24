@@ -43,6 +43,7 @@ public sealed class AdmittedInventoryTests
     private string _root = string.Empty;
     private PluginRuntimeOptions _options = new();
     private PluginPublicationGate _publication = new();
+    private LoaderAuthorities _authorities = new(new PluginPublicationGate());
     private PluginRuntimeRegistry _registry = new();
     private TokenRegistry _tokens = new();
 
@@ -55,6 +56,7 @@ public sealed class AdmittedInventoryTests
 
         _options = new PluginRuntimeOptions { RootFolder = _root, StateFolder = Path.Combine(_home, "state") };
         _publication = new PluginPublicationGate();
+        _authorities = new LoaderAuthorities(_publication);
         _registry = new PluginRuntimeRegistry(_publication);
         _tokens = new TokenRegistry(_publication);
     }
@@ -69,7 +71,7 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
-    public void TwoAdmittedKindsEachOwnTheirOwnTokensAndNotEachOthers()
+    public async Task TwoAdmittedKindsEachOwnTheirOwnTokensAndNotEachOthers()
     {
         Install("emitted");
 
@@ -77,7 +79,7 @@ public sealed class AdmittedInventoryTests
             new AdmittedMediaKind(Films, [Token("{Film Title}"), Token("{Film Year}")]),
             new AdmittedMediaKind(Serials, [Token("{Serial Title}")]));
 
-        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(admission)).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Active);
         _tokens.Claims.Should().HaveCount(
@@ -96,13 +98,13 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
-    public void ADeclarationThatRestatesNoDerivableFactStillOwnsWhatWasAdmitted()
+    public async Task ADeclarationThatRestatesNoDerivableFactStillOwnsWhatWasAdmitted()
     {
         Install("emitted");
 
         var admission = StubAdmission.Admitting(new AdmittedMediaKind(Films, [Token("{Film Title}")]));
 
-        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(admission)).Should().ContainSingle().Which;
 
         result.State.Should().Be(
             PluginState.Active,
@@ -113,12 +115,12 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
-    public void AnEmptyHostInventoryRemainsAuthoritative()
+    public async Task AnEmptyHostInventoryRemainsAuthoritative()
     {
         Install("emitted");
 
         var admission = StubAdmission.Admitting();
-        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(admission)).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Active);
         result.Admitted.IsAuthoritative.Should().BeTrue();
@@ -127,12 +129,12 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
-    public void AMalformedSuccessfulAdmissionStillRollsBackItsAttempt()
+    public async Task AMalformedSuccessfulAdmissionStillRollsBackItsAttempt()
     {
         Install("emitted");
 
         var admission = new MalformedAdmission();
-        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(admission)).Should().ContainSingle().Which;
 
         using var assertions = new AssertionScope();
         result.State.Should().Be(PluginState.Quarantined);
@@ -176,13 +178,13 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
-    public void ADeclaredTokenTheAdmittedKindDoesNotDefineIsRefused()
+    public async Task ADeclaredTokenTheAdmittedKindDoesNotDefineIsRefused()
     {
         Install("emitted", tokens: """{ "name": "{Film Runtime}", "description": "invented" }""");
 
         var admission = StubAdmission.Admitting(new AdmittedMediaKind(Films, [Token("{Film Title}")]));
 
-        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(admission)).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Quarantined);
         result.ErrorCode.Should().Be(CoreErrorCode.PluginPolicyDeclarationInvalid);
@@ -193,13 +195,13 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
-    public void ManifestAgreementUsesTheNamingGrammarsTokenEquality()
+    public async Task ManifestAgreementUsesTheNamingGrammarsTokenEquality()
     {
         Install("emitted", tokens: """{ "name": "{film.title}", "description": "same token" }""");
 
         var admission = StubAdmission.Admitting(new AdmittedMediaKind(Films, [Token("{Film Title}")]));
 
-        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(admission)).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Active);
         _tokens.Claims.Should().ContainSingle().Which.Token.Name.Should().Be("{Film Title}");
@@ -211,7 +213,7 @@ public sealed class AdmittedInventoryTests
     /// original token claim remains the only committed claim.
     /// </remarks>
     [Test]
-    public void ASecondCandidateForAnActiveKindIsRefusedWithoutPublishingItsTokenPlan()
+    public async Task ASecondCandidateForAnActiveKindIsRefusedWithoutPublishingItsTokenPlan()
     {
         Install("first");
         Install("second", assemblyName: "Emitted.Second");
@@ -220,7 +222,7 @@ public sealed class AdmittedInventoryTests
             .For("first", new AdmittedMediaKind(Films, [Token("{Film Title}")]))
             .And("second", new AdmittedMediaKind(Films, [Token("{Second Title}")]));
 
-        var results = CreateLoader().LoadAll(admission);
+        var results = await CreateLoader().LoadAllAsync(admission);
 
         results.Should().HaveCount(2);
         results.Single(result => result.Id == PluginId.FromString("first")).State.Should().Be(PluginState.Active);
@@ -245,7 +247,7 @@ public sealed class AdmittedInventoryTests
     /// before the loader advances to the next candidate.
     /// </summary>
     [Test]
-    public void ALateAgreementFailureRollsBackBeforeTheNextCandidateIsPrepared()
+    public async Task ALateAgreementFailureRollsBackBeforeTheNextCandidateIsPrepared()
     {
         Install(
             "first",
@@ -255,7 +257,7 @@ public sealed class AdmittedInventoryTests
         var admission = new TrackingAdmission(
             new AdmittedMediaKind(Films, [Token("{Film Title}")]));
 
-        var results = CreateLoader().LoadAll(admission);
+        var results = await CreateLoader().LoadAllAsync(admission);
 
         using var assertions = new AssertionScope();
         results.Single(result => result.Id == PluginId.FromString("first")).State
@@ -272,7 +274,7 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
-    public void AFailedReloadCannotReplaceTheOriginalActiveRuntimeAuthority()
+    public async Task AFailedReloadCannotReplaceTheOriginalActiveRuntimeAuthority()
     {
         Install("emitted");
 
@@ -281,9 +283,9 @@ public sealed class AdmittedInventoryTests
             new AdmittedMediaKind(Films, [Token("{Film Title}")]));
         var loader = CreateLoader();
 
-        var original = loader.LoadAll(admission).Should().ContainSingle().Which;
+        var original = (await loader.LoadAllAsync(admission)).Should().ContainSingle().Which;
         var originalContext = original.LoadContext.Should().NotBeNull().And.Subject;
-        var reload = loader.LoadAll(admission).Should().ContainSingle().Which;
+        var reload = (await loader.LoadAllAsync(admission)).Should().ContainSingle().Which;
 
         using var assertions = new AssertionScope();
         original.State.Should().Be(PluginState.Active);
@@ -320,7 +322,10 @@ public sealed class AdmittedInventoryTests
         _tokens,
         TimeProvider.System,
         NullLogger<PluginLoader>.Instance,
-        _publication);
+        _publication,
+        _authorities.Graph,
+        _authorities.Contracts,
+        _authorities.Dependencies);
 
     private void Install(
         string pluginId,

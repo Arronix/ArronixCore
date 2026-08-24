@@ -2,6 +2,7 @@ using System.Linq;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
+using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
 
@@ -26,7 +27,7 @@ public sealed class PluginLoadResult
         ValidatedManifest? manifest,
         PluginRegistrationLedger? ledger,
         PluginLoadContext? loadContext,
-        PluginRuntimeLease? runtimeLease,
+        PackageAdmissionLease? packageLease,
         AdmittedInventory admitted,
         CoreErrorCode? errorCode,
         string? message,
@@ -39,7 +40,7 @@ public sealed class PluginLoadResult
         Manifest = manifest;
         Ledger = ledger;
         LoadContext = loadContext;
-        RuntimeLease = runtimeLease;
+        PackageLease = packageLease;
         Admitted = admitted;
         ErrorCode = errorCode;
         Message = message;
@@ -79,7 +80,10 @@ public sealed class PluginLoadResult
     public PluginLoadContext? LoadContext { get; }
 
     /// <summary>Gets the exact extension-owned lifetime receipt while this result is active.</summary>
-    internal PluginRuntimeLease? RuntimeLease { get; }
+    internal PackageAdmissionLease? PackageLease { get; }
+
+    /// <summary>Gets the executable runtime lease, when this package contributes executable code.</summary>
+    internal PluginRuntimeLease? RuntimeLease => PackageLease?.Runtime;
 
     /// <summary>
     /// Gets what the host admitted for this extension, keyed per media kind.
@@ -146,7 +150,7 @@ public sealed class PluginLoadResult
             manifest,
             ledger,
             loadContext,
-            runtimeLease: null,
+            packageLease: null,
             admitted ?? AdmittedInventory.NotAdmitted,
             errorCode: null,
             message: null,
@@ -180,7 +184,7 @@ public sealed class PluginLoadResult
             manifest,
             ledger: null,
             loadContext: null,
-            runtimeLease: null,
+            packageLease: null,
             AdmittedInventory.NotAdmitted,
             errorCode,
             message,
@@ -209,25 +213,25 @@ public sealed class PluginLoadResult
             Manifest,
             ledger ?? Ledger,
             loadContext ?? LoadContext,
-            RuntimeLease,
+            PackageLease,
             admitted ?? Admitted,
             ErrorCode,
             Message,
             Defects,
             changedAt);
 
-    /// <summary>Returns the active result coupled to its exact runtime lifetime.</summary>
+    /// <summary>Returns the active result coupled to its exact package lifetime.</summary>
     internal PluginLoadResult Activate(
         PluginRegistrationLedger ledger,
         PluginLoadContext loadContext,
         DateTimeOffset changedAt,
         AdmittedInventory admitted,
-        PluginRuntimeLease runtimeLease)
+        PackageAdmissionLease packageLease)
     {
         ArgumentNullException.ThrowIfNull(ledger);
         ArgumentNullException.ThrowIfNull(loadContext);
         ArgumentNullException.ThrowIfNull(admitted);
-        ArgumentNullException.ThrowIfNull(runtimeLease);
+        ArgumentNullException.ThrowIfNull(packageLease);
 
         return new PluginLoadResult(
             Source,
@@ -236,11 +240,49 @@ public sealed class PluginLoadResult
             Manifest,
             ledger,
             loadContext,
-            runtimeLease,
+            packageLease,
             admitted,
             ErrorCode,
             Message,
             Defects,
+            changedAt);
+    }
+
+    /// <summary>
+    /// Records an active package that contributes no executable code.
+    /// </summary>
+    /// <param name="source">Where it was found.</param>
+    /// <param name="manifest">Its proved declaration.</param>
+    /// <param name="changedAt">When it became active.</param>
+    /// <param name="packageLease">Its exact package receipt and contract hold.</param>
+    /// <returns>The result.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// A contract-only package is a first-class active package: rooted, diagnosable, dependency-bearing and
+    /// withdrawable. It has no load context, no registration ledger and no Host admission attempt, and none
+    /// is invented for it.
+    /// </remarks>
+    internal static PluginLoadResult ActivePackage(
+        string source,
+        ValidatedManifest manifest,
+        DateTimeOffset changedAt,
+        PackageAdmissionLease packageLease)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(packageLease);
+
+        return new PluginLoadResult(
+            source,
+            PluginState.Active,
+            manifest.Id,
+            manifest,
+            ledger: null,
+            loadContext: null,
+            packageLease,
+            AdmittedInventory.Empty,
+            errorCode: null,
+            message: null,
+            defects: [],
             changedAt);
     }
 
@@ -253,7 +295,7 @@ public sealed class PluginLoadResult
             Manifest,
             ledger: null,
             loadContext: null,
-            runtimeLease: null,
+            packageLease: null,
             AdmittedInventory.NotAdmitted,
             errorCode: null,
             message: null,
@@ -271,7 +313,7 @@ public sealed class PluginLoadResult
     public PluginStatusView ToStatusView()
         => new(
             Id?.ToString() ?? Source,
-            Manifest?.Declaration.Name,
+            Manifest?.Name,
             Manifest?.Version.ToString(),
             State.ToString(),
             Manifest is null

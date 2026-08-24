@@ -254,8 +254,7 @@ internal sealed class PackagedAdmissionFixtureTests
         var telemetry = provider.GetRequiredService<ITelemetryEmitter>()
             .Should().BeOfType<RequiredServiceStub>().Subject;
 
-        var result = provider.GetRequiredService<PluginLoader>()
-            .LoadAll(admission)
+        var result = (await provider.GetRequiredService<PluginLoader>().LoadAllAsync(admission))
             .Should().ContainSingle().Which;
         var health = await pluginHealth.CheckAsync();
 
@@ -312,8 +311,7 @@ internal sealed class PackagedAdmissionFixtureTests
         var originalLanguage = languages.All.Should().ContainSingle().Which;
         var originalClaims = tokens.Claims;
 
-        var reload = provider.GetRequiredService<PluginLoader>()
-            .LoadAll(bootstrapper.Admission)
+        var reload = (await provider.GetRequiredService<PluginLoader>().LoadAllAsync(bootstrapper.Admission))
             .Should().ContainSingle().Which;
         var contributedHealth = await provider.GetRequiredService<IHealthAggregator>().CollectAsync();
 

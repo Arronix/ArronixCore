@@ -20,12 +20,14 @@ public sealed class ManifestReaderTests
     private const string Complete =
         """
         {
-          "schemaVersion": 0,
+          "schemaVersion": 1,
           "id": "example",
           "name": "Example",
           "version": "0.1.0",
           "contracts": { "arronix": ">=0.3 <0.4" },
           "entryAssembly": "Arronix.Plugin.Example.dll",
+          "contractAssemblies": ["Example.Contracts.dll"],
+          "dependencies": [{ "package": "example.contracts", "range": ">=0.1 <0.2" }],
           "mediaKinds": ["example"],
           "identifiers": ["exdb"],
           "capabilities": ["media-kind", "parsing"],
@@ -42,7 +44,7 @@ public sealed class ManifestReaderTests
     private const string Minimal =
         """
         {
-          "schemaVersion": 0,
+          "schemaVersion": 1,
           "id": "example",
           "name": "Example",
           "version": "0.1.0",
@@ -57,12 +59,16 @@ public sealed class ManifestReaderTests
     {
         var manifest = PluginManifestReader.Read(Complete, "test");
 
-        manifest.SchemaVersion.Should().Be(0);
+        manifest.SchemaVersion.Should().Be(1);
         manifest.Id.Should().Be("example");
         manifest.Name.Should().Be("Example");
         manifest.Version.Should().Be("0.1.0");
         manifest.Contracts.Arronix.Should().Be(">=0.3 <0.4");
         manifest.EntryAssembly.Should().Be("Arronix.Plugin.Example.dll");
+        manifest.ContractAssemblies.Should().Equal("Example.Contracts.dll");
+        manifest.Dependencies.Should().ContainSingle();
+        manifest.Dependencies[0].Package.Should().Be("example.contracts");
+        manifest.Dependencies[0].Range.Should().Be(">=0.1 <0.2");
         manifest.MediaKinds.Should().Equal("example");
         manifest.Identifiers.Should().Equal("exdb");
         manifest.Capabilities.Should().Equal("media-kind", "parsing");
@@ -83,6 +89,8 @@ public sealed class ManifestReaderTests
         manifest.MediaKinds.Should().BeEmpty();
         manifest.Identifiers.Should().BeEmpty();
         manifest.Tokens.Should().BeEmpty();
+        manifest.ContractAssemblies.Should().BeEmpty();
+        manifest.Dependencies.Should().BeEmpty();
         manifest.Policies.Should().BeNull();
     }
 
@@ -120,15 +128,64 @@ public sealed class ManifestReaderTests
         ShouldBeManifestInvalid(() => PluginManifestReader.Read(json, "test"));
     }
 
-    [TestCase("\"schemaVersion\": 0,")]
+    [TestCase("\"schemaVersion\": 1,")]
     [TestCase("\"id\": \"example\",")]
     [TestCase("\"name\": \"Example\",")]
     [TestCase("\"version\": \"0.1.0\",")]
     [TestCase("\"contracts\": { \"arronix\": \">=0.3 <0.4\" },")]
-    [TestCase("\"entryAssembly\": \"Arronix.Plugin.Example.dll\",")]
     public void AnOmittedRequiredMemberIsRefused(string fragment)
     {
         var json = Minimal.Replace(fragment, string.Empty, StringComparison.Ordinal);
+
+        ShouldBeManifestInvalid(() => PluginManifestReader.Read(json, "test"));
+    }
+
+    /// <summary>
+    /// A package with no executable behavior omits the entry assembly, and one with no privileges omits the
+    /// capability list. Both are package shapes rather than omissions, so the reader accepts them and the
+    /// validator — which can name the member at fault — decides whether the combination makes sense.
+    /// </summary>
+    [Test]
+    public void ThePackageShapeMembersAreReadRatherThanRequired()
+    {
+        var json = Minimal
+            .Replace("  \"entryAssembly\": \"Arronix.Plugin.Example.dll\",\n", string.Empty, StringComparison.Ordinal)
+            .Replace(
+                "\"capabilities\": [\"parsing\"]",
+                "\"contractAssemblies\": [\"Example.Contracts.dll\"]",
+                StringComparison.Ordinal);
+
+        var manifest = PluginManifestReader.Read(json, "test");
+
+        manifest.EntryAssembly.Should().BeNull();
+        manifest.Capabilities.Should().BeEmpty();
+        manifest.ContractAssemblies.Should().Equal("Example.Contracts.dll");
+    }
+
+    [Test]
+    public void ADependencyIsReadAsAnExactPackageAndOneRange()
+    {
+        var json = Minimal.Replace(
+            "\"capabilities\": [\"parsing\"]",
+            "\"capabilities\": [\"parsing\"],\n  \"dependencies\": [{ \"package\": \"example.contracts\", \"range\": \">=0.1 <0.2\" }]",
+            StringComparison.Ordinal);
+
+        var manifest = PluginManifestReader.Read(json, "test");
+
+        manifest.Dependencies.Should().ContainSingle();
+        manifest.Dependencies[0].Package.Should().Be("example.contracts");
+        manifest.Dependencies[0].Range.Should().Be(">=0.1 <0.2");
+    }
+
+    [TestCase("{ \"package\": \"example.contracts\" }", TestName = "A dependency with no range is refused")]
+    [TestCase("{ \"range\": \">=0.1 <0.2\" }", TestName = "A dependency naming no package is refused")]
+    [TestCase("{ \"package\": \"example.contracts\", \"range\": \">=0.1\", \"facet\": \"contract\" }", TestName = "A dependency member the format does not define is refused")]
+    public void AnIncompleteDependencyIsRefused(string entry)
+    {
+        var json = Minimal.Replace(
+            "\"capabilities\": [\"parsing\"]",
+            $"\"capabilities\": [\"parsing\"],\n  \"dependencies\": [{entry}]",
+            StringComparison.Ordinal);
 
         ShouldBeManifestInvalid(() => PluginManifestReader.Read(json, "test"));
     }

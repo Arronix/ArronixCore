@@ -37,6 +37,7 @@ public sealed class PluginLoaderPipelineTests
     private string _state = string.Empty;
     private PluginRuntimeOptions _options = new();
     private PluginPublicationGate _publication = new();
+    private LoaderAuthorities _authorities = new(new PluginPublicationGate());
     private PluginRuntimeRegistry _registry = new();
     private TokenRegistry _tokens = new();
 
@@ -50,6 +51,7 @@ public sealed class PluginLoaderPipelineTests
 
         _options = new PluginRuntimeOptions { RootFolder = _root, StateFolder = _state };
         _publication = new PluginPublicationGate();
+        _authorities = new LoaderAuthorities(_publication);
         _registry = new PluginRuntimeRegistry(_publication);
         _tokens = new TokenRegistry(_publication);
     }
@@ -78,7 +80,10 @@ public sealed class PluginLoaderPipelineTests
         _tokens,
         TimeProvider.System,
         NullLogger<PluginLoader>.Instance,
-        _publication);
+        _publication,
+        _authorities.Graph,
+        _authorities.Contracts,
+        _authorities.Dependencies);
 
     private string Install(string folderName, string manifestJson, string? entryAssemblySource = null)
     {
@@ -130,7 +135,7 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void AnUnreadableDeclarationIsQuarantinedRatherThanFailingDiscovery()
+    public async Task AnUnreadableDeclarationIsQuarantinedRatherThanFailingDiscovery()
     {
         Install("good", Manifest("good"));
         Install("broken", "{ this is not json");
@@ -144,28 +149,28 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void NothingIsLoadedWhenLoadingIsDisabled()
+    public async Task NothingIsLoadedWhenLoadingIsDisabled()
     {
         Install("alpha", Manifest("alpha"));
         _options.Enabled = false;
 
-        CreateLoader().LoadAll(NoOpAdmission.Instance).Should().BeEmpty();
+        (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().BeEmpty();
     }
 
     [Test]
-    public void AnAbsentExtensionFolderIsNotAnError()
+    public async Task AnAbsentExtensionFolderIsNotAnError()
     {
         Directory.Delete(_root, recursive: true);
 
-        CreateLoader().LoadAll(NoOpAdmission.Instance).Should().BeEmpty();
+        (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().BeEmpty();
     }
 
     [Test]
-    public void AnInvalidDeclarationIsQuarantinedWithEveryDefectListed()
+    public async Task AnInvalidDeclarationIsQuarantinedWithEveryDefectListed()
     {
         Install("bad", Manifest("Not An Id", range: "^0.3.0"));
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Quarantined);
         result.ErrorCode.Should().Be(CoreErrorCode.PluginManifestInvalid);
@@ -174,24 +179,24 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void TwoExtensionsClaimingOneIdentifierAreBothQuarantined()
+    public async Task TwoExtensionsClaimingOneIdentifierAreBothQuarantined()
     {
         Install("first", Manifest("duplicate"));
         Install("second", Manifest("duplicate"));
 
-        var results = CreateLoader().LoadAll(NoOpAdmission.Instance);
+        var results = await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
         results.Should().HaveCount(2);
         results.Should().OnlyContain(result => result.ErrorCode == CoreErrorCode.PluginIdConflict);
     }
 
     [Test]
-    public void ADisabledExtensionIsStillReportedRatherThanSilentlyIgnored()
+    public async Task ADisabledExtensionIsStillReportedRatherThanSilentlyIgnored()
     {
         Install("alpha", Manifest("alpha"));
         _options.Disabled.Add("alpha");
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Quarantined);
         result.ErrorCode.Should().Be(CoreErrorCode.PluginDisabled);
@@ -199,18 +204,18 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void ARangeThisHostDoesNotSatisfyIsQuarantined()
+    public async Task ARangeThisHostDoesNotSatisfyIsQuarantined()
     {
         Install("alpha", Manifest("alpha", range: ">=99.0 <99.1"));
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
         result.Message.Should().Contain(PluginLoader.HostContractVersion.ToString());
     }
 
     [Test]
-    public void ACompatibleRangeIsNotRejectedBecauseItSpansLaterMinorVersions()
+    public async Task ACompatibleRangeIsNotRejectedBecauseItSpansLaterMinorVersions()
     {
         var host = PluginLoader.HostContractVersion;
         Install(
@@ -218,21 +223,21 @@ public sealed class PluginLoaderPipelineTests
             Manifest("alpha", range: $">={host.Major}.{host.Minor} <{host.Major + 1}.0"),
             ContractAssemblyPath);
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("no public parameterless entry module");
     }
 
     [Test]
-    public void AnAssemblyReferencingAHostAssemblyIsQuarantinedBeforeAnyContextIsCreated()
+    public async Task AnAssemblyReferencingAHostAssemblyIsQuarantinedBeforeAnyContextIsCreated()
     {
         Install(
             "alpha",
             Manifest("alpha", entry: Path.GetFileName(LoaderReferencingAssemblyPath)),
             LoaderReferencingAssemblyPath);
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginIsolationViolation);
         result.Defects.Should().Contain("Arronix.Plugins");
@@ -240,21 +245,21 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void AMissingEntryAssemblyIsQuarantined()
+    public async Task AMissingEntryAssemblyIsQuarantined()
     {
         Install("alpha", Manifest("alpha"));
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
     }
 
     [Test]
-    public void AnAdmissibleAssemblyWithNoEntryModuleIsQuarantinedAfterBeingLoaded()
+    public async Task AnAdmissibleAssemblyWithNoEntryModuleIsQuarantinedAfterBeingLoaded()
     {
         Install("alpha", Manifest("alpha"), ContractAssemblyPath);
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("no public parameterless entry module");
@@ -262,12 +267,12 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void EveryOutcomeIsRecordedInTheRegistryIncludingTheFailures()
+    public async Task EveryOutcomeIsRecordedInTheRegistryIncludingTheFailures()
     {
         Install("alpha", Manifest("alpha"));
         Install("broken", "{ not json");
 
-        CreateLoader().LoadAll(NoOpAdmission.Instance);
+        await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
         _registry.All.Should().HaveCount(2);
         _registry.Active.Should().BeEmpty();
@@ -276,12 +281,12 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void TheRegistrySnapshotPublishesTheGrantedCapabilitiesRatherThanTheDeclaredOnes()
+    public async Task TheRegistrySnapshotPublishesTheGrantedCapabilitiesRatherThanTheDeclaredOnes()
     {
         Install("alpha", Manifest("alpha", capabilities: "\"indexing\""));
         _options.Disabled.Add("alpha");
 
-        CreateLoader().LoadAll(NoOpAdmission.Instance);
+        await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
         var view = _registry.Snapshot().Should().ContainSingle().Which;
         view.Id.Should().Be("alpha");
@@ -291,11 +296,11 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void AnExtensionTooBrokenToNameItselfIsStillRecordedUnderWhereItWasFound()
+    public async Task AnExtensionTooBrokenToNameItselfIsStillRecordedUnderWhereItWasFound()
     {
         var folder = Install("broken", "{ not json");
 
-        CreateLoader().LoadAll(NoOpAdmission.Instance);
+        await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
         _registry.All.Should().ContainSingle()
             .Which.Source.Should().Be(Path.Combine(folder, "plugin.json"));
@@ -424,7 +429,7 @@ public sealed class PluginLoaderPipelineTests
     }
 
     [Test]
-    public void AHostMissingAPlatformServiceFailsAsAHostProblemRatherThanAnExtensionDefect()
+    public async Task AHostMissingAPlatformServiceFailsAsAHostProblemRatherThanAnExtensionDefect()
     {
         Install("alpha", Manifest("alpha"), ContractAssemblyPath);
 
@@ -435,9 +440,12 @@ public sealed class PluginLoaderPipelineTests
             _tokens,
             TimeProvider.System,
             NullLogger<PluginLoader>.Instance,
-            _publication);
+            _publication,
+            _authorities.Graph,
+            _authorities.Contracts,
+            _authorities.Dependencies);
 
-        var result = loader.LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await loader.LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("This host cannot activate extensions");

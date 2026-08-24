@@ -7,6 +7,7 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Common.Naming;
 using Arronix.Plugins.Configuration;
+using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
 using Arronix.Plugins.Registry;
@@ -80,6 +81,9 @@ public sealed class PluginLoader
     private readonly ILogger<PluginLoader> _logger;
     private readonly IMediaTypeCapabilityReader? _mediaTypes;
     private readonly PluginPublicationGate _publication;
+    private readonly IPackageGraphSource _graphSource;
+    private readonly SharedContractStore _contracts;
+    private readonly PackageDependencyRegistry _dependencies;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PluginLoader"/> class.
@@ -90,14 +94,22 @@ public sealed class PluginLoader
     /// <param name="tokens">Who owns which naming token.</param>
     /// <param name="clock">The clock, so state changes are stamped from one source of time.</param>
     /// <param name="logger">The host's own diagnostics. Extensions never see it.</param>
+    /// <param name="publication">The one Host-owned boundary shared by every plugin and Host registry.</param>
+    /// <param name="graphSource">
+    /// The one authority on what the installation requires of itself. Required: a loader with no resolution
+    /// authority does not fall back to an assumed shape of the installation, it does not compose.
+    /// </param>
+    /// <param name="contracts">
+    /// The installation's shared contract assemblies. Required: an installation that shares nothing has an
+    /// empty admitted set, not an absent authority.
+    /// </param>
+    /// <param name="dependencies">Which package attempts are rooted, and which are pinned by a dependant.</param>
     /// <param name="mediaTypes">
     /// How a typed media kind is priced in capabilities. Optional so that a loader driving extensions that
-    /// contribute no media kind needs no media machinery; a registry built without one refuses a typed kind
-    /// rather than under-pricing it.
+    /// contribute no media kind needs no media machinery.
     /// </param>
-    /// <param name="publication">The one Host-owned boundary shared by every plugin and Host registry.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    public PluginLoader(
+    internal PluginLoader(
         IOptions<PluginRuntimeOptions> options,
         PluginPlatformServices platform,
         PluginRuntimeRegistry registry,
@@ -105,6 +117,9 @@ public sealed class PluginLoader
         TimeProvider clock,
         ILogger<PluginLoader> logger,
         PluginPublicationGate publication,
+        IPackageGraphSource graphSource,
+        SharedContractStore contracts,
+        PackageDependencyRegistry dependencies,
         IMediaTypeCapabilityReader? mediaTypes = null)
     {
         ArgumentNullException.ThrowIfNull(options);
@@ -114,12 +129,17 @@ public sealed class PluginLoader
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(publication);
+        ArgumentNullException.ThrowIfNull(graphSource);
+        ArgumentNullException.ThrowIfNull(contracts);
+        ArgumentNullException.ThrowIfNull(dependencies);
 
         if (!ReferenceEquals(registry.PublicationGate, publication)
-            || !ReferenceEquals(tokens.PublicationGate, publication))
+            || !ReferenceEquals(tokens.PublicationGate, publication)
+            || !ReferenceEquals(dependencies.PublicationGate, publication))
         {
             throw new InvalidOperationException(
-                "The extension loader, runtime registry and token registry must share one publication boundary.");
+                "The extension loader, runtime registry, token registry and package dependency registry must "
+                + "share one publication boundary.");
         }
 
         _options = options;
@@ -130,10 +150,19 @@ public sealed class PluginLoader
         _logger = logger;
         _mediaTypes = mediaTypes;
         _publication = publication;
+        _graphSource = graphSource;
+        _contracts = contracts;
+        _dependencies = dependencies;
     }
 
     /// <summary>Gets the publication boundary this loader coordinates.</summary>
     internal PluginPublicationGate PublicationGate => _publication;
+
+    /// <summary>Gets the installation's shared contract authority.</summary>
+    internal SharedContractStore SharedContracts => _contracts;
+
+    /// <summary>Gets which package attempts are rooted and pinned.</summary>
+    internal PackageDependencyRegistry Dependencies => _dependencies;
 
     /// <summary>
     /// Gets the version of the contract assembly this host is running.
@@ -209,9 +238,13 @@ public sealed class PluginLoader
     /// Runs the whole pipeline over everything installed.
     /// </summary>
     /// <param name="admission">The host's mandatory attempt-scoped admission transaction.</param>
-    /// <param name="cancellationToken">Stops before another candidate begins; committed candidates remain the caller's responsibility.</param>
-    /// <returns>What became of every extension, recorded in the registry as well as returned.</returns>
-    internal IReadOnlyList<PluginLoadResult> LoadAll(
+    /// <param name="cancellationToken">Stops before another package begins; committed ones remain the caller's responsibility.</param>
+    /// <returns>What became of every package, recorded in the registry as well as returned.</returns>
+    /// <remarks>
+    /// Asynchronous because preparing a package reads bytes and the publication gate is thread-affine: a
+    /// write lease cannot span an await. Everything a commit needs is built before the gate is entered.
+    /// </remarks>
+    internal async Task<IReadOnlyList<PluginLoadResult>> LoadAllAsync(
         IPluginAdmissionCheck admission,
         CancellationToken cancellationToken = default)
     {
@@ -228,16 +261,22 @@ public sealed class PluginLoader
             results.Add(failure);
         }
 
-        var validated = new List<(PluginCandidate Candidate, ValidatedManifest Manifest)>(discovered.Count);
+        // Steps 2 and 3: every declaration is proved well-formed, and the operator's configuration becomes
+        // the typed availability state resolution reads, before any of them is acted on.
+        var disabled = _options.Value.Disabled.ToHashSet(StringComparer.Ordinal);
+        var validated = new List<ValidatedManifest>(discovered.Count);
 
-        // Steps 2 and 3: every declaration is proved well-formed before any of them is acted on.
         foreach (var candidate in discovered)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (PluginManifestValidator.TryValidate(candidate.Manifest, out var manifest, out var defects))
+            var availability = disabled.Contains(candidate.Manifest.Id)
+                ? PackageAvailability.DisabledByConfiguration
+                : PackageAvailability.Available;
+
+            if (PluginManifestValidator.TryValidate(candidate, availability, out var manifest, out var defects))
             {
-                validated.Add((candidate, manifest!));
+                validated.Add(manifest!);
                 continue;
             }
 
@@ -250,123 +289,330 @@ public sealed class PluginLoader
                 [.. defects.Select(defect => defect.ToString())]));
         }
 
-        // Step 4: identity is checked across the whole installation, not within one extension, so it can
-        // only be checked once every declaration has been read.
-        var duplicates = validated
-            .GroupBy(entry => entry.Manifest.Id)
-            .Where(group => group.Count() > 1)
-            .Select(group => group.Key)
-            .ToHashSet();
+        // Step 4: what the installation requires of itself, resolved once from proved declarations. Identity,
+        // availability and dependencies are decided together, before any assembly is opened.
+        var installed = validated.Select(manifest => manifest.Package).ToArray();
+        var graph = _graphSource.Resolve(installed);
+        RequireExactPartition(graph, installed);
 
-        var disabled = _options.Value.Disabled.ToHashSet(StringComparer.Ordinal);
+        var byPackage = new Dictionary<InstalledPackage, ValidatedManifest>(ReferenceEqualityComparer.Instance);
 
-        foreach (var (candidate, manifest) in validated)
+        foreach (var manifest in validated)
+        {
+            byPackage[manifest.Package] = manifest;
+        }
+
+        var byId = new Dictionary<PluginId, ValidatedManifest>();
+
+        foreach (var manifest in validated)
+        {
+            // A duplicated identifier has no single declaration; the resolver refuses it and carries its
+            // copies, so nothing downstream needs one chosen.
+            byId.TryAdd(manifest.Id, manifest);
+        }
+
+        foreach (var refusal in graph.Refused)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (duplicates.Contains(manifest.Id))
+            results.Add(Quarantine(
+                refusal.Copies.Count == 1 ? refusal.Copies[0].Source : byId[refusal.Package].Package.Source,
+                refusal.Package,
+                refusal.Copies.Count == 1 ? byPackage[refusal.Copies[0]] : null,
+                refusal.ErrorCode,
+                refusal.Reason,
+                [.. refusal.Defects.Select(defect => defect.ToString())]));
+        }
+
+        // Step 5: the installation's shared contract assemblies become one admitted identity each, staged
+        // and metadata-validated in graph order and loaded as one transaction, before any package's code
+        // exists.
+        var contracts = _contracts.Admit(graph);
+
+        foreach (var package in graph.AdmissionOrder)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var manifest = byPackage[package];
+
+            if (contracts.Refusals.TryGetValue(package.Id, out var refused))
             {
                 results.Add(Quarantine(
-                    candidate.ManifestPath,
-                    manifest.Id,
+                    package.Source,
+                    package.Id,
                     manifest,
-                    CoreErrorCode.PluginIdConflict,
-                    $"More than one installed extension claims the identifier '{manifest.Id}'. Identity must be unique across an installation.",
-                    defects: []));
+                    refused.Code,
+                    refused.Reason,
+                    refused.Defects));
                 continue;
             }
 
-            if (disabled.Contains(manifest.Id.Value))
+            // A dependency that failed its own admission is only knowable once it has been attempted, so
+            // this is the one closure verdict the resolver cannot reach. The dependant is not attempted and
+            // its defect names the dependency, so the chain stays walkable one link at a time.
+            if (!TryBindDependencies(package, graph, out var edges, out var unmet))
             {
                 results.Add(Quarantine(
-                    candidate.ManifestPath,
-                    manifest.Id,
+                    package.Source,
+                    package.Id,
                     manifest,
-                    CoreErrorCode.PluginDisabled,
-                    $"Extension '{manifest.Id}' is installed but disabled by configuration.",
-                    defects: []));
+                    CoreErrorCode.PluginDependencyUnavailable,
+                    $"Extension '{package.Id}' was not attempted because its dependency closure is not satisfied.",
+                    unmet));
                 continue;
             }
 
-            results.Add(Load(candidate, manifest, admission));
+            results.Add(await LoadAsync(manifest, edges, admission, cancellationToken).ConfigureAwait(false));
         }
 
         return results;
     }
 
     /// <summary>
-    /// Runs the pipeline over one already-proved declaration.
+    /// Requires the resolved graph to be an exact partition of what it was asked about.
     /// </summary>
-    /// <param name="candidate">Where the extension was found.</param>
-    /// <param name="manifest">Its proved declaration.</param>
+    /// <param name="graph">What the resolution authority answered.</param>
+    /// <param name="installed">Exactly what it was asked about.</param>
+    /// <exception cref="InvalidOperationException">The answer is not an exact partition of the question.</exception>
+    /// <remarks>
+    /// Compared by reference. A resolver that returned structurally equal clones would decide what a package
+    /// is, and every diagnostic downstream would describe something that is not installed. None of these is
+    /// an operator's mistake, so none of them quarantines a package: they fail composition before anything
+    /// loads.
+    /// </remarks>
+    private static void RequireExactPartition(
+        ResolvedPackageGraph graph,
+        IReadOnlyList<InstalledPackage> installed)
+    {
+        if (graph is null)
+        {
+            throw new InvalidOperationException(
+                "The package resolution authority answered with no graph. A host with no usable authority on "
+                + "what the installation requires of itself cannot decide what to admit.");
+        }
+
+        var copies = new Dictionary<PluginId, List<InstalledPackage>>();
+
+        foreach (var package in installed)
+        {
+            if (!copies.TryGetValue(package.Id, out var found))
+            {
+                found = [];
+                copies[package.Id] = found;
+            }
+
+            found.Add(package);
+        }
+
+        var answered = new HashSet<PluginId>();
+        var accounted = new HashSet<InstalledPackage>(ReferenceEqualityComparer.Instance);
+        var defects = new List<string>();
+
+        foreach (var package in graph.AdmissionOrder)
+        {
+            if (!answered.Add(package.Id))
+            {
+                defects.Add($"package[{package.Id}]: answered for more than once.");
+                continue;
+            }
+
+            if (!copies.TryGetValue(package.Id, out var installedCopies))
+            {
+                defects.Add($"package[{package.Id}]: admitted, but it is not installed.");
+                continue;
+            }
+
+            if (installedCopies.Count != 1 || !ReferenceEquals(package, installedCopies[0]))
+            {
+                defects.Add(
+                    $"package[{package.Id}]: admitted as a different object from the one installed copy the "
+                    + "authority was asked about.");
+                continue;
+            }
+
+            accounted.Add(package);
+        }
+
+        foreach (var refusal in graph.Refused)
+        {
+            if (!answered.Add(refusal.Package))
+            {
+                defects.Add($"package[{refusal.Package}]: answered for more than once.");
+                continue;
+            }
+
+            if (!copies.TryGetValue(refusal.Package, out var installedCopies))
+            {
+                defects.Add($"package[{refusal.Package}]: refused, but it is not installed.");
+                continue;
+            }
+
+            // A refusal carries the copies it is about, and everything downstream reads them: a duplicated
+            // identifier is reported once per installed copy. A refusal naming none of them, or naming a
+            // clone, would leave an installed object unaccounted for and fail later at a lookup.
+            var named = new HashSet<InstalledPackage>(refusal.Copies, ReferenceEqualityComparer.Instance);
+
+            if (named.Count != installedCopies.Count || !installedCopies.All(named.Contains))
+            {
+                defects.Add(
+                    $"package[{refusal.Package}]: refused naming {refusal.Copies.Count} copies, but "
+                    + $"{installedCopies.Count} exact installed copies were supplied.");
+                continue;
+            }
+
+            foreach (var copy in installedCopies)
+            {
+                accounted.Add(copy);
+            }
+        }
+
+        foreach (var id in copies.Keys.Where(id => !answered.Contains(id)))
+        {
+            defects.Add($"package[{id}]: installed, but the graph neither admits nor refuses it.");
+        }
+
+        foreach (var package in installed.Where(package => !accounted.Contains(package)))
+        {
+            defects.Add($"package[{package.Id}]: the copy at '{package.Folder}' was never accounted for.");
+        }
+
+        if (defects.Count > 0)
+        {
+            throw new InvalidOperationException(
+                "The package resolution authority did not answer for exactly the installed extensions: "
+                + string.Join(" ", defects.OrderBy(defect => defect, StringComparer.Ordinal)));
+        }
+    }
+
+    /// <summary>
+    /// Binds one package's requirements to the exact receipts they were satisfied by.
+    /// </summary>
+    /// <param name="package">The package about to be attempted.</param>
+    /// <param name="graph">The resolved graph this package's edges were computed from.</param>
+    /// <param name="edges">The bound edges when every requirement is rooted.</param>
+    /// <param name="defects">Why the closure is unsatisfied, or an empty list.</param>
+    /// <returns><see langword="true"/> when every requirement is rooted.</returns>
+    private bool TryBindDependencies(
+        InstalledPackage package,
+        ResolvedPackageGraph graph,
+        out IReadOnlyList<PackageDependencyEdge> edges,
+        out IReadOnlyList<string> defects)
+    {
+        var bound = new List<PackageDependencyEdge>(package.Requirements.Count);
+        var found = new List<string>();
+
+        foreach (var requirement in package.Requirements)
+        {
+            if (!_dependencies.TryGetRooted(requirement.PackageId, out var dependency) || dependency is null)
+            {
+                found.Add(
+                    $"dependency[{requirement.PackageId}]: extension '{package.Id}' requires "
+                    + $"'{requirement.PackageId}' {requirement.Range}, which is not admitted. Resolve that "
+                    + "extension's own defects first.");
+                continue;
+            }
+
+            // The rooted receipt has to be the attempt this graph resolved against, not merely something
+            // sharing its identifier. An incumbent left over from an earlier pass, or a reload at another
+            // version, would otherwise satisfy an edge computed for a different installation.
+            if (!graph.TryGet(requirement.PackageId, out var resolved)
+                || !ReferenceEquals(dependency.Package, resolved))
+            {
+                found.Add(
+                    $"dependency[{requirement.PackageId}]: extension '{package.Id}' was resolved against a "
+                    + $"different installation attempt of '{requirement.PackageId}' than the one now admitted "
+                    + $"at version {dependency.Version}.");
+                continue;
+            }
+
+            bound.Add(new PackageDependencyEdge(package.Id, requirement, dependency));
+        }
+
+        edges = bound;
+        defects = found;
+        return found.Count == 0;
+    }
+
+    /// <summary>
+    /// Runs the pipeline over one proved package.
+    /// </summary>
+    /// <param name="manifest">Its proved declaration, carrying the canonical package snapshot.</param>
+    /// <param name="edges">Its bound dependency edges, each naming an exact rooted dependency receipt.</param>
     /// <param name="admission">The host's mandatory attempt-scoped admission transaction.</param>
+    /// <param name="cancellationToken">Stops before this package is admitted.</param>
     /// <returns>What became of it, recorded in the registry as well as returned.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    internal PluginLoadResult Load(
-        PluginCandidate candidate,
+    internal async Task<PluginLoadResult> LoadAsync(
         ValidatedManifest manifest,
-        IPluginAdmissionCheck admission)
+        IReadOnlyList<PackageDependencyEdge> edges,
+        IPluginAdmissionCheck admission,
+        CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(candidate);
         ArgumentNullException.ThrowIfNull(manifest);
+        ArgumentNullException.ThrowIfNull(edges);
         ArgumentNullException.ThrowIfNull(admission);
 
-        var source = candidate.ManifestPath;
+        var package = manifest.Package;
+        var source = package.Source;
         var admitted = AdmittedInventory.NotAdmitted;
 
-        // A host precondition rather than a step: checked before anything is loaded, so that a host missing
-        // a subsystem is reported as a host misconfiguration rather than as a defect in the first extension
-        // that happened to reach for it.
-        var missing = _platform.MissingRequiredServices();
+        // A host precondition rather than a step, and only for a package that runs code: a contract-only
+        // package activates nothing and needs no extension context, so refusing it for a subsystem it never
+        // touches would report a host misconfiguration as a defect in a package that has none.
+        var missing = package.HasEntryAssembly ? _platform.MissingRequiredServices() : [];
         if (missing.Count > 0)
         {
             return Quarantine(
                 source,
-                manifest.Id,
+                package.Id,
                 manifest,
                 CoreErrorCode.PluginLoadFailure,
                 $"This host cannot activate extensions: it has registered no {string.Join(", ", missing)}.",
                 defects: [.. missing]);
         }
 
-        // Step 5: the declared contract range.
+        // Step 6: the declared contract range.
         if (!manifest.ContractRange.IsSatisfiedBy(HostContractVersion))
         {
             return Quarantine(
                 source,
-                manifest.Id,
+                package.Id,
                 manifest,
                 CoreErrorCode.PluginContractMismatch,
-                $"Extension '{manifest.Id}' accepts contract versions '{manifest.ContractRange}', which this host's {HostContractVersion} does not satisfy.",
+                $"Extension '{package.Id}' accepts contract versions '{manifest.ContractRange}', which this host's {HostContractVersion} does not satisfy.",
                 defects: []);
         }
 
-        var entryPath = candidate.ResolveEntryAssemblyPath();
-
-        // Step 6: the reference graph, read as metadata, before a load context exists and before a single
-        // type initializer has had the chance to run.
-        if (!PluginReferenceInspector.TryInspect(entryPath, out var report, out var inspectionError))
+        // Step 7: nothing in this package's folder may privately duplicate an admitted shared contract, and
+        // nothing in it may bind to one outside its own declared closure.
+        if (!_contracts.TryCheckPackage(package, out var isolationCode, out var isolationDefects))
         {
             return Quarantine(
                 source,
-                manifest.Id,
+                package.Id,
                 manifest,
-                CoreErrorCode.PluginLoadFailure,
-                $"The entry assembly of extension '{manifest.Id}' could not be inspected: {inspectionError}",
-                defects: []);
+                isolationCode,
+                $"Extension '{package.Id}' conflicts with the shared contracts this installation admitted.",
+                isolationDefects);
         }
 
-        if (!report!.IsAdmissible)
+        // The package receipt exists from here, before either of its optional halves does.
+        var receipt = new PackageAdmissionReceipt(package, edges);
+
+        // Step 8: pin the exact dependency receipts before anything is read, resolved or run. Binding them
+        // was a diagnostic; this is the defense.
+        if (!_dependencies.TryPinDependencies(receipt, out var pinDefects))
         {
             return Quarantine(
                 source,
-                manifest.Id,
+                package.Id,
                 manifest,
-                CoreErrorCode.PluginIsolationViolation,
-                $"Extension '{manifest.Id}' references forbidden Host, platform, or legacy implementation assemblies.",
-                [.. report.Violations]);
+                CoreErrorCode.PluginDependencyUnavailable,
+                $"Extension '{package.Id}' was not loaded because its dependencies changed while it was being prepared.",
+                pinDefects);
         }
 
+        PackageAdmissionLease? lease = null;
         PluginLoadContext? context = null;
         IPluginModule? module = null;
         PluginRegistrationLedger? ledger = null;
@@ -377,197 +623,229 @@ public sealed class PluginLoader
 
         try
         {
-            // Steps 7 and 8.
-            context = new PluginLoadContext(manifest.Id, entryPath);
-            var assembly = context.LoadEntryAssembly();
+            // Step 9: this package's scoped view of the installation's contracts, which is also its hold on
+            // the contract context. A contract-only package takes one too: its published contracts live in
+            // that context and its dependants pin it through this hold.
+            lease = new PackageAdmissionLease(receipt, _contracts.OpenScope(package));
 
-            if (!TryLocateModule(assembly, manifest, out module, out var moduleError))
+            PluginLoadResult loaded;
+
+            if (package.EntryAssemblyFileName is null)
             {
-                return Quarantine(source, manifest.Id, manifest, CoreErrorCode.PluginLoadFailure, moduleError!, defects: []);
+                // Step 10a: a contract-only package has nothing to activate. It is a complete installation
+                // attempt with a receipt and a contract hold and no load context, ledger or Host admission.
+                loaded = PluginLoadResult.ActivePackage(source, manifest, _clock.GetUtcNow(), lease);
             }
-
-            // Step 9: everything the extension registers is admitted or refused as it registers it.
-            ledger = new PluginRegistrationLedger(manifest.Id);
-            var registry = new PluginRegistry(manifest.Id, manifest.GrantedCapabilities, ledger, _mediaTypes);
-
-            var pluginContext = BuildContext(manifest, registry, context);
-            ledger.ActivationContext = pluginContext;
-
-            try
+            else
             {
-                module!.Configure(pluginContext);
-            }
-            catch (PluginCapabilityException failure)
-            {
-                return Quarantine(source, manifest.Id, manifest, failure.ErrorCode, failure.Message, defects: []);
-            }
+                var entryPath = Path.Combine(package.Folder, package.EntryAssemblyFileName);
+
+                // Steps 10b and 11: the file is read once. Two reads of a path the package owns is a race in
+                // which the assembly that was judged and the assembly that runs need not be the same one.
+                if (!StagedAssembly.TryStage(entryPath, out var staged, out var stagingError))
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginLoadFailure,
+                        $"The entry assembly of extension '{package.Id}' could not be inspected: {stagingError}",
+                        defects: []);
+                }
+
+                var report = PluginReferenceInspector.Report(staged!);
+
+                if (!report.IsAdmissible)
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginIsolationViolation,
+                        $"Extension '{package.Id}' references forbidden Host, platform, or legacy implementation assemblies.",
+                        [.. report.Violations]);
+                }
+
+                context = new PluginLoadContext(package.Id, entryPath, nativeLibraryResolver: null, contracts: lease.Contracts);
+                var assembly = context.LoadEntryAssembly(staged!);
+
+                if (!TryLocateModule(assembly, manifest, out module, out var moduleError))
+                {
+                    return Quarantine(source, package.Id, manifest, CoreErrorCode.PluginLoadFailure, moduleError!, defects: []);
+                }
+
+                // Step 12: everything the extension registers is admitted or refused as it registers it.
+                ledger = new PluginRegistrationLedger(package.Id);
+                var registry = new PluginRegistry(package.Id, manifest.GrantedCapabilities, ledger, _mediaTypes);
+
+                var pluginContext = BuildContext(manifest, registry, context);
+                ledger.ActivationContext = pluginContext;
+
+                try
+                {
+                    module!.Configure(pluginContext);
+                }
+                catch (PluginCapabilityException failure)
+                {
+                    return Quarantine(source, package.Id, manifest, failure.ErrorCode, failure.Message, defects: []);
+                }
 #pragma warning disable CA1031 // A throwing extension quarantines itself; it never brings down the host.
-            catch (Exception failure)
+                catch (Exception failure)
 #pragma warning restore CA1031
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    CoreErrorCode.PluginLoadFailure,
-                    $"Extension '{manifest.Id}' threw while registering: {failure.Message}",
-                    defects: []);
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginLoadFailure,
+                        $"Extension '{package.Id}' threw while registering: {failure.Message}",
+                        defects: []);
+                }
+                finally
+                {
+                    registry.Seal();
+                }
+
+                // Step 13: the forward half of the bidirectional capability check.
+                if (!ledger.TryVerifyDeclaredCapabilities(manifest.DeclaredCapabilities, out var unsatisfied))
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginCapabilityUnsatisfied,
+                        $"Extension '{package.Id}' declared capabilities it never used. Declare only what the extension contributes.",
+                        [.. unsatisfied.Select(CapabilityNames.ToWireName)]);
+                }
+
+                // Steps 14 and 15: the host's own checks over what was registered. From here on, what the
+                // host admitted is the authority on this extension's kinds and their tokens.
+                var verdict = admission.Prepare(manifest, ledger);
+
+                if (!verdict.IsAdmitted)
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        verdict.ErrorCode,
+                        $"What extension '{package.Id}' registered did not pass validation.",
+                        verdict.Defects);
+                }
+
+                // The Host has handed the loader an attempt-owned resource. Retain the receipt before
+                // validating the rest of the verdict so a malformed success is still abandoned.
+                preparation = verdict;
+
+                var admissionAttempt = verdict.Attempt;
+                if (admissionAttempt is null)
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginLoadFailure,
+                        $"The Host admission check for extension '{package.Id}' returned no commit attempt.",
+                        defects: ["A successful Host preparation must carry its attempt-scoped commit and rollback receipt."]);
+                }
+
+                if (!verdict.Inventory.IsAuthoritative)
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginLoadFailure,
+                        $"The Host admission check for extension '{package.Id}' returned a non-authoritative inventory.",
+                        defects: ["A successful Host preparation must describe exactly what its attempt will publish, including an authoritative empty result."]);
+                }
+
+                admitted = verdict.Inventory;
+
+                // Step 16: what the declaration says about derivable media facts must agree with what was
+                // admitted.
+                if (!TryCrossCheckDerivedDeclarations(manifest, admitted, out var tokenDefects))
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginPolicyDeclarationInvalid,
+                        $"The media kinds and tokens extension '{package.Id}' declares do not match what its media shape defines.",
+                        tokenDefects);
+                }
+
+                // Step 17: token ownership across the installation, claimed per kind.
+                if (!_tokens.TryPrepareClaims(package.Id, TokenClaims(admitted), out tokenPlan, out var claimDefects))
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        CoreErrorCode.PluginTokenConflict,
+                        $"Extension '{package.Id}' declares tokens that are already spoken for.",
+                        [.. claimDefects.Select(defect => defect.ToString())]);
+                }
+
+                // Step 18: identity of what was registered, within this extension and across the installation.
+                if (!TryCheckIdentifiers(ledger, admitted, out var identityCode, out var identityDefects))
+                {
+                    return Quarantine(
+                        source,
+                        package.Id,
+                        manifest,
+                        identityCode,
+                        $"Extension '{package.Id}' registered conflicting identifiers.",
+                        identityDefects);
+                }
+
+                // Step 19.
+                receipt.AttachHostAdmission(admissionAttempt);
+                runtimeLease = new PluginRuntimeLease(context, ledger, module, tokenPlan, admissionAttempt);
+                lease.AttachRuntime(runtimeLease);
+
+                loaded = PluginLoadResult
+                    .Progressed(source, PluginState.Registered, manifest, ledger, context, _clock.GetUtcNow(), admitted)
+                    .Activate(ledger, context, _clock.GetUtcNow(), admitted, lease);
             }
-            finally
-            {
-                registry.Seal();
-            }
-
-            // Step 10: the forward half of the bidirectional check.
-            if (!ledger.TryVerifyDeclaredCapabilities(manifest.DeclaredCapabilities, out var unsatisfied))
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    CoreErrorCode.PluginCapabilityUnsatisfied,
-                    $"Extension '{manifest.Id}' declared capabilities it never used. Declare only what the extension contributes.",
-                    [.. unsatisfied.Select(CapabilityNames.ToWireName)]);
-            }
-
-            // Steps 11 and 12: the host's own checks over what was registered. From here on, what the host
-            // admitted — not what the declaration claimed — is the authority on this extension's kinds and
-            // their tokens.
-            var verdict = admission.Prepare(manifest, ledger);
-
-            if (!verdict.IsAdmitted)
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    verdict.ErrorCode,
-                    $"What extension '{manifest.Id}' registered did not pass validation.",
-                    verdict.Defects);
-            }
-
-            // From this point the Host has handed the loader an attempt-owned resource. Retain the
-            // receipt before validating the rest of the result so every malformed successful verdict is
-            // still abandoned by the finally block.
-            preparation = verdict;
-
-            var admissionAttempt = verdict.Attempt;
-            if (admissionAttempt is null)
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    CoreErrorCode.PluginLoadFailure,
-                    $"The Host admission check for extension '{manifest.Id}' returned no commit attempt.",
-                    defects: ["A successful Host preparation must carry its attempt-scoped commit and rollback receipt."]);
-            }
-
-            if (!verdict.Inventory.IsAuthoritative)
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    CoreErrorCode.PluginLoadFailure,
-                    $"The Host admission check for extension '{manifest.Id}' returned a non-authoritative inventory.",
-                    defects: ["A successful Host preparation must describe exactly what its attempt will publish, including an authoritative empty result."]);
-            }
-            admitted = verdict.Inventory;
-
-            // Step 13: what the declaration says about derivable media facts must agree with what was
-            // admitted. A declaration that says nothing about them agrees by construction, because they are
-            // derived from the extension's own types rather than restated in its manifest.
-            if (!TryCrossCheckDerivedDeclarations(manifest, admitted, out var tokenDefects))
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    CoreErrorCode.PluginPolicyDeclarationInvalid,
-                    $"The media kinds and tokens extension '{manifest.Id}' declares do not match what its media shape defines.",
-                    tokenDefects);
-            }
-
-            // Step 14: token ownership across the whole installation, claimed per kind by the kind that owns
-            // the token rather than as the cross product of an extension's kinds and its whole vocabulary.
-            if (!_tokens.TryPrepareClaims(
-                    manifest.Id,
-                    TokenClaims(admitted),
-                    out tokenPlan,
-                    out var claimDefects))
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    CoreErrorCode.PluginTokenConflict,
-                    $"Extension '{manifest.Id}' declares tokens that are already spoken for.",
-                    [.. claimDefects.Select(defect => defect.ToString())]);
-            }
-
-            // Step 15: identity of what was registered, within this extension and across the installation.
-            if (!TryCheckIdentifiers(ledger, admitted, out var identityCode, out var identityDefects))
-            {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    identityCode,
-                    $"Extension '{manifest.Id}' registered conflicting identifiers.",
-                    identityDefects);
-            }
-
-            // Step 16.
-            runtimeLease = new PluginRuntimeLease(
-                context,
-                ledger,
-                module,
-                tokenPlan,
-                admissionAttempt);
-            var loaded = PluginLoadResult
-                .Progressed(
-                    source,
-                    PluginState.Registered,
-                    manifest,
-                    ledger,
-                    context,
-                    _clock.GetUtcNow(),
-                    admitted)
-                .Activate(
-                    ledger,
-                    context,
-                    _clock.GetUtcNow(),
-                    admitted,
-                    runtimeLease);
 
             CoreErrorCode? publicationError = null;
             IReadOnlyList<string> publicationDefects = [];
 
             using (_publication.EnterWrite())
             {
-                if (!_registry.CanActivate(manifest.Id))
+                if (!_registry.CanActivate(package.Id))
                 {
                     publicationError = CoreErrorCode.PluginIdConflict;
-                    publicationDefects = [$"Extension '{manifest.Id}' already has an active runtime attempt."];
+                    publicationDefects = [$"Extension '{package.Id}' already has an active runtime attempt."];
                 }
-                else if (!tokenPlan!.TryCommit(out var lateTokenDefects))
+                else if (tokenPlan is not null && !tokenPlan.TryCommit(out var lateTokenDefects))
                 {
                     publicationError = CoreErrorCode.PluginTokenConflict;
                     publicationDefects = [.. lateTokenDefects.Select(defect => defect.ToString())];
                 }
-                else if (!admissionAttempt.TryCommit(out var commitCode, out var commitDefects))
+                else if (receipt.HostAdmission is { } attempt && !attempt.TryCommit(out var commitCode, out var commitDefects))
                 {
                     publicationError = commitCode;
                     publicationDefects = commitDefects;
-                    tokenPlan.Rollback();
+                    tokenPlan?.Rollback();
+                }
+                // Every edge is rechecked here against the exact receipt this package was prepared against.
+                // A pre-gate check is a diagnostic; only a recheck inside the lease that publishes can be a
+                // total order with the lease that withdraws.
+                else if (!_dependencies.TryPublish(receipt, out var edgeDefects))
+                {
+                    publicationError = CoreErrorCode.PluginDependencyUnavailable;
+                    publicationDefects = edgeDefects;
+                    receipt.HostAdmission?.Rollback();
+                    tokenPlan?.Rollback();
                 }
                 else
                 {
                     if (!_registry.Record(loaded))
                     {
                         throw new InvalidOperationException(
-                            $"Extension '{manifest.Id}' became active while holding the final publication gate.");
+                            $"Extension '{package.Id}' became active while holding the final publication gate.");
                     }
 
                     committed = true;
@@ -578,81 +856,116 @@ public sealed class PluginLoader
             {
                 return Quarantine(
                     source,
-                    manifest.Id,
+                    package.Id,
                     manifest,
                     code,
-                    $"Extension '{manifest.Id}' could not publish its prepared contributions.",
+                    $"Extension '{package.Id}' could not publish its prepared contributions.",
                     publicationDefects);
             }
 
             PluginLoaderLog.Activated(
                 _logger,
-                manifest.Id.ToString(),
-                manifest.Version.ToString(),
-                ledger.Count);
+                package.Id.ToString(),
+                package.Version.ToString(),
+                ledger?.Count ?? 0);
 
             context = null;
             return loaded;
         }
+        // Cancellation of the caller's token is not an extension defect and must not be recorded as one. The
+        // finally block still runs first, so this attempt gives up its pins, its instances and its contract
+        // hold before the cancellation reaches the caller.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (PluginIsolationException failure)
         {
-            return Quarantine(source, manifest.Id, manifest, failure.ErrorCode, failure.Message, defects: []);
+            return Quarantine(source, package.Id, manifest, failure.ErrorCode, failure.Message, defects: []);
         }
         catch (BadImageFormatException failure)
         {
             return Quarantine(
                 source,
-                manifest.Id,
+                package.Id,
                 manifest,
                 CoreErrorCode.PluginLoadFailure,
-                $"The entry assembly of extension '{manifest.Id}' is not loadable: {failure.Message}",
+                $"The entry assembly of extension '{package.Id}' is not loadable: {failure.Message}",
                 defects: []);
         }
         catch (FileNotFoundException failure)
         {
             return Quarantine(
                 source,
-                manifest.Id,
+                package.Id,
                 manifest,
                 CoreErrorCode.PluginLoadFailure,
-                $"The entry assembly of extension '{manifest.Id}' was not found: {failure.Message}",
+                $"The entry assembly of extension '{package.Id}' was not found: {failure.Message}",
                 defects: []);
         }
-// Everything in this block which is not Host publication infrastructure is extension-controlled: its
-// assembly metadata, constructors, registration objects and property getters. A novel extension exception
-// is still a quarantine, and the finally block releases every attempt-owned value before the next candidate.
+// Everything in this block which is not Host publication infrastructure is extension-controlled. A novel
+// extension exception is still a quarantine, and the finally block releases every attempt-owned value.
 #pragma warning disable CA1031
         catch (Exception failure) when (!committed)
 #pragma warning restore CA1031
         {
             return Quarantine(
                 source,
-                manifest.Id,
+                package.Id,
                 manifest,
                 CoreErrorCode.PluginLoadFailure,
-                $"Extension '{manifest.Id}' failed during loading: {failure.Message}",
+                $"Extension '{package.Id}' failed during loading: {failure.Message}",
                 defects: []);
         }
         finally
         {
             if (!committed)
             {
+                // Phase one of the same two-phase withdrawal teardown uses: hide the attempt without giving
+                // up anything it holds. An attempt that never published removes nothing.
+                if (!_dependencies.BeginWithdrawal(receipt, out var blockedBy))
+                {
+                    PluginLoaderLog.CleanupFailed(
+                        _logger,
+                        package.Id.ToString(),
+                        $"package edges are still pinned by [{string.Join(", ", blockedBy)}]");
+                }
+
                 tokenPlan?.Rollback();
                 preparation?.Attempt?.Rollback();
-            }
 
-            if (!committed && context is not null)
-            {
-                runtimeLease ??= new PluginRuntimeLease(
-                    context,
-                    ledger,
-                    module,
-                    tokenPlan,
-                    preparation?.Attempt);
+                var released = true;
 
-                foreach (var failure in runtimeLease.DisposeSynchronously())
+                if (lease is not null)
                 {
-                    PluginLoaderLog.CleanupFailed(_logger, manifest.Id.ToString(), failure);
+                    if (context is not null && lease.Runtime is null)
+                    {
+                        lease.AttachRuntime(new PluginRuntimeLease(context, ledger, module, tokenPlan, preparation?.Attempt));
+                    }
+
+                    foreach (var failure in await lease.DisposeAsync().ConfigureAwait(false))
+                    {
+                        released = false;
+                        PluginLoaderLog.CleanupFailed(_logger, package.Id.ToString(), failure);
+                    }
+                }
+
+                if (released)
+                {
+                    // Phase two: pins and edges go last, after this attempt's code is gone and after it gave
+                    // up its own contract hold, which it must do while its dependencies are still pinned.
+                    _dependencies.CompleteWithdrawal(receipt);
+                }
+                else
+                {
+                    // Explicitly retained rather than left as a pending preparation: its code may still be
+                    // resident, so its identifier stays occupied and its dependencies stay pinned.
+                    _dependencies.RetainFailedAttempt(receipt);
+                    PluginLoaderLog.CleanupFailed(
+                        _logger,
+                        package.Id.ToString(),
+                        "its instances, load context or contract hold could not be released, so its "
+                        + "identifier stays occupied and it goes on holding every extension it depends on");
                 }
             }
         }

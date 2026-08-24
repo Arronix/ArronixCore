@@ -23,7 +23,11 @@ public sealed class PluginLoadContextTests
     private static readonly PluginId Plugin = PluginId.FromString("test.isolation");
 
     private static PluginLoadContext CreateContext()
-        => new(Plugin, typeof(PluginLoadContextTests).Assembly.Location);
+        => new(
+            Plugin,
+            typeof(PluginLoadContextTests).Assembly.Location,
+            nativeLibraryResolver: null,
+            PackageContractScope.Empty(Plugin));
 
     [TestCase("Arronix.Common")]
     [TestCase("Arronix.Plugins")]
@@ -107,7 +111,7 @@ public sealed class PluginLoadContextTests
     [Test]
     public void AnEmptyEntryPathIsRefused()
     {
-        var construct = () => new PluginLoadContext(Plugin, "  ");
+        var construct = () => new PluginLoadContext(Plugin, "  ", nativeLibraryResolver: null, PackageContractScope.Empty(Plugin));
 
         construct.Should().Throw<ArgumentException>();
     }

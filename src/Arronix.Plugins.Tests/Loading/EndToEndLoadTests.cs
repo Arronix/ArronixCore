@@ -30,6 +30,7 @@ public sealed class EndToEndLoadTests
     private string _root = string.Empty;
     private PluginRuntimeOptions _options = new();
     private PluginPublicationGate _publication = new();
+    private LoaderAuthorities _authorities = new(new PluginPublicationGate());
     private PluginRuntimeRegistry _registry = new();
     private TokenRegistry _tokens = new();
 
@@ -46,6 +47,7 @@ public sealed class EndToEndLoadTests
             StateFolder = Path.Combine(_home, "state")
         };
         _publication = new PluginPublicationGate();
+        _authorities = new LoaderAuthorities(_publication);
         _registry = new PluginRuntimeRegistry(_publication);
         _tokens = new TokenRegistry(_publication);
     }
@@ -73,7 +75,10 @@ public sealed class EndToEndLoadTests
         _tokens,
         TimeProvider.System,
         NullLogger<PluginLoader>.Instance,
-        _publication);
+        _publication,
+        _authorities.Graph,
+        _authorities.Contracts,
+        _authorities.Dependencies);
 
     /// <summary>
     /// Installs a compiled extension declaring one privilege that no registration can account for, so that
@@ -106,11 +111,11 @@ public sealed class EndToEndLoadTests
     }
 
     [Test]
-    public void ARealExtensionReachesActiveAndItsModuleCastSucceeded()
+    public async Task ARealExtensionReachesActiveAndItsModuleCastSucceeded()
     {
         Install("emitted");
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.State.Should().Be(
             PluginState.Active,
@@ -122,11 +127,11 @@ public sealed class EndToEndLoadTests
     }
 
     [Test]
-    public void TheExtensionIsLoadedIntoItsOwnContextAndTheContractIsNot()
+    public async Task TheExtensionIsLoadedIntoItsOwnContextAndTheContractIsNot()
     {
         Install("emitted");
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
         var context = result.LoadContext!;
 
         context.Name.Should().Be("arronix-plugin:emitted");
@@ -136,11 +141,11 @@ public sealed class EndToEndLoadTests
     }
 
     [Test]
-    public void ItsOwnFoldersExistBeforeItWasActivated()
+    public async Task ItsOwnFoldersExistBeforeItWasActivated()
     {
         Install("emitted");
 
-        CreateLoader().LoadAll(NoOpAdmission.Instance);
+        await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
         var home = Path.Combine(_options.StateFolder, "emitted");
         Directory.Exists(Path.Combine(home, "data")).Should().BeTrue();
@@ -149,11 +154,11 @@ public sealed class EndToEndLoadTests
     }
 
     [Test]
-    public void ReachingForAPrivilegeItDidNotDeclareQuarantinesIt()
+    public async Task ReachingForAPrivilegeItDidNotDeclareQuarantinesIt()
     {
         Install("emitted", EmittedBehavior.ReachForTheNetwork);
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Quarantined);
         result.ErrorCode.Should().Be(CoreErrorCode.PluginCapabilityMissing);
@@ -161,31 +166,31 @@ public sealed class EndToEndLoadTests
     }
 
     [Test]
-    public void AnExtensionThatThrowsQuarantinesItselfAndNeverTheHost()
+    public async Task AnExtensionThatThrowsQuarantinesItselfAndNeverTheHost()
     {
         Install("emitted", EmittedBehavior.Throw);
 
-        var load = () => CreateLoader().LoadAll(NoOpAdmission.Instance);
+        var load = async () => await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
-        var result = load.Should().NotThrow().Which.Should().ContainSingle().Which;
+        var result = (await load.Should().NotThrowAsync()).Which.Should().ContainSingle().Which;
         result.State.Should().Be(PluginState.Quarantined);
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("threw while registering");
     }
 
     [Test]
-    public void TwoEntryModulesInOneAssemblyAreAmbiguousAndRefused()
+    public async Task TwoEntryModulesInOneAssemblyAreAmbiguousAndRefused()
     {
         Install("emitted", moduleCount: 2);
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("exactly one");
     }
 
     [Test]
-    public void AModuleThatIdentifiesItselfDifferentlyFromItsDeclarationIsRefused()
+    public async Task AModuleThatIdentifiesItselfDifferentlyFromItsDeclarationIsRefused()
     {
         var folder = Path.Combine(_root, "emitted");
         EmittedPlugin.Write(folder, "someone.else");
@@ -203,7 +208,7 @@ public sealed class EndToEndLoadTests
               }
               """);
 
-        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("must agree");
@@ -221,11 +226,11 @@ public sealed class EndToEndLoadTests
     }
 
     [Test]
-    public void AnActiveExtensionIsPublishedAsActive()
+    public async Task AnActiveExtensionIsPublishedAsActive()
     {
         Install("emitted");
 
-        CreateLoader().LoadAll(NoOpAdmission.Instance);
+        await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
         _registry.Active.Should().ContainSingle();
         var view = _registry.Snapshot().Should().ContainSingle().Which;
