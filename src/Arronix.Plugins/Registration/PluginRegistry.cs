@@ -203,12 +203,12 @@ public sealed class PluginRegistry : IPluginRegistry
 
     /// <inheritdoc />
     public IPluginRegistry AddCataloger<TCataloger>(ProviderDescriptor descriptor)
-        where TCataloger : class, ICataloger, ICatalogerPairing
+        where TCataloger : class, IClosedCataloger
         => AdmitProvider(ProviderTypeRegistration.ForCataloger<TCataloger>(descriptor), Capability.Metadata);
 
     /// <inheritdoc />
     public IPluginRegistry AddCurator<TCurator>(ProviderDescriptor descriptor)
-        where TCurator : class, IProvider, ICuratorPairing
+        where TCurator : class, IClosedCurator
         => AdmitProvider(ProviderTypeRegistration.ForCurator<TCurator>(descriptor), Capability.Curation);
 
     /// <inheritdoc />

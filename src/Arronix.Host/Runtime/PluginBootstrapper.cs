@@ -704,6 +704,13 @@ public sealed partial class PluginBootstrapper : IHostedService
                 return PluginAdmissionResult.Refused(errorCode, defects);
             }
 
+            // Before anything is activated, and independently of whether this extension supplies a provider:
+            // an item type owned by two kinds makes every lookup keyed on it order-dependent.
+            if (!TryCheckItemTypeOwnership(mediaKinds, out defects))
+            {
+                return PluginAdmissionResult.Refused(CoreErrorCode.MediaItemTypeConflict, defects);
+            }
+
             var inventory = new AdmittedInventory(mediaKinds.Select(Inventory).ToArray());
             var activation = ledger.ActivationContext is { } context
                 ? new PluginActivationScope(context)
@@ -853,6 +860,67 @@ public sealed partial class PluginBootstrapper : IHostedService
         }
 
         admitted = registered;
+        defects = found;
+        return found.Count == 0;
+    }
+
+    /// <summary>
+    /// Proves no two typed media kinds are closed over the same item type.
+    /// </summary>
+    /// <param name="admitted">The kinds this attempt admitted, which are not published yet.</param>
+    /// <param name="defects">One defect per collision, naming both kinds.</param>
+    /// <returns><see langword="true"/> when every admitted item type has one owner.</returns>
+    /// <remarks>
+    /// <para>
+    /// An item type is how the platform finds a kind: a paired cataloger or curator resolves to one this
+    /// way, and so does external-identifier recognition. Two kinds closed over one type therefore make those
+    /// answers a property of whichever kind a dictionary happened to see first, which is not an answer at
+    /// all. The check runs whether or not the extension supplies a provider, because the ambiguity is in the
+    /// kinds.
+    /// </para>
+    /// <para>
+    /// The already-active kinds are walked first and in registry order, so an incumbent is always named as
+    /// the owner and the diagnostic does not depend on the order the attempt's own kinds arrive in. A kind
+    /// colliding with itself is not a collision: an extension re-preparing a kind it already supplies is the
+    /// duplicate-kind check's business, and reporting it here would rename an existing failure.
+    /// </para>
+    /// </remarks>
+    [SuppressMessage(
+        "Design",
+        "CA1021:Avoid out parameters",
+        Justification = "One private step returning a verdict and the complete defect list.")]
+    private bool TryCheckItemTypeOwnership(
+        IReadOnlyList<RegisteredMediaKind> admitted,
+        out IReadOnlyList<string> defects)
+    {
+        var found = new List<string>();
+        var owners = new Dictionary<Type, MediaKindId>();
+
+        foreach (var kind in _kinds.All.Concat(admitted))
+        {
+            if (kind.MediaType is not { } runtime)
+            {
+                continue;
+            }
+
+            if (!owners.TryGetValue(runtime.ItemType, out var owner))
+            {
+                owners[runtime.ItemType] = kind.Kind;
+                continue;
+            }
+
+            if (owner == kind.Kind)
+            {
+                continue;
+            }
+
+            found.Add(
+                $"kind[{kind.Kind}]: its item type '{runtime.ItemType.AssemblyQualifiedName}' is already "
+                + $"supplied by media kind '{owner}'. A media item type identifies exactly one kind, because "
+                + "paired providers and identifier recognition resolve a kind from it; give this kind its "
+                + "own item type.");
+        }
+
         defects = found;
         return found.Count == 0;
     }
@@ -1075,11 +1143,11 @@ public sealed partial class PluginBootstrapper : IHostedService
 
         errorCode = CoreErrorCode.PluginLoadFailure;
 
-        if (!TryCheckMediaPairings(mediaKinds, registrations, out var pairingDefects))
+        if (!TryCheckProviderContracts(mediaKinds, registrations, out var contractDefects, out var contractCode))
         {
             prepared = [];
-            defects = pairingDefects;
-            errorCode = CoreErrorCode.PluginMediaPairingUnsatisfied;
+            defects = contractDefects;
+            errorCode = contractCode;
             return false;
         }
 
@@ -1152,26 +1220,69 @@ public sealed partial class PluginBootstrapper : IHostedService
         return found.Count == 0;
     }
 
+    /// <summary>The closed contract each media-paired provider family is registered under.</summary>
+    /// <remarks>
+    /// A family absent from this table has no media pairing at all, which is a fact worth checking in both
+    /// directions: an indexer that arrived carrying an item type has had a pairing invented for it
+    /// somewhere.
+    /// </remarks>
+    private static readonly IReadOnlyDictionary<ProviderFamily, Type> PairedContracts =
+        new Dictionary<ProviderFamily, Type>
+        {
+            [ProviderFamily.Cataloger] = typeof(ICataloger<>),
+            [ProviderFamily.Curator] = typeof(ICurator<>),
+        };
+
     /// <summary>
-    /// Proves every media-paired registration names an item type an installed media kind actually supplies.
+    /// Proves every provider registration's contract, item type and implementation agree, and that an
+    /// installed media kind supplies the item type it pairs with.
     /// </summary>
     /// <param name="mediaKinds">The kinds this attempt admitted, which are not published yet.</param>
     /// <param name="registrations">Every provider the extension registered.</param>
-    /// <param name="defects">One actionable defect per unpairable registration.</param>
-    /// <returns><see langword="true"/> when every pairing resolves.</returns>
+    /// <param name="defects">One actionable defect per unsound registration.</param>
+    /// <param name="errorCode">The failure class, meaningful only when this returns false.</param>
+    /// <returns><see langword="true"/> when every registration is sound and pairs with an installed kind.</returns>
+    /// <remarks>
+    /// <para>
+    /// Both halves run before anything is constructed, and the structural half runs first because a
+    /// registration that does not describe its own implementation cannot be asked a meaningful question
+    /// about media kinds. The registration is built by <see cref="ProviderTypeRegistration"/> from the
+    /// implementation's own interface list, so a sound one is what Host expects; this repeats the check at
+    /// the boundary that constructs, because that is where being wrong costs an extension constructor call.
+    /// </para>
+    /// <para>
+    /// The item types compared are the ones actually supplied: the kinds this attempt just admitted, plus
+    /// the kinds already active in the installation. A declared package dependency is a separate and earlier
+    /// check; it proves a package is present, not that a media kind closed over that exact CLR type is.
+    /// </para>
+    /// </remarks>
     [SuppressMessage(
         "Design",
         "CA1021:Avoid out parameters",
-        Justification = "One private step returning a verdict and the complete defect list.")]
-    private bool TryCheckMediaPairings(
+        Justification = "One private step returning a verdict, the complete defect list and a machine-readable code.")]
+    private bool TryCheckProviderContracts(
         IReadOnlyList<RegisteredMediaKind> mediaKinds,
         IReadOnlyList<ProviderTypeRegistration> registrations,
-        out IReadOnlyList<string> defects)
+        out IReadOnlyList<string> defects,
+        out CoreErrorCode errorCode)
     {
-        var found = new List<string>();
+        errorCode = CoreErrorCode.PluginContractMismatch;
+
+        var structural = registrations
+            .Select(registration => (Registration: registration, Defect: ContractDefectOf(registration)))
+            .Where(entry => entry.Defect is not null)
+            .Select(entry => $"provider[{entry.Registration.Descriptor.LocalId}]: {entry.Defect}")
+            .ToList();
+
+        if (structural.Count > 0)
+        {
+            defects = structural;
+            return false;
+        }
 
         // Only a typed kind publishes an item type, so a legacy shape-declared kind pairs with nothing and
-        // says so rather than appearing to match everything.
+        // says so rather than appearing to match everything. Item types are unique across admitted kinds by
+        // the invariant TryCheckItemTypeOwnership enforces, so this map cannot depend on iteration order.
         var supplied = new Dictionary<Type, MediaKindId>();
 
         foreach (var kind in mediaKinds.Concat(_kinds.All))
@@ -1181,6 +1292,8 @@ public sealed partial class PluginBootstrapper : IHostedService
                 supplied.TryAdd(runtime.ItemType, kind.Kind);
             }
         }
+
+        var found = new List<string>();
 
         foreach (var registration in registrations)
         {
@@ -1201,7 +1314,76 @@ public sealed partial class PluginBootstrapper : IHostedService
         }
 
         defects = found;
+        errorCode = CoreErrorCode.PluginMediaPairingUnsatisfied;
         return found.Count == 0;
+    }
+
+    /// <summary>
+    /// Says what is wrong with one registration's contract relationship, or <see langword="null"/>.
+    /// </summary>
+    /// <remarks>
+    /// The whole relationship, not one link of it. A contract that is assignable from the implementation
+    /// still proves nothing on its own: the pairing is only sound when the family expects a closed contract,
+    /// the recorded contract is exactly one construction of it, its type argument is exactly the recorded
+    /// item type, and the implementation implements that one contract and no sibling of it.
+    /// </remarks>
+    private static string? ContractDefectOf(ProviderTypeRegistration registration)
+    {
+        var implementation = registration.ImplementationType;
+
+        if (!PairedContracts.TryGetValue(registration.Family, out var openContract))
+        {
+            return registration.MediaItemType is null
+                ? null
+                : $"a {registration.Family} has no media pairing, but this registration carries the item "
+                    + $"type '{registration.MediaItemType.FullName}'.";
+        }
+
+        if (registration.MediaItemType is not { } item)
+        {
+            return $"a {registration.Family} pairs with a media item type, and this registration carries none.";
+        }
+
+        var contract = registration.ContractType;
+
+        if (!contract.IsInterface
+            || !contract.IsGenericType
+            || contract.IsGenericTypeDefinition
+            || contract.GetGenericTypeDefinition() != openContract)
+        {
+            return $"the recorded contract '{contract.FullName}' is not a closed '{openContract.Name}'.";
+        }
+
+        if (contract.GetGenericArguments() is not [var argument] || argument != item)
+        {
+            return $"the recorded contract '{contract.FullName}' is not closed over the recorded item type "
+                + $"'{item.FullName}'.";
+        }
+
+        var implemented = implementation
+            .GetInterfaces()
+            .Where(candidate => candidate.IsGenericType
+                && candidate.GetGenericTypeDefinition() == openContract)
+            .OrderBy(candidate => candidate.AssemblyQualifiedName, StringComparer.Ordinal)
+            .ToArray();
+
+        if (implemented.Length == 0)
+        {
+            return $"'{implementation.FullName}' implements no '{openContract.Name}', so the recorded "
+                + $"contract '{contract.FullName}' is a claim rather than a relationship.";
+        }
+
+        if (implemented.Length > 1)
+        {
+            return $"'{implementation.FullName}' implements {implemented.Length} {registration.Family} "
+                + $"contracts ({string.Join(", ", implemented.Select(candidate => candidate.FullName))}), so "
+                + "the pairing is ambiguous.";
+        }
+
+        return implemented[0] == contract
+            ? null
+            : $"'{implementation.FullName}' implements '{implemented[0].FullName}', not the recorded "
+                + $"contract '{contract.FullName}'.";
     }
 
     private static TContract? Pick<TContract>(PluginRegistrationLedger ledger)

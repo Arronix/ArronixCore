@@ -1,5 +1,45 @@
 # Arronix History
 
+## 2026-08-24 — Read a provider's pairing from the contract it implements, not from a value it claims
+
+- Closed a hole in the pairing SPI that the same day's earlier entry claimed was closed. The two pairing
+  interfaces carried `static abstract` members which `ICataloger<TItem>` and `ICurator<TItem>` answered from
+  their own type argument, and registration trusted those answers. An interface can be implemented directly,
+  so a class implementing only the non-generic cataloger floor plus the marker — never
+  `ICataloger<Movie>` — satisfied the constraint, reported `Movie` and `ICataloger<Movie>`, passed the media
+  pairing check, and reached its constructor. Only the post-construction contract check caught it, which is
+  after the thing the check exists to prevent. It was reproduced with a scratch compiler probe before being
+  fixed and again afterwards.
+- Removed the static members rather than adding an agreement check between them and the truth. The markers
+  are now empty: `IClosedCataloger` and `IClosedCurator` name a family so that the constraint makes the
+  ordinary mistake a compiler error, and nothing more. The pairing is read from the closed contracts the
+  implementation actually implements, once, when the registration is built — one-time type inspection, said
+  plainly in the code and in the boundary documents rather than presented as something the compiler proved.
+  Zero such contracts and several are both refused, the latter naming both, because choosing one would make
+  the erased registration disagree with a contract the author wrote.
+- Made Host prove the whole relationship before it constructs anything, rather than one link of it. The
+  recorded contract must be exactly one closed construction of its family's contract; its type argument must
+  be exactly the recorded item type; the implementation must implement that one contract and no sibling of
+  it; and a family with no media pairing must not carry one. A structural failure refuses the package with
+  `PluginContractMismatch` before activation; the post-construction check stays as defense in depth. This is
+  Host repeating a check the registry already makes, deliberately: Host is the boundary that constructs.
+- Made two media kinds closed over one item type an explicit refusal instead of a silent first-win. The map
+  from item type to kind was built with `TryAdd`, so a second kind over the same type was dropped and every
+  lookup keyed on that type — paired providers, identifier recognition — silently answered with whichever
+  kind was seen first. It is refused at kind admission now, before any activation and whether or not the
+  extension supplies a provider, with `MediaItemTypeConflict` naming both kinds. Active kinds are walked
+  first and in registry order, so the incumbent is always named as the owner.
+- Repaired the identity decision record's option analysis rather than its conclusion, which stays open. Its
+  wrapper option claimed to keep `Key` required while leaving the key to Host, and those cannot both hold of
+  a constructed item; it is now split into a factory-carrying form, whose cost is the author-driven callback
+  shape this project has rejected before, and a fact-carrying form, which is the parallel candidate schema
+  the roadmap refuses. A fifth option was added: move durable identity off the item entirely into a thin
+  Host-owned envelope around the exact media-owned item, with its public-contract and migration cost stated
+  neutrally. The smallest-owner-answer section now offers every mechanism the document discusses.
+- The exact .NET 11 proof rail finished with 2,548 passed, 302 registered skips, zero inconclusive, and the
+  one pre-existing G03 failure, from 2,851 cases across 11 test projects. Skips are unchanged at the
+  ratcheted 302, the ledger at 302 cases and zero replacements, and the three required sentinels pass.
+
 ## 2026-08-24 — Give provider family, item type and identity one authority each, and refuse an unpairable provider before it runs
 
 - Removed `IProvider.Id` and `IProvider.Family`. Every provider implemented both and nothing ever read
@@ -15,17 +55,13 @@
   against itself: it was reconstructing a qualified identifier by parsing a local name, could never succeed,
   and rendered every provider in settings as unavailable. The client's catalog, form and settings page now
   carry one entry instead of a descriptor plus a separately threaded identifier.
-- Made the closed cataloger and curator pairing the single authority for the item type.
+- Made the closed cataloger and curator contract the single authority for the item type.
   `AddCataloger<TItem,TCataloger>` and `AddCurator<TItem,TCurator>` became `AddCataloger<TCataloger>` and
-  `AddCurator<TCurator>`; the item type and the closed contract are read back from `ICatalogerPairing` and
-  `ICuratorPairing`, which `ICataloger<TItem>` and `ICurator<TItem>` answer from their own type argument.
-  An author names the item type once, in the contract, and a type that closed no media contract fails at the
-  registration call site rather than after admission.
-- Kept those two pairing interfaces deliberately without a common base. A shared base declaring the members
-  once is smaller, and it makes a single class serving both families ambiguous at its own compile time —
-  `CS8705`, with no most specific implementation and nothing sensible for the author to do about it. Two
-  independent interfaces let one class be both a cataloger and a curator while each registration keeps its
-  own pairing, which is asserted rather than assumed.
+  `AddCurator<TCurator>`, and an author names the item type once, in the contract. The first attempt read the
+  pairing from static abstract members on the contracts; that was corrected the same day, because a value on
+  a directly implementable interface is a claim rather than a fact. See the entry above.
+- Kept the two family markers deliberately without a common base, so that a curator cannot satisfy a
+  cataloger registration and one class can be both while each registration keeps its own pairing.
 - Made admission refuse a provider whose closed item type no active media kind supplies, before any
   implementation in the package is constructed. A package dependency proves a package is installed; it
   cannot prove some kind is closed over the exact CLR type a cataloger's contract names, and that second

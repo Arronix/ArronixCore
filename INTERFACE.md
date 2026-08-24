@@ -84,10 +84,14 @@ registry.AddCataloger<TCataloger>(descriptor);
 registry.AddCurator<TCurator>(descriptor);
 ```
 
-The media relationship is stated once, in the contract the implementation closes. Registration reads it back
-through `ICatalogerPairing` and `ICuratorPairing`, so there is no second type argument to keep in step, a
-type that closed no media contract fails at the call site, and one class may serve both families while each
-registration keeps its own pairing. The declaration carries neither the family nor a qualified identifier:
+The media relationship is stated once, in the contract the implementation closes, and there is no second
+type argument to keep in step. `IClosedCataloger` and `IClosedCurator` are family markers the closed
+contracts carry: the constraint they form makes a provider of the wrong family a compiler error at the
+registration call site. They carry no values, because a marker can be implemented directly and a value it
+carried would be an unverifiable claim — so the pairing itself is read, once, from the closed contracts the
+implementation actually implements, when the registration is built. An implementation that closed no
+contract of that family, or several, is refused there. One class may serve both families; each registration
+reads only its own family's contract. The declaration carries neither the family nor a qualified identifier:
 the registration called fixes the family, and Host mints the identifier from the contributing extension and
 the declaration's `LocalId`.
 
@@ -99,10 +103,12 @@ registry.AddLanguage<TLanguage>();
 
 Only after manifest and capability admission, Host constructs provider and language implementations through
 an exact public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed.
-The Host service provider is never an activation source. A media-paired provider is admitted only while some
-active media kind supplies the exact item type its contract closed over; that is checked across every
-registration in a package before any of them is constructed, and a mismatch refuses the package with
-`PluginMediaPairingUnsatisfied`.
+The Host service provider is never an activation source. Before any implementation in a package is
+constructed, Host checks every provider registration in it twice over: that the recorded contract is one
+closed construction of its family's contract, closed over the recorded item type, and implemented by the
+recorded implementation and no sibling of it; and that some active media kind supplies that exact item type.
+A structural failure refuses the package with `PluginContractMismatch`, an unsupplied item type with
+`PluginMediaPairingUnsatisfied`. A post-construction contract check remains as defense in depth.
 
 Installed format capabilities must contribute representation recognition, probing, and policy for their
 owned facts; language capabilities contribute linguistic mechanics. A media parser owns media structure
@@ -124,11 +130,17 @@ and is never reported as accepted.
   assembly version and plugin manifest range; no per-type experimental marker, diagnostic registry, or
   compiler opt-in exists. Public visibility on cross-assembly Host infrastructure does not make it SDK.
 - A media type owns its entity shape; catalogers and curators return that exact type.
-- A provider's media relationship has one authority: the closed contract its implementation states. Its
-  family has one authority: the registration it is admitted through. Its identity has one authority: the
-  qualified identifier Host mints from the contributing extension and the declared local name. No provider,
-  declaration, or consumer restates any of the three, and a provider needing its own identifier during a
-  call reads it from the invocation's definition.
+- A provider's media relationship has one authority: the closed contract its implementation actually
+  implements, read by one-time type inspection when the registration is built and re-checked at admission.
+  A marker interface names the family for the compiler; it never carries the relationship, because a value
+  on a directly implementable interface is a claim rather than a fact. Its family has one authority: the
+  registration it is admitted through. Its identity has one authority: the qualified identifier Host mints
+  from the contributing extension and the declared local name. No provider, declaration, or consumer
+  restates any of the three, and a provider needing its own identifier during a call reads it from the
+  invocation's definition.
+- A media item type identifies exactly one media kind. Two admitted kinds closed over one item type are
+  refused at kind admission, whether or not any provider pairs with it, because every lookup keyed on an
+  item type would otherwise depend on iteration order.
 - Admission is against the exact active media type. A cataloger or curator whose closed item type no active
   media kind supplies is refused before its implementation is constructed. The non-generic `ICataloger`
   floor remains only for kind-blind external-identifier recognition.

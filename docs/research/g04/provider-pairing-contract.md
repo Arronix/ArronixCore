@@ -44,71 +44,115 @@ Files:
   synthetic release-key namespace, which is not a published answer to either question. Threading the
   invocation through its release-synthesis chain is TV-conversion work, not this branch's.
 
-### 1.2 The closed pairing is stated once and checked at the call site
+### 1.2 The closed pairing is read from the contract the implementation implements
 
 `AddCataloger<TItem, TCataloger>(descriptor)` became `AddCataloger<TCataloger>(descriptor)`, and the same
-for `AddCurator`. The item type and the closed contract are read from the contract the implementation
-already closed:
+for `AddCurator`. The item type and the closed contract come from the contract the implementation actually
+implements:
 
 ```csharp
-public interface ICatalogerPairing
-{
-    static abstract Type PairedItemType { get; }
-    static abstract Type PairedContractType { get; }
-}
+public interface IClosedCataloger : ICataloger;     // a family marker; no members
+public interface IClosedCurator : IProvider;
 
-public interface ICataloger<TItem> : ICataloger, ICatalogerPairing
-    where TItem : class, IMediaItem
-{
-    static Type ICatalogerPairing.PairedItemType => typeof(TItem);
-    static Type ICatalogerPairing.PairedContractType => typeof(ICataloger<TItem>);
-    ...
-}
+public interface ICataloger<TItem> : ICataloger, IClosedCataloger
+    where TItem : class, IMediaItem { ... }
+
+IPluginRegistry AddCataloger<TCataloger>(ProviderDescriptor descriptor)
+    where TCataloger : class, IClosedCataloger;
 ```
 
-Three properties this buys, each asserted rather than assumed:
+**A first attempt at this got it wrong, and the correction is the substance of this section.** The markers
+originally carried `static abstract Type PairedItemType`/`PairedContractType`, answered by
+`ICataloger<TItem>` from its own type argument, and registration trusted those answers. An interface can be
+implemented directly, so a class implementing only the non-generic floor plus the marker — never
+`ICataloger<Movie>` — satisfied the constraint, reported `Movie` and `ICataloger<Movie>`, passed the media
+pairing check, and reached its constructor; only the post-construction check caught it, which is after the
+thing the check exists to prevent. It was reproduced with a scratch compiler probe, and the same probe
+confirms the refusal afterwards:
 
-- **An author names the item type once.** `ProviderTypeRegistration.ForCataloger<T>` / `ForCurator<T>` read
-  both types statically. There is no reflection over interface lists and no second argument to synchronize.
-- **The mistake is a compiler error, not an admission failure.** A type that closed no media contract, or a
-  curator passed to `AddCataloger`, fails at the registration call site with `CS0311` naming the missing
-  conversion.
-- **One class may serve both families.** The two pairing interfaces deliberately share no base. A common
-  base declaring the members once is smaller and breaks exactly this case: a class implementing both
-  `ICataloger<Movie>` and `ICurator<Movie>` inherits two implementations of one static abstract member and
-  fails with `CS8705`, "does not have a most specific implementation", which the author cannot sensibly
-  resolve. This was probed against the pinned SDK before the shape was chosen, and the working shape is
-  asserted by `OneImplementationMayServeBothFamiliesAndEachRegistrationKeepsItsOwnPairing`.
+```
+REFUSED AT REGISTRATION: 'SpoofCataloger' is registered as a Cataloger but implements no 'ICataloger`1'.
+Implement the closed contract — the item type is read from it, and a marker interface alone states nothing
+the platform can check.
+```
 
-`ICatalogerPairing` and `ICuratorPairing` are public only because an interface cannot inherit a less
+The fix removes the members rather than adding an agreement check between them and the truth. What each
+part now does, stated exactly:
+
+- **The constraint is a family gate, not a proof.** `where TCataloger : class, IClosedCataloger` makes a
+  provider of the wrong family — a curator handed to `AddCataloger`, or a type that is not a cataloger at
+  all — a `CS0311` at the registration call site. It cannot prove a closed contract exists, because the
+  marker can be implemented directly.
+- **The pairing is read by one-time type inspection.** `ProviderTypeRegistration.ForCataloger<T>` /
+  `ForCurator<T>` scan `typeof(T).GetInterfaces()` for closed constructions of `ICataloger<>` / `ICurator<>`
+  and take the contract and its type argument from the one they find. This is erasure at the boundary the
+  north star sanctions, and it is stated in the method's own documentation rather than presented as
+  something the compiler established.
+- **Zero and several are both refused**, at registration, inside the extension's own configure method.
+  Several are named in the message, because choosing one would make the erased registration disagree with a
+  contract the author actually wrote.
+- **An author still names the item type once**, and one class may serve both families: each registration
+  reads only its own family's contract. (The markers share no base — which also means there is no diamond,
+  and the earlier justification appealing to `CS8705` no longer applies, because the members that caused it
+  are gone. The reason to keep them separate is exactness of family, not ambiguity.)
+
+`IClosedCataloger` and `IClosedCurator` are public only because an interface cannot inherit a less
 accessible one. They are binding SPI: an author never implements or names them, which is asserted per
-implementation, and `INTERFACE.md` now lists them beside the other `System.Type` carriers that public
+implementation, and `INTERFACE.md` lists them beside the other `System.Type` carriers that public
 visibility does not promote to authoring vocabulary. Moving or hiding that class of surface is G06's work.
 
 Files: `src/Arronix.Abstractions/Providers/MediaPairing.cs` *(new)*, `ICataloger.cs`, `ICurator.cs`,
 `Registrations.cs`, `src/Arronix.Abstractions/Plugins/IPluginRegistry.cs`,
 `src/Arronix.Plugins/Registration/PluginRegistry.cs`.
 
-### 1.3 Admission refuses a mismatched or inactive media contract before provider code runs
+### 1.3 Admission proves the whole relationship, before provider code runs
 
-`PluginBootstrapper.TryPrepareProviders` now runs `TryCheckMediaPairings` over every provider registration
-in a package **before** it constructs any of them. A registration carrying a `MediaItemType` must match the
-item type of a typed kind either admitted by the same attempt or already active in the installation.
+`PluginBootstrapper.TryPrepareProviders` runs `TryCheckProviderContracts` over every provider registration
+in a package **before** it constructs any of them, in two passes.
 
-This is a different claim from G03's dependency check. That one proves a package with a given identifier is
-installed and compatible; it cannot prove that some kind is closed over the exact CLR type a cataloger's
-contract names. A refusal carries `CoreErrorCode.PluginMediaPairingUnsatisfied` and names the item type the
-provider closed over plus the item types the installation does supply.
+**Structural.** For each registration: the family must expect a closed contract (or, for a family with no
+media pairing, the registration must carry no item type); the recorded `ContractType` must be an interface
+that is one constructed — not open — form of that family's contract; its single type argument must be
+exactly the recorded `MediaItemType`; and the `ImplementationType` must implement that contract and no
+sibling construction of it. A failure refuses the package with `CoreErrorCode.PluginContractMismatch`.
 
-The pre-pass matters: one unpairable provider means **none** of the package's providers is constructed, so a
-contribution the installation has already decided it cannot use never gets a constructor call.
+This deliberately repeats what the registration already derived. Host is the boundary that constructs, so
+Host is where being wrong costs an extension constructor call; `ContractType.IsInstanceOfType(provider)`
+remains after construction as defense in depth.
 
-`CoreErrorCode` gained one member, `PluginMediaPairingUnsatisfied = 2014`. The existing
-`PluginContractMismatch` is documented as a *contract version* mismatch and the dependency codes are about
-packages, so reusing either would have made an operator's diagnostic less precise than the check.
+**Supply.** A registration carrying a `MediaItemType` must match the item type of a typed kind either
+admitted by the same attempt or already active in the installation. This is a different claim from G03's
+dependency check: that one proves a package with a given identifier is installed and compatible; it cannot
+prove that some kind is closed over the exact CLR type a cataloger's contract names. A failure carries
+`CoreErrorCode.PluginMediaPairingUnsatisfied` and names the item types the installation does supply.
+
+Both passes run before any activation, so one unsound or unpairable provider means **none** of the
+package's providers is constructed.
+
+`CoreErrorCode` gained `PluginMediaPairingUnsatisfied = 2014`. The existing `PluginContractMismatch` is
+documented as a *contract version* mismatch and the dependency codes are about packages, so reusing either
+for an unsupplied item type would have made an operator's diagnostic less precise than the check.
 
 Files: `src/Arronix.Host/Runtime/PluginBootstrapper.cs`,
 `src/Arronix.Abstractions/Health/CoreErrorCode.cs`.
+
+### 1.3a One item type, one media kind
+
+The item-type map was built with `Dictionary.TryAdd`, so two admitted kinds closed over the same item type
+silently resolved first-win — and downstream registration stores only a `Type`, so every lookup keyed on it
+(paired providers, external-identifier recognition) would have answered with whichever kind was seen first.
+
+That is now an explicit invariant, enforced at **kind** admission rather than at provider admission, because
+the ambiguity is in the kinds and exists whether or not anything pairs with them. `TryCheckItemTypeOwnership`
+runs immediately after `TryPrepareMediaKinds`, before any activation at all, and refuses with
+`CoreErrorCode.MediaItemTypeConflict = 3003` naming both kinds. Already-active kinds are walked first and in
+registry order, so the incumbent is always named as the owner and the diagnostic does not depend on the
+order the attempt's own kinds arrive in. A kind colliding with itself is not a collision: an extension
+re-preparing a kind it already supplies is the duplicate-kind check's business, and reporting it here would
+rename an existing failure.
+
+With that invariant in place the provider-side map cannot be order-dependent, which is why it is safe for it
+to remain a dictionary.
 
 ### 1.4 The consumer edge, traced end to end
 
@@ -150,24 +194,28 @@ supplied one.
 
 ## 3. Tests and exact counts
 
-### New cases: 25, all passing
+### New cases: 32, all passing
 
 | File | Cases | What it holds |
 |---|---|---|
-| `src/Arronix.Architecture.Tests/Topology/ProviderPairingAuthorityTests.cs` | 17 | the detector's own control; per-implementation rules that no provider publishes an identifier or a family and none writes its own pairing members (5 implementations × 2); the registration methods take one type argument and demand the pairing; the two pairing contracts are independent; a registration derives item type, contract and family from the contract alone; one class serving both families keeps a pairing per family; and neither consumer edge mints or parses a provider identity outside serialization (2 cases) |
-| `src/Arronix.Host.Tests/Runtime/ProviderMediaPairingAdmissionTests.cs` | 4 | a provider is admitted against a kind prepared in the same attempt; one whose item type no installed kind supplies is refused with `PluginMediaPairingUnsatisfied` and never constructed; one unresolvable pairing stops every provider in the package being constructed; the refusal names the item types the installation does supply |
+| `src/Arronix.Architecture.Tests/Topology/ProviderPairingAuthorityTests.cs` | 19 | the detector's own control; per-implementation rules that no provider publishes an identifier or a family, and that every marked provider implements exactly one closed contract of that family (5 implementations × 2); the registration methods take one type argument and name the family; the two markers are independent and carry nothing; a registration derives item type, contract and family from the contract alone; one class serving both families keeps a pairing per family; **a marker implemented without a closed contract is refused at registration**; **an implementation closing two contracts of one family is refused and both are named**; and neither consumer edge mints or parses a provider identity outside serialization (2 cases) |
+| `src/Arronix.Host.Tests/Runtime/ProviderMediaPairingAdmissionTests.cs` | 9 | a provider is admitted against a kind prepared in the same attempt; one whose item type no installed kind supplies is refused with `PluginMediaPairingUnsatisfied` and never constructed; one unresolvable pairing stops every provider in the package being constructed; the refusal names the item types the installation does supply; **a contract no implementation backs is refused with `PluginContractMismatch` and the whole package's constructors stay at zero**; **a contract and item type that disagree are refused before construction**; **a non-media family carrying an item type is refused**; **two kinds in one attempt cannot share an item type**; **a kind cannot take an item type an active kind already owns** |
 | `src/Arronix.Host.Tests/Providers/CatalogMaterializationBoundaryTests.cs` | 3 | a typed cataloger result projects through the kind-blind runtime as the exact item with its media-owned lifecycle intact; no Host seam consumes a shaped cataloger or curator result; a durable item key is required of the provider and minted by nobody |
 | `src/Arronix.Plugins.Tests/Registration/RegistryAdmissionTests.cs` | 1 | a curator registration retains the same item type through its own contract, with the family from the registration |
 
-Per-project totals after the change (base → now): Architecture `313 → 330` passed (1 registered skip
-unchanged), Host `528 → 535`, Plugins `492 → 493`.
+The adversarial Host cases write the ledger directly, because a registration built through the registry can
+no longer say what they need it to say. That is the point: they put in front of Host exactly the
+registration the registry refuses to build, and assert Host refuses it too, before construction.
+
+Per-project totals after the change (base → now): Architecture `313 → 332` passed (1 registered skip
+unchanged), Host `528 → 540`, Plugins `492 → 493`.
 
 ### Focused runs
 
 ```
 Arronix.Plugins.Tests          493 passed,   0 skipped, 0 failed
-Arronix.Host.Tests             535 passed,   0 skipped, 0 failed
-Arronix.Architecture.Tests     330 passed,   1 skipped, 0 failed
+Arronix.Host.Tests             540 passed,   0 skipped, 0 failed
+Arronix.Architecture.Tests     332 passed,   1 skipped, 0 failed
 Arronix.Abstractions.Tests     119 passed,   0 skipped, 0 failed
 Arronix.Plugin.Tv.Tests         87 passed,   0 skipped, 0 failed
 Arronix.Plugin.Music.Tests      66 passed,   0 skipped, 0 failed
@@ -176,7 +224,7 @@ Arronix.Plugin.Music.Tests      66 passed,   0 skipped, 0 failed
 ### Full rail — `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet ./eng/ci/run-tests.sh`
 
 ```
-projects=11 total=2844 enabled=2542 passed=2541 failed=1 skipped=302 inconclusive=0
+projects=11 total=2851 enabled=2549 passed=2548 failed=1 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0
 requiredTests=3 compileLogs=1 compileProjects=11 compileItems=260 boundSources=15
 error execution.failed: The run contains 1 failed cases.
@@ -220,8 +268,8 @@ This is corroborated independently. The G05 TMDb pressure test (`claude/g05-tmdb
 
 | Criterion | State |
 |---|---|
-| a cataloger or curator author names `Movie` once | **met** — one generic position per contract, none in registration |
-| admission rejects a provider whose closed item contract has no active matching media package | **met** — refused with `PluginMediaPairingUnsatisfied` before any construction |
+| a cataloger or curator author names `Movie` once | **met** — one generic position per contract, none in registration; the pairing is read from the contract implemented, not from a claim |
+| admission rejects a provider whose closed item contract has no active matching media package | **met** — the whole contract relationship and the supply are both proved before any construction |
 | the closed registration is the single authority for family, and the Host-qualified registration for identity | **met** — the competing authorities are removed, not reconciled |
 | durable identity has one documented authority, collision, merge and retry rule reflected in `INTERFACE.md` | **open** — recorded as an owner decision; `INTERFACE.md` states that it is open and where |
 | Host can produce a fully valid `Movie` without a public field bag or temporarily invalid domain object | **open** — blocked on the same decision |
@@ -241,6 +289,8 @@ branch, and no logic change:
   that removing them is not signalled by a compiler error — they stop implementing anything and become
   ordinary public members — but `ProviderPairingAuthorityTests` fails on them once the package is added to
   the assemblies that fixture scans.
+- Nothing else changes: both types already implement `ICataloger<Movie>` / `ICurator<Movie>`, which is where
+  the pairing is now read from.
 - If TMDb ends up serving a second media kind from one class, that now compiles and each registration keeps
   its own pairing.
 
@@ -250,9 +300,11 @@ Host side, `CatalogMaterializationBoundaryTests.NoHostSeamConsumesAShapedCatalog
 tripwire: it fails the moment a materialization seam is added, which is the moment the decision must already
 have been made.
 
-**For G06.** `ICatalogerPairing` and `ICuratorPairing` join `CompiledShapes`, the capture visitors and the
+**For G06.** `IClosedCataloger` and `IClosedCurator` join `CompiledShapes`, the capture visitors and the
 erased registrations as public-but-not-authoring surface. They are the newest members of the set G06 exists
-to move or hide, and `ProviderPairingAuthorityTests` already asserts that no author implements them.
+to move or hide. They are now empty markers, so hiding them costs nothing semantically; what cannot be
+hidden with them is the one-time type inspection that reads the pairing, which stays wherever the
+registration is built.
 
 **For G03.** `ManifestOwnershipTests.CarriesNothingButWhatItOwns` and `INTERFACE.md`'s sentence that
 "explicit package dependencies are future G03 ownership and do not exist in the current schema" are both

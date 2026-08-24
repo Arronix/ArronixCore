@@ -75,15 +75,16 @@ These are owner-held invariants. No alternative below may be read as reopening o
 - Vendor vocabulary stays out of `Arronix.Media.Movies`, `Arronix.Format.Video`, `Arronix.Host` and
   `Arronix.Abstractions`.
 
-## 5. The decision decomposes into two independent choices
+## 5. The decision decomposes into two choices
 
-Nothing can be built until both are answered, and they are genuinely separate.
+Nothing can be built until both are answered. They are mostly separate — one mechanism below answers both at
+once, and that is a property worth seeing rather than hiding.
 
 ### 5.1 Mechanism — how does a provider return an item whose durable key is not yet known?
 
 **M1 · Host resolves the key before the call.** Host turns the natural key into a `MediaItemId` first and
 supplies it to the provider, which stamps it.
-*Consequence:* keeps the key host-minted and the item always fully valid. Works only for `GetAsync`, whose
+*Consequence:* keeps the key host-minted and every item fully valid. Works only for `GetAsync`, whose
 argument is a single `ExternalId`. It cannot work for `SearchAsync` or `FetchAsync`, where the natural keys
 of the results are unknown until the response arrives — which is the majority of real catalog traffic.
 Rescuing those two would mean changing what they return, which is the one thing the typed pairing exists to
@@ -92,17 +93,47 @@ prevent.
 **M2 · The key is absent until Host stamps it.** `Key` stops being `required`; `default(MediaItemId)` (zero)
 means "not durable yet", and one Host-owned materialization step assigns the real value.
 *Consequence:* one item type end to end, no wrapper, no second schema, and the sentinel already has a
-precedent inside the platform (`IMediaStore.UpsertFileAsync`). The cost is that an item with key zero is
-representable, so "a `Movie` that is structurally complete but not yet durable" becomes a legal value. The
-owner has to say whether that is the "temporarily invalid domain object" the G04 exit gate forbids or the
-ordinary before-state of an identity lifecycle. **This is the crux of the whole decision.**
+precedent inside the platform (`IMediaStore.UpsertFileAsync` documents "an identifier of zero asks the store
+to mint one"). The cost is that an item with key zero is representable, so "a `Movie` that is structurally
+complete but not yet durable" becomes a legal value, and every reader of `Key` has to know that. The owner
+has to say whether that is the "temporarily invalid domain object" the G04 exit gate forbids or the ordinary
+before-state of an identity lifecycle.
 
-**M3 · An exact typed lifecycle boundary.** The provider returns `CatalogResult<TItem>` (or similar) — the
-item's facts plus its natural key, with the surrogate assigned on the way in.
-*Consequence:* keeps `Key` required and every constructed `TItem` durable. It is only acceptable if the
-wrapper carries the media type's own item and no restated facts; the moment it lists titles, years or dates
-of its own it has become the candidate schema the roadmap refuses. It also changes three public signatures
-and is the largest surface change of the three.
+**M3 · The provider returns a wrapper.** A `CatalogResult<TItem>` returned instead of `TItem`.
+
+This is where an earlier draft of this document was wrong, and the error is worth stating because it looks
+coherent. A wrapper cannot both *carry a constructed `TItem`* and *leave the key to Host*, because a
+constructed `TItem` already has its `Key` — that is what `required` means. So M3 is not one option; it is
+two, and each has a cost the other does not.
+
+- **M3a · the wrapper carries a factory.** `CatalogResult<TItem>(ExternalId Natural, Func<MediaItemId, TItem> Build)`,
+  or a typed equivalent. Host mints, then calls back to get the item.
+  *Consequence:* `Key` stays required and every constructed item is durable, with no second schema — the
+  provider's fetched facts are captured in a closure and no fact is restated anywhere. The cost is the
+  shape: a provider now hands Host a callback and Host drives construction. Author-driven callbacks are a
+  shape this project has rejected before, in the north star's rule that format and media policy fragments
+  must compose "without requiring a media author to drive a public policy-builder callback", and in the
+  owner ledger's rejection of builder-shaped authoring. Choosing M3a means accepting a callback at the
+  provider boundary specifically, and saying why that boundary is different from the policy one.
+- **M3b · the wrapper carries the facts.** `CatalogResult<TItem>` holds titles, years, dates and the rest
+  without a key, and Host constructs `TItem` from them.
+  *Consequence:* this is the parallel candidate schema the roadmap refuses by name and §4 above restates.
+  It is listed only so that it is refused explicitly rather than arrived at by accident, and because it is
+  what "a wrapper" usually turns into once someone tries to write one.
+
+**M4 · The item has no durable key at all; Host wraps it.** `MediaItemId` leaves `IMediaEntity` and
+`MediaItem`, and Host-owned durable identity lives in a thin envelope around the exact media-owned item —
+`Catalogued<TItem>(MediaItemId Id, TItem Item)` or similar — which repeats no fact the item already carries.
+A provider returns `TItem` exactly as the three blocked members already promise, keyless, and the question
+in this section's title stops being a question.
+*Consequence:* it is the only mechanism that changes no provider signature and introduces no sentinel, no
+callback and no second schema. It is also the largest public-contract change on the list, and the cost is
+concrete rather than theoretical: `Key` leaves the common item and the entity floor; `MediaItemRef` is built
+from the envelope rather than read off the item; the generated closed projections that read `Key` change;
+every Host, API and Client site that reads `item.Key` changes; `IMediaItemSource` implementations in Movies,
+Television, Music and Books change; and the reference Movies data, which currently uses a vendor identifier
+as the key, has to say instead which envelope it is in. Whether an item that cannot state its own identity
+is still the right domain object is the question this option asks, and it is a real one in both directions.
 
 ### 5.2 Policy — what is the durable key *of*?
 
@@ -119,11 +150,21 @@ never sees the surrogate.
 *Consequence:* the only alternative under which the declared `IdentifierRedirects` capability can mean
 anything — a redirect repoints one edge of the map and leaves every stored row untouched. It answers all
 four sub-questions below cleanly. Its cost is a new Host-owned store with a persistence dependency
-(G07B/G18), and it still needs M2 or M3 as its mechanism: the map explains *what* the key is, not *how* the
-item travels without one.
+(G07B/G18).
 
-The coherent combinations are **M2+A4**, **M3+A4**, and **M2+A3** or **M3+A3**. **M1** is coherent only with
-a catalog surface that has no multi-result member, which this one does.
+### 5.3 Which combinations are coherent
+
+| | A3 · natural key is the key | A4 · surrogate over a map |
+|---|---|---|
+| **M1** pre-resolved key | incoherent: `SearchAsync`/`FetchAsync` have no key to pre-resolve | same |
+| **M2** absent until stamped | coherent; the sentinel is redundant under A3, since the provider knows the key | coherent |
+| **M3a** factory wrapper | coherent, at the cost of a callback boundary | coherent, at the same cost |
+| **M3b** fact wrapper | refused: parallel candidate schema | refused: same |
+| **M4** durable envelope | coherent, though A3 makes the envelope's identity the vendor's | coherent, and the two fit best: the item owns no identity and Host owns all of it |
+
+A3 also weakens the reason for a mechanism at all: if the provider legitimately owns the key, `Key` can stay
+required and be filled from the natural key, and M2/M3a/M4 all become optional refinements rather than
+requirements. That is the largest single consequence of the policy choice.
 
 ## 6. The four sub-rules, under each policy
 
@@ -136,15 +177,24 @@ a catalog surface that has no multi-result member, which this one does.
 
 ## 7. The smallest answer that unblocks G04
 
-One sentence from the owner is enough to start:
+One sentence from the owner is enough to start. The options are the mechanisms above, in full — an answer
+that names none of them leaves the same question open.
 
-> When a cataloger returns an item the installation has not seen, its `MediaItemId` is **(1)** chosen by the
-> provider from its own namespace, **(2)** absent until Host stamps it, or **(3)** supplied by Host before
-> the call.
+> When a cataloger returns an item the installation has not seen, its `MediaItemId` is:
+>
+> 1. **chosen by the provider** from its own namespace (selects A3; `Key` stays required and nothing else
+>    has to change);
+> 2. **absent until Host stamps it** — `Key` optional, zero meaning not-yet-durable (M2; leaves A3 or A4
+>    open);
+> 3. **supplied by Host before the call** (M1; requires the multi-result members to change shape, so it
+>    should be chosen only deliberately);
+> 4. **produced by a factory the provider returns and Host calls after minting** (M3a; accepts a callback at
+>    the provider boundary); or
+> 5. **not on the item at all** — the item is keyless and Host wraps it in a durable envelope (M4; the
+>    largest public-contract change, and the only one that leaves the three blocked signatures untouched).
 
-(1) selects A3 and makes `Key` an ordinary provider-supplied value. (2) selects M2 and leaves the policy
-choice between A3 and A4 open but answerable later. (3) selects M1 and requires the catalog surface to
-change shape, so it should be chosen only deliberately.
+Any of 2, 4 and 5 still needs the policy answer (A3 or A4) before redirects can be implemented; option 1
+settles both at once, and option 3 is a mechanism whose shape cost is paid in the catalog surface itself.
 
 ## 8. What was deliberately not done
 

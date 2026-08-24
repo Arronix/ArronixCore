@@ -1,5 +1,8 @@
 using System.Linq;
 using System.Reflection;
+using Arronix.Abstractions.DTOs;
+using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
@@ -82,35 +85,37 @@ public sealed class ProviderPairingAuthorityTests
     }
 
     /// <remarks>
-    /// The pairing members exist so that registration can read the closed relationship without a second
-    /// type argument. They are supplied by the contract, so an implementation which writes them has taken
-    /// on a binding-SPI obligation the SDK exists to keep away from authors.
+    /// The marker on a provider contract says which family it belongs to and nothing else. What has to be
+    /// true of a real implementation is that the marker is there <i>because</i> a closed contract is, so
+    /// that is what is asserted: exactly one, per family the type is marked for.
     /// </remarks>
     [TestCaseSource(nameof(ProviderImplementations))]
-    public void NoProviderWritesItsOwnPairingMembers(Type implementation)
+    public void EveryMarkedProviderImplementsExactlyOneClosedContractOfThatFamily(Type implementation)
     {
-        var written = implementation
-            .GetMembers(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly)
-            .Where(member => member.Name.Contains("PairedItemType", StringComparison.Ordinal)
-                || member.Name.Contains("PairedContractType", StringComparison.Ordinal))
-            .Select(member => member.Name)
-            .ToArray();
+        Assert.Multiple(() =>
+        {
+            if (typeof(IClosedCataloger).IsAssignableFrom(implementation))
+            {
+                Assert.That(ClosedContractsOf(implementation, typeof(ICataloger<>)), Has.Length.EqualTo(1));
+            }
 
-        Assert.That(
-            written,
-            Is.Empty,
-            $"'{implementation.Name}' declares {string.Join(", ", written)}. The pairing is answered by "
-            + "ICataloger<TItem> and ICurator<TItem> from their own type argument; an author states the "
-            + "item type once, in the contract, and never implements the binding SPI that reads it back.");
+            if (typeof(IClosedCurator).IsAssignableFrom(implementation))
+            {
+                Assert.That(ClosedContractsOf(implementation, typeof(ICurator<>)), Has.Length.EqualTo(1));
+            }
+        });
     }
 
     /// <remarks>
     /// The compile-time half of "stated once", read from the registration methods themselves. One type
-    /// parameter means there is no second argument to keep in step, and the pairing constraint means a type
-    /// that closed no media contract is rejected at the call site rather than after admission.
+    /// parameter means there is no second argument to keep in step, and the marker constraint means a type
+    /// of the wrong family is rejected at the call site. It is a family gate, not a proof that a closed
+    /// contract exists — that is what registration reads from the implementation, and
+    /// <see cref="AMarkerImplementedWithoutAClosedContractIsRefusedAtRegistration"/> is the case which
+    /// distinguishes the two.
     /// </remarks>
     [Test]
-    public void TheRegistrationMethodsTakeTheImplementationAloneAndDemandItsPairing()
+    public void TheRegistrationMethodsTakeTheImplementationAloneAndNameTheFamily()
     {
         var cataloger = typeof(IPluginRegistry).GetMethod(nameof(IPluginRegistry.AddCataloger))!;
         var curator = typeof(IPluginRegistry).GetMethod(nameof(IPluginRegistry.AddCurator))!;
@@ -122,27 +127,75 @@ public sealed class ProviderPairingAuthorityTests
 
             Assert.That(
                 cataloger.GetGenericArguments()[0].GetGenericParameterConstraints(),
-                Does.Contain(typeof(ICatalogerPairing)).And.Contain(typeof(ICataloger)));
+                Does.Contain(typeof(IClosedCataloger)));
 
             Assert.That(
                 curator.GetGenericArguments()[0].GetGenericParameterConstraints(),
-                Does.Contain(typeof(ICuratorPairing)));
+                Does.Contain(typeof(IClosedCurator)));
         });
     }
 
     /// <remarks>
-    /// The pairing interfaces deliberately share no base. A common base would make one class serving both
-    /// families ambiguous at its own compile time, and would let a curator satisfy a cataloger registration.
+    /// Two properties in one case, and they are the reason the markers look the way they do. They share no
+    /// base, so a curator cannot satisfy a cataloger registration. They declare no members, so there is no
+    /// value on them for an implementation to state — a marker can be implemented directly, and a value it
+    /// carried would be a claim the platform could not check.
     /// </remarks>
     [Test]
-    public void TheTwoPairingContractsAreIndependent()
+    public void TheTwoClosedContractMarkersAreIndependentAndCarryNothing()
         => Assert.Multiple(() =>
         {
-            Assert.That(typeof(ICatalogerPairing).GetInterfaces(), Is.Empty);
-            Assert.That(typeof(ICuratorPairing).GetInterfaces(), Is.Empty);
-            Assert.That(typeof(ICuratorPairing).IsAssignableFrom(typeof(ICataloger<Movie>)), Is.False);
-            Assert.That(typeof(ICatalogerPairing).IsAssignableFrom(typeof(ICurator<Movie>)), Is.False);
+            Assert.That(typeof(IClosedCurator).IsAssignableFrom(typeof(ICataloger<Movie>)), Is.False);
+            Assert.That(typeof(IClosedCataloger).IsAssignableFrom(typeof(ICurator<Movie>)), Is.False);
+
+            Assert.That(
+                typeof(IClosedCataloger).GetMembers(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly),
+                Is.Empty);
+            Assert.That(
+                typeof(IClosedCurator).GetMembers(
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly),
+                Is.Empty);
         });
+
+    /// <summary>
+    /// A type that satisfies the constraint and closed no contract is refused where it registers.
+    /// </summary>
+    /// <remarks>
+    /// The adversarial case the marker cannot prevent. <see cref="FloorOnlyCataloger"/> implements the
+    /// non-generic floor and the marker directly, never <c>ICataloger&lt;Movie&gt;</c>, and it compiles at
+    /// the registration call site. It is refused there, before it is ever handed to Host, because the
+    /// registration reads the implementation's own interface list rather than any claim the type makes.
+    /// </remarks>
+    [Test]
+    public void AMarkerImplementedWithoutAClosedContractIsRefusedAtRegistration()
+    {
+        var act = () => ProviderTypeRegistration.ForCataloger<FloorOnlyCataloger>(Declaration("floor"));
+
+        Assert.That(
+            act,
+            Throws.InstanceOf<InvalidOperationException>()
+                .With.Message.Contains("implements no")
+                .And.Message.Contains("ICataloger`1"));
+    }
+
+    /// <remarks>
+    /// Ambiguity is refused rather than resolved. Choosing one of two closed contracts would make the
+    /// erased registration disagree with a contract the author actually wrote, and the message names both
+    /// so the author can see which two.
+    /// </remarks>
+    [Test]
+    public void AnImplementationClosingTwoContractsOfOneFamilyIsRefusedAndBothAreNamed()
+    {
+        var act = () => ProviderTypeRegistration.ForCataloger<TwoKindCataloger>(Declaration("ambiguous"));
+
+        Assert.That(
+            act,
+            Throws.InstanceOf<InvalidOperationException>()
+                .With.Message.Contains("2 Cataloger contracts")
+                .And.Message.Contains(nameof(Movie))
+                .And.Message.Contains(nameof(SecondItem)));
+    }
 
     /// <remarks>
     /// The registration reads all three facts without being told any of them: the item type and the closed
@@ -173,11 +226,8 @@ public sealed class ProviderPairingAuthorityTests
     /// </summary>
     /// <remarks>
     /// A vendor whose service answers both "what is it" and "which ones do you want" may reasonably write
-    /// one class. That this compiles at all is the assertion: the pairing members are inherited statics, so
-    /// a single base interface declaring them would leave the class with two implementations of one member
-    /// and no most specific one - a diamond the author would have to resolve and could not sensibly. The
-    /// values below then prove the two registrations stay apart rather than collapsing into whichever
-    /// contract happened to be found first.
+    /// one class. Each registration reads only its own family's closed contract from the implementation, so
+    /// the two stay apart rather than collapsing into whichever contract happened to be found first.
     /// </remarks>
     [Test]
     public void OneImplementationMayServeBothFamiliesAndEachRegistrationKeepsItsOwnPairing()
@@ -237,12 +287,103 @@ public sealed class ProviderPairingAuthorityTests
         Settings = [],
     };
 
+    private static Type[] ClosedContractsOf(Type implementation, Type openContract) =>
+    [
+        .. implementation
+            .GetInterfaces()
+            .Where(contract => contract.IsGenericType
+                && contract.GetGenericTypeDefinition() == openContract),
+    ];
+
     private static Type? MemberValueType(MemberInfo member) => member switch
     {
         PropertyInfo property => property.PropertyType,
         FieldInfo field => field.FieldType,
         _ => null,
     };
+
+    /// <summary>
+    /// The spoof: the non-generic floor and the family marker, and no closed contract behind either.
+    /// </summary>
+    /// <remarks>
+    /// Every member here is one an ordinary cataloger has. What is missing is the only thing that carries a
+    /// media relationship, and nothing about the type says so — which is exactly why the relationship is
+    /// read from the interface list instead of from what the type claims.
+    /// </remarks>
+    private sealed class FloorOnlyCataloger : IClosedCataloger
+    {
+        public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
+
+        public Task<ValidationOutcome> TestAsync(
+            ProviderInvocation invocation,
+            CancellationToken cancellationToken = default) => Task.FromResult(ValidationOutcome.Success);
+
+        public Task<IReadOnlyList<FacetValue>> GetOptionsAsync(
+            ProviderInvocation invocation,
+            string optionSourceId,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<FacetValue>>([]);
+    }
+
+    /// <summary>A second item type, so one class can close two cataloger contracts.</summary>
+    private sealed class SecondItem : IMediaItem
+    {
+        public required MediaItemId Key { get; init; }
+
+        public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
+
+        public CatalogRecordState CatalogState { get; init; }
+
+        public required string Title { get; init; }
+
+        public Language? TitleLanguage { get; init; }
+
+        public string? Overview { get; init; }
+
+        public ArtworkSet Artwork { get; init; } = ArtworkSet.Empty;
+    }
+
+    /// <summary>Two closed cataloger contracts on one class, which is ambiguous rather than clever.</summary>
+    private sealed class TwoKindCataloger : ICataloger<Movie>, ICataloger<SecondItem>
+    {
+        public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
+
+        public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
+
+        public Task<IReadOnlyList<Movie>> SearchAsync(
+            ProviderInvocation invocation,
+            CatalogQuery query,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<Movie>>([]);
+
+        public Task<Movie?> GetAsync(
+            ProviderInvocation invocation,
+            ExternalId id,
+            CancellationToken cancellationToken = default) => Task.FromResult<Movie?>(null);
+
+        Task<IReadOnlyList<SecondItem>> ICataloger<SecondItem>.SearchAsync(
+            ProviderInvocation invocation,
+            CatalogQuery query,
+            CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<SecondItem>>([]);
+
+        Task<SecondItem?> ICataloger<SecondItem>.GetAsync(
+            ProviderInvocation invocation,
+            ExternalId id,
+            CancellationToken cancellationToken) => Task.FromResult<SecondItem?>(null);
+
+        public Task<IReadOnlyList<ExternalId>> ChangedSinceAsync(
+            ProviderInvocation invocation,
+            DateTimeOffset since,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ExternalId>>([]);
+
+        public Task<ValidationOutcome> TestAsync(
+            ProviderInvocation invocation,
+            CancellationToken cancellationToken = default) => Task.FromResult(ValidationOutcome.Success);
+
+        public Task<IReadOnlyList<FacetValue>> GetOptionsAsync(
+            ProviderInvocation invocation,
+            string optionSourceId,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<FacetValue>>([]);
+    }
 
     /// <summary>A provider that answers both catalog and curation questions from one class.</summary>
     /// <remarks>

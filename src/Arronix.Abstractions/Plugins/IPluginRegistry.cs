@@ -172,11 +172,13 @@ public interface IPluginRegistry
     /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
     /// <remarks>
-    /// The item type is not repeated here. It is read from the contract the implementation already closed,
-    /// so the pairing has one authority and a type that is not a cataloger fails at this call site.
+    /// The item type is not repeated here. It is read from the closed contract the implementation actually
+    /// implements, so the pairing has one authority. The constraint makes the ordinary mistakes compiler
+    /// errors; an implementation that closed no cataloger contract, or closed several, is refused here,
+    /// inside the extension's own configure method.
     /// </remarks>
     IPluginRegistry AddCataloger<TCataloger>(ProviderDescriptor descriptor)
-        where TCataloger : class, ICataloger, ICatalogerPairing;
+        where TCataloger : class, IClosedCataloger;
 
     /// <summary>
     /// Registers a curator. Requires <see cref="Capability.Curation"/>.
@@ -185,7 +187,7 @@ public interface IPluginRegistry
     /// <param name="descriptor">The provider declaration.</param>
     /// <returns>This registry, for chaining.</returns>
     IPluginRegistry AddCurator<TCurator>(ProviderDescriptor descriptor)
-        where TCurator : class, IProvider, ICuratorPairing;
+        where TCurator : class, IClosedCurator;
 
     /// <summary>
     /// Registers a background job. Ungated.

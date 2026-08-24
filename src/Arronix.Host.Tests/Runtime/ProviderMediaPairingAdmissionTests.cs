@@ -52,6 +52,7 @@ internal sealed class ProviderMediaPairingAdmissionTests
     {
         WorkCataloger.Constructions = 0;
         UnpairedCataloger.Constructions = 0;
+        FloorOnlyCataloger.Constructions = 0;
 
         _root = Path.Combine(Path.GetTempPath(), "arronix-pairing-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
@@ -168,6 +169,162 @@ internal sealed class ProviderMediaPairingAdmissionTests
         result.Defects.Should().ContainSingle().Which.Should().Match("*'works'*Work*");
     }
 
+    /// <summary>
+    /// A registration whose contract no implementation backs is refused, and nothing is constructed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The defense-in-depth case. <see cref="ProviderTypeRegistration"/> derives the contract from the
+    /// implementation's own interface list, so a registration built through the registry cannot say this —
+    /// which is why the ledger is written directly here. Host is the boundary that constructs, so Host
+    /// checks the whole relationship rather than trusting what arrived.
+    /// </para>
+    /// <para>
+    /// A sound provider is registered alongside it, and its constructor count is the assertion that
+    /// matters: the structural check runs across the package before any activation, so an unsound sibling
+    /// costs the whole package its constructor calls rather than only itself.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void AContractNoImplementationBacksIsRefusedBeforeAnythingInThePackageIsConstructed()
+    {
+        var result = Prepare(
+            registry => registry
+                .AddMediaType<Works>()
+                .AddCataloger<WorkCataloger>(Descriptor("works-catalog")),
+            ledger => ledger.RecordProvider(
+                new ProviderTypeRegistration
+                {
+                    Descriptor = Descriptor("claimed"),
+                    Family = ProviderFamily.Cataloger,
+                    ContractType = typeof(ICataloger<Work>),
+                    ImplementationType = typeof(FloorOnlyCataloger),
+                    MediaItemType = typeof(Work),
+                },
+                Capability.Metadata));
+
+        using var assertions = new AssertionScope();
+
+        result.IsAdmitted.Should().BeFalse();
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
+        result.Defects.Should().ContainSingle().Which.Should().Match(
+            "*claimed*FloorOnlyCataloger*implements no*ICataloger`1*claim rather than a relationship*");
+
+        WorkCataloger.Constructions.Should().Be(0);
+        FloorOnlyCataloger.Constructions.Should().Be(0);
+    }
+
+    /// <summary>A contract and an item type that disagree are refused before construction.</summary>
+    /// <remarks>
+    /// The implementation really does implement the contract here, so an assignability check alone would
+    /// pass this. What is wrong is the type argument: the erased item type Host would pair on is not the one
+    /// the contract is closed over, and every later lookup keyed on it would resolve the wrong kind.
+    /// </remarks>
+    [Test]
+    public void AContractAndItemTypeThatDisagreeAreRefusedBeforeConstruction()
+    {
+        var result = Prepare(
+            registry => registry.AddMediaType<Works>(),
+            ledger => ledger.RecordProvider(
+                new ProviderTypeRegistration
+                {
+                    Descriptor = Descriptor("crossed"),
+                    Family = ProviderFamily.Cataloger,
+                    ContractType = typeof(ICataloger<Work>),
+                    ImplementationType = typeof(WorkCataloger),
+                    MediaItemType = typeof(UnpairedItem),
+                },
+                Capability.Metadata));
+
+        using var assertions = new AssertionScope();
+
+        result.IsAdmitted.Should().BeFalse();
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
+        result.Defects.Should().ContainSingle().Which.Should().Match(
+            "*crossed*not closed over the recorded item type*UnpairedItem*");
+        WorkCataloger.Constructions.Should().Be(0);
+    }
+
+    /// <summary>A family with no media pairing may not carry one.</summary>
+    /// <remarks>
+    /// The check reads in both directions. An indexer that arrived carrying an item type has had a pairing
+    /// invented for it somewhere, and a silent one is worse than a refused one.
+    /// </remarks>
+    [Test]
+    public void ANonMediaFamilyCarryingAnItemTypeIsRefusedBeforeConstruction()
+    {
+        var result = Prepare(
+            registry => registry.AddMediaType<Works>(),
+            ledger => ledger.RecordProvider(
+                new ProviderTypeRegistration
+                {
+                    Descriptor = Descriptor("indexer"),
+                    Family = ProviderFamily.Indexer,
+                    ContractType = typeof(ICataloger<Work>),
+                    ImplementationType = typeof(WorkCataloger),
+                    MediaItemType = typeof(Work),
+                },
+                Capability.Indexing));
+
+        using var assertions = new AssertionScope();
+
+        result.IsAdmitted.Should().BeFalse();
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginContractMismatch);
+        result.Defects.Should().ContainSingle().Which.Should().Match(
+            "*indexer*has no media pairing*Work*");
+        WorkCataloger.Constructions.Should().Be(0);
+    }
+
+    /// <summary>Two kinds in one attempt cannot own one item type.</summary>
+    [Test]
+    public void TwoKindsInOneAttemptCannotShareAnItemType()
+    {
+        var result = Prepare(registry => registry
+            .AddMediaType<Works>()
+            .AddMediaType<RivalWorks>()
+            .AddCataloger<WorkCataloger>(Descriptor("works-catalog")));
+
+        using var assertions = new AssertionScope();
+
+        result.IsAdmitted.Should().BeFalse();
+        result.ErrorCode.Should().Be(CoreErrorCode.MediaItemTypeConflict);
+        result.Defects.Should().ContainSingle().Which.Should().Match(
+            "*kind[rival-works]*already supplied by media kind 'works'*");
+        WorkCataloger.Constructions.Should().Be(
+            0,
+            "the ambiguity is in the kinds, so it is refused before a provider is even considered");
+    }
+
+    /// <summary>A kind cannot take an item type an already-active kind owns.</summary>
+    /// <remarks>
+    /// The same invariant across the publication boundary. The incumbent is named as the owner whichever
+    /// order the attempt's own kinds arrive in, because the active kinds are walked first and in registry
+    /// order.
+    /// </remarks>
+    [Test]
+    public void AKindCannotTakeAnItemTypeAnActiveKindAlreadyOwns()
+    {
+        var first = Prepare(registry => registry.AddMediaType<Works>());
+        first.IsAdmitted.Should().BeTrue(string.Join(" | ", first.Defects));
+        first.Attempt!.TryCommit(out _, out _).Should().BeTrue();
+
+        try
+        {
+            var second = Prepare(registry => registry.AddMediaType<RivalWorks>());
+
+            using var assertions = new AssertionScope();
+
+            second.IsAdmitted.Should().BeFalse();
+            second.ErrorCode.Should().Be(CoreErrorCode.MediaItemTypeConflict);
+            second.Defects.Should().ContainSingle().Which.Should().Match(
+                "*kind[rival-works]*already supplied by media kind 'works'*");
+        }
+        finally
+        {
+            first.Attempt!.Rollback();
+        }
+    }
+
     private static ProviderDescriptor Descriptor(string localId) => new()
     {
         LocalId = localId,
@@ -176,7 +333,14 @@ internal sealed class ProviderMediaPairingAdmissionTests
     };
 
     /// <summary>Runs one extension's registration and Host's preparation, and nothing else.</summary>
-    private PluginAdmissionResult Prepare(Action<IPluginRegistry> configure)
+    /// <param name="configure">What the extension registers through the ordinary gate.</param>
+    /// <param name="inject">
+    /// What is written straight into the ledger, bypassing the registry. Only an adversarial case uses it:
+    /// it is how a registration the registry would refuse to build is put in front of Host.
+    /// </param>
+    private PluginAdmissionResult Prepare(
+        Action<IPluginRegistry> configure,
+        Action<PluginRegistrationLedger>? inject = null)
     {
         var ledger = new PluginRegistrationLedger(Package);
         var registry = new PluginRegistry(
@@ -194,6 +358,7 @@ internal sealed class ProviderMediaPairingAdmissionTests
             _provider!.GetRequiredService<IMediaTypeCapabilityReader>());
 
         configure(registry);
+        inject?.Invoke(ledger);
         ledger.ActivationContext = new StubPluginContext(Package, registry);
         registry.Seal();
 
@@ -253,6 +418,25 @@ internal sealed class ProviderMediaPairingAdmissionTests
             ProviderInvocation invocation,
             DateTimeOffset since,
             CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<ExternalId>>([]);
+
+        public Task<ValidationOutcome> TestAsync(
+            ProviderInvocation invocation,
+            CancellationToken cancellationToken = default) => Task.FromResult(ValidationOutcome.Success);
+
+        public Task<IReadOnlyList<FacetValue>> GetOptionsAsync(
+            ProviderInvocation invocation,
+            string optionSourceId,
+            CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<FacetValue>>([]);
+    }
+
+    /// <summary>The non-generic floor and the family marker, with no closed contract behind either.</summary>
+    private sealed class FloorOnlyCataloger : IClosedCataloger
+    {
+        public FloorOnlyCataloger() => Constructions++;
+
+        internal static int Constructions { get; set; }
+
+        public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
 
         public Task<ValidationOutcome> TestAsync(
             ProviderInvocation invocation,

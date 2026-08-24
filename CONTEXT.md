@@ -44,13 +44,19 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
 - The plugin SDK has no second non-generic `IMediaType`. Host-only `IMediaTypeRuntime` is the kind-blind bridge.
 - `ICataloger<TItem>` and `ICurator<TItem>` return the media type's own shaped items. Field dictionaries are not an alternative contract. The non-generic `ICataloger` floor recognizes its own external-identifier markers locally; media parsers receive those typed readings and do not embed catalog-vendor marker vocabulary.
 - A provider author names the media item type once, in the contract the implementation closes. Registration
-  reads that pairing back; the registration called fixes the family; Host mints the qualified identifier.
-  No provider, declaration, or consumer restates any of the three.
+  reads that pairing back from the contracts the implementation actually implements, by one-time type
+  inspection; a family marker on the closed contracts makes the wrong family a compiler error but carries no
+  values, because a directly implementable interface cannot hold a claim the platform can trust. The
+  registration called fixes the family; Host mints the qualified identifier. No provider, declaration, or
+  consumer restates any of the three.
+- A media item type identifies exactly one media kind. Two admitted kinds closed over the same item type are
+  refused at kind admission, independently of any provider, because paired providers and identifier
+  recognition both resolve a kind from that type.
 - Provider registrations carry implementation types. After admission, Host constructs them through an exact
   public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed. Plugin
-  activation never resolves from Host DI. A media-paired registration is checked against the item types of
-  the kinds this attempt admitted plus the kinds already active, across the whole package, before any
-  implementation is constructed.
+  activation never resolves from Host DI. Before any implementation in a package is constructed, Host proves
+  every registration's contract, item type and implementation agree, and that an installed kind supplies
+  that item type; a post-construction contract check remains as defense in depth.
 - Host admission prepares complete kind, provider, language, job, and health candidates without publishing
   them. A successful preparation carries one exact `IPluginAdmissionAttempt`; after every remaining loader
   check passes, one shared Host-owned publication gate commits its Host receipt, per-kind token claims, and Active
@@ -176,8 +182,8 @@ work does not substitute for closing an earlier dependency.
   still exclude. It is a G03 record that has not caught up with G03's own landed schema, not a defect in
   what it guards.
 - G04 is partly closed on `claude/g04-provider-pairing`: provider family, item type, and identity each have
-  one authority; the closed pairing is read from the contract and checked at the call site; and admission
-  refuses a mismatched or inactive media contract before provider code runs. Its remaining exit criteria —
+  one authority; the closed pairing is read from the contracts an implementation actually implements; and
+  admission refuses an unsound or unpairable provider contract before provider code runs. Its remaining exit criteria —
   a documented durable identity, collision, merge, and retry rule, and a fully valid item Host can produce —
   wait on the owner decision recorded in `docs/research/g04/media-item-identity-decision.md`.
 
@@ -194,16 +200,21 @@ duplicated checklist drifting from current state.
 - The format-capability loading and versioning lifecycle needs a first-class manifest/package design before independently distributed format packages are promised.
 - `ReleasePolicy<T>.Compile` still exposes builder callback choreography to media authors. Format defaults and media policy fragments must compose without making authors drive an internal compiler mechanism.
 - Movies still declares likely-standard workbenches, browse defaults, and title ordering. Audit them against Television, Music, and Books and derive any behaviour which is not a genuine media difference.
-- `ICatalogerPairing` and `ICuratorPairing` are public because an interface cannot inherit a less accessible
+- `IClosedCataloger` and `IClosedCurator` are public because an interface cannot inherit a less accessible
   one. They are binding SPI an author never implements, and G06 owns moving or hiding that class of surface.
+  Deriving the pairing from the implemented contract needs one-time type inspection at registration; that is
+  erasure at the sanctioned boundary, not authoring vocabulary, and it is stated in their documentation
+  rather than hidden.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-24) reports 2,289 passed, 302 skipped, zero failed,
-  and zero inconclusive from 2,591 total cases across 11 test projects. Of the skips, 301 are Movies cases
-  and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
-  solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
-  claim must report its observed skip count and ratchet result.
+- The current one-command full-solution run (2026-08-24, on `claude/g04-provider-pairing`) reports 2,548
+  passed, 302 skipped, zero inconclusive and one failed from 2,851 total cases across 11 test projects. Of
+  the skips, 301 are Movies cases and one is an architecture case; all are registered in the compatibility
+  ledger. The failure is the G03 record described under the active gate above, and it reproduces at base
+  commit `bbed12a69`. This verifies the current solution graph and enabled tests, not the unwired production
+  capabilities above; every later passing-suite claim must report its observed skip count and ratchet
+  result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The
   regression sources that name `Movie` are locked by the compatibility ledger, so the import is stated once
   in `GlobalUsings.cs` rather than repeated per file; no locked source changed and no ledger transition was

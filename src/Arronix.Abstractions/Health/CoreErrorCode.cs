@@ -79,6 +79,13 @@ public enum CoreErrorCode
     /// <summary>Two plugins claim the same media kind.</summary>
     MediaKindConflict = 3002,
 
+    /// <summary>
+    /// Two admitted media kinds are closed over the same item type. Paired providers, external-identifier
+    /// recognition and every other item-type lookup resolve a kind from that type, so two owners of one
+    /// type make those answers depend on iteration order rather than on the installation.
+    /// </summary>
+    MediaItemTypeConflict = 3003,
+
     /// <summary>Parsing failed.</summary>
     ParsingFailed = 4000,
 

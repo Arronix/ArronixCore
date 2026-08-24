@@ -345,14 +345,14 @@ public sealed class ModuleRegistrationTests
         }
 
         public IPluginRegistry AddCataloger<TCataloger>(ProviderDescriptor descriptor)
-            where TCataloger : class, ICataloger, ICatalogerPairing
+            where TCataloger : class, IClosedCataloger
         {
             Providers.Add(ProviderTypeRegistration.ForCataloger<TCataloger>(descriptor));
             return this;
         }
 
         public IPluginRegistry AddCurator<TCurator>(ProviderDescriptor descriptor)
-            where TCurator : class, IProvider, ICuratorPairing
+            where TCurator : class, IClosedCurator
         {
             Providers.Add(ProviderTypeRegistration.ForCurator<TCurator>(descriptor));
             return this;
