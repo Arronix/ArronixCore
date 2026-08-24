@@ -56,6 +56,8 @@ public class ManifestOwnershipTests
         "description",
         "contracts",
         "entryAssembly",
+        "contractAssemblies",
+        "dependencies",
         "capabilities"
     ];
 
@@ -82,6 +84,39 @@ public class ManifestOwnershipTests
         => Assert.That(
             Manifest.EnumerateObject().Select(static property => property.Name),
             Is.SubsetOf(ManifestOwnedProperties));
+
+    /// <summary>
+    /// Which packages must be installed beside this one, and which of its assemblies its dependants may bind
+    /// to, are package facts rather than media facts.
+    /// </summary>
+    /// <remarks>
+    /// Neither can be learned from code the loader has not been allowed to run — knowing what an assembly
+    /// needs beside it requires loading it — so both stay manifest-owned alongside identity, the contract
+    /// range and the capability list. Movies publishes its own media domain and requires the video package;
+    /// pinning both here means either changes deliberately.
+    /// </remarks>
+    [Test]
+    public void DeclaresTheMediaDomainItPublishesAndTheFormatPackageItRequires()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                Manifest.GetProperty("contractAssemblies")
+                    .EnumerateArray()
+                    .Select(static entry => entry.GetString()),
+                Is.EqualTo(new[] { "Arronix.Media.Movies.dll" }),
+                "the movies package publishes its media domain for a paired provider to bind to");
+
+            var dependency = Manifest.GetProperty("dependencies").EnumerateArray().Single();
+
+            Assert.That(dependency.GetProperty("package").GetString(), Is.EqualTo("arronix.format.video"));
+            Assert.That(dependency.GetProperty("range").GetString(), Is.EqualTo(">=0.1 <0.2"));
+        });
+    }
+
+    [Test]
+    public void DeclaresTheManifestFormatVersionThisHostReads()
+        => Assert.That(Manifest.GetProperty("schemaVersion").GetInt32(), Is.EqualTo(1));
 
     [Test]
     public void DeclaresTheSameExtensionIdentifierAsTheCode()

@@ -1768,8 +1768,14 @@ keys are deleted, in one change, with nothing left behind.
 
 `PluginBootstrapper : IHostedService`. `StartAsync` runs the §4.1 pipeline; `StopAsync` reverses it.
 
-- Plugins have **no inter-plugin dependencies** (§4 forbids direct cross-plugin calls), so activation order
-  is by plugin-id ordinal — deterministic, no topological sort.
+- Packages **do** declare dependencies on each other: one edge is an exact package identifier plus a
+  compatible version range, and a required package's shared contract assemblies become visible to its
+  dependant. Direct cross-plugin *calls* remain forbidden; a dependency is a type edge and a lifetime edge,
+  not a call edge. Activation order is therefore the resolved graph's order — every package follows
+  everything it requires, with peers by ordinal identifier — and teardown reverses the order packages were
+  actually published in. An installation with no declared edge resolves to identifier order, which is what
+  it used to be assumed to be; that shape is now an answer the one resolver gives rather than a property the
+  host may assume.
 - **Plugins are activated after `IServiceProvider` is built and never mutate it.** This removes the entire
   two-phase-container class of bug, where plugins must load before `Build()` and therefore before
   configuration, logging and the filesystem are available.
