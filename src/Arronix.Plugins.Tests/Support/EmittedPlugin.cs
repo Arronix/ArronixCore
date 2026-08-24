@@ -48,7 +48,10 @@ internal enum EmittedFault
     IdGetterThrowsNovel = 4,
 
     /// <summary>Throw <see cref="OutOfMemoryException"/> directly from the identifier getter.</summary>
-    IdGetterThrowsOutOfMemory = 5
+    IdGetterThrowsOutOfMemory = 5,
+
+    /// <summary>Throw <see cref="OperationCanceledException"/> directly from the identifier getter.</summary>
+    IdGetterThrowsCanceled = 6
 }
 
 /// <summary>
@@ -243,6 +246,11 @@ internal static class EmittedPlugin
 
             case EmittedFault.IdGetterThrowsOutOfMemory:
                 il.Emit(OpCodes.Newobj, typeof(OutOfMemoryException).GetConstructor(Type.EmptyTypes)!);
+                il.Emit(OpCodes.Throw);
+                break;
+
+            case EmittedFault.IdGetterThrowsCanceled:
+                il.Emit(OpCodes.Newobj, typeof(OperationCanceledException).GetConstructor(Type.EmptyTypes)!);
                 il.Emit(OpCodes.Throw);
                 break;
 

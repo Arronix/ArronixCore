@@ -100,14 +100,17 @@ internal sealed class ModuleActivationContainmentTests
     }
 
     /// <remarks>
-    /// The constructor case arrives wrapped in a reflection failure, so the filter has to walk the chain: a
-    /// rule reading only the outer type would absorb an exhausted process as an ordinary construction defect.
+    /// Both conditions from both boundaries. The constructor cases arrive wrapped in a reflection failure, so
+    /// the filter has to walk the chain — a rule reading only the outer type would absorb an exhausted
+    /// process as an ordinary construction defect — and the identifier getter cases arrive direct, where the
+    /// outer type is the condition itself.
     /// </remarks>
     /// <param name="fault">Where and how the package fails fatally.</param>
     /// <param name="fatal">The type that must reach the caller, or its wrapper.</param>
     [TestCase(EmittedFault.ConstructorThrowsOutOfMemory, typeof(System.Reflection.TargetInvocationException))]
     [TestCase(EmittedFault.ConstructorThrowsCanceled, typeof(System.Reflection.TargetInvocationException))]
     [TestCase(EmittedFault.IdGetterThrowsOutOfMemory, typeof(OutOfMemoryException))]
+    [TestCase(EmittedFault.IdGetterThrowsCanceled, typeof(OperationCanceledException))]
     public async Task AProcessFatalOrCanceledConditionPropagatesRatherThanQuarantining(
         EmittedFault fault,
         Type fatal)
@@ -132,23 +135,27 @@ internal sealed class ModuleActivationContainmentTests
     /// failure was contained or propagated.
     /// </remarks>
     /// <param name="fault">How the identifier getter fails.</param>
-    [TestCase(EmittedFault.IdGetterThrowsNovel)]
-    [TestCase(EmittedFault.IdGetterThrowsOutOfMemory)]
-    public async Task AModuleConstructedBeforeAFailingIdentityGetterIsStillDisposed(EmittedFault fault)
+    /// <param name="propagated">The type that reaches the caller, or <see langword="null"/> when contained.</param>
+    [TestCase(EmittedFault.IdGetterThrowsNovel, null)]
+    [TestCase(EmittedFault.IdGetterThrowsOutOfMemory, typeof(OutOfMemoryException))]
+    [TestCase(EmittedFault.IdGetterThrowsCanceled, typeof(OperationCanceledException))]
+    public async Task AModuleConstructedBeforeAFailingIdentityGetterIsStillDisposed(
+        EmittedFault fault,
+        Type? propagated)
     {
         var marker = Path.Combine(_root, "..", "disposed.marker");
         Install("broken", "broken", fault, marker);
 
         var load = async () => await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
 
-        if (fault == EmittedFault.IdGetterThrowsNovel)
+        if (propagated is null)
         {
             (await load.Should().NotThrowAsync()).Which.Should().ContainSingle()
                 .Which.State.Should().Be(PluginState.Quarantined);
         }
         else
         {
-            await load.Should().ThrowAsync<OutOfMemoryException>();
+            (await load.Should().ThrowAsync<Exception>()).Which.Should().BeOfType(propagated);
         }
 
         File.Exists(marker).Should().BeTrue(

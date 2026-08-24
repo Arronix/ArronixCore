@@ -61,9 +61,10 @@ on repeated stops.
 boundary uses a closed allowlist and anything unexpected stops admission. Running a package's own code, or a
 callback it registered, has none, so that boundary contains everything except conditions in which the process
 is unsound. Both inspect the whole exception chain, so a type initializer that ran out of memory is not
-absorbed as an ordinary refusal. That includes the two reflection boundaries where package code runs before
-registration — the module constructor, whose failure reflection wraps, and the identifier getter — and a
-module constructed before a failing getter is still disposed before its context is unloaded.
+absorbed as an ordinary refusal. That includes both places package code runs before
+registration — the module constructor, whose failure reflection wraps, and the identifier getter, where the
+condition arrives direct — and a module constructed before a failing getter is still disposed before its
+context is unloaded.
 
 Recorded as unresolved rather than decided: prerelease range semantics (`>=0.1 <0.2` admits
 `0.2.0-preview.1` by ordinary precedence, inherited from `VersionRange` and belonging there if it is wrong),
