@@ -302,26 +302,23 @@ public sealed class PluginLoader
             byPackage[manifest.Package] = manifest;
         }
 
-        var byId = new Dictionary<PluginId, ValidatedManifest>();
-
-        foreach (var manifest in validated)
-        {
-            // A duplicated identifier has no single declaration; the resolver refuses it and carries its
-            // copies, so nothing downstream needs one chosen.
-            byId.TryAdd(manifest.Id, manifest);
-        }
-
+        // One result per installed copy, in the canonical order the refusal lists them. A duplicated
+        // identifier has more than one, and each folder an operator has to act on is recorded separately
+        // rather than one of them being chosen to speak for the identifier.
         foreach (var refusal in graph.Refused)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            foreach (var copy in refusal.Copies)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
 
-            results.Add(Quarantine(
-                refusal.Copies.Count == 1 ? refusal.Copies[0].Source : byId[refusal.Package].Package.Source,
-                refusal.Package,
-                refusal.Copies.Count == 1 ? byPackage[refusal.Copies[0]] : null,
-                refusal.ErrorCode,
-                refusal.Reason,
-                [.. refusal.Defects.Select(defect => defect.ToString())]));
+                results.Add(Quarantine(
+                    copy.Source,
+                    refusal.Package,
+                    byPackage[copy],
+                    refusal.ErrorCode,
+                    refusal.Reason,
+                    [.. refusal.Defects.Select(defect => defect.ToString())]));
+            }
         }
 
         // Step 5: the installation's shared contract assemblies become one admitted identity each, staged

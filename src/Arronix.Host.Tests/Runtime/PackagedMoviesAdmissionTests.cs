@@ -245,8 +245,8 @@ internal sealed class PackagedMoviesAdmissionTests
     public async Task ADeclaredMediaKindTheAdmittedProjectionDoesNotSupplyIsRefused()
     {
         var root = RestageWithManifest(manifest => manifest.Replace(
-            "\"schemaVersion\": 0,",
-            "\"schemaVersion\": 0,\n  \"mediaKinds\": [\"movies\", \"westerns\"],",
+            "\"schemaVersion\": 1,",
+            "\"schemaVersion\": 1,\n  \"mediaKinds\": [\"movies\", \"westerns\"],",
             StringComparison.Ordinal));
 
         using var provider = BuildProvider(root);

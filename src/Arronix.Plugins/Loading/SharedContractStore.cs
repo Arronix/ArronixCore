@@ -459,10 +459,20 @@ internal sealed class SharedContractStore
                 case SharedContractState.Active when ReferenceEquals(_graph, graph):
                     return _admission!;
 
+                case SharedContractState.Active when SharesNothing(graph):
+                    // The only second graph an admitted store will take. Nothing was loaded, nothing was
+                    // refused, there is no context, and the new graph declares no contract assembly either,
+                    // so there is no admitted state for it to borrow. Anything else needs a real
+                    // reconciliation of staged bytes, identities and closures.
+                    _graph = graph;
+                    return _admission!;
+
                 case SharedContractState.Active:
                     throw new InvalidOperationException(
                         "The installation's shared contracts were admitted from a different resolved graph. "
-                        + "One store admits one graph; a second graph is a second installation.");
+                        + "A second graph may reuse an admission only when neither shares anything: matching "
+                        + "identifiers, versions and file names do not prove matching bytes, identities or "
+                        + "dependency closures.");
 
                 case SharedContractState.Admitting:
                     throw new InvalidOperationException(
@@ -523,6 +533,22 @@ internal sealed class SharedContractStore
 
         return admission;
     }
+
+    /// <summary>
+    /// Determines whether an admitted store holds nothing and the new graph asks for nothing.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately not a comparison of the two graphs. Equal identifiers, versions and file names do not
+    /// prove equal bytes, equal CLR identities or equal dependency closures — and closures are what decide
+    /// which package may see which contract — so a graph that merely looks the same must never adopt
+    /// another graph's loaded assemblies.
+    /// </remarks>
+    private bool SharesNothing(ResolvedPackageGraph graph)
+        => _admission is { Admitted.Count: 0, Refusals.Count: 0 }
+            && _context is null
+            && _live.Count == 0
+            && _admitted.Count == 0
+            && graph.AdmissionOrder.All(package => package.ContractAssemblies.Count == 0);
 
     /// <summary>
     /// Opens one package's scope over the contracts it published and those its closure published.
@@ -771,14 +797,11 @@ internal sealed class SharedContractStore
 
         foreach (var package in graph.AdmissionOrder)
         {
-            if (package.ContractAssemblies.Count == 0)
+            // A package whose dependency was already refused is refused with it, and is never planned:
+            // dependants come later in graph order, so the refusal recorded when the dependency failed is
+            // what keeps them out of the plan.
+            if (refusals.ContainsKey(package.Id) || package.ContractAssemblies.Count == 0)
             {
-                continue;
-            }
-
-            if (refusals.ContainsKey(package.Id))
-            {
-                // A dependency of this package was already refused, so nothing of it is admitted.
                 continue;
             }
 
@@ -889,7 +912,13 @@ internal sealed class SharedContractStore
                 planned.Remove(candidate);
             }
 
-            refusals[dependant] = Refusal(dependant, CoreErrorCode.PluginDependencyUnavailable, defects);
+            // A dependant's headline is that its dependency's contracts were refused. Reusing the
+            // publisher summary would tell a package with no contract assemblies at all that it failed to
+            // publish one.
+            refusals[dependant] = new SharedContractRefusal(
+                CoreErrorCode.PluginDependencyUnavailable,
+                $"Extension '{dependant}' requires package '{cause}', whose shared contracts this installation could not admit.",
+                defects.AsReadOnly());
         }
     }
 

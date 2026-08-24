@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 0,
+  "schemaVersion": 1,
   "id": "movies",
   "name": "Movies",
   "version": "0.1.0",

@@ -139,7 +139,7 @@ public sealed class CompositionTests
     public void TheLoaderTakesThePlatformServicesBundleRatherThanReachingIntoTheContainer()
     {
         typeof(PluginLoader)
-            .GetConstructors()
+            .GetConstructors(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
             .Single()
             .GetParameters()
             .Select(parameter => parameter.ParameterType)

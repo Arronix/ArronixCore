@@ -106,7 +106,7 @@ public sealed class PluginLoaderPipelineTests
         string capabilities = "\"parsing\"")
         => $$"""
              {
-               "schemaVersion": 0,
+               "schemaVersion": 1,
                "id": "{{id}}",
                "name": "{{id}}",
                "version": "0.1.0",

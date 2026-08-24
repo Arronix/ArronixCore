@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 0,
+  "schemaVersion": 1,
   "id": "g02.admission.fixture",
   "name": "G02 admission fixture",
   "version": "0.1.0",

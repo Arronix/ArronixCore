@@ -97,7 +97,7 @@ public sealed class EndToEndLoadTests
             Path.Combine(folder, PluginManifestReader.FileName),
             $$"""
               {
-                "schemaVersion": 0,
+                "schemaVersion": 1,
                 "id": "{{pluginId}}",
                 "name": "Emitted",
                 "version": "0.1.0",
@@ -198,7 +198,7 @@ public sealed class EndToEndLoadTests
             Path.Combine(folder, PluginManifestReader.FileName),
             $$"""
               {
-                "schemaVersion": 0,
+                "schemaVersion": 1,
                 "id": "emitted",
                 "name": "Emitted",
                 "version": "0.1.0",

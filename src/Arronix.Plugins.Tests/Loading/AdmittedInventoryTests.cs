@@ -149,7 +149,7 @@ public sealed class AdmittedInventoryTests
     {
         var entryPoints = typeof(PluginLoader)
             .GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
-            .Where(method => method.Name is "Load" or "LoadAll")
+            .Where(method => method.Name is "LoadAsync" or "LoadAllAsync")
             .ToArray();
 
         entryPoints.Should().HaveCount(2);
@@ -342,7 +342,7 @@ public sealed class AdmittedInventoryTests
             Path.Combine(folder, PluginManifestReader.FileName),
             $$"""
               {
-                "schemaVersion": 0,
+                "schemaVersion": 1,
                 "id": "{{pluginId}}",
                 "name": "Emitted",
                 "version": "0.1.0",

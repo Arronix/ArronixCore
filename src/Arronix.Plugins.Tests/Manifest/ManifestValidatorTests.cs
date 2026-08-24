@@ -387,7 +387,7 @@ public sealed class ManifestValidatorTests
     /// which is one malformed file quarantining every other package with it.
     /// </remarks>
     [Test]
-    public void AListMemberWrittenAsNullIsReadAsTheEmptyListItDefaultsTo()
+    public void AListMemberWrittenAsAnExplicitNullIsADefectRatherThanAnEmptyList()
     {
         var manifest = Valid(builder =>
         {
@@ -396,10 +396,25 @@ public sealed class ManifestValidatorTests
             builder.MediaKinds = null!;
             builder.Identifiers = null!;
             builder.Tokens = null!;
+            builder.Capabilities = null!;
         });
 
-        TryValidate(manifest, out var validated, out var defects).Should().BeTrue(
-            string.Join("; ", defects));
+        TryValidate(manifest, out var validated, out var defects).Should().BeFalse();
+
+        validated.Should().BeNull();
+        defects
+            .Where(defect => defect.Message.Contains("The member is null", StringComparison.Ordinal))
+            .Select(defect => defect.Path)
+            .Should().BeEquivalentTo(
+                ["contractAssemblies", "dependencies", "capabilities", "mediaKinds", "tokens", "identifiers"],
+                "omitting a list and writing null for it are different statements, and reading the second as "
+                + "the first silently erases whatever the author meant");
+    }
+
+    [Test]
+    public void AnOmittedListMemberTakesItsEmptyDefault()
+    {
+        TryValidate(Valid(), out var validated, out var defects).Should().BeTrue(string.Join("; ", defects));
 
         validated!.ContractAssemblies.Should().BeEmpty();
         validated.Dependencies.Should().BeEmpty();
