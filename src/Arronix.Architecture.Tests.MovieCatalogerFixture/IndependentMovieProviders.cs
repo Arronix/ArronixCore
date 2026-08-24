@@ -26,7 +26,7 @@ namespace Arronix.Architecture.Tests.MovieCatalogerFixture;
 /// </remarks>
 public sealed class IndependentMovieCataloger : ICataloger<Movie>
 {
-    private static readonly PluginId Package = PluginId.FromString("fixture.movies.cataloger");
+    private static readonly PluginId Package = PluginId.FromString("fixture.movies.provider");
 
     /// <inheritdoc />
     public ProviderId Id { get; } = ProviderId.Create(Package, "independent");
@@ -130,7 +130,7 @@ public sealed class IndependentMovieCataloger : ICataloger<Movie>
 /// <summary>A curated movie list, paired to the same item type by the same single generic argument.</summary>
 public sealed class IndependentMovieCurator : ICurator<Movie>
 {
-    private static readonly PluginId Package = PluginId.FromString("fixture.movies.cataloger");
+    private static readonly PluginId Package = PluginId.FromString("fixture.movies.provider");
 
     /// <inheritdoc />
     public ProviderId Id { get; } = ProviderId.Create(Package, "independent-list");
@@ -168,9 +168,15 @@ public sealed class IndependentMovieCurator : ICurator<Movie>
 /// The provider package's entry module.
 /// </summary>
 /// <remarks>
-/// One closed registration each, naming <c>Movie</c> once. The package requires the movies package by
-/// identifier and never references its executable assembly, so the <c>Movie</c> these generics close over is
-/// the one the installation admitted rather than a copy shipped here.
+/// <para>
+/// The package requires the movies package by identifier and never references its executable assembly, so
+/// the <c>Movie</c> these generics close over is the one the installation admitted rather than a copy
+/// shipped here.
+/// </para>
+/// <para>
+/// The registration still repeats the item type that <c>ICataloger&lt;Movie&gt;</c> already closes. Removing
+/// that repetition is G04's work on provider pairing; this gate proves the identity, not the ergonomics.
+/// </para>
 /// </remarks>
 public sealed class IndependentMovieProviderModule : IPluginModule
 {

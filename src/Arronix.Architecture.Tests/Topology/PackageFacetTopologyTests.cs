@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -276,10 +277,52 @@ public sealed class PackageFacetTopologyTests
             .Concat(fields
                 .Where(static field => typeof(Delegate).IsAssignableFrom(field.FieldType))
                 .Select(static field => $"{field.DeclaringType?.FullName}.{field.Name} is a static delegate"))
+            .Concat(fields
+                .Where(static field => IsEditableCollection(field.FieldType))
+                .Select(static field =>
+                    $"{field.DeclaringType?.FullName}.{field.Name} is a static collection a caller can edit"))
             .Order(StringComparer.Ordinal)
             .ToArray();
 
         Assert.That(offenders, Is.Empty, $"'{projectName}' holds static state a shared assembly must not.");
+    }
+
+    /// <summary>
+    /// Determines whether a field's declared type is a collection a caller can edit through it.
+    /// </summary>
+    /// <param name="type">The field type.</param>
+    /// <returns><see langword="true"/> when the value is shared and mutable.</returns>
+    /// <remarks>
+    /// A <c>static readonly</c> field only stops the field being reassigned. A shared assembly's static
+    /// value is process-global, so an array or a mutable collection behind it is state every dependant can
+    /// change — which is exactly the defect the wrapper on <c>VideoFormat</c>'s extension list closed.
+    /// </remarks>
+    private static bool IsEditableCollection(Type type)
+    {
+        if (type.IsArray)
+        {
+            return true;
+        }
+
+        if (!type.IsGenericType)
+        {
+            return false;
+        }
+
+        var isCollection = type.GetInterfaces().Any(static contract =>
+            contract.IsGenericType
+            && contract.GetGenericTypeDefinition() == typeof(ICollection<>));
+
+        if (!isCollection)
+        {
+            return false;
+        }
+
+        var definition = type.GetGenericTypeDefinition();
+
+        return definition != typeof(ReadOnlyCollection<>)
+            && !definition.Namespace!.StartsWith("System.Collections.Immutable", StringComparison.Ordinal)
+            && !definition.Namespace.StartsWith("System.Collections.Frozen", StringComparison.Ordinal);
     }
 
     /// <remarks>
@@ -304,10 +347,26 @@ public sealed class PackageFacetTopologyTests
         Assert.That(offenders, Is.Empty, $"'{projectName}' runs code when it is loaded.");
     }
 
+    /// <summary>
+    /// A source-text screen for spellings that do not belong in a shared assembly.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A heuristic, and stated as one. It catches the spellings an author would reach for — a regular
+    /// expression, a file or network call, an ambient clock — where they are written literally, which is how
+    /// they arrive in practice. It does not prove their absence: the same behavior reached through
+    /// reflection, an alias, a computed type name or a helper in another assembly would pass.
+    /// </para>
+    /// <para>
+    /// The rules that do prove something are the structural ones above: no executable platform type, no
+    /// mutable or editable static state, nothing running on load, and a reference closure limited to the
+    /// universal contracts. This screen is a cheap early warning in front of them, not a substitute.
+    /// </para>
+    /// </remarks>
     /// <param name="projectName">The shared contract project under test.</param>
     [Test]
     [TestCaseSource(nameof(SharedContracts))]
-    public void SharedContractSourceContainsNoRecognitionOrIoSpelling(string projectName)
+    public void SharedContractSourceCarriesNoRecognitionOrIoSpelling(string projectName)
     {
         var code = SourceScanner.CodeLines(projectName).ToArray();
 
@@ -384,6 +443,45 @@ public sealed class PackageFacetTopologyTests
             Is.Empty,
             $"'{projectName}' references a media domain it does not own. A dependency between packages is "
             + "a type edge and a lifecycle edge; it is never a call edge between two extensions.");
+    }
+
+    /// <summary>
+    /// The same rule read from the compiled reference table rather than from the project file.
+    /// </summary>
+    /// <remarks>
+    /// The declaration rule above reads project XML, which a raw <c>Reference</c>, an imported targets file
+    /// or a package that brought the assembly along could bypass without editing a <c>ProjectReference</c>.
+    /// The compiled reference table is what the runtime actually binds, so a reference that arrived by any
+    /// route at all is visible here.
+    /// </remarks>
+    /// <param name="projectName">The extension under test.</param>
+    [Test]
+    [TestCaseSource(nameof(MediaExtensions))]
+    public void MediaExtensionLinksNoOtherKindsMediaDomain(string projectName)
+    {
+        var own = RepositoryLayout.MediaDomainOf(projectName);
+
+        var linked = Load(projectName)
+            .GetReferencedAssemblies()
+            .Select(static name => name.Name ?? string.Empty)
+            .ToArray();
+
+        Assert.Multiple(() =>
+        {
+            // Without this, an unreadable reference table would satisfy the rule by containing nothing.
+            Assert.That(linked, Is.Not.Empty, $"No reference table was read for '{projectName}'.");
+
+            Assert.That(
+                linked
+                    .Where(static name => name.StartsWith(
+                        RepositoryLayout.MediaDomainPrefix,
+                        StringComparison.Ordinal))
+                    .Where(name => !string.Equals(name, own, StringComparison.Ordinal))
+                    .Order(StringComparer.Ordinal),
+                Is.Empty,
+                $"The compiled '{projectName}' links a media domain it does not own, whatever its project "
+                + "file says.");
+        });
     }
 
     /// <summary>
