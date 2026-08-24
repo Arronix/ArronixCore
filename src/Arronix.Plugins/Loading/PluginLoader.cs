@@ -698,8 +698,10 @@ public sealed class PluginLoader
                 {
                     return Quarantine(source, package.Id, manifest, failure.ErrorCode, failure.Message, defects: []);
                 }
-#pragma warning disable CA1031 // A throwing extension quarantines itself; it never brings down the host.
-                catch (Exception failure)
+// A throwing extension quarantines itself; it never brings down the host. A process-fatal condition is
+// not an extension defect and keeps propagating.
+#pragma warning disable CA1031
+                catch (Exception failure) when (LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
                 {
                     return Quarantine(
@@ -918,9 +920,10 @@ public sealed class PluginLoader
                 defects: []);
         }
 // Everything in this block which is not Host publication infrastructure is extension-controlled. A novel
-// extension exception is still a quarantine, and the finally block releases every attempt-owned value.
+// extension exception is still a quarantine - an allowlist here would let an unfamiliar extension bug stop
+// the whole installation - and the finally block releases every attempt-owned value.
 #pragma warning disable CA1031
-        catch (Exception failure) when (!committed)
+        catch (Exception failure) when (!committed && LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
         {
             return Quarantine(

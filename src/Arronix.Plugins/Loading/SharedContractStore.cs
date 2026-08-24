@@ -5,7 +5,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Plugins;
@@ -413,7 +412,7 @@ internal sealed class SharedContractStore
 // A hostile unloading handler is reported rather than rethrown into shutdown, but a process-fatal
 // condition is not an ordinary shutdown refusal and keeps propagating.
 #pragma warning disable CA1031
-        catch (Exception failure) when (IsContainableLoadFailure(failure))
+        catch (Exception failure) when (LoadFailurePolicy.IsContainableContractFailure(failure))
 #pragma warning restore CA1031
         {
             refusal = $"The shared contract context could not be released: {failure.Message}";
@@ -644,7 +643,12 @@ internal sealed class SharedContractStore
         defects = [];
 
         FrozenSet<PluginId> closure;
+        FrozenDictionary<string, AdmittedContract> admittedNow;
+        FrozenSet<string> admittedSources;
 
+        // One snapshot for the whole walk. Reading the live map per file would let a release running
+        // concurrently erase half a verdict, so half the package's files would be checked against an
+        // installation that shares something and half against one that shares nothing.
         lock (_gate)
         {
             if (_state != SharedContractState.Active)
@@ -660,6 +664,10 @@ internal sealed class SharedContractStore
             }
 
             closure = _graph!.ClosureOf(package.Id);
+            admittedNow = _admitted.ToFrozenDictionary(StagedAssembly.NameComparer);
+            admittedSources = _admitted.Values
+                .Select(contract => contract.SourcePath)
+                .ToFrozenSet(StringComparer.Ordinal);
         }
 
         var duplicates = new List<string>();
@@ -668,7 +676,7 @@ internal sealed class SharedContractStore
 
         foreach (var file in ManagedFiles(package.Folder))
         {
-            if (IsAdmittedSource(file))
+            if (admittedSources.Contains(file))
             {
                 continue;
             }
@@ -681,25 +689,25 @@ internal sealed class SharedContractStore
 
             var fileName = Path.GetFileName(file);
 
-            if (staged!.Identity.Name is { } simpleName && TryGetAdmitted(simpleName, out var shadowed))
+            if (admittedNow.TryGetValue(staged!.Identity.Name, out var shadowed))
             {
                 duplicates.Add(string.Create(
                     CultureInfo.InvariantCulture,
-                    $"'{fileName}' is a private copy of shared contract '{StagedAssembly.Describe(shadowed!.Identity)}' published by '{shadowed.Publisher}'. The private copy is MVID {staged.ModuleVersionId} SHA-256 {staged.ContentHash}; the admitted copy is MVID {shadowed.ModuleVersionId} SHA-256 {shadowed.ContentHash}. A package consumes a shared contract through its dependency, never by carrying it."));
+                    $"'{fileName}' is a private copy of shared contract '{StagedAssembly.Describe(shadowed.Identity)}' published by '{shadowed.Publisher}'. The private copy is MVID {staged.ModuleVersionId} SHA-256 {staged.ContentHash}; the admitted copy is MVID {shadowed.ModuleVersionId} SHA-256 {shadowed.ContentHash}. A package consumes a shared contract through its dependency, never by carrying it."));
             }
 
             foreach (var reference in staged.References)
             {
-                if (!TryGetAdmitted(reference.Name, out var admitted))
+                if (!admittedNow.TryGetValue(reference.Name, out var admitted))
                 {
                     continue;
                 }
 
-                if (!StagedAssembly.SameIdentity(admitted!.Identity, reference))
+                if (!StagedAssembly.SameIdentity(admitted.Identity, reference))
                 {
                     mismatches.Add(string.Create(
                         CultureInfo.InvariantCulture,
-                        $"'{fileName}' requires '{StagedAssembly.Describe(reference)}', but this installation admitted '{StagedAssembly.Describe(admitted.Identity)}' from '{admitted.Publisher}'."));
+                        $"'{fileName}' requires '{StagedAssembly.Describe(reference)}', but this installation admitted '{StagedAssembly.Describe(admitted.Identity)}' from '{admitted.Publisher}' (MVID {admitted.ModuleVersionId} SHA-256 {admitted.ContentHash}). The requesting file is MVID {staged.ModuleVersionId} SHA-256 {staged.ContentHash}."));
                     continue;
                 }
 
@@ -710,7 +718,7 @@ internal sealed class SharedContractStore
                 {
                     undeclared.Add(string.Create(
                         CultureInfo.InvariantCulture,
-                        $"'{fileName}' requires '{StagedAssembly.Describe(reference)}', published by '{admitted.Publisher}', which package '{package.Id}' does not depend on. Declare the dependency, or stop referencing the contract."));
+                        $"'{fileName}' requires '{StagedAssembly.Describe(reference)}', published by '{admitted.Publisher}' (MVID {admitted.ModuleVersionId} SHA-256 {admitted.ContentHash}), which package '{package.Id}' does not depend on. Declare the dependency, or stop referencing the contract."));
                 }
             }
         }
@@ -746,38 +754,6 @@ internal sealed class SharedContractStore
                 .EnumerateFiles(folder, "*.dll", SearchOption.TopDirectoryOnly)
                 .OrderBy(Path.GetFileName, StringComparer.Ordinal)]
             : [];
-
-    private bool TryGetAdmitted(string? simpleName, out AdmittedContract? contract)
-    {
-        if (simpleName is null)
-        {
-            contract = null;
-            return false;
-        }
-
-        lock (_gate)
-        {
-            var found = _admitted.TryGetValue(simpleName, out var value);
-            contract = value;
-            return found;
-        }
-    }
-
-    private bool IsAdmittedSource(string path)
-    {
-        lock (_gate)
-        {
-            foreach (var contract in _admitted.Values)
-            {
-                if (string.Equals(contract.SourcePath, path, StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
 
     /// <summary>
     /// Stages and validates every eligible package's contracts in graph order, then loads the accepted set
@@ -946,7 +922,7 @@ internal sealed class SharedContractStore
 // The file is package-controlled and the exception surface behind LoadFromStream is not enumerable. See
 // IsContainableLoadFailure for what is deliberately not caught, and why naming classes would be worse.
 #pragma warning disable CA1031
-                catch (Exception failure) when (IsContainableLoadFailure(failure))
+                catch (Exception failure) when (LoadFailurePolicy.IsContainableContractFailure(failure))
 #pragma warning restore CA1031
                 {
                     loaded = [];
@@ -969,89 +945,6 @@ internal sealed class SharedContractStore
         failed = null;
         defect = null;
         return true;
-    }
-
-    /// <summary>
-    /// Decides whether a failure to load a contract is this package's problem or the process's.
-    /// </summary>
-    /// <param name="failure">What the load threw.</param>
-    /// <returns><see langword="true"/> when the failure may be contained as a refusal of one package.</returns>
-    /// <remarks>
-    /// <para>
-    /// The invariant is that one hostile contract file cannot abort admission for unrelated publishers. That
-    /// cannot be secured by listing the exception types a load throws: the file is package-controlled, and
-    /// probing the real load boundary produces at least <see cref="BadImageFormatException"/>,
-    /// <see cref="FileLoadException"/> and <see cref="InvalidOperationException"/> with no way to prove the
-    /// list closed. The filter is therefore stated as what must not be swallowed.
-    /// </para>
-    /// <para>
-    /// Cancellation belongs to the caller that requested it. The rest are conditions in which the process is
-    /// no longer sound — exhausted memory, exhausted stack, corrupted memory or a structured native failure —
-    /// and continuing to admit packages after one is a worse answer than stopping.
-    /// <see cref="AccessViolationException"/> is named separately because it does not derive from
-    /// <see cref="SEHException"/> on this runtime, and <see cref="InsufficientMemoryException"/> propagates
-    /// through its <see cref="OutOfMemoryException"/> base: it reports that an operation was refused for
-    /// want of memory, and admitting the rest of an installation under that condition is guesswork.
-    /// </para>
-    /// <para>
-    /// The whole chain is inspected, not the outermost exception. A load failure routinely arrives wrapped:
-    /// a type initializer that ran out of memory surfaces as <see cref="TypeInitializationException"/>, and a
-    /// filter that read only the outer type would contain a process-fatal condition as an ordinary refusal.
-    /// </para>
-    /// </remarks>
-    internal static bool IsContainableLoadFailure(Exception failure)
-    {
-        ArgumentNullException.ThrowIfNull(failure);
-
-        foreach (var inner in Chain(failure))
-        {
-            if (inner is OperationCanceledException
-                or OutOfMemoryException
-                or StackOverflowException
-                or InsufficientExecutionStackException
-                or AccessViolationException
-                or SEHException)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>Walks an exception and everything it wraps, aggregates included.</summary>
-    private static IEnumerable<Exception> Chain(Exception failure)
-    {
-        var pending = new Stack<Exception>();
-        var seen = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
-        pending.Push(failure);
-
-        while (pending.Count > 0)
-        {
-            var current = pending.Pop();
-
-            if (!seen.Add(current))
-            {
-                continue;
-            }
-
-            yield return current;
-
-            if (current is AggregateException aggregate)
-            {
-                foreach (var inner in aggregate.InnerExceptions)
-                {
-                    pending.Push(inner);
-                }
-
-                continue;
-            }
-
-            if (current.InnerException is { } wrapped)
-            {
-                pending.Push(wrapped);
-            }
-        }
     }
 
     private static string LoadDefect(PlannedContract contract, Exception failure)
