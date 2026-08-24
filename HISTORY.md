@@ -1,5 +1,43 @@
 # Arronix History
 
+## 2026-08-24 — Make the admitted projection, not the manifest, the authority after admission
+
+- Changed `IPluginAdmissionCheck` from a verdict to `PluginAdmissionResult`, carrying an `AdmittedInventory`
+  of one entry per `MediaKindId` Host actually registered together with that kind's own derived
+  `NamingToken` collection. The entries are read back off each admitted `RegisteredMediaKind`, so the
+  inventory is the projection the platform will serve rather than a second derivation of it.
+- Made the loader's post-admission steps consume that inventory. Declaration agreement, cross-installation
+  duplicate-kind checking, and naming-token ownership no longer read a manifest for facts derived from an
+  extension's own types, and scheduled-job kind association uses the admitted kind when there is one. This
+  repairs the defect where a typed Movies registration was bound and published, and then quarantined by a
+  token check that could only see the legacy `IMediaShapeProvider` seam.
+- Kept the legacy shape-provider path as the transitional answer for a loader running without a host
+  admission check. After Host admission the inventory is the authority.
+- Made naming-token ownership per kind through `TokenClaimRequest`. The previous signature took a set of
+  kinds and a set of tokens, which could only be turned into claims by taking their cross product; an
+  extension supplying two kinds does not own each kind's vocabulary for the other.
+- Made a manifest able to omit derivable media facts. Holding the `media-kind` capability without restating
+  the kinds is now valid, because which kinds an extension supplies is settled against what was admitted. A
+  manifest that does state kinds or tokens is still held to them exactly, in both directions. Capabilities
+  and security grants remain explicit manifest-owned least-privilege requests, because a privilege cannot be
+  derived from code that has not been allowed to run.
+- Made post-admission withdrawal complete. The loader releases token claims on any quarantine after the
+  claim rather than at one hand-picked step, and Host withdrawal — used for both a late loader failure and
+  `StopAsync` — now gives back token ownership alongside kinds, providers, languages, jobs, and health
+  contributors.
+- Changed the real packaged Movies proof from recording the quarantine to proving `Active`: the kind is
+  published, its derived tokens are owned once each by that kind, the admitted item type resolves inside the
+  extension's own `PluginLoadContext` rather than from an in-process binder call, a planted conflicting token
+  claim quarantines the package and leaves nothing behind, a restaged manifest declaring a kind the
+  projection does not supply is refused, and stopping releases both the kind and its tokens.
+- Narrowed the reference-inspector assertion to the default load context. Counting every context made it
+  measure whether the runtime had collected other fixtures' collectible plugin contexts — one of which loads
+  the contract assembly as an extension's own entry assembly — rather than whether inspection loads anything.
+
+G02 remains open. The runtime no longer reads Movies' hand-maintained `mediaKinds`, `identifiers`, `tokens`,
+and `policies`, but the manifest still carries them, so the second schema this gate exists to remove is still
+in the repository.
+
 ## 2026-08-21 — Establish the G01 proof rails and adopt .NET 11 Preview 7
 
 - Advanced every runtime, SDK, plugin, application, and test project to `net11.0`, pinned exact Preview 7 SDK

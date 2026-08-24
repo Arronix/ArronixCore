@@ -26,6 +26,7 @@ public sealed class PluginLoadResult
         ValidatedManifest? manifest,
         PluginRegistrationLedger? ledger,
         PluginLoadContext? loadContext,
+        AdmittedInventory admitted,
         CoreErrorCode? errorCode,
         string? message,
         IReadOnlyList<string> defects,
@@ -37,6 +38,7 @@ public sealed class PluginLoadResult
         Manifest = manifest;
         Ledger = ledger;
         LoadContext = loadContext;
+        Admitted = admitted;
         ErrorCode = errorCode;
         Message = message;
         Defects = defects;
@@ -75,6 +77,16 @@ public sealed class PluginLoadResult
     public PluginLoadContext? LoadContext { get; }
 
     /// <summary>
+    /// Gets what the host admitted for this extension, keyed per media kind.
+    /// </summary>
+    /// <remarks>
+    /// Empty until host admission has run, and legitimately empty afterwards for an extension that
+    /// contributes no media kind. This is what makes an already-active extension's real kinds readable when
+    /// the next extension is checked for a conflict, rather than the kinds its declaration file claimed.
+    /// </remarks>
+    public AdmittedInventory Admitted { get; }
+
+    /// <summary>
     /// Gets the failure class, or <see langword="null"/> when the extension did not fail.
     /// </summary>
     public CoreErrorCode? ErrorCode { get; }
@@ -108,6 +120,7 @@ public sealed class PluginLoadResult
     /// <param name="ledger">Everything it registered, when it got that far.</param>
     /// <param name="loadContext">Its load context, when one was created.</param>
     /// <param name="changedAt">When it reached the state.</param>
+    /// <param name="admitted">What the host admitted, when admission has run.</param>
     /// <returns>The result.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="manifest"/> is <see langword="null"/>.</exception>
     public static PluginLoadResult Progressed(
@@ -116,7 +129,8 @@ public sealed class PluginLoadResult
         ValidatedManifest manifest,
         PluginRegistrationLedger? ledger,
         PluginLoadContext? loadContext,
-        DateTimeOffset changedAt)
+        DateTimeOffset changedAt,
+        AdmittedInventory? admitted = null)
     {
         ArgumentNullException.ThrowIfNull(manifest);
 
@@ -127,6 +141,7 @@ public sealed class PluginLoadResult
             manifest,
             ledger,
             loadContext,
+            admitted ?? AdmittedInventory.Empty,
             errorCode: null,
             message: null,
             defects: [],
@@ -159,6 +174,7 @@ public sealed class PluginLoadResult
             manifest,
             ledger: null,
             loadContext: null,
+            AdmittedInventory.Empty,
             errorCode,
             message,
             defects ?? [],
@@ -171,12 +187,14 @@ public sealed class PluginLoadResult
     /// <param name="ledger">Everything it registered, when that is what changed.</param>
     /// <param name="loadContext">Its load context, when that is what changed.</param>
     /// <param name="changedAt">When it reached the state.</param>
+    /// <param name="admitted">What the host admitted, when that is what changed.</param>
     /// <returns>The updated result.</returns>
     public PluginLoadResult Advance(
         PluginState state,
         PluginRegistrationLedger? ledger,
         PluginLoadContext? loadContext,
-        DateTimeOffset changedAt)
+        DateTimeOffset changedAt,
+        AdmittedInventory? admitted = null)
         => new(
             Source,
             state,
@@ -184,6 +202,7 @@ public sealed class PluginLoadResult
             Manifest,
             ledger ?? Ledger,
             loadContext ?? LoadContext,
+            admitted ?? Admitted,
             ErrorCode,
             Message,
             Defects,

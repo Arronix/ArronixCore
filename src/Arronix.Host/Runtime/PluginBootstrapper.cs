@@ -22,6 +22,7 @@ using Arronix.Host.Scheduling;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
+using Arronix.Plugins.Registry;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -52,6 +53,7 @@ namespace Arronix.Host.Runtime;
 public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissionCheck
 {
     private readonly PluginLoader _loader;
+    private readonly TokenRegistry _tokens;
     private readonly MediaKindRegistry _kinds;
     private readonly MediaTypeBinder _mediaTypes;
     private readonly LanguageDefinitionRegistry _languages;
@@ -72,6 +74,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     /// Creates a bootstrapper.
     /// </summary>
     /// <param name="loader">The load pipeline.</param>
+    /// <param name="tokens">Who owns which naming token, so withdrawal gives token ownership back too.</param>
     /// <param name="kinds">Where admitted media kinds go.</param>
     /// <param name="mediaTypes">The binder that turns a typed registration into an admitted kind.</param>
     /// <param name="languages">Where admitted language implementations go.</param>
@@ -87,6 +90,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     public PluginBootstrapper(
         PluginLoader loader,
+        TokenRegistry tokens,
         MediaKindRegistry kinds,
         MediaTypeBinder mediaTypes,
         LanguageDefinitionRegistry languages,
@@ -101,6 +105,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         ILogger<PluginBootstrapper> log)
     {
         ArgumentNullException.ThrowIfNull(loader);
+        ArgumentNullException.ThrowIfNull(tokens);
         ArgumentNullException.ThrowIfNull(kinds);
         ArgumentNullException.ThrowIfNull(mediaTypes);
         ArgumentNullException.ThrowIfNull(languages);
@@ -115,6 +120,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         ArgumentNullException.ThrowIfNull(log);
 
         _loader = loader;
+        _tokens = tokens;
         _kinds = kinds;
         _mediaTypes = mediaTypes;
         _languages = languages;
@@ -196,67 +202,74 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
 
     /// <inheritdoc />
     /// <remarks>
+    /// <para>
     /// The host's own admission checks, run inside the loader's pipeline: the declared shape is resolved,
     /// the declared surface is checked against it, and everything the extension registered is committed into
     /// the host's registries. Every one of those can refuse, and refusing here quarantines the extension with
     /// the full defect list rather than with the first fault found.
+    /// </para>
+    /// <para>
+    /// What it answers with is the inventory the host actually admitted, taken from the registered kinds
+    /// themselves rather than derived a second time. That is what lets the loader's remaining steps ask the
+    /// platform what an extension supplies instead of asking the extension's declaration file.
+    /// </para>
     /// </remarks>
-    [SuppressMessage(
-        "Design",
-        "CA1021:Avoid out parameters",
-        Justification = "The signature is the loader's, not this class's; it returns a verdict, a machine-readable code and the complete defect list.")]
-    public bool TryAdmit(
-        ValidatedManifest manifest,
-        PluginRegistrationLedger ledger,
-        out CoreErrorCode errorCode,
-        out IReadOnlyList<string> defects)
+    public PluginAdmissionResult Admit(ValidatedManifest manifest, PluginRegistrationLedger ledger)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         ArgumentNullException.ThrowIfNull(ledger);
 
-        errorCode = CoreErrorCode.PluginShapeInvalid;
-
-        if (!TryAdmitMediaKinds(manifest, ledger, out errorCode, out defects))
+        if (!TryAdmitMediaKinds(manifest, ledger, out var admittedKinds, out var errorCode, out var defects))
         {
             Withdraw(manifest.Id);
-            return false;
+            return PluginAdmissionResult.Refused(errorCode, defects);
         }
+
+        var inventory = new AdmittedInventory(admittedKinds);
 
         if (!TryAdmitLanguages(manifest, ledger, out defects))
         {
-            errorCode = CoreErrorCode.PluginIdConflict;
             Withdraw(manifest.Id);
-            return false;
+            return PluginAdmissionResult.Refused(CoreErrorCode.PluginIdConflict, defects);
         }
 
-        if (!TryAdmitJobs(manifest, ledger, out defects))
+        if (!TryAdmitJobs(manifest, inventory, ledger, out defects))
         {
-            errorCode = CoreErrorCode.JobSchedulingFailed;
             Withdraw(manifest.Id);
-            return false;
+            return PluginAdmissionResult.Refused(CoreErrorCode.JobSchedulingFailed, defects);
         }
 
         if (!TryAdmitProviders(manifest, ledger, out defects))
         {
-            errorCode = CoreErrorCode.PluginIdConflict;
             Withdraw(manifest.Id);
-            return false;
+            return PluginAdmissionResult.Refused(CoreErrorCode.PluginIdConflict, defects);
         }
 
         _pluginHealth.Add(manifest.Id, ledger.Registered<IHealthContributor>());
         _committed.Add(manifest.Id);
 
-        defects = [];
-        return true;
+        return PluginAdmissionResult.Admitted(inventory);
     }
 
+    /// <remarks>
+    /// Both registration paths end at the same registry, so both contribute to the same inventory. The kind
+    /// and its tokens are read back off the admitted <see cref="RegisteredMediaKind"/> rather than recomputed
+    /// from the registration, because the projection the platform will serve is the only honest answer to
+    /// what was admitted.
+    /// </remarks>
+    [SuppressMessage(
+        "Design",
+        "CA1021:Avoid out parameters",
+        Justification = "One private step returning a verdict, what it admitted, a machine-readable code and the complete defect list.")]
     private bool TryAdmitMediaKinds(
         ValidatedManifest manifest,
         PluginRegistrationLedger ledger,
+        out IReadOnlyList<AdmittedMediaKind> admitted,
         out CoreErrorCode errorCode,
         out IReadOnlyList<string> defects)
     {
         errorCode = CoreErrorCode.PluginShapeInvalid;
+        admitted = [];
 
         var typed = ledger.Registered<IMediaTypeRegistration>();
         var shapes = ledger.Registered<IMediaShapeProvider>();
@@ -267,14 +280,17 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
             return true;
         }
 
+        var registered = new List<AdmittedMediaKind>(typed.Count + shapes.Count);
+
         if (typed.Count > 0
-            && !TryAdmitTypedKinds(manifest, typed, out errorCode, out defects))
+            && !TryAdmitTypedKinds(manifest, typed, registered, out errorCode, out defects))
         {
             return false;
         }
 
         if (shapes.Count == 0)
         {
+            admitted = registered;
             defects = [];
             return true;
         }
@@ -313,16 +329,27 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
                 IdResolver = Pick<IMediaIdResolver>(ledger),
             };
 
-            if (!_kinds.TryRegister(contribution, out _, out var shapeDefects))
+            if (_kinds.TryRegister(contribution, out var admittedKind, out var shapeDefects))
+            {
+                registered.Add(Inventory(admittedKind!));
+            }
+            else
             {
                 errorCode = shapeDefects.Count > 0 ? shapeDefects[0].Code : CoreErrorCode.PluginShapeInvalid;
                 found.AddRange(shapeDefects.Select(defect => $"{defect.Path}: {defect.Message}"));
             }
         }
 
+        admitted = registered;
         defects = found;
         return found.Count == 0;
     }
+
+    /// <summary>
+    /// Reads one admitted kind back as the inventory entry the loader consumes.
+    /// </summary>
+    private static AdmittedMediaKind Inventory(RegisteredMediaKind kind)
+        => new(kind.Kind, kind.Shape.Declaration.Tokens);
 
     /// <summary>
     /// Admits every typed media kind the extension registered.
@@ -336,6 +363,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
     private bool TryAdmitTypedKinds(
         ValidatedManifest manifest,
         IReadOnlyList<IMediaTypeRegistration> registrations,
+        List<AdmittedMediaKind> registered,
         out CoreErrorCode errorCode,
         out IReadOnlyList<string> defects)
     {
@@ -352,7 +380,11 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
                 Registration = registration,
             };
 
-            if (!_mediaTypes.TryRegister(contribution, out _, out var kindDefects))
+            if (_mediaTypes.TryRegister(contribution, out var admittedKind, out var kindDefects))
+            {
+                registered.Add(Inventory(admittedKind!));
+            }
+            else
             {
                 errorCode = kindDefects.Count > 0 ? kindDefects[0].Code : CoreErrorCode.PluginShapeInvalid;
                 found.AddRange(kindDefects.Select(defect => $"{defect.Path}: {defect.Message}"));
@@ -363,13 +395,20 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         return found.Count == 0;
     }
 
+    /// <remarks>
+    /// A job is associated with the one kind the extension actually supplies. The kind comes from what was
+    /// just admitted, and only falls back to the declaration for an extension that admitted no kind at all —
+    /// a manifest cannot be the authority on a fact derived from the extension's own types.
+    /// </remarks>
     private bool TryAdmitJobs(
         ValidatedManifest manifest,
+        AdmittedInventory admitted,
         PluginRegistrationLedger ledger,
         out IReadOnlyList<string> defects)
     {
         var found = new List<string>();
-        var kind = manifest.MediaKinds.Count == 1 ? manifest.MediaKinds[0] : (MediaKindId?)null;
+        var supplied = admitted.HasMediaKinds ? admitted.Kinds : manifest.MediaKinds;
+        var kind = supplied.Count == 1 ? supplied[0] : (MediaKindId?)null;
 
         foreach (var registration in ledger.ScheduledJobs)
         {
@@ -474,6 +513,11 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         return registered.Count == 0 ? null : registered[0];
     }
 
+    /// <remarks>
+    /// Everything an extension took, given back in one place. Token ownership is part of that: a naming
+    /// token owned by an extension the platform is no longer serving would keep a template validating
+    /// against a kind nobody can render, and would refuse the next extension that legitimately claimed it.
+    /// </remarks>
     private void Withdraw(PluginId plugin)
     {
         _kinds.RemoveByPlugin(plugin);
@@ -481,6 +525,7 @@ public sealed partial class PluginBootstrapper : IHostedService, IPluginAdmissio
         _providers.RemoveByPlugin(plugin);
         _jobs.RemoveByPlugin(plugin);
         _pluginHealth.RemoveByPlugin(plugin);
+        _tokens.Release(plugin);
     }
 
     private void Record(PluginLoadResult result)

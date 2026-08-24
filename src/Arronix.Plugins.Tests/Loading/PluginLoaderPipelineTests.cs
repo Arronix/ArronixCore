@@ -303,8 +303,11 @@ public sealed class PluginLoaderPipelineTests
     {
         var claimed = _tokens.TryClaimAll(
             PluginId.FromString("alpha"),
-            [Abstractions.Identity.MediaKindId.FromString("example")],
-            [new NamingToken("{Quality}", string.Empty, string.Empty)],
+            [
+                new TokenClaimRequest(
+                    Abstractions.Identity.MediaKindId.FromString("example"),
+                    [new NamingToken("{Quality}", string.Empty, string.Empty)])
+            ],
             out var defects);
 
         claimed.Should().BeFalse();
@@ -320,9 +323,15 @@ public sealed class PluginLoaderPipelineTests
     {
         var token = new NamingToken("{Title}", string.Empty, string.Empty);
 
-        _tokens.TryClaimAll(PluginId.FromString("alpha"), [Abstractions.Identity.MediaKindId.FromString("one")], [token], out _)
+        _tokens.TryClaimAll(
+                PluginId.FromString("alpha"),
+                [new TokenClaimRequest(Abstractions.Identity.MediaKindId.FromString("one"), [token])],
+                out _)
             .Should().BeTrue();
-        _tokens.TryClaimAll(PluginId.FromString("beta"), [Abstractions.Identity.MediaKindId.FromString("two")], [token], out var defects)
+        _tokens.TryClaimAll(
+                PluginId.FromString("beta"),
+                [new TokenClaimRequest(Abstractions.Identity.MediaKindId.FromString("two"), [token])],
+                out var defects)
             .Should().BeTrue("a stable meaning per token within a media context is the stated goal, not across the platform");
 
         defects.Should().BeEmpty();
@@ -335,8 +344,10 @@ public sealed class PluginLoaderPipelineTests
         var token = new NamingToken("{Title}", string.Empty, string.Empty);
         var kind = Abstractions.Identity.MediaKindId.FromString("one");
 
-        _tokens.TryClaimAll(PluginId.FromString("alpha"), [kind], [token], out _).Should().BeTrue();
-        _tokens.TryClaimAll(PluginId.FromString("beta"), [kind], [token], out var defects).Should().BeFalse();
+        _tokens.TryClaimAll(PluginId.FromString("alpha"), [new TokenClaimRequest(kind, [token])], out _)
+            .Should().BeTrue();
+        _tokens.TryClaimAll(PluginId.FromString("beta"), [new TokenClaimRequest(kind, [token])], out var defects)
+            .Should().BeFalse();
 
         defects.Should().ContainSingle().Which.Message.Should().Contain("alpha");
     }
@@ -348,10 +359,13 @@ public sealed class PluginLoaderPipelineTests
 
         _tokens.TryClaimAll(
                 PluginId.FromString("alpha"),
-                [kind],
                 [
-                    new NamingToken("{Title}", string.Empty, string.Empty),
-                    new NamingToken("{Quality}", string.Empty, string.Empty)
+                    new TokenClaimRequest(
+                        kind,
+                        [
+                            new NamingToken("{Title}", string.Empty, string.Empty),
+                            new NamingToken("{Quality}", string.Empty, string.Empty)
+                        ])
                 ],
                 out _)
             .Should().BeFalse();
@@ -365,13 +379,19 @@ public sealed class PluginLoaderPipelineTests
     {
         var alpha = PluginId.FromString("alpha");
         var kind = Abstractions.Identity.MediaKindId.FromString("one");
-        _tokens.TryClaimAll(alpha, [kind], [new NamingToken("{Title}", string.Empty, string.Empty)], out _)
+        _tokens.TryClaimAll(
+                alpha,
+                [new TokenClaimRequest(kind, [new NamingToken("{Title}", string.Empty, string.Empty)])],
+                out _)
             .Should().BeTrue();
 
         _tokens.Release(alpha);
 
         _tokens.Claims.Should().BeEmpty();
-        _tokens.TryClaimAll(PluginId.FromString("beta"), [kind], [new NamingToken("{Title}", string.Empty, string.Empty)], out _)
+        _tokens.TryClaimAll(
+                PluginId.FromString("beta"),
+                [new TokenClaimRequest(kind, [new NamingToken("{Title}", string.Empty, string.Empty)])],
+                out _)
             .Should().BeTrue();
     }
 

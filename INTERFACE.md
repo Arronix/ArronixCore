@@ -131,7 +131,9 @@ and is never reported as accepted.
 - Artwork may be carried by a typed workbench row. A consumer chooses its presentation; the semantic contract does not infer layout.
 - Media extensions do not declare the platform action catalogue or its wire keys.
 - Client binds affordances through `StandardMediaAction`; only the API route and action request serialize string identifiers.
-- A plugin manifest owns package identity, compatibility, dependencies, capabilities requiring admission, and explicit security grants. It is not a second media schema; derivable kinds, fields, tokens, policies, and actions are generated or mechanically validated rather than manually restated.
+- A plugin manifest owns package identity, compatibility, dependencies, capabilities requiring admission, and explicit security grants. It is not a second media schema; derivable kinds, fields, tokens, policies, and actions are generated or mechanically validated rather than manually restated. A manifest may omit every derivable media fact, and validation no longer demands that a media extension restate the kinds it supplies. A manifest which does state kinds or tokens is held to them exactly and in both directions against what was admitted.
+- After Host admission, the admitted projection is the authority on what an extension supplies. Host answers the loader with an admitted inventory keyed per media kind, each entry carrying that kind's own derived naming tokens; late agreement, scheduled-job kind association, duplicate-kind checking, and token ownership read it rather than the manifest. Legacy shape-provider registrations remain a transitional path for a loader running without Host admission.
+- Naming-token ownership is per media kind. A kind claims the tokens it derived, once each; an extension supplying several kinds never claims the cross product of its kinds and its combined vocabulary.
 - Every known compatibility omission has a stable semantic ledger entry with provenance. Published semantics,
   bindings, and source digests are compared with the prior committed ledger. A skipped fixture, renamed test,
   coordinated ledger-and-source weakening, or replacement without independently anchored executable evidence
@@ -157,7 +159,7 @@ and is never reported as accepted.
 
 ## 6. Side effects
 
-The loader reads plugin manifests and assemblies, creates isolated load contexts, and may quarantine invalid plugins. Host provider calls may perform network and filesystem activity only through capability-scoped services. The current media store and queue are in memory; restart durability is not promised.
+The loader reads plugin manifests and assemblies, creates isolated load contexts, and may quarantine invalid plugins. Quarantine after admission withdraws every committed contribution, including naming-token ownership. Host provider calls may perform network and filesystem activity only through capability-scoped services. The current media store and queue are in memory; restart durability is not promised.
 
 ## 7. Dependency boundaries
 
@@ -177,7 +179,7 @@ duplicate loads or a fallback to string projection.
 
 ## 8. Lifecycle and execution
 
-While a media extension builds, `Arronix.Generators` emits its closed item, group, and workbench-row projections. At startup the loader validates manifests and static references, constructs a capability-scoped context, invokes the plugin module, seals registration, and hands admitted registrations to Host. Host validates and derives its kind-blind model from those generated projections, activates provider and language implementation types through DI, then publishes admitted kinds/providers/languages atomically. Failure quarantines the plugin; it does not terminate Host.
+While a media extension builds, `Arronix.Generators` emits its closed item, group, and workbench-row projections. At startup the loader validates manifests and static references, constructs a capability-scoped context, invokes the plugin module, seals registration, and hands admitted registrations to Host. Host validates and derives its kind-blind model from those generated projections, activates provider and language implementation types through DI, publishes admitted kinds/providers/languages atomically, and returns the inventory it admitted. The loader's remaining checks — declaration agreement, naming-token ownership, and identity across the installation — consume that inventory. Failure quarantines the plugin; it does not terminate Host, and a failure after any of those checks has committed something gives all of it back: the kind, its token claims, and the extension's provider, language, job, and health registrations. Host teardown reverses activation the same way.
 
 Replacement-grade execution must continue from those admitted types through catalog/curation, acquisition
 targeting, semantic queries, raw indexer listings, media interpretation plus format/language contributions,

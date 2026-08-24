@@ -177,7 +177,7 @@ Completion proof recorded on 2026-08-21:
 
 ### G02 — Make the real packaged Movies extension load
 
-**Status:** active.
+**Status:** active. The loader and lifecycle half is done; the manifest half is not.
 
 **Outcome:** the actual Movies and Video build outputs survive discovery, admission, typed binding,
 activation, publication, and withdrawal through the real plugin pipeline.
@@ -201,6 +201,32 @@ Exit gate:
 - a deliberately invalid late check quarantines the extension and withdraws kind, tokens, and registrations;
 - the integration test fails if a direct-binder shortcut is reintroduced;
 - the manifest is not a second hand-maintained media definition.
+
+Progress recorded on 2026-08-24:
+
+- `IPluginAdmissionCheck.Admit` returns a `PluginAdmissionResult` carrying an `AdmittedInventory`: one entry
+  per `MediaKindId` Host actually registered, each holding that admitted kind's own derived `NamingToken`
+  collection, read back off its `RegisteredMediaKind` rather than derived a second time;
+- late declaration agreement, scheduled-job kind association, cross-installation duplicate-kind checking, and
+  token ownership consume that inventory. Legacy `IMediaShapeProvider` registrations remain the transitional
+  answer only when no host admission ran;
+- token ownership is claimed per admitted kind through `TokenClaimRequest`, so an extension supplying several
+  kinds cannot claim the cross product of its kinds and its combined vocabulary;
+- any quarantine after the claim releases it, and host withdrawal gives back token ownership alongside kinds,
+  providers, languages, jobs, and health contributors, on both a late loader failure and `StopAsync`;
+- manifest validation permits a media extension to omit derivable kinds and tokens. Capabilities and security
+  grants remain explicit manifest-owned least-privilege requests;
+- the real packaged Movies output reaches `Active`, publishes `movies`, owns exactly its derived tokens once
+  each, and proves its admitted item type resolved inside the extension's own `PluginLoadContext`. A planted
+  conflicting token claim and a restaged manifest declaring an unsupplied kind each quarantine the package
+  and leave nothing behind; and
+- the full rail reports 2,121 passed, 302 skipped, zero failed, and zero inconclusive from 2,423 cases across
+  11 test projects.
+
+Still open: `src/Arronix.Plugin.Movies/plugin.json` continues to hand-maintain `mediaKinds`, `identifiers`,
+`tokens`, and `policies`. Nothing in the runtime treats them as authority any more, so they are exactly the
+second media definition this gate exists to remove. Books, Music, and Television keep their transitional
+declarations until their own conversions.
 
 This gate does **not** claim the parser, selector, providers, persistence, or Client vertical is complete.
 

@@ -353,19 +353,19 @@ public static class PluginManifestValidator
 
         // Claiming a media kind and holding the privilege to contribute one are the same statement written
         // twice. Letting them disagree would leave a kind nothing is permitted to supply a shape for.
+        //
+        // The converse is deliberately not checked. Which kinds an extension supplies is derived from the
+        // types it registers, so a manifest holding the privilege and naming no kind is stating the
+        // privilege once rather than omitting a fact: whether it supplies one, and which, is settled after
+        // load against the kind the host actually admitted. Requiring the list here would make the manifest
+        // a second media schema, which is the thing it must not become. The privilege itself stays an
+        // explicit manifest-owned request, because least privilege cannot be derived from code that has not
+        // been allowed to run yet.
         if (result.Count > 0 && !capabilities.Has(Capability.MediaKind))
         {
             found.Add(new ManifestDefect(
                 "mediaKinds",
                 $"Claiming a media kind requires the '{CapabilityNames.MediaKind}' capability.",
-                CoreErrorCode.PluginManifestInvalid));
-        }
-
-        if (result.Count == 0 && capabilities.Has(Capability.MediaKind))
-        {
-            found.Add(new ManifestDefect(
-                "mediaKinds",
-                $"The '{CapabilityNames.MediaKind}' capability was declared but no media kind was claimed.",
                 CoreErrorCode.PluginManifestInvalid));
         }
 

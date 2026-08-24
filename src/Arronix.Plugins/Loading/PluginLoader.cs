@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
+using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
@@ -22,26 +23,28 @@ namespace Arronix.Plugins.Loading;
 /// A check the host contributes to the pipeline, run after registration and before commitment.
 /// </summary>
 /// <remarks>
+/// <para>
 /// The seam exists because two of the pipeline's checks — proving a declared media shape well-formed, and
 /// proving a declared interface surface coherent — need types the loader deliberately does not know about.
 /// The loader owns isolation and privilege; the host owns meaning. Inverting the dependency here is what
 /// keeps the loader from having to reference the registries it loads extensions <i>for</i>.
+/// </para>
+/// <para>
+/// The check answers with what it admitted rather than only with a verdict. Three of the pipeline's steps
+/// run after admission and every one of them is a question about what the extension actually contributes;
+/// a verdict alone left them reading the declaration file, which is how a typed media kind the host had
+/// already bound and published could still be quarantined for contributing no shape.
+/// </para>
 /// </remarks>
 public interface IPluginAdmissionCheck
 {
     /// <summary>
-    /// Decides whether what an extension registered may be committed.
+    /// Decides whether what an extension registered may be committed, and says what was admitted.
     /// </summary>
     /// <param name="manifest">The extension's proved declaration.</param>
     /// <param name="ledger">Everything it registered.</param>
-    /// <param name="errorCode">The failure class when it may not.</param>
-    /// <param name="defects">Everything wrong, when it may not.</param>
-    /// <returns><see langword="true"/> when the registrations may be committed.</returns>
-    bool TryAdmit(
-        ValidatedManifest manifest,
-        PluginRegistrationLedger ledger,
-        out CoreErrorCode errorCode,
-        out IReadOnlyList<string> defects);
+    /// <returns>The verdict, with the admitted inventory or the complete defect list.</returns>
+    PluginAdmissionResult Admit(ValidatedManifest manifest, PluginRegistrationLedger ledger);
 }
 
 /// <summary>
@@ -283,6 +286,7 @@ public sealed class PluginLoader
         ArgumentNullException.ThrowIfNull(manifest);
 
         var source = candidate.ManifestPath;
+        var admitted = AdmittedInventory.Empty;
 
         // A host precondition rather than a step: checked before anything is loaded, so that a host missing
         // a subsystem is reported as a host misconfiguration rather than as a defect in the first extension
@@ -338,6 +342,8 @@ public sealed class PluginLoader
         }
 
         PluginLoadContext? context = null;
+        var claimedTokens = false;
+        var committed = false;
 
         try
         {
@@ -394,32 +400,44 @@ public sealed class PluginLoader
                     [.. unsatisfied.Select(CapabilityNames.ToWireName)]);
             }
 
-            // Steps 11 and 12: the host's own checks over what was registered.
-            if (admission is not null && !admission.TryAdmit(manifest, ledger, out var admissionCode, out var admissionDefects))
+            // Steps 11 and 12: the host's own checks over what was registered. From here on, what the host
+            // admitted — not what the declaration claimed — is the authority on this extension's kinds and
+            // their tokens.
+            if (admission is not null)
             {
-                return Quarantine(
-                    source,
-                    manifest.Id,
-                    manifest,
-                    admissionCode,
-                    $"What extension '{manifest.Id}' registered did not pass validation.",
-                    admissionDefects);
+                var verdict = admission.Admit(manifest, ledger);
+
+                if (!verdict.IsAdmitted)
+                {
+                    return Quarantine(
+                        source,
+                        manifest.Id,
+                        manifest,
+                        verdict.ErrorCode,
+                        $"What extension '{manifest.Id}' registered did not pass validation.",
+                        verdict.Defects);
+                }
+
+                admitted = verdict.Inventory;
             }
 
-            // Step 13: the declared tokens and the registered shape must agree.
-            if (!TryCrossCheckTokens(manifest, ledger, out var tokenDefects))
+            // Step 13: what the declaration says about derivable media facts must agree with what was
+            // admitted. A declaration that says nothing about them agrees by construction, because they are
+            // derived from the extension's own types rather than restated in its manifest.
+            if (!TryCrossCheckDerivedDeclarations(manifest, ledger, admitted, out var tokenDefects))
             {
                 return Quarantine(
                     source,
                     manifest.Id,
                     manifest,
                     CoreErrorCode.PluginPolicyDeclarationInvalid,
-                    $"The tokens extension '{manifest.Id}' declares do not match the tokens its media shape defines.",
+                    $"The media kinds and tokens extension '{manifest.Id}' declares do not match what its media shape defines.",
                     tokenDefects);
             }
 
-            // Step 14: token ownership across the whole installation.
-            if (!_tokens.TryClaimAll(manifest.Id, manifest.MediaKinds, manifest.Tokens, out var claimDefects))
+            // Step 14: token ownership across the whole installation, claimed per kind by the kind that owns
+            // the token rather than as the cross product of an extension's kinds and its whole vocabulary.
+            if (!_tokens.TryClaimAll(manifest.Id, TokenClaims(manifest, ledger, admitted), out var claimDefects))
             {
                 return Quarantine(
                     source,
@@ -430,11 +448,11 @@ public sealed class PluginLoader
                     [.. claimDefects.Select(defect => defect.ToString())]);
             }
 
-            // Step 15: identity of what was registered, within this extension and across the installation.
-            if (!TryCheckIdentifiers(manifest, ledger, out var identityCode, out var identityDefects))
-            {
-                _tokens.Release(manifest.Id);
+            claimedTokens = true;
 
+            // Step 15: identity of what was registered, within this extension and across the installation.
+            if (!TryCheckIdentifiers(manifest, ledger, admitted, out var identityCode, out var identityDefects))
+            {
                 return Quarantine(
                     source,
                     manifest.Id,
@@ -446,8 +464,8 @@ public sealed class PluginLoader
 
             // Step 16.
             var loaded = PluginLoadResult
-                .Progressed(source, PluginState.Registered, manifest, ledger, context, _clock.GetUtcNow())
-                .Advance(PluginState.Active, ledger, context, _clock.GetUtcNow());
+                .Progressed(source, PluginState.Registered, manifest, ledger, context, _clock.GetUtcNow(), admitted)
+                .Advance(PluginState.Active, ledger, context, _clock.GetUtcNow(), admitted);
 
             _registry.Record(loaded);
             PluginLoaderLog.Activated(
@@ -456,6 +474,7 @@ public sealed class PluginLoader
                 manifest.Version.ToString(),
                 ledger.Count);
 
+            committed = true;
             context = null;
             return loaded;
         }
@@ -485,8 +504,16 @@ public sealed class PluginLoader
         }
         finally
         {
-            // Anything that did not reach the commit gives its context back, so a quarantined extension
-            // does not leave a load context alive holding its assemblies.
+            // Anything that did not reach the commit gives back everything it took. Tokens are given back
+            // here rather than at each failing step so that no later step can be added which forgets: an
+            // extension holding token ownership it was quarantined for is the half-registered state the
+            // pipeline exists to make impossible.
+            if (claimedTokens && !committed)
+            {
+                _tokens.Release(manifest.Id);
+            }
+
+            // A quarantined extension does not leave a load context alive holding its assemblies.
             context?.Unload();
         }
     }
@@ -622,46 +649,119 @@ public sealed class PluginLoader
     }
 
     /// <remarks>
-    /// The comparison is symmetric. A token in the declaration that the shape does not define would present
-    /// token help for something no template can use; a token the shape defines that the declaration omits
-    /// would have no description to present. Both are worth catching at load rather than at first rename.
+    /// <para>
+    /// Media kinds and naming tokens are derived from an extension's own types, so a manifest that omits
+    /// them is complete rather than incomplete and nothing is checked. A manifest that states them is held
+    /// to them exactly, in both directions: a token in the declaration that the kind does not define would
+    /// present token help for something no template can use, and a token the kind defines that the
+    /// declaration omits would have no description to present.
+    /// </para>
+    /// <para>
+    /// The authority is the admitted inventory whenever the host admitted anything, because that is the
+    /// projection the platform will actually serve. The registered legacy shape seam is consulted only when
+    /// no admission ran — a loader driven without a host — and remains a transitional path.
+    /// </para>
     /// </remarks>
-    private static bool TryCrossCheckTokens(
+    private static bool TryCrossCheckDerivedDeclarations(
         ValidatedManifest manifest,
         PluginRegistrationLedger ledger,
+        AdmittedInventory admitted,
         out IReadOnlyList<string> defects)
     {
-        var shapes = ledger.Registered<IMediaShapeProvider>();
-        var declared = manifest.Tokens.Select(token => token.Name).ToHashSet(StringComparer.Ordinal);
-        var defined = shapes
-            .SelectMany(shape => shape.Shape.Tokens)
-            .Select(token => token.Name)
-            .ToHashSet(StringComparer.Ordinal);
+        var authority = admitted.HasMediaKinds ? "admitted media kind" : "registered media shape";
+
+        var definedKinds = admitted.HasMediaKinds
+            ? admitted.Kinds.Select(kind => kind.Value).ToHashSet(StringComparer.Ordinal)
+            : ledger.Registered<IMediaShapeProvider>()
+                .Select(shape => shape.Shape.Kind.Value)
+                .ToHashSet(StringComparer.Ordinal);
+
+        var definedTokens = admitted.HasMediaKinds
+            ? admitted.TokenNames.ToHashSet(StringComparer.Ordinal)
+            : ledger.Registered<IMediaShapeProvider>()
+                .SelectMany(shape => shape.Shape.Tokens)
+                .Select(token => token.Name)
+                .ToHashSet(StringComparer.Ordinal);
 
         var found = new List<string>();
 
-        foreach (var name in declared.Except(defined, StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal))
+        if (manifest.MediaKinds.Count > 0)
         {
-            found.Add($"'{name}' is declared in the manifest but no registered media shape defines it.");
+            var declaredKinds = manifest.MediaKinds.Select(kind => kind.Value).ToHashSet(StringComparer.Ordinal);
+
+            foreach (var kind in declaredKinds.Except(definedKinds, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            {
+                found.Add($"media kind '{kind}' is declared in the manifest but no {authority} supplies it.");
+            }
+
+            foreach (var kind in definedKinds.Except(declaredKinds, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            {
+                found.Add($"media kind '{kind}' is supplied by a {authority} but is not declared in the manifest.");
+            }
         }
 
-        foreach (var name in defined.Except(declared, StringComparer.Ordinal).OrderBy(name => name, StringComparer.Ordinal))
+        if (manifest.Tokens.Count > 0)
         {
-            found.Add($"'{name}' is defined by a registered media shape but is not declared in the manifest.");
+            var declaredTokens = manifest.Tokens.Select(token => token.Name).ToHashSet(StringComparer.Ordinal);
+
+            foreach (var name in declaredTokens.Except(definedTokens, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            {
+                found.Add($"'{name}' is declared in the manifest but no {authority} defines it.");
+            }
+
+            foreach (var name in definedTokens.Except(declaredTokens, StringComparer.Ordinal).Order(StringComparer.Ordinal))
+            {
+                found.Add($"'{name}' is defined by a {authority} but is not declared in the manifest.");
+            }
         }
 
         defects = found;
         return found.Count == 0;
     }
 
+    /// <summary>
+    /// Works out which tokens each of an extension's media kinds owns.
+    /// </summary>
     /// <remarks>
+    /// One request per kind, carrying that kind's own tokens. The admitted projection answers when the host
+    /// admitted anything; the registered legacy shape answers when it did not; and an extension with neither
+    /// falls back to its declaration, which can only produce claims for a manifest that declared tokens
+    /// nothing defines — a state the previous step has already refused.
+    /// </remarks>
+    private static IReadOnlyList<TokenClaimRequest> TokenClaims(
+        ValidatedManifest manifest,
+        PluginRegistrationLedger ledger,
+        AdmittedInventory admitted)
+    {
+        if (admitted.HasMediaKinds)
+        {
+            return [.. admitted.MediaKinds.Select(kind => new TokenClaimRequest(kind.Kind, kind.Tokens))];
+        }
+
+        var shapes = ledger.Registered<IMediaShapeProvider>();
+
+        return shapes.Count > 0
+            ? [.. shapes.Select(shape => new TokenClaimRequest(shape.Shape.Kind, shape.Shape.Tokens))]
+            : [.. manifest.MediaKinds.Select(kind => new TokenClaimRequest(kind, manifest.Tokens))];
+    }
+
+    /// <remarks>
+    /// <para>
     /// Provider identifiers are qualified by the extension that supplies them, so two extensions can never
     /// collide. Within one extension they can, and a media kind is claimed across the whole installation, so
     /// both are checked here.
+    /// </para>
+    /// <para>
+    /// The kinds compared are the ones actually supplied on both sides — this extension's admitted
+    /// inventory against every active extension's — and fall back to a declaration only for an extension no
+    /// host admission has run for. Comparing declarations would let an extension claim a kind it never
+    /// supplies, and would miss one it supplies without declaring.
+    /// </para>
     /// </remarks>
     private bool TryCheckIdentifiers(
         ValidatedManifest manifest,
         PluginRegistrationLedger ledger,
+        AdmittedInventory admitted,
         out CoreErrorCode errorCode,
         out IReadOnlyList<string> defects)
     {
@@ -684,12 +784,17 @@ public sealed class PluginLoader
             return false;
         }
 
-        var claimed = _registry.All
-            .Where(result => result.IsActive && result.Manifest is not null)
-            .SelectMany(result => result.Manifest!.MediaKinds.Select(kind => (kind, result.Manifest!.Id)))
-            .ToDictionary(entry => entry.kind.Value, entry => entry.Id, StringComparer.Ordinal);
+        var claimed = new Dictionary<string, PluginId>(StringComparer.Ordinal);
 
-        foreach (var kind in manifest.MediaKinds)
+        foreach (var result in _registry.All.Where(result => result.IsActive && result.Manifest is not null))
+        {
+            foreach (var kind in SuppliedKinds(result.Admitted, result.Manifest!.MediaKinds))
+            {
+                claimed[kind.Value] = result.Manifest!.Id;
+            }
+        }
+
+        foreach (var kind in SuppliedKinds(admitted, manifest.MediaKinds))
         {
             if (claimed.TryGetValue(kind.Value, out var owner))
             {
@@ -707,6 +812,17 @@ public sealed class PluginLoader
         defects = [];
         return true;
     }
+
+    /// <summary>
+    /// The media kinds an extension actually supplies.
+    /// </summary>
+    /// <param name="admitted">What the host admitted for it.</param>
+    /// <param name="declared">What its declaration claimed.</param>
+    /// <returns>The admitted kinds, or the declared ones when no admission has run for it.</returns>
+    private static IReadOnlyList<MediaKindId> SuppliedKinds(
+        AdmittedInventory admitted,
+        IReadOnlyList<MediaKindId> declared)
+        => admitted.HasMediaKinds ? admitted.Kinds : declared;
 
     private static IEnumerable<ProviderDescriptor> DescribedProviders(PluginRegistrationLedger ledger)
     {

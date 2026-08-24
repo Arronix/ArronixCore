@@ -114,11 +114,17 @@ public sealed class ManifestValidatorTests
             CoreErrorCode.PluginManifestInvalid);
 
     [Test]
-    public void HoldingTheMediaPrivilegeWithoutClaimingAKindIsRefused()
-        => ShouldHaveDefect(
-            Valid(builder => builder.Capabilities = ["media-kind"]),
-            "mediaKinds",
-            CoreErrorCode.PluginManifestInvalid);
+    public void HoldingTheMediaPrivilegeWithoutClaimingAKindIsAccepted()
+    {
+        var manifest = Valid(builder => builder.Capabilities = ["media-kind"]);
+
+        PluginManifestValidator.TryValidate(manifest, out var validated, out var defects).Should().BeTrue(
+            "which kinds an extension supplies is derived from the types it registers, so a manifest that "
+            + "does not restate them is complete rather than incomplete");
+
+        defects.Should().BeEmpty();
+        validated!.MediaKinds.Should().BeEmpty();
+    }
 
     [Test]
     public void AMediaExtensionDeclaringBothIsAccepted()

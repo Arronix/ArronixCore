@@ -18,6 +18,19 @@ namespace Arronix.Plugins.Registry;
 public sealed record TokenClaim(PluginId Plugin, MediaKindId MediaKind, NamingToken Token);
 
 /// <summary>
+/// The tokens one media kind owns.
+/// </summary>
+/// <param name="MediaKind">The kind the tokens belong to.</param>
+/// <param name="Tokens">That kind's own tokens.</param>
+/// <remarks>
+/// A claim is stated per kind rather than as a set of kinds and a set of tokens, because the second shape
+/// can only be turned into claims by taking a cross product — and a two-kind extension does not own every
+/// kind's tokens for every other kind. Where the tokens come from is the caller's business: after host
+/// admission they are the admitted projection's derived tokens.
+/// </remarks>
+public sealed record TokenClaimRequest(MediaKindId MediaKind, IReadOnlyList<NamingToken> Tokens);
+
+/// <summary>
 /// Who owns which naming token.
 /// </summary>
 /// <remarks>
@@ -93,58 +106,65 @@ public sealed class TokenRegistry
     }
 
     /// <summary>
-    /// Claims every token an extension declares, for every media kind it claims.
+    /// Claims each media kind's own tokens for one extension.
     /// </summary>
     /// <param name="plugin">The extension claiming.</param>
-    /// <param name="mediaKinds">The media kinds it claims.</param>
-    /// <param name="tokens">The tokens it declares.</param>
+    /// <param name="requests">One request per media kind, each carrying that kind's own tokens.</param>
     /// <param name="defects">Everything that collided, or an empty list on success.</param>
     /// <returns><see langword="true"/> when every token was claimed.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <remarks>
-    /// All or nothing. A partial claim would leave an extension owning some of its tokens while being
-    /// quarantined for the rest, which is the half-registered state the pipeline exists to make impossible.
+    /// <para>
+    /// All or nothing across every kind. A partial claim would leave an extension owning some of its tokens
+    /// while being quarantined for the rest, which is the half-registered state the pipeline exists to make
+    /// impossible. A kind claiming one token twice is idempotent rather than a self-collision: the same
+    /// extension owning the same token for the same kind is one claim, not two.
+    /// </para>
+    /// <para>
+    /// A token appears here exactly once for the kind that derived it. There is no arrangement of arguments
+    /// that produces the cross product of an extension's kinds and its whole token vocabulary.
+    /// </para>
     /// </remarks>
     public bool TryClaimAll(
         PluginId plugin,
-        IReadOnlyList<MediaKindId> mediaKinds,
-        IReadOnlyList<NamingToken> tokens,
+        IReadOnlyList<TokenClaimRequest> requests,
         out IReadOnlyList<ManifestDefect> defects)
     {
-        ArgumentNullException.ThrowIfNull(mediaKinds);
-        ArgumentNullException.ThrowIfNull(tokens);
+        ArgumentNullException.ThrowIfNull(requests);
 
         var found = new List<ManifestDefect>();
 
         lock (_gate)
         {
-            var staged = new List<((string Kind, string Token) Key, TokenClaim Claim)>();
+            var staged = new Dictionary<(string Kind, string Token), TokenClaim>();
 
-            foreach (var token in tokens)
+            foreach (var request in requests)
             {
-                if (IsReserved(token.Name))
-                {
-                    found.Add(new ManifestDefect(
-                        $"tokens['{token.Name}']",
-                        $"'{token.Name}' is reserved by the platform and cannot be redefined by an extension.",
-                        CoreErrorCode.PluginTokenConflict));
-                    continue;
-                }
+                ArgumentNullException.ThrowIfNull(request);
 
-                foreach (var kind in mediaKinds)
+                foreach (var token in request.Tokens)
                 {
-                    var key = (kind.Value, token.Name);
+                    if (IsReserved(token.Name))
+                    {
+                        found.Add(new ManifestDefect(
+                            $"tokens['{token.Name}']",
+                            $"'{token.Name}' is reserved by the platform and cannot be redefined by an extension.",
+                            CoreErrorCode.PluginTokenConflict));
+                        continue;
+                    }
+
+                    var key = (request.MediaKind.Value, token.Name);
 
                     if (_claims.TryGetValue(key, out var existing))
                     {
                         found.Add(new ManifestDefect(
                             $"tokens['{token.Name}']",
-                            $"'{token.Name}' is already declared for media kind '{kind.Value}' by extension '{existing.Plugin}'.",
+                            $"'{token.Name}' is already declared for media kind '{request.MediaKind.Value}' by extension '{existing.Plugin}'.",
                             CoreErrorCode.PluginTokenConflict));
                         continue;
                     }
 
-                    staged.Add((key, new TokenClaim(plugin, kind, token)));
+                    staged[key] = new TokenClaim(plugin, request.MediaKind, token);
                 }
             }
 

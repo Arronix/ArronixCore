@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Runtime.Loader;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
 
@@ -87,14 +88,20 @@ public sealed class PluginReferenceInspectorTests
         }
     }
 
+    /// <remarks>
+    /// Counted in the default context, which is the context inspection could load into. Counting every
+    /// context instead would make the assertion depend on whether the runtime had finished collecting the
+    /// collectible plugin contexts other fixtures create — one of which deliberately loads the contract
+    /// assembly as an extension's own entry assembly — so it measured test scheduling rather than the
+    /// behavior under test.
+    /// </remarks>
     [Test]
     public void InspectionReadsMetadataRatherThanLoadingTheAssembly()
     {
         PluginReferenceInspector.Inspect(ContractAssembly);
         PluginReferenceInspector.Inspect(ThisAssembly);
 
-        AppDomain.CurrentDomain
-            .GetAssemblies()
+        AssemblyLoadContext.Default.Assemblies
             .Count(assembly => assembly.GetName().Name == "Arronix.Abstractions")
             .Should().Be(
                 1,
