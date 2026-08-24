@@ -17,6 +17,15 @@ namespace Arronix.Host.Scheduling;
 /// </remarks>
 public sealed record JobQueueEntry
 {
+    /// <summary>
+    /// Gets the exact admission receipt which produced this envelope.
+    /// </summary>
+    /// <remarks>
+    /// Internal because consumers identify work by <see cref="JobId"/>. The scheduler uses reference
+    /// identity to reject an envelope captured before a registration with the same textual id was replaced.
+    /// </remarks>
+    internal RegisteredJob? Registration { get; init; }
+
     /// <summary>Gets this entry's identifier.</summary>
     public required Guid EntryId { get; init; }
 

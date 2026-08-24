@@ -10,6 +10,7 @@ using Arronix.Plugins.Manifest;
 using Arronix.Plugins.Registration;
 using Arronix.Plugins.Registry;
 using Arronix.Plugins.Tests.Support;
+using FluentAssertions.Execution;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -17,14 +18,15 @@ using Microsoft.Extensions.Options;
 namespace Arronix.Plugins.Tests.Loading;
 
 /// <summary>
-/// The post-admission half of the pipeline, driven by what a host admitted rather than by a declaration.
+/// The loader side of the Host admission transaction, driven by Host-prepared inventory rather than by a
+/// duplicate declaration.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The extension is a real emitted assembly loaded through a real load context; the host is a stub, because
 /// what is under test is the loader's side of the seam. A stub host lets an inventory be stated exactly —
-/// two kinds with different vocabularies, or a kind an empty manifest never mentioned — which a real host
-/// could only produce by shipping fixture media kinds nobody would install.
+/// two kinds with different vocabularies, or a kind an empty manifest never mentioned — which a real Host
+/// could only prepare by shipping fixture media kinds nobody would install.
 /// </para>
 /// <para>
 /// Every case here would have passed vacuously before the inventory existed, because the loader could not
@@ -40,6 +42,7 @@ public sealed class AdmittedInventoryTests
     private string _home = string.Empty;
     private string _root = string.Empty;
     private PluginRuntimeOptions _options = new();
+    private PluginPublicationGate _publication = new();
     private PluginRuntimeRegistry _registry = new();
     private TokenRegistry _tokens = new();
 
@@ -51,8 +54,9 @@ public sealed class AdmittedInventoryTests
         Directory.CreateDirectory(_root);
 
         _options = new PluginRuntimeOptions { RootFolder = _root, StateFolder = Path.Combine(_home, "state") };
-        _registry = new PluginRuntimeRegistry();
-        _tokens = new TokenRegistry();
+        _publication = new PluginPublicationGate();
+        _registry = new PluginRuntimeRegistry(_publication);
+        _tokens = new TokenRegistry(_publication);
     }
 
     [TearDown]
@@ -109,6 +113,69 @@ public sealed class AdmittedInventoryTests
     }
 
     [Test]
+    public void AnEmptyHostInventoryRemainsAuthoritative()
+    {
+        Install("emitted");
+
+        var admission = StubAdmission.Admitting();
+        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+
+        result.State.Should().Be(PluginState.Active);
+        result.Admitted.IsAuthoritative.Should().BeTrue();
+        result.Admitted.MediaKinds.Should().BeEmpty();
+        admission.Events.Should().Equal("prepare:emitted", "commit:emitted");
+    }
+
+    [Test]
+    public void AMalformedSuccessfulAdmissionStillRollsBackItsAttempt()
+    {
+        Install("emitted");
+
+        var admission = new MalformedAdmission();
+        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+
+        using var assertions = new AssertionScope();
+        result.State.Should().Be(PluginState.Quarantined);
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
+        result.Defects.Should().Contain(defect => defect.Contains("authoritative", StringComparison.Ordinal));
+        admission.Events.Should().Equal("prepare:emitted", "rollback:emitted");
+        _tokens.Claims.Should().BeEmpty();
+    }
+
+    [Test]
+    public void LoaderEntryPointsRequireAnExplicitHostAdmissionAuthority()
+    {
+        var entryPoints = typeof(PluginLoader)
+            .GetMethods(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+            .Where(method => method.Name is "Load" or "LoadAll")
+            .ToArray();
+
+        entryPoints.Should().HaveCount(2);
+        entryPoints.Should().OnlyContain(method => method.GetParameters().Any(parameter =>
+            parameter.ParameterType == typeof(IPluginAdmissionCheck)
+            && !parameter.IsOptional
+            && !parameter.HasDefaultValue));
+    }
+
+    [Test]
+    public void TheAdmittedInventorySnapshotsItsKindsAndTokens()
+    {
+        var tokens = new List<NamingToken> { Token("{Film Title}") };
+        var kind = new AdmittedMediaKind(Films, tokens);
+        var kinds = new List<AdmittedMediaKind> { kind };
+        var inventory = new AdmittedInventory(kinds);
+
+        tokens.Clear();
+        kinds.Clear();
+
+        using var assertions = new AssertionScope();
+        inventory.MediaKinds.Should().ContainSingle();
+        inventory.Kinds.Should().Equal(Films);
+        inventory.TryGet(Films, out var admitted).Should().BeTrue();
+        admitted!.Tokens.Should().ContainSingle().Which.Name.Should().Be("{Film Title}");
+    }
+
+    [Test]
     public void ADeclaredTokenTheAdmittedKindDoesNotDefineIsRefused()
     {
         Install("emitted", tokens: """{ "name": "{Film Runtime}", "description": "invented" }""");
@@ -122,15 +189,29 @@ public sealed class AdmittedInventoryTests
         result.Defects.Should().Contain(defect => defect.Contains("{Film Runtime}", StringComparison.Ordinal));
         result.Defects.Should().Contain(defect => defect.Contains("{Film Title}", StringComparison.Ordinal));
         _tokens.Claims.Should().BeEmpty();
+        admission.Events.Should().Equal("prepare:emitted", "rollback:emitted");
+    }
+
+    [Test]
+    public void ManifestAgreementUsesTheNamingGrammarsTokenEquality()
+    {
+        Install("emitted", tokens: """{ "name": "{film.title}", "description": "same token" }""");
+
+        var admission = StubAdmission.Admitting(new AdmittedMediaKind(Films, [Token("{Film Title}")]));
+
+        var result = CreateLoader().LoadAll(admission).Should().ContainSingle().Which;
+
+        result.State.Should().Be(PluginState.Active);
+        _tokens.Claims.Should().ContainSingle().Which.Token.Name.Should().Be("{Film Title}");
     }
 
     /// <remarks>
-    /// Two extensions admitted for one kind. The second passes token ownership, because its vocabulary does
-    /// not collide, and is refused by the identity step — which reads what each extension was admitted for
-    /// rather than what its manifest claimed. Everything it had already taken is given back.
+    /// Two extensions are prepared for one kind. The second can prepare a non-conflicting token plan, but
+    /// the identity check refuses it before publication because the first extension is already active. The
+    /// original token claim remains the only committed claim.
     /// </remarks>
     [Test]
-    public void AKindAnotherActiveExtensionWasAdmittedForIsRefusedAndItsTokensAreGivenBack()
+    public void ASecondCandidateForAnActiveKindIsRefusedWithoutPublishingItsTokenPlan()
     {
         Install("first");
         Install("second", assemblyName: "Emitted.Second");
@@ -150,8 +231,77 @@ public sealed class AdmittedInventoryTests
         refused.Defects.Should().Contain(defect => defect.Contains("films", StringComparison.Ordinal));
 
         _tokens.Claims.Should().ContainSingle(
-            "the refused extension gives back the token it had already claimed before the identity step ran")
+            "the refused extension never commits its prepared token plan")
             .Which.Token.Name.Should().Be("{Film Title}");
+        admission.Events.Should().Equal(
+            "prepare:first",
+            "commit:first",
+            "prepare:second",
+            "rollback:second");
+    }
+
+    /// <summary>
+    /// A candidate which fails the late declaration agreement check rolls back its prepared Host receipt
+    /// before the loader advances to the next candidate.
+    /// </summary>
+    [Test]
+    public void ALateAgreementFailureRollsBackBeforeTheNextCandidateIsPrepared()
+    {
+        Install(
+            "first",
+            tokens: """{ "name": "{Invented}", "description": "not in the admitted projection" }""");
+        Install("second", assemblyName: "Emitted.Second");
+
+        var admission = new TrackingAdmission(
+            new AdmittedMediaKind(Films, [Token("{Film Title}")]));
+
+        var results = CreateLoader().LoadAll(admission);
+
+        using var assertions = new AssertionScope();
+        results.Single(result => result.Id == PluginId.FromString("first")).State
+            .Should().Be(PluginState.Quarantined);
+        results.Single(result => result.Id == PluginId.FromString("second")).State
+            .Should().Be(PluginState.Active);
+        admission.Events.Should().Equal(
+            "prepare:first",
+            "rollback:first",
+            "prepare:second",
+            "commit:second");
+        admission.Owner.Should().Be(PluginId.FromString("second"));
+        _tokens.Claims.Should().ContainSingle().Which.Plugin.Should().Be(PluginId.FromString("second"));
+    }
+
+    [Test]
+    public void AFailedReloadCannotReplaceTheOriginalActiveRuntimeAuthority()
+    {
+        Install("emitted");
+
+        var plugin = PluginId.FromString("emitted");
+        var admission = new TrackingAdmission(
+            new AdmittedMediaKind(Films, [Token("{Film Title}")]));
+        var loader = CreateLoader();
+
+        var original = loader.LoadAll(admission).Should().ContainSingle().Which;
+        var originalContext = original.LoadContext.Should().NotBeNull().And.Subject;
+        var reload = loader.LoadAll(admission).Should().ContainSingle().Which;
+
+        using var assertions = new AssertionScope();
+        original.State.Should().Be(PluginState.Active);
+        reload.State.Should().Be(PluginState.Quarantined,
+            "the already-owned token makes this reload a genuine failed candidate, not a no-op");
+        _registry.TryGet(plugin, out var recorded).Should().BeTrue();
+        recorded.Should().BeSameAs(original,
+            "the original result is the runtime-lifetime authority a failed candidate must not replace");
+        _registry.Active.Should().ContainSingle().Which.Should().BeSameAs(original);
+        recorded!.LoadContext.Should().BeSameAs(originalContext,
+            "retaining the original active result retains its inaccessible attempt-scoped lifetime receipt");
+        admission.Owner.Should().Be(plugin,
+            "rolling back the failed attempt must not withdraw the original committed attempt");
+        admission.Events.Should().Equal(
+            "prepare:emitted",
+            "commit:emitted",
+            "prepare:emitted",
+            "rollback:emitted");
     }
 
     private static NamingToken Token(string name) => new(name, "derived", string.Empty);
@@ -169,7 +319,8 @@ public sealed class AdmittedInventoryTests
         _registry,
         _tokens,
         TimeProvider.System,
-        NullLogger<PluginLoader>.Instance);
+        NullLogger<PluginLoader>.Instance,
+        _publication);
 
     private void Install(
         string pluginId,
@@ -219,8 +370,122 @@ public sealed class AdmittedInventoryTests
             return this;
         }
 
-        public PluginAdmissionResult Admit(ValidatedManifest manifest, PluginRegistrationLedger ledger)
-            => PluginAdmissionResult.Admitted(
-                _byPlugin.TryGetValue(manifest.Id.Value, out var inventory) ? inventory : _fallback);
+        public List<string> Events { get; } = [];
+
+        public PluginAdmissionResult Prepare(ValidatedManifest manifest, PluginRegistrationLedger ledger)
+        {
+            Events.Add($"prepare:{manifest.Id}");
+            var inventory = _byPlugin.TryGetValue(manifest.Id.Value, out var selected) ? selected : _fallback;
+            return PluginAdmissionResult.Prepared(new StubAttempt(manifest.Id, inventory, Events));
+        }
+
+        private sealed class StubAttempt(
+            PluginId plugin,
+            AdmittedInventory inventory,
+            List<string> events) : IPluginAdmissionAttempt
+        {
+            public PluginId Plugin { get; } = plugin;
+
+            public AdmittedInventory Inventory { get; } = inventory;
+
+            public bool TryCommit(out CoreErrorCode errorCode, out IReadOnlyList<string> defects)
+            {
+                events.Add($"commit:{Plugin}");
+                errorCode = CoreErrorCode.Unknown;
+                defects = [];
+                return true;
+            }
+
+            public void Rollback() => events.Add($"rollback:{Plugin}");
+        }
+    }
+
+    /// <summary>A broken Host double proving that even malformed success retains rollback ownership.</summary>
+    private sealed class MalformedAdmission : IPluginAdmissionCheck
+    {
+        public List<string> Events { get; } = [];
+
+        public PluginAdmissionResult Prepare(ValidatedManifest manifest, PluginRegistrationLedger ledger)
+        {
+            Events.Add($"prepare:{manifest.Id}");
+            return PluginAdmissionResult.Prepared(new MalformedAttempt(manifest.Id, Events));
+        }
+
+        private sealed class MalformedAttempt(
+            PluginId plugin,
+            List<string> events) : IPluginAdmissionAttempt
+        {
+            public PluginId Plugin { get; } = plugin;
+
+            public AdmittedInventory Inventory { get; } = AdmittedInventory.NotAdmitted;
+
+            public bool TryCommit(out CoreErrorCode errorCode, out IReadOnlyList<string> defects)
+            {
+                errorCode = CoreErrorCode.Unknown;
+                defects = [];
+                return true;
+            }
+
+            public void Rollback() => events.Add($"rollback:{Plugin}");
+        }
+    }
+
+    /// <summary>A transactional Host double which tracks attempt-specific commit and rollback ownership.</summary>
+    private sealed class TrackingAdmission : IPluginAdmissionCheck
+    {
+        private readonly AdmittedInventory _inventory;
+
+        public TrackingAdmission(params AdmittedMediaKind[] kinds)
+            => _inventory = new AdmittedInventory(kinds);
+
+        public List<string> Events { get; } = [];
+
+        public PluginId? Owner { get; private set; }
+
+        public PluginAdmissionResult Prepare(ValidatedManifest manifest, PluginRegistrationLedger ledger)
+        {
+            Events.Add($"prepare:{manifest.Id}");
+            return PluginAdmissionResult.Prepared(new TrackingAttempt(this, manifest.Id, _inventory));
+        }
+
+        private sealed class TrackingAttempt(
+            TrackingAdmission admission,
+            PluginId plugin,
+            AdmittedInventory inventory) : IPluginAdmissionAttempt
+        {
+            private bool _committed;
+
+            public PluginId Plugin { get; } = plugin;
+
+            public AdmittedInventory Inventory { get; } = inventory;
+
+            public bool TryCommit(out CoreErrorCode errorCode, out IReadOnlyList<string> defects)
+            {
+                admission.Events.Add($"commit:{Plugin}");
+
+                if (admission.Owner is { } owner)
+                {
+                    errorCode = CoreErrorCode.MediaKindConflict;
+                    defects = [$"The admitted kind is still owned by '{owner}'."];
+                    return false;
+                }
+
+                admission.Owner = Plugin;
+                _committed = true;
+                errorCode = CoreErrorCode.Unknown;
+                defects = [];
+                return true;
+            }
+
+            public void Rollback()
+            {
+                admission.Events.Add($"rollback:{Plugin}");
+
+                if (_committed && admission.Owner == Plugin)
+                {
+                    admission.Owner = null;
+                }
+            }
+        }
     }
 }

@@ -10,11 +10,8 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Telemetry;
 using Arronix.Host.Composition;
-using Arronix.Host.Languages;
 using Arronix.Host.Media;
-using Arronix.Host.Providers;
 using Arronix.Host.Runtime;
-using Arronix.Host.Scheduling;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Registry;
 using FluentAssertions;
@@ -119,11 +116,16 @@ internal sealed class PackagedMoviesAdmissionTests
     public async Task TheRealPackagedMoviesExtensionReachesActiveAndPublishesItsKind()
     {
         var provider = _provider!;
+        var bootstrapper = Bootstrapper();
 
-        await Bootstrapper().StartAsync(CancellationToken.None);
+        await bootstrapper.StartAsync(CancellationToken.None);
 
-        var state = Bootstrapper().States.Should().ContainSingle().Which;
+        var state = bootstrapper.States.Should().ContainSingle().Which;
         var kinds = provider.GetRequiredService<MediaKindRegistry>();
+        kinds.TryGet(Movies, out var registered).Should().BeTrue();
+        var publishedKinds = kinds.All.Select(kind => kind.Kind.Value).ToArray();
+
+        await bootstrapper.StopAsync(CancellationToken.None);
 
         using var assertions = new AssertionScope();
         state.Id.Should().Be(MoviesPlugin);
@@ -132,9 +134,8 @@ internal sealed class PackagedMoviesAdmissionTests
             "the packaged extension must survive discovery, typed admission, late agreement, token ownership and publication");
         state.ErrorCode.Should().BeNull();
         state.Defects.Should().BeEmpty();
-        kinds.TryGet(Movies, out var registered).Should().BeTrue();
         registered!.Plugin.Should().Be(MoviesPlugin);
-        kinds.All.Select(kind => kind.Kind.Value).Should().Equal("movies");
+        publishedKinds.Should().Equal("movies");
     }
 
     /// <remarks>
@@ -146,12 +147,15 @@ internal sealed class PackagedMoviesAdmissionTests
     public async Task TheAdmittedKindCameThroughTheExtensionsOwnLoadContext()
     {
         var provider = _provider!;
+        var bootstrapper = Bootstrapper();
 
-        await Bootstrapper().StartAsync(CancellationToken.None);
+        await bootstrapper.StartAsync(CancellationToken.None);
 
         var registered = provider.GetRequiredService<MediaKindRegistry>().Require(Movies);
         var runtime = registered.MediaType.Should().NotBeNull().And.Subject.As<IMediaTypeRuntime>();
         var loaded = provider.GetRequiredService<PluginRuntimeRegistry>().Active.Should().ContainSingle().Which;
+
+        await bootstrapper.StopAsync(CancellationToken.None);
 
         using var assertions = new AssertionScope();
         loaded.LoadContext.Should().NotBeNull();
@@ -176,12 +180,15 @@ internal sealed class PackagedMoviesAdmissionTests
     public async Task TheAdmittedMoviesKindOwnsExactlyItsDerivedTokens()
     {
         var provider = _provider!;
+        var bootstrapper = Bootstrapper();
 
-        await Bootstrapper().StartAsync(CancellationToken.None);
+        await bootstrapper.StartAsync(CancellationToken.None);
 
         var registered = provider.GetRequiredService<MediaKindRegistry>().Require(Movies);
         var derived = registered.Shape.Declaration.Tokens.Select(token => token.Name).ToArray();
         var claims = provider.GetRequiredService<TokenRegistry>().Claims;
+
+        await bootstrapper.StopAsync(CancellationToken.None);
 
         using var assertions = new AssertionScope();
         derived.Should().OnlyHaveUniqueItems().And.NotBeEmpty();
@@ -193,11 +200,13 @@ internal sealed class PackagedMoviesAdmissionTests
     }
 
     /// <remarks>
-    /// The conflict is planted before loading, so the package is admitted, bound and published and only then
-    /// refused — the shape of failure the atomic-withdrawal rule exists for.
+    /// The conflict is planted before loading. Host still prepares the package's complete candidate set,
+    /// but the loader cannot commit its token plan, so the shared publication transaction never exposes any
+    /// Host candidate. The purpose of this case is non-publication after preparation; partial-commit rollback
+    /// is proved separately with a conflict at the final Host publication step.
     /// </remarks>
     [Test]
-    public async Task ALateTokenConflictQuarantinesThePackageAndLeavesNoneOfItBehind()
+    public async Task ATokenConflictAfterHostPreparationQuarantinesWithoutPublishingThePackage()
     {
         var provider = _provider!;
         var tokens = provider.GetRequiredService<TokenRegistry>();
@@ -219,18 +228,12 @@ internal sealed class PackagedMoviesAdmissionTests
         state.Defects.Should().Contain(defect => defect.Contains("{Movie Title}", StringComparison.Ordinal));
 
         provider.GetRequiredService<MediaKindRegistry>().TryGet(Movies, out _).Should().BeFalse(
-            "a late loader failure must withdraw the typed kind admitted earlier in the pipeline");
+            "a prepared candidate is not visible before the complete publication transaction commits");
         provider.GetRequiredService<MediaKindRegistry>().All.Should().BeEmpty();
 
         tokens.Claims.Should().ContainSingle(
             "the quarantined package keeps no token, and the claim it collided with is untouched")
             .Which.Plugin.Should().Be(squatter);
-
-        // Movies contributes only a media kind today. These hold the rest of the withdrawal path to the same
-        // rule, so a package that later contributes providers, languages or jobs cannot leave them behind.
-        provider.GetRequiredService<ProviderRegistry>().All.Should().BeEmpty();
-        provider.GetRequiredService<LanguageDefinitionRegistry>().All.Should().BeEmpty();
-        provider.GetRequiredService<BackgroundTaskRegistry>().Registrations().Should().BeEmpty();
     }
 
     /// <remarks>
@@ -258,7 +261,7 @@ internal sealed class PackagedMoviesAdmissionTests
         state.Defects.Should().Contain(defect => defect.Contains("westerns", StringComparison.Ordinal));
 
         provider.GetRequiredService<MediaKindRegistry>().All.Should().BeEmpty(
-            "the kind admitted before the agreement step must be withdrawn with the rest");
+            "the declaration mismatch is found before the prepared kind is ever published");
         provider.GetRequiredService<TokenRegistry>().Claims.Should().BeEmpty();
     }
 
@@ -279,7 +282,7 @@ internal sealed class PackagedMoviesAdmissionTests
         provider.GetRequiredService<MediaKindRegistry>().All.Should().BeEmpty();
         provider.GetRequiredService<TokenRegistry>().Claims.Should().BeEmpty(
             "teardown reverses activation, and token ownership is part of what activation took");
-        bootstrapper.States.Should().ContainSingle().Which.State.Should().Be(PluginState.Quarantined);
+        bootstrapper.States.Should().ContainSingle().Which.State.Should().Be(PluginState.Stopped);
     }
 
     private PluginBootstrapper Bootstrapper()

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Runtime.Loader;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
+using Arronix.Plugins.Tests.Support;
 
 
 namespace Arronix.Plugins.Tests.Loading;
@@ -88,23 +89,40 @@ public sealed class PluginReferenceInspectorTests
         }
     }
 
-    /// <remarks>
-    /// Counted in the default context, which is the context inspection could load into. Counting every
-    /// context instead would make the assertion depend on whether the runtime had finished collecting the
-    /// collectible plugin contexts other fixtures create — one of which deliberately loads the contract
-    /// assembly as an extension's own entry assembly — so it measured test scheduling rather than the
-    /// behavior under test.
-    /// </remarks>
     [Test]
     public void InspectionReadsMetadataRatherThanLoadingTheAssembly()
     {
-        PluginReferenceInspector.Inspect(ContractAssembly);
-        PluginReferenceInspector.Inspect(ThisAssembly);
+        var folder = Directory.CreateTempSubdirectory("arronix-inspection-probe").FullName;
+        var assemblyName = $"Inspection.Probe.{Guid.NewGuid():N}";
+        var assemblyPath = EmittedPlugin.Write(folder, "inspection-probe", assemblyName: assemblyName);
+        var observedLoads = 0;
 
-        AssemblyLoadContext.Default.Assemblies
-            .Count(assembly => assembly.GetName().Name == "Arronix.Abstractions")
-            .Should().Be(
-                1,
-                "inspection happens at discovery, before any isolation decision has been taken, so it must not load anything");
+        void OnAssemblyLoad(object? sender, AssemblyLoadEventArgs args)
+        {
+            if (string.Equals(args.LoadedAssembly.GetName().Name, assemblyName, StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref observedLoads);
+            }
+        }
+
+        try
+        {
+            AssemblyLoadContext.All.SelectMany(context => context.Assemblies).Should().NotContain(
+                assembly => assembly.GetName().Name == assemblyName);
+
+            AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
+            var report = PluginReferenceInspector.Inspect(assemblyPath);
+
+            report.References.Should().Contain("Arronix.Abstractions");
+            observedLoads.Should().Be(0, "metadata inspection must not load or execute the candidate");
+            AssemblyLoadContext.All.SelectMany(context => context.Assemblies).Should().NotContain(
+                assembly => assembly.GetName().Name == assemblyName,
+                "inspection happens before isolation and must not load the candidate into any load context");
+        }
+        finally
+        {
+            AppDomain.CurrentDomain.AssemblyLoad -= OnAssemblyLoad;
+            Directory.Delete(folder, recursive: true);
+        }
     }
 }

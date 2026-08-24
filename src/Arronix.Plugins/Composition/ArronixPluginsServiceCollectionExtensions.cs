@@ -67,6 +67,7 @@ public static class ArronixPluginsServiceCollectionExtensions
         // optional, so a host that has not built a subsystem yet still composes.
         services.TryAddSingleton<PluginPlatformServices>();
 
+        services.TryAddSingleton<PluginPublicationGate>();
         services.TryAddSingleton<TokenRegistry>();
         services.TryAddSingleton<PluginRuntimeRegistry>();
         services.TryAddSingleton<IPluginRuntimeRegistry>(

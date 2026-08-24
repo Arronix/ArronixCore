@@ -10,6 +10,7 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
 using Arronix.Host.Configuration;
 using Arronix.Host.Intent;
+using Arronix.Plugins.Registry;
 using Microsoft.Extensions.Options;
 
 
@@ -32,27 +33,52 @@ namespace Arronix.Host.Media;
 /// </para>
 /// </remarks>
 /// <param name="library">The deployment's library settings, for the affordances that depend on them.</param>
-public sealed class MediaKindRegistry(IOptions<LibraryOptions> library) : IMediaKindRegistry
+/// <param name="publication">The shared extension-publication boundary.</param>
+public sealed class MediaKindRegistry(
+    IOptions<LibraryOptions> library,
+    PluginPublicationGate publication) : IMediaKindRegistry
 {
     private readonly ConcurrentDictionary<MediaKindId, RegisteredMediaKind> _kinds = new();
     private readonly LibraryOptions _library = library?.Value ?? throw new ArgumentNullException(nameof(library));
+    private readonly PluginPublicationGate _publication = publication ?? throw new ArgumentNullException(nameof(publication));
     private volatile bool _releaseSourceConfigured;
+
+    /// <summary>Creates a standalone registry with its own publication boundary.</summary>
+    public MediaKindRegistry(IOptions<LibraryOptions> library)
+        : this(library, new PluginPublicationGate())
+    {
+    }
+
+    /// <summary>Gets the publication boundary this registry participates in.</summary>
+    internal PluginPublicationGate PublicationGate => _publication;
 
     /// <inheritdoc />
     public IReadOnlyList<RegisteredMediaKind> All
-        => [.. _kinds.Values.OrderBy(kind => kind.Kind.Value, StringComparer.Ordinal)];
+    {
+        get
+        {
+            using var publication = _publication.EnterRead();
+            return [.. _kinds.Values.OrderBy(kind => kind.Kind.Value, StringComparer.Ordinal)];
+        }
+    }
 
     /// <inheritdoc />
     public bool TryGet(MediaKindId kind, [NotNullWhen(true)] out RegisteredMediaKind? registered)
-        => _kinds.TryGetValue(kind, out registered);
+    {
+        using var publication = _publication.EnterRead();
+        return _kinds.TryGetValue(kind, out registered);
+    }
 
     /// <inheritdoc />
     public RegisteredMediaKind Require(MediaKindId kind)
-        => _kinds.TryGetValue(kind, out var registered)
+    {
+        using var publication = _publication.EnterRead();
+        return _kinds.TryGetValue(kind, out var registered)
             ? registered
             : throw new ArronixException(
                 CoreErrorCode.MediaKindNotFound,
                 $"No media kind '{kind}' is registered.");
+    }
 
     /// <summary>
     /// Admits one contribution.
@@ -66,7 +92,27 @@ public sealed class MediaKindRegistry(IOptions<LibraryOptions> library) : IMedia
         "Design",
         "CA1021:Avoid out parameters",
         Justification = "Admission returns three results — whether it succeeded, the admitted kind and the complete defect list — and the caller quarantines the extension on the third.")]
-    public bool TryRegister(
+    internal bool TryRegister(
+        MediaKindContribution contribution,
+        out RegisteredMediaKind? registered,
+        out IReadOnlyList<ShapeDefect> defects)
+    {
+        if (!TryPrepare(contribution, out registered, out defects))
+        {
+            return false;
+        }
+
+        if (TryPublish(registered!, out defects))
+        {
+            return true;
+        }
+
+        registered = null;
+        return false;
+    }
+
+    /// <summary>Builds and validates one kind without making it visible.</summary>
+    internal bool TryPrepare(
         MediaKindContribution contribution,
         out RegisteredMediaKind? registered,
         out IReadOnlyList<ShapeDefect> defects)
@@ -83,20 +129,25 @@ public sealed class MediaKindRegistry(IOptions<LibraryOptions> library) : IMedia
 
         var kind = shape!.Kind;
 
-        if (_kinds.TryGetValue(kind, out var incumbent))
+        using (_publication.EnterRead())
         {
-            defects =
-            [
-                new ShapeDefect(
-                    "kind",
-                    string.Create(
-                        CultureInfo.InvariantCulture,
-                        $"Media kind '{kind}' is already provided by extension '{incumbent.Plugin}'."),
-                    CoreErrorCode.MediaKindConflict),
-            ];
-            return false;
+            if (_kinds.TryGetValue(kind, out var incumbent))
+            {
+                defects =
+                [
+                    new ShapeDefect(
+                        "kind",
+                        string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"Media kind '{kind}' is already provided by extension '{incumbent.Plugin}'."),
+                        CoreErrorCode.MediaKindConflict),
+                ];
+                return false;
+            }
         }
 
+        // Everything below can enumerate extension-supplied declaration collections. It deliberately runs
+        // after the collision snapshot's read lease is released; final publication rechecks the collision.
         var intent = contribution.Intent ?? new PluginIntentSurface { MediaKind = kind };
         var intentDefects = IntentSurfaceValidator.Validate(shape, intent);
 
@@ -106,28 +157,55 @@ public sealed class MediaKindRegistry(IOptions<LibraryOptions> library) : IMedia
             return false;
         }
 
-        var candidate = new RegisteredMediaKind(
+        registered = new RegisteredMediaKind(
             contribution,
             shape,
             intent,
             new MediaKindProjection(shape, contribution.PluginVersion, contribution.Capabilities),
             BuildDescriptor(contribution, shape, intent, RootFolderConfigured, _releaseSourceConfigured));
 
-        if (!_kinds.TryAdd(kind, candidate))
+        defects = [];
+        return true;
+    }
+
+    /// <summary>Publishes one already-built kind, rechecking ownership at the publication boundary.</summary>
+    internal bool TryPublish(
+        RegisteredMediaKind candidate,
+        out IReadOnlyList<ShapeDefect> defects)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        using var publication = _publication.EnterWrite();
+
+        if (!_kinds.TryAdd(candidate.Kind, candidate))
         {
+            _kinds.TryGetValue(candidate.Kind, out var incumbent);
             defects =
             [
                 new ShapeDefect(
                     "kind",
-                    $"Media kind '{kind}' was claimed by another extension while this one was being admitted.",
+                    incumbent is null
+                        ? $"Media kind '{candidate.Kind}' was claimed while this extension was being published."
+                        : string.Create(
+                            CultureInfo.InvariantCulture,
+                            $"Media kind '{candidate.Kind}' is already provided by extension '{incumbent.Plugin}'."),
                     CoreErrorCode.MediaKindConflict),
             ];
             return false;
         }
 
-        registered = candidate;
         defects = [];
         return true;
+    }
+
+    /// <summary>Removes exactly one published candidate and never a later replacement.</summary>
+    internal bool Remove(RegisteredMediaKind candidate)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        using var publication = _publication.EnterWrite();
+        return ((ICollection<KeyValuePair<MediaKindId, RegisteredMediaKind>>)_kinds)
+            .Remove(new KeyValuePair<MediaKindId, RegisteredMediaKind>(candidate.Kind, candidate));
     }
 
     /// <summary>
@@ -135,8 +213,9 @@ public sealed class MediaKindRegistry(IOptions<LibraryOptions> library) : IMedia
     /// </summary>
     /// <param name="plugin">The extension.</param>
     /// <returns>The number of kinds withdrawn.</returns>
-    public int RemoveByPlugin(PluginId plugin)
+    internal int RemoveByPlugin(PluginId plugin)
     {
+        using var publication = _publication.EnterWrite();
         var removed = 0;
 
         foreach (var kind in _kinds.Values.Where(registered => registered.Plugin == plugin).ToList())
@@ -160,18 +239,45 @@ public sealed class MediaKindRegistry(IOptions<LibraryOptions> library) : IMedia
     /// the facts change. The alternative, deriving them at read time, would put a provider-store query in
     /// the path of every catalog page.
     /// </remarks>
-    public void Refresh(bool releaseSourceConfigured)
+    internal void Refresh(bool releaseSourceConfigured)
     {
-        _releaseSourceConfigured = releaseSourceConfigured;
-
-        foreach (var registered in _kinds.Values)
+        while (true)
         {
-            registered.Descriptor = BuildDescriptor(
-                registered,
-                registered.Shape,
-                registered.Intent,
-                RootFolderConfigured,
-                releaseSourceConfigured);
+            KeyValuePair<MediaKindId, RegisteredMediaKind>[] snapshot;
+            using (_publication.EnterRead())
+            {
+                snapshot = [.. _kinds];
+            }
+
+            // Descriptor derivation walks extension-authored data. Do all of it without stopping readers or
+            // publishers, then install only if the exact registry snapshot is still authoritative.
+            var rootFolderConfigured = RootFolderConfigured;
+            var rebuilt = snapshot
+                .Select(entry => new KeyValuePair<RegisteredMediaKind, MediaKindDescriptor>(
+                    entry.Value,
+                    BuildDescriptor(
+                        entry.Value,
+                        entry.Value.Shape,
+                        entry.Value.Intent,
+                        rootFolderConfigured,
+                        releaseSourceConfigured)))
+                .ToArray();
+
+            using var publication = _publication.EnterWrite();
+            if (_kinds.Count != snapshot.Length
+                || snapshot.Any(entry => !_kinds.TryGetValue(entry.Key, out var current)
+                    || !ReferenceEquals(current, entry.Value)))
+            {
+                continue;
+            }
+
+            _releaseSourceConfigured = releaseSourceConfigured;
+            foreach (var entry in rebuilt)
+            {
+                entry.Key.Descriptor = entry.Value;
+            }
+
+            return;
         }
     }
 

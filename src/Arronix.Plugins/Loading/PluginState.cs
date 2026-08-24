@@ -4,10 +4,11 @@ namespace Arronix.Plugins.Loading;
 /// How far an extension got through the load pipeline.
 /// </summary>
 /// <remarks>
-/// The states are a straight line with one exit. An extension is never partially activated: it either
-/// reaches <see cref="Active"/> with everything it declared committed, or it is quarantined with nothing
-/// committed at all. Half-registered extensions are the failure mode that makes an operator distrust the
-/// whole host, and there is no state here that can represent one.
+    /// The states are a straight line with failure and teardown exits. An extension is never partially
+/// activated: it reaches <see cref="Active"/> with everything committed, reaches <see cref="Stopped"/> only
+/// after all of it is withdrawn, or is quarantined with nothing committed. Half-registered extensions are
+/// the failure mode that makes an operator distrust the whole host, and there is no state here that can
+/// represent one.
 /// </remarks>
 public enum PluginState
 {
@@ -27,5 +28,8 @@ public enum PluginState
     Active = 4,
 
     /// <summary>The extension failed a step and contributes nothing.</summary>
-    Quarantined = 5
+    Quarantined = 5,
+
+    /// <summary>The extension was active and Host teardown withdrew all of its published contributions.</summary>
+    Stopped = 6
 }

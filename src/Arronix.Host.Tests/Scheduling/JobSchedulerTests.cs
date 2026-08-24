@@ -332,13 +332,13 @@ internal sealed class JobSchedulerTests
     {
         using var harness = Build();
 
-        harness.Registry.RegisterJob(Owner, CapabilitySet.None, FakeJob.Succeeding("going"), "manual", null);
+        harness.Registry.RegisterJob(FakeJob.Succeeding("going"), "manual");
         await harness.Registry.TriggerJobAsync("going");
 
         harness.Queue.Count.Should().Be(1);
 
         // Unregistering drops the entry directly; queue an orphan the hard way to prove the pass also copes.
-        harness.Registry.RegisterJob(Owner, CapabilitySet.None, FakeJob.Succeeding("other"), "manual", null);
+        harness.Registry.RegisterJob(FakeJob.Succeeding("other"), "manual");
         var orphan = harness.Registry.Enqueue(
             harness.Registry.Find("other")!,
             null,
@@ -449,12 +449,15 @@ internal sealed class JobSchedulerTests
             MediaLevelId.FromString("episode"),
             MediaItemId.FromInt64(42));
 
+        var items = new List<MediaItemRef> { wanted };
         harness.Registry.Enqueue(
             harness.Registry.Find("scoped")!,
             parameters: null,
             harness.Clock.GetUtcNow(),
             correlationId: null,
-            [wanted]);
+            items);
+
+        items.Clear();
 
         await harness.Scheduler.TickAsync();
         await SettleAsync(harness);
@@ -478,9 +481,9 @@ internal sealed class JobSchedulerTests
 
         harness.Registry.RegisterJob(Owner, CapabilitySet.None, job, "manual", MediaKindId.FromString("tv"));
 
-        await harness.Registry.TriggerJobAsync(
-            "parameterized",
-            new Dictionary<string, object>(StringComparer.Ordinal) { ["depth"] = 3 });
+        var parameters = new Dictionary<string, object>(StringComparer.Ordinal) { ["depth"] = 3 };
+        await harness.Registry.TriggerJobAsync("parameterized", parameters);
+        parameters.Clear();
 
         await harness.Scheduler.TickAsync();
         await SettleAsync(harness);

@@ -1,6 +1,4 @@
-using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
-using Arronix.Plugins.Loading;
 
 
 namespace Arronix.Plugins.Registry;
@@ -23,26 +21,12 @@ namespace Arronix.Plugins.Registry;
 public interface IPluginRuntimeRegistry
 {
     /// <summary>
-    /// Gets every extension the host tried to load, successful or not.
+    /// Gets every extension as an immutable, lifetime-free status projection.
     /// </summary>
-    IReadOnlyList<PluginLoadResult> All { get; }
-
-    /// <summary>
-    /// Gets only the extensions that are serving.
-    /// </summary>
-    IReadOnlyList<PluginLoadResult> Active { get; }
-
-    /// <summary>
-    /// Finds one extension.
-    /// </summary>
-    /// <param name="plugin">The identifier.</param>
-    /// <param name="result">What became of it, when the host tried to load it.</param>
-    /// <returns><see langword="true"/> when the host tried to load it.</returns>
-    bool TryGet(PluginId plugin, out PluginLoadResult? result);
-
-    /// <summary>
-    /// Projects every extension onto the shape the interface reads.
-    /// </summary>
+    /// <remarks>
+    /// The public reader never exposes the registration ledger, collectible load context or teardown
+    /// receipt retained by an active runtime result. Those are lifecycle authority, not status data.
+    /// </remarks>
     /// <returns>The published views, ordered by identifier.</returns>
     IReadOnlyList<PluginStatusView> Snapshot();
 }

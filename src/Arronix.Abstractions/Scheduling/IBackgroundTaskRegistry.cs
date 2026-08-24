@@ -1,9 +1,13 @@
 namespace Arronix.Abstractions.Scheduling;
 
 /// <summary>
-/// Registry for background tasks and scheduled jobs.
-/// Plugins use this to register their jobs with the host runtime.
+/// Host-owned registry for background tasks and scheduled jobs.
 /// </summary>
+/// <remarks>
+/// Extensions declare jobs through <see cref="Plugins.IPluginRegistry.AddScheduledJob"/> so their work is
+/// admitted and withdrawn with the rest of the extension transaction. This surface directly registers only
+/// jobs owned by the Host itself.
+/// </remarks>
 public interface IBackgroundTaskRegistry
 {
     /// <summary>
@@ -14,9 +18,12 @@ public interface IBackgroundTaskRegistry
     void RegisterJob(IScheduledJob job, string schedule);
 
     /// <summary>
-    /// Unregisters a scheduled job.
+    /// Unregisters a Host-owned scheduled job.
     /// </summary>
     /// <param name="jobId">The job identifier.</param>
+    /// <exception cref="InvalidOperationException">
+    /// The job belongs to an extension and must be withdrawn through its lifecycle receipt.
+    /// </exception>
     void UnregisterJob(string jobId);
 
     /// <summary>

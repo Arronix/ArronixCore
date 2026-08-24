@@ -16,6 +16,8 @@
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Arronix.Host\Arronix.Host.csproj" />
+    <ProjectReference Include="..\Arronix.Host.Tests.G02AdmissionFixture\Arronix.Host.Tests.G02AdmissionFixture.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!--
@@ -37,12 +39,29 @@
        proof. G02 changes the asserted admission outcome, not this fixture path.
   -->
   <Target Name="StagePackagedMoviesPlugin" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)PackagedPlugins\movies" />
     <ItemGroup>
       <PackagedMoviesPluginFile Include="..\Arronix.Plugin.Movies\bin\$(Configuration)\$(TargetFramework)\**\*" />
     </ItemGroup>
     <Copy
       SourceFiles="@(PackagedMoviesPluginFile)"
       DestinationFiles="@(PackagedMoviesPluginFile->'$(OutDir)PackagedPlugins\movies\%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true" />
+  </Target>
+
+  <!--
+       Stage a purpose-built extension with a kind, provider, language, job and health contributor. It is a
+       project dependency but not a compile-time reference: the acceptance test can reach its types only by
+       sending this package through discovery and the isolated loader.
+  -->
+  <Target Name="StageG02AdmissionFixturePlugin" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)G02PackagedPlugins\g02.admission.fixture" />
+    <ItemGroup>
+      <G02AdmissionFixtureFile Include="..\Arronix.Host.Tests.G02AdmissionFixture\bin\$(Configuration)\$(TargetFramework)\**\*" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(G02AdmissionFixtureFile)"
+      DestinationFiles="@(G02AdmissionFixtureFile->'$(OutDir)G02PackagedPlugins\g02.admission.fixture\%(RecursiveDir)%(Filename)%(Extension)')"
       SkipUnchangedFiles="true" />
   </Target>
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Linq;
+using Arronix.Common.Naming;
 
 namespace Arronix.Host.Engines.Naming;
 
@@ -55,33 +56,6 @@ internal static class NamingTemplateParser
             ReferencedTokens = referenced,
             Errors = errors,
         };
-    }
-
-    /// <summary>
-    /// Lower-cases a token name and strips every separator, producing the lookup and collision key.
-    /// </summary>
-    /// <param name="tokenName">The name as written.</param>
-    /// <returns>The canonical form.</returns>
-    /// <remarks>
-    /// This is the surveyed token equality comparer promoted to a grammar rule (§3.2): the same fold
-    /// makes <c>{Series Title}</c>, <c>{series.title}</c> and <c>{SERIES_TITLE}</c> one token.
-    /// </remarks>
-    public static string Canonicalize(string tokenName)
-    {
-        ArgumentNullException.ThrowIfNull(tokenName);
-
-        Span<char> buffer = stackalloc char[tokenName.Length];
-        var length = 0;
-
-        foreach (var symbol in tokenName)
-        {
-            if (char.IsLetterOrDigit(symbol))
-            {
-                buffer[length++] = char.ToLowerInvariant(symbol);
-            }
-        }
-
-        return new string(buffer[..length]);
     }
 
     private static List<NamingTemplateNode> ParseSegments(
@@ -375,7 +349,7 @@ internal static class NamingTemplateParser
         return new NamingTokenRef
         {
             Name = name.Trim(),
-            CanonicalName = Canonicalize(name),
+            CanonicalName = NamingTokenName.Canonicalize(name),
             Prefix = prefix,
             Suffix = suffix,
             Modifiers = modifiers,

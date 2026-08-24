@@ -52,6 +52,10 @@ public sealed class PluginRegistrationLedger
     private readonly List<ScheduledJobRegistration> _jobs = [];
     private readonly List<EventHandlerRegistration> _handlers = [];
     private CapabilitySet _satisfied = CapabilitySet.None;
+    private IReadOnlyList<LedgerEntry>? _frozenEntries;
+    private IReadOnlyList<ScheduledJobRegistration>? _frozenJobs;
+    private IReadOnlyList<EventHandlerRegistration>? _frozenHandlers;
+    private bool _frozen;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PluginRegistrationLedger"/> class.
@@ -70,22 +74,22 @@ public sealed class PluginRegistrationLedger
     /// <summary>
     /// Gets everything that was registered, in registration order.
     /// </summary>
-    public IReadOnlyList<LedgerEntry> Entries => _entries;
+    public IReadOnlyList<LedgerEntry> Entries => _frozenEntries ?? _entries.ToArray();
 
     /// <summary>
     /// Gets the background jobs, in registration order.
     /// </summary>
-    public IReadOnlyList<ScheduledJobRegistration> ScheduledJobs => _jobs;
+    public IReadOnlyList<ScheduledJobRegistration> ScheduledJobs => _frozenJobs ?? _jobs.ToArray();
 
     /// <summary>
     /// Gets the event subscriptions, in registration order.
     /// </summary>
-    public IReadOnlyList<EventHandlerRegistration> EventHandlers => _handlers;
+    public IReadOnlyList<EventHandlerRegistration> EventHandlers => _frozenHandlers ?? _handlers.ToArray();
 
     /// <summary>
     /// Gets how many things were registered.
     /// </summary>
-    public int Count => _entries.Count;
+    public int Count => _frozenEntries?.Count ?? _entries.Count;
 
     /// <summary>
     /// Gets the capabilities the recorded registrations account for.
@@ -104,7 +108,7 @@ public sealed class PluginRegistrationLedger
     /// <returns>The instances.</returns>
     public IReadOnlyList<TContract> Registered<TContract>()
         where TContract : class
-        => _entries
+        => Entries
             .Where(entry => entry.Contract == typeof(TContract))
             .Select(entry => (TContract)entry.Instance)
             .ToArray();
@@ -158,6 +162,7 @@ public sealed class PluginRegistrationLedger
 
     internal void Record(Type contract, object instance)
     {
+        ThrowIfFrozen();
         _entries.Add(new LedgerEntry(contract, instance, _entries.Count));
 
         if (CapabilityMatrix.RegistrationRequirements.TryGetValue(contract, out var required))
@@ -197,13 +202,38 @@ public sealed class PluginRegistrationLedger
 
     internal void RecordScheduledJob(IScheduledJob job, string schedule)
     {
+        ThrowIfFrozen();
         _jobs.Add(new ScheduledJobRegistration(job, schedule));
         Record(typeof(IScheduledJob), job);
     }
 
     internal void RecordEventHandler(Type eventType, object handler)
     {
+        ThrowIfFrozen();
         _handlers.Add(new EventHandlerRegistration(eventType, handler));
         _entries.Add(new LedgerEntry(typeof(IEventHandler<>), handler, _entries.Count));
+    }
+
+    /// <summary>Freezes immutable snapshots before the load pipeline begins reading the ledger.</summary>
+    internal void Freeze()
+    {
+        if (_frozen)
+        {
+            return;
+        }
+
+        _frozenEntries = Array.AsReadOnly(_entries.ToArray());
+        _frozenJobs = Array.AsReadOnly(_jobs.ToArray());
+        _frozenHandlers = Array.AsReadOnly(_handlers.ToArray());
+        _frozen = true;
+    }
+
+    private void ThrowIfFrozen()
+    {
+        if (_frozen)
+        {
+            throw new InvalidOperationException(
+                $"Extension '{Plugin}' attempted to mutate its registration ledger after configuration ended.");
+        }
     }
 }

@@ -26,6 +26,7 @@ public sealed class PluginLoadResult
         ValidatedManifest? manifest,
         PluginRegistrationLedger? ledger,
         PluginLoadContext? loadContext,
+        PluginRuntimeLease? runtimeLease,
         AdmittedInventory admitted,
         CoreErrorCode? errorCode,
         string? message,
@@ -38,6 +39,7 @@ public sealed class PluginLoadResult
         Manifest = manifest;
         Ledger = ledger;
         LoadContext = loadContext;
+        RuntimeLease = runtimeLease;
         Admitted = admitted;
         ErrorCode = errorCode;
         Message = message;
@@ -76,13 +78,16 @@ public sealed class PluginLoadResult
     /// </summary>
     public PluginLoadContext? LoadContext { get; }
 
+    /// <summary>Gets the exact extension-owned lifetime receipt while this result is active.</summary>
+    internal PluginRuntimeLease? RuntimeLease { get; }
+
     /// <summary>
     /// Gets what the host admitted for this extension, keyed per media kind.
     /// </summary>
     /// <remarks>
-    /// Empty until host admission has run, and legitimately empty afterwards for an extension that
-    /// contributes no media kind. This is what makes an already-active extension's real kinds readable when
-    /// the next extension is checked for a conflict, rather than the kinds its declaration file claimed.
+    /// Non-authoritative until Host admission has run, and authoritatively empty afterwards for an extension
+    /// that contributes no media kind. This is what makes an already-active extension's real kinds readable
+    /// when the next extension is checked for a conflict, rather than the kinds its declaration file claimed.
     /// </remarks>
     public AdmittedInventory Admitted { get; }
 
@@ -141,7 +146,8 @@ public sealed class PluginLoadResult
             manifest,
             ledger,
             loadContext,
-            admitted ?? AdmittedInventory.Empty,
+            runtimeLease: null,
+            admitted ?? AdmittedInventory.NotAdmitted,
             errorCode: null,
             message: null,
             defects: [],
@@ -174,7 +180,8 @@ public sealed class PluginLoadResult
             manifest,
             ledger: null,
             loadContext: null,
-            AdmittedInventory.Empty,
+            runtimeLease: null,
+            AdmittedInventory.NotAdmitted,
             errorCode,
             message,
             defects ?? [],
@@ -202,10 +209,55 @@ public sealed class PluginLoadResult
             Manifest,
             ledger ?? Ledger,
             loadContext ?? LoadContext,
+            RuntimeLease,
             admitted ?? Admitted,
             ErrorCode,
             Message,
             Defects,
+            changedAt);
+
+    /// <summary>Returns the active result coupled to its exact runtime lifetime.</summary>
+    internal PluginLoadResult Activate(
+        PluginRegistrationLedger ledger,
+        PluginLoadContext loadContext,
+        DateTimeOffset changedAt,
+        AdmittedInventory admitted,
+        PluginRuntimeLease runtimeLease)
+    {
+        ArgumentNullException.ThrowIfNull(ledger);
+        ArgumentNullException.ThrowIfNull(loadContext);
+        ArgumentNullException.ThrowIfNull(admitted);
+        ArgumentNullException.ThrowIfNull(runtimeLease);
+
+        return new PluginLoadResult(
+            Source,
+            PluginState.Active,
+            Id,
+            Manifest,
+            ledger,
+            loadContext,
+            runtimeLease,
+            admitted,
+            ErrorCode,
+            Message,
+            Defects,
+            changedAt);
+    }
+
+    /// <summary>Detaches runtime-owned references after a clean Host withdrawal.</summary>
+    internal PluginLoadResult Stop(DateTimeOffset changedAt)
+        => new(
+            Source,
+            PluginState.Stopped,
+            Id,
+            Manifest,
+            ledger: null,
+            loadContext: null,
+            runtimeLease: null,
+            AdmittedInventory.NotAdmitted,
+            errorCode: null,
+            message: null,
+            defects: [],
             changedAt);
 
     /// <summary>

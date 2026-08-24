@@ -29,6 +29,7 @@ public sealed class EndToEndLoadTests
     private string _home = string.Empty;
     private string _root = string.Empty;
     private PluginRuntimeOptions _options = new();
+    private PluginPublicationGate _publication = new();
     private PluginRuntimeRegistry _registry = new();
     private TokenRegistry _tokens = new();
 
@@ -44,8 +45,9 @@ public sealed class EndToEndLoadTests
             RootFolder = _root,
             StateFolder = Path.Combine(_home, "state")
         };
-        _registry = new PluginRuntimeRegistry();
-        _tokens = new TokenRegistry();
+        _publication = new PluginPublicationGate();
+        _registry = new PluginRuntimeRegistry(_publication);
+        _tokens = new TokenRegistry(_publication);
     }
 
     [TearDown]
@@ -70,7 +72,8 @@ public sealed class EndToEndLoadTests
         _registry,
         _tokens,
         TimeProvider.System,
-        NullLogger<PluginLoader>.Instance);
+        NullLogger<PluginLoader>.Instance,
+        _publication);
 
     /// <summary>
     /// Installs a compiled extension declaring one privilege that no registration can account for, so that
@@ -107,7 +110,7 @@ public sealed class EndToEndLoadTests
     {
         Install("emitted");
 
-        var result = CreateLoader().LoadAll().Should().ContainSingle().Which;
+        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
 
         result.State.Should().Be(
             PluginState.Active,
@@ -123,7 +126,7 @@ public sealed class EndToEndLoadTests
     {
         Install("emitted");
 
-        var result = CreateLoader().LoadAll().Should().ContainSingle().Which;
+        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
         var context = result.LoadContext!;
 
         context.Name.Should().Be("arronix-plugin:emitted");
@@ -137,7 +140,7 @@ public sealed class EndToEndLoadTests
     {
         Install("emitted");
 
-        CreateLoader().LoadAll();
+        CreateLoader().LoadAll(NoOpAdmission.Instance);
 
         var home = Path.Combine(_options.StateFolder, "emitted");
         Directory.Exists(Path.Combine(home, "data")).Should().BeTrue();
@@ -150,7 +153,7 @@ public sealed class EndToEndLoadTests
     {
         Install("emitted", EmittedBehavior.ReachForTheNetwork);
 
-        var result = CreateLoader().LoadAll().Should().ContainSingle().Which;
+        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
 
         result.State.Should().Be(PluginState.Quarantined);
         result.ErrorCode.Should().Be(CoreErrorCode.PluginCapabilityMissing);
@@ -162,7 +165,7 @@ public sealed class EndToEndLoadTests
     {
         Install("emitted", EmittedBehavior.Throw);
 
-        var load = () => CreateLoader().LoadAll();
+        var load = () => CreateLoader().LoadAll(NoOpAdmission.Instance);
 
         var result = load.Should().NotThrow().Which.Should().ContainSingle().Which;
         result.State.Should().Be(PluginState.Quarantined);
@@ -175,7 +178,7 @@ public sealed class EndToEndLoadTests
     {
         Install("emitted", moduleCount: 2);
 
-        var result = CreateLoader().LoadAll().Should().ContainSingle().Which;
+        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("exactly one");
@@ -200,7 +203,7 @@ public sealed class EndToEndLoadTests
               }
               """);
 
-        var result = CreateLoader().LoadAll().Should().ContainSingle().Which;
+        var result = CreateLoader().LoadAll(NoOpAdmission.Instance).Should().ContainSingle().Which;
 
         result.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
         result.Message.Should().Contain("must agree");
@@ -222,7 +225,7 @@ public sealed class EndToEndLoadTests
     {
         Install("emitted");
 
-        CreateLoader().LoadAll();
+        CreateLoader().LoadAll(NoOpAdmission.Instance);
 
         _registry.Active.Should().ContainSingle();
         var view = _registry.Snapshot().Should().ContainSingle().Which;

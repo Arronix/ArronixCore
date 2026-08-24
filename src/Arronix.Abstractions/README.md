@@ -77,8 +77,9 @@ Provider families are platform-owned dispatch seams:
 - `ICurator<TItem>`
 
 Catalogers and curators return the media type's own item class; they do not return a universal field bag.
-Plugin registration contributes an implementation type. Host activates admitted providers through DI with
-the capability-scoped `IPluginContext`. The non-generic `ICataloger` floor recognizes identifiers from its
+Plugin registration contributes an implementation type. Host activates admitted providers through an exact
+public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed; it
+never resolves plugin implementations from Host DI. The non-generic `ICataloger` floor recognizes identifiers from its
 own namespace in release text; Host validates and supplies those readings to the typed media parser.
 
 ## Format capabilities

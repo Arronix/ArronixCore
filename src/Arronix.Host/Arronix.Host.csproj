@@ -25,6 +25,7 @@
   -->
   <ItemGroup>
     <InternalsVisibleTo Include="Arronix.Host.Tests" />
+    <InternalsVisibleTo Include="Arronix.Plugin.Movies.Tests" />
   </ItemGroup>
 
   <ItemGroup>

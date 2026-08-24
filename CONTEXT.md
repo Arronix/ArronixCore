@@ -6,14 +6,15 @@ Arronix is a clean-sheet, pre-alpha media automation platform. A media kind owns
 
 The plugin SDK is part of the product. A third party should be able to own a Sonarr-, Radarr-, Lidarr-, Readarr-, or new-media-style application through a small set of intuitive, strongly typed abstractions. Small means that Arronix derives common behaviour and supplies sound defaults; it never means erasing media shape, moving semantics into string bags, or making an author understand Host implementation mechanics.
 
-The contract line is `0.8.0`. First-party plugin manifests declare `>=0.8 <0.9`. The whole public surface is pre-1.0; it has no second per-type experimental tier or compiler opt-in mechanism.
+The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-party plugin manifests declare
+`>=0.8 <0.9`. That SDK surface is pre-1.0; it has no second per-type experimental tier or compiler opt-in.
 
 ## Current architecture
 
 - `Arronix.Abstractions` contains media-neutral contracts and has no project or package references.
 - `Arronix.Common` contains reusable host-side implementations.
 - `Arronix.Plugins` owns manifests, capability admission, assembly isolation, registration capture, and the
-  post-admission seam through which Host returns the inventory it actually admitted.
+  attempt-scoped transaction through which Host prepares an admitted inventory for the loader to publish.
 - `Arronix.Host` owns DI composition, generic engines, registries, scheduling, storage, and plugin activation.
 - `Arronix.Api` and `Arronix.Client` are the HTTP and Blazor WebAssembly edges.
 - `Arronix.Format.Video` owns video representation types, vocabulary, extensions, and default release-policy contributions.
@@ -35,9 +36,18 @@ The contract line is `0.8.0`. First-party plugin manifests declare `>=0.8 <0.9`.
 - The common item class exposes identity, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
 - Entity and workbench-row descriptor shapes are generated from their CLR definitions at build time. Host consumes generated closed getters and validates the result; it does not discover media schema with property or attribute reflection.
 - `ItemInfo` is the common localized title/overview payload. `Localized<ItemInfo>` is used when no media-specific localized facts exist.
-- The public contract has no second non-generic `IMediaType`. Host-only `IMediaTypeRuntime` is the kind-blind bridge.
+- The plugin SDK has no second non-generic `IMediaType`. Host-only `IMediaTypeRuntime` is the kind-blind bridge.
 - `ICataloger<TItem>` and `ICurator<TItem>` return the media type's own shaped items. Field dictionaries are not an alternative contract. The non-generic `ICataloger` floor recognizes its own external-identifier markers locally; media parsers receive those typed readings and do not embed catalog-vendor marker vocabulary.
-- Provider registrations carry implementation types. The host activates admitted providers through DI with the capability-scoped `IPluginContext`.
+- Provider registrations carry implementation types. After admission, Host constructs them through an exact
+  public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed. Plugin
+  activation never resolves from Host DI.
+- Host admission prepares complete kind, provider, language, job, and health candidates without publishing
+  them. A successful preparation carries one exact `IPluginAdmissionAttempt`; after every remaining loader
+  check passes, one shared Host-owned publication gate commits its Host receipt, per-kind token claims, and Active
+  runtime result as one change. Refusal, exception, or late collision rolls back only that attempt.
+- Naming-token identity is its invariant-lowercased alphanumeric spelling. Declaration agreement, reserved
+  names, ownership collisions, parsing, and rendering all use `Arronix.Common.Naming.NamingTokenName`; case,
+  spaces, punctuation, and supplementary-plane letter case cannot create a second owner.
 - `ReleaseListing` is raw indexer output. It is not an interpreted release or a selection candidate.
 - `TargetMatch<TTarget>` retains typed Covered and Missing targets and an explicit Satisfied, Partial, Superset, or Rejected disposition.
 - Release selection is deterministic: hard requirements, lexicographic typed preferences, bounded facets, acquisition preference, then stable release identity. Provider result order is irrelevant.
@@ -69,18 +79,43 @@ coverage.
 - Television has typed target/release and coverage pressure tests, but its production shape/parser/matcher/naming implementation still uses the legacy imperative seams.
 - Books and Music still use legacy imperative media seams.
 - Legacy `IQualityModel`, ladder DTOs, and the untyped `ParsedRelease.Quality` path remain for unconverted implementations and compatibility adapters. Ladder-shaped residue also remains in shared `FieldValue`, `FormatFamily`, `MediaFileFacts`, `NotificationMessage`, Host registration, and storage surfaces; the migration has not yet isolated or removed all of it.
-- The packaged Movies extension survives the complete loader pipeline. `IPluginAdmissionCheck.Admit` returns a `PluginAdmissionResult` carrying an `AdmittedInventory`: one entry per `MediaKindId` Host actually registered, each holding that admitted kind's own derived `NamingToken` collection read back from its `RegisteredMediaKind`. Late declaration agreement, scheduled-job kind association, cross-installation duplicate-kind checking, and token ownership all consume that inventory. Legacy `IMediaShapeProvider` registrations retain a transitional path used only when no Host admission ran; after admission the inventory is the authority. Token ownership is claimed per admitted kind through `TokenClaimRequest`, so an extension supplying several kinds cannot claim the cross product of its kinds and its whole vocabulary. Any quarantine after the claim releases it, and Host withdrawal gives back token ownership alongside kinds, providers, languages, jobs, and health contributors. The real packaged-output Host test proves Active state, the admitted kind, exact per-kind token ownership, that the admitted item type came from the extension's own `PluginLoadContext` rather than a direct binder call, atomic withdrawal on a planted late token conflict and on a restaged manifest declaring an unsupplied kind, and release on `StopAsync`.
-- `src/Arronix.Plugin.Movies/plugin.json` carries only manifest-owned concerns: manifest schema version, package identity, operator-facing name, version, description, the Arronix contract range, the entry assembly, and explicit capability grants. Its `mediaKinds`, `identifiers`, `tokens`, and `policies` are gone, and `actions` never existed. Manifest validation permits those omissions; a manifest that does state kinds or tokens is still held to them exactly, in both directions, against the admitted projection. Capabilities and security grants remain explicit manifest-owned least-privilege requests, because a privilege cannot be derived from code that has not been allowed to run.
+- The packaged Movies extension survives the complete loader pipeline. `IPluginAdmissionCheck.Prepare` returns
+  an attempt whose `AdmittedInventory` has one entry per prepared `MediaKindId`, carrying that kind's derived
+  `NamingToken` collection read from its `RegisteredMediaKind`. Late declaration agreement, scheduled-job
+  kind association, duplicate-kind checking, and token ownership consume that inventory. Legacy
+  `IMediaShapeProvider` registrations remain transitional inputs to the same mandatory Host admission path.
+  Token claims remain per kind, never the cross product of an extension's kinds and vocabulary.
+- Publication and teardown are exact lifetime transitions. A failed or repeated load cannot replace an
+  existing Active authority. Normal Host shutdown stops and drains the scheduler before atomically
+  withdrawing the exact Host receipt, token plan, and runtime result; owned provider and language instances,
+  direct registrations, the module, and its collectible load context are then released in deterministic
+  async-preferred order. A job which genuinely overruns its declared shutdown deadline keeps the owning
+  plugin Active and rooted rather than unloading executing code. A completed stop leaves a reference-free
+  `Stopped` result.
+- The packaged-output proofs exercise real isolated assemblies rather than a direct binder: Movies reaches
+  Active with its admitted item type in its own `PluginLoadContext`; a separate G02 fixture contributes a
+  real kind, notifier, language, scheduled job, health contributor, and token vocabulary; late rejection
+  leaves every registry empty; ordinary stop and scheduler drain release every object; overrun defers that
+  release; and a throwing load-context unloading handler is logged without aborting the next package.
+- `src/Arronix.Plugin.Movies/plugin.json` carries only current manifest-owned concerns: manifest schema version,
+  package identity, operator-facing name, version, description, the Arronix contract range, the entry assembly,
+  and requested capabilities. Its media-derived `mediaKinds`, `tokens`, and `policies` are gone; `actions`
+  never existed; and cataloger-owned external identifier schemes are not baked into Movies. Manifest
+  validation permits those omissions; a manifest that does state kinds or tokens is still held to them
+  exactly, in both directions, against the admitted projection. Capabilities are explicit because privilege
+  cannot be derived from code before it is allowed to run. Operator-specific host/root access grants are
+  runtime configuration, and package dependencies do not enter the manifest until G03 defines them.
 - Books, Music, and Television manifests still carry `mediaKinds`, `identifiers`, and `tokens`. Those are transitional declarations belonging to their legacy media paths and are removed with their conversions, not here.
 - The typed Movie parser currently materializes common release text facts but does not compose format-owned recognizers into a populated `Video` representation. No production typed cataloger supplies catalog-owned embedded-identifier readings. The manifest's related capability claims therefore outrun the executable production path.
 - Typed release policy and deterministic selection exist, but production acquisition does not yet materialize typed releases and call the selector end to end.
-- No production typed cataloger or curator ships yet. Their typed registration, DI activation, and catalog-owned identifier-reading boundary exist and are tested.
+- No production typed cataloger or curator ships yet. Their typed registration, constrained Host activation,
+  and catalog-owned identifier-reading boundary exist and are tested.
 - Typed workbench proposal/commit values and generic standard rows exist, but the current `IMediaItemSource` execution seam still projects proposals and commits through the kind-blind wire form.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
 
-- A model, descriptor, generated projection, unit test, or registration seam is not by itself a completed feature. Completion requires the same semantics to survive authoring, generic capture, plugin admission, DI activation, Host execution, persistence where applicable, API/wire projection, Client consumption, tests, and boundary documentation. Any bypass or parallel legacy path must be reported as active migration work.
+- A model, descriptor, generated projection, unit test, or registration seam is not by itself a completed feature. Completion requires the same semantics to survive authoring, generic capture, plugin admission, constrained activation, Host execution, persistence where applicable, API/wire projection, Client consumption, tests, and boundary documentation. Any bypass or parallel legacy path must be reported as active migration work.
 - Full *arr feature coverage and observable Scene/PTP ecosystem compatibility are acceptance concerns. Reuse the established behaviour and regression corpora as evidence; record intentional differences explicitly rather than simplifying difficult cases out of the model.
 - Prefer a coherent common abstraction over feature-local adapters. A repeated workaround is evidence that the common primitive or ownership boundary is incomplete; it must not become precedent merely because it lets one feature ship sooner.
 - `CONTEXT.md`, `INTERFACE.md`, `HISTORY.md`, `docs/design/typed-media-north-star.md`, `docs/design/typed-media-roadmap.md`, and `docs/owner-ledger.md` are the durable context for bounded work. A fresh task reads the relevant parts before proposing or changing a boundary; it does not ask the owner to reconstruct hundreds of turns of prior reasoning.
@@ -97,11 +132,12 @@ work does not substitute for closing an earlier dependency.
 - G01 is complete: the locked clean-repository rail reports 2,112 passed, 302 registered skips, zero failed,
   and zero inconclusive across 11 test projects; the ledger contains 302 cases, 129 requirements, and 12 sources,
   while three durable sentinels guard the proof rail itself.
-- G02 is complete: the real packaged Movies extension reaches `Active` through discovery, typed admission,
-  late agreement, token ownership, and publication; its derived tokens are owned once each by the admitted
-  kind; a late failure withdraws every committed contribution atomically; the acceptance path is the real
-  isolated load context rather than a direct binder call; and its manifest is no longer a second media
-  definition. It does not claim that the parser, selector, providers, persistence, or Client vertical works.
+- G02 is complete: the real packaged Movies extension reaches `Active` through discovery, typed preparation,
+  late agreement, one atomic publication, and exact stop; its derived tokens are owned once each by the
+  admitted kind; no contribution becomes visible before every loader check passes; failed reload cannot
+  replace an existing runtime; the acceptance path uses real isolated packaged output; and Movies' manifest
+  is no longer a second media definition. It does not claim that the parser, selector, production providers,
+  persistence, or Client vertical works.
 - G03 is active: establish package dependency/version rules and one exact CLR identity before any separately
   shipped typed provider is treated as viable.
 
@@ -119,7 +155,18 @@ duplicated checklist drifting from current state.
 - `ReleasePolicy<T>.Compile` still exposes builder callback choreography to media authors. Format defaults and media policy fragments must compose without making authors drive an internal compiler mechanism.
 - Movies still declares likely-standard workbenches, browse defaults, and title ordering. Audit them against Television, Music, and Books and derive any behaviour which is not a genuine media difference.
 - `AddCataloger<TItem,TCataloger>` and `AddCurator<TItem,TCurator>` repeat an item relationship already closed by the implementation contract. Registration ergonomics should infer or generate the erased pairing.
+- Provider identity and family still have multiple declarative authorities: family-specific registration,
+  `ProviderDescriptor.Family`, and `IProvider.Id`/`Family`. G04 must make the Host-qualified identifier and
+  closed provider registration the single sources rather than checking repeated values for agreement.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-24) reports 2,127 passed, 302 skipped, zero failed, and zero inconclusive from 2,429 total cases across 11 test projects. Of the skips, 301 are Movies cases and one is an architecture case; all are registered in the compatibility ledger. This verifies the checked-in solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite claim must report its observed skip count and ratchet result.
+- The current one-command full-solution run (2026-08-24) reports 2,168 passed, 302 skipped, zero failed,
+  and zero inconclusive from 2,470 total cases across 11 test projects. Of the skips, 301 are Movies cases
+  and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
+  solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
+  claim must report its observed skip count and ratchet result.
+- General hot-unload containment remains later work: consumers outside the scheduler may retain raw provider,
+  language, health-contributor, or job references after withdrawal; a hostile `DisposeAsync` can decline to
+  complete; and actual collectible-context garbage collection is not promised merely because Arronix has
+  dropped its own roots and called `Unload`.

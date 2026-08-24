@@ -25,7 +25,8 @@ internal static class MediaRegistration
     internal static IServiceCollection AddMediaRegistry(this IServiceCollection services)
     {
         services.TryAddSingleton<MediaKindRegistry>();
-        services.TryAddSingleton<IMediaKindRegistry>(
+        services.RemoveAll<IMediaKindRegistry>();
+        services.AddSingleton<IMediaKindRegistry>(
             provider => provider.GetRequiredService<MediaKindRegistry>());
 
         services.TryAddSingleton<IIntentRegistry, IntentRegistry>();

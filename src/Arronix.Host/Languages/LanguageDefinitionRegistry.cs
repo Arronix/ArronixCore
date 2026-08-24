@@ -1,6 +1,7 @@
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Languages;
 using Arronix.Abstractions.Plugins;
+using Arronix.Plugins.Registry;
 using System.Linq;
 
 
@@ -12,18 +13,35 @@ public sealed class LanguageDefinitionRegistry
     private readonly object _gate = new();
     private readonly Dictionary<string, RegisteredLanguage> _definitions =
         new(StringComparer.OrdinalIgnoreCase);
+    private readonly PluginPublicationGate _publication;
+
+    /// <summary>Creates a standalone language registry with its own publication boundary.</summary>
+    public LanguageDefinitionRegistry()
+        : this(new PluginPublicationGate())
+    {
+    }
+
+    /// <summary>Creates a language registry participating in one publication boundary.</summary>
+    public LanguageDefinitionRegistry(PluginPublicationGate publication)
+    {
+        _publication = publication ?? throw new ArgumentNullException(nameof(publication));
+    }
+
+    /// <summary>Gets the publication boundary this registry participates in.</summary>
+    internal PluginPublicationGate PublicationGate => _publication;
 
     /// <summary>Gets a stable snapshot ordered by language tag.</summary>
     public IReadOnlyList<ILanguageDefinition> All
     {
         get
         {
+            using var publication = _publication.EnterRead();
             lock (_gate)
             {
                 return
                 [
                     .. _definitions.Values
-                        .OrderBy(static entry => entry.Definition.Language.Code, StringComparer.OrdinalIgnoreCase)
+                        .OrderBy(static entry => entry.Code, StringComparer.OrdinalIgnoreCase)
                         .Select(static entry => entry.Definition),
                 ];
             }
@@ -31,21 +49,81 @@ public sealed class LanguageDefinitionRegistry
     }
 
     /// <summary>Admits one implementation, refusing two owners for the same language tag.</summary>
-    public void Register(PluginId plugin, ILanguageDefinition definition)
+    internal void Register(PluginId plugin, ILanguageDefinition definition)
+    {
+        if (!TryPrepare(plugin, definition, out var candidate, out var error))
+        {
+            throw new InvalidOperationException(error);
+        }
+
+        if (!TryPublish(candidate!, out error))
+        {
+            throw new InvalidOperationException(error);
+        }
+    }
+
+    /// <summary>Activates no code; snapshots and validates an already-activated language candidate.</summary>
+    internal bool TryPrepare(
+        PluginId plugin,
+        ILanguageDefinition definition,
+        out RegisteredLanguage? candidate,
+        out string? error)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        ArgumentException.ThrowIfNullOrWhiteSpace(definition.Language.Code);
+        var language = definition.Language;
+        ArgumentNullException.ThrowIfNull(language);
+        var code = language.Code;
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
 
+        candidate = new RegisteredLanguage(plugin, code, definition);
+
+        using var publication = _publication.EnterRead();
         lock (_gate)
         {
-            if (_definitions.TryGetValue(definition.Language.Code, out var existing))
+            if (_definitions.TryGetValue(candidate.Code, out var existing))
             {
-                throw new InvalidOperationException(
-                    $"Language '{definition.Language.Code}' is already owned by extension "
-                    + $"'{existing.Plugin}'; extension '{plugin}' cannot replace it by load order.");
+                error = $"Language '{candidate.Code}' is already owned by extension "
+                    + $"'{existing.Plugin}'; extension '{plugin}' cannot replace it by load order.";
+                candidate = null;
+                return false;
+            }
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>Publishes one already-built language candidate.</summary>
+    internal bool TryPublish(RegisteredLanguage candidate, out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        using var publication = _publication.EnterWrite();
+        lock (_gate)
+        {
+            if (_definitions.TryGetValue(candidate.Code, out var existing))
+            {
+                error = $"Language '{candidate.Code}' is already owned by extension "
+                    + $"'{existing.Plugin}'; extension '{candidate.Plugin}' cannot replace it by load order.";
+                return false;
             }
 
-            _definitions.Add(definition.Language.Code, new RegisteredLanguage(plugin, definition));
+            _definitions.Add(candidate.Code, candidate);
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>Removes exactly one language candidate and never a later replacement.</summary>
+    internal bool Remove(RegisteredLanguage candidate)
+    {
+        using var publication = _publication.EnterWrite();
+        lock (_gate)
+        {
+            return _definitions.TryGetValue(candidate.Code, out var current)
+                && ReferenceEquals(current, candidate)
+                && _definitions.Remove(candidate.Code);
         }
     }
 
@@ -54,6 +132,7 @@ public sealed class LanguageDefinitionRegistry
     {
         ArgumentNullException.ThrowIfNull(language);
 
+        using var publication = _publication.EnterRead();
         lock (_gate)
         {
             if (_definitions.TryGetValue(language.Code, out var exact))
@@ -70,8 +149,9 @@ public sealed class LanguageDefinitionRegistry
     }
 
     /// <summary>Withdraws every language implementation contributed by one extension.</summary>
-    public void RemoveByPlugin(PluginId plugin)
+    internal void RemoveByPlugin(PluginId plugin)
     {
+        using var publication = _publication.EnterWrite();
         lock (_gate)
         {
             foreach (var code in _definitions
@@ -84,5 +164,8 @@ public sealed class LanguageDefinitionRegistry
         }
     }
 
-    private sealed record RegisteredLanguage(PluginId Plugin, ILanguageDefinition Definition);
+    internal sealed record RegisteredLanguage(
+        PluginId Plugin,
+        string Code,
+        ILanguageDefinition Definition);
 }

@@ -38,7 +38,7 @@
       "required": ["arronix"],
       "properties": {
         "arronix": {
-          "description": "A range in a documented subset of npm/yarn syntax: comparison operators, whitespace conjunction, '||' alternation and partial versions. Caret, tilde, wildcards and hyphen ranges are rejected.",
+          "description": "The compatible plugin-consumable Arronix.Abstractions SDK range, in a documented subset of npm/yarn syntax: comparison operators, whitespace conjunction, '||' alternation and partial versions. Caret, tilde, wildcards and hyphen ranges are rejected.",
           "type": "string",
           "minLength": 1
         }
@@ -76,19 +76,19 @@
       }
     },
     "mediaKinds": {
-      "description": "The media kinds the extension claims. Requires the 'media-kind' capability, and that capability requires at least one entry here.",
+      "description": "A transitional declaration of media kinds for legacy shape-based extensions. It requires the 'media-kind' capability when present. Typed media extensions omit it because Host derives their kinds from the admitted definition; holding the capability does not require an entry here.",
       "type": "array",
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
     },
     "identifiers": {
-      "description": "The external identifier schemes the extension understands.",
+      "description": "A transitional, non-authoritative external-identifier inventory for legacy extensions. Typed media owns identity roles, while each installed cataloger contributes the schemes and release markers it owns.",
       "type": "array",
       "uniqueItems": true,
       "items": { "type": "string", "minLength": 1 }
     },
     "tokens": {
-      "description": "The naming tokens the extension declares. A bare string is accepted and widened to a descriptor with an empty description.",
+      "description": "A transitional naming-token inventory for legacy extensions. Typed media omits it because Host derives tokens from the prepared kind. When present, names are compared by their invariant-lowercased alphanumeric grammar identity and must agree exactly with the prepared or legacy shape. A bare string is accepted and widened to a descriptor with an empty description.",
       "type": "array",
       "items": {
         "oneOf": [
@@ -111,7 +111,7 @@
       }
     },
     "policies": {
-      "description": "The ordered policy identifiers the extension declares, by category. The five categories are closed; a sixth key is a load failure.",
+      "description": "A transitional policy inventory for legacy extensions. Typed media omits it because policy is compiled from typed declarations. The validator currently checks the closed category shape plus nonblank, unique identifiers; it does not treat this list as executable policy authority.",
       "type": "object",
       "additionalProperties": false,
       "properties": {

@@ -26,10 +26,11 @@ public sealed record AssemblyReferenceReport(
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the mechanical form of the rule that an extension references the contract assembly and nothing
-/// else. It runs at discovery, before a load context exists, and it reads metadata rather than executing
-/// anything: no type initializer runs, no module initializer runs, and a hostile assembly gets no
-/// opportunity to act before it is refused.
+/// This is the metadata half of the implementation-boundary rule: an extension may bring its own libraries
+/// and supported format or language contracts, but it may not reference Arronix implementation assemblies
+/// or the legacy applications. It runs at discovery, before a load context exists, and reads metadata rather
+/// than executing anything: no type initializer or module initializer runs before the entry assembly is
+/// refused.
 /// </para>
 /// <para>
 /// The check is deliberately redundant with the load context's deny list. Static inspection catches the

@@ -44,6 +44,7 @@ public sealed class PluginRegistry : IPluginRegistry
 {
     private readonly CapabilitySet _granted;
     private readonly IMediaTypeCapabilityReader? _mediaTypes;
+    private readonly object _gate = new();
     private bool _sealed;
 
     /// <summary>
@@ -87,7 +88,19 @@ public sealed class PluginRegistry : IPluginRegistry
     /// <remarks>
     /// Called once, by the loader, when the extension's configure method returns.
     /// </remarks>
-    public void Seal() => _sealed = true;
+    public void Seal()
+    {
+        lock (_gate)
+        {
+            if (_sealed)
+            {
+                return;
+            }
+
+            Ledger.Freeze();
+            _sealed = true;
+        }
+    }
 
     /// <inheritdoc />
     /// <remarks>
@@ -114,30 +127,33 @@ public sealed class PluginRegistry : IPluginRegistry
     public IPluginRegistry AddMediaType<TType>()
         where TType : class, IMediaTypeDefinition, new()
     {
-        ThrowIfSealed();
-
-        if (_mediaTypes is null)
+        lock (_gate)
         {
-            throw new InvalidOperationException(
-                $"Extension '{Plugin}' registered the typed media kind '{typeof(TType).Name}', but this "
-                + "registry was built without a capability reader and cannot tell which capabilities the "
-                + "kind's sections demand. Registering it would grant whatever went unchecked, so it is "
-                + "refused. This is a host wiring defect, not an extension defect.");
-        }
+            ThrowIfSealed();
 
-        var registration = new TType().Capture();
-        var requirements = _mediaTypes.Requirements(registration);
-
-        foreach (var requirement in requirements)
-        {
-            if (!_granted.Has(requirement.Capability))
+            if (_mediaTypes is null)
             {
-                throw new PluginCapabilityException(Plugin, requirement.Capability, requirement.Section);
+                throw new InvalidOperationException(
+                    $"Extension '{Plugin}' registered the typed media kind '{typeof(TType).Name}', but this "
+                    + "registry was built without a capability reader and cannot tell which capabilities the "
+                    + "kind's sections demand. Registering it would grant whatever went unchecked, so it is "
+                    + "refused. This is a host wiring defect, not an extension defect.");
             }
-        }
 
-        Ledger.RecordMediaType(registration, DefinitionCapabilityRules.SatisfiedBy(requirements));
-        return this;
+            var registration = new TType().Capture();
+            var requirements = _mediaTypes.Requirements(registration);
+
+            foreach (var requirement in requirements)
+            {
+                if (!_granted.Has(requirement.Capability))
+                {
+                    throw new PluginCapabilityException(Plugin, requirement.Capability, requirement.Section);
+                }
+            }
+
+            Ledger.RecordMediaType(registration, DefinitionCapabilityRules.SatisfiedBy(requirements));
+            return this;
+        }
     }
 
     /// <inheritdoc />
@@ -202,10 +218,13 @@ public sealed class PluginRegistry : IPluginRegistry
     {
         ArgumentNullException.ThrowIfNull(job);
         ArgumentException.ThrowIfNullOrWhiteSpace(schedule);
-        ThrowIfSealed();
 
-        Ledger.RecordScheduledJob(job, schedule);
-        return this;
+        lock (_gate)
+        {
+            ThrowIfSealed();
+            Ledger.RecordScheduledJob(job, schedule);
+            return this;
+        }
     }
 
     /// <inheritdoc />
@@ -231,15 +250,18 @@ public sealed class PluginRegistry : IPluginRegistry
     public IPluginRegistry AddLanguage<TLanguage>()
         where TLanguage : class, ILanguageDefinition
     {
-        ThrowIfSealed();
-
-        if (!_granted.Has(Capability.Language))
+        lock (_gate)
         {
-            throw new PluginCapabilityException(Plugin, Capability.Language, nameof(ILanguageDefinition));
-        }
+            ThrowIfSealed();
 
-        Ledger.RecordLanguage(LanguageDefinitionRegistration.For<TLanguage>());
-        return this;
+            if (!_granted.Has(Capability.Language))
+            {
+                throw new PluginCapabilityException(Plugin, Capability.Language, nameof(ILanguageDefinition));
+            }
+
+            Ledger.RecordLanguage(LanguageDefinitionRegistration.For<TLanguage>());
+            return this;
+        }
     }
 
     /// <inheritdoc />
@@ -251,10 +273,13 @@ public sealed class PluginRegistry : IPluginRegistry
         where TEvent : IDomainEvent
     {
         ArgumentNullException.ThrowIfNull(handler);
-        ThrowIfSealed();
 
-        Ledger.RecordEventHandler(typeof(TEvent), handler);
-        return this;
+        lock (_gate)
+        {
+            ThrowIfSealed();
+            Ledger.RecordEventHandler(typeof(TEvent), handler);
+            return this;
+        }
     }
 
     /// <inheritdoc />
@@ -273,34 +298,42 @@ public sealed class PluginRegistry : IPluginRegistry
         where TContract : class
     {
         ArgumentNullException.ThrowIfNull(instance);
-        ThrowIfSealed();
 
-        var contract = typeof(TContract);
-
-        if (!CapabilityMatrix.IsPermitted(_granted, contract))
+        lock (_gate)
         {
-            throw new PluginCapabilityException(
-                Plugin,
-                CapabilityMatrix.RequirementToReport(contract),
-                contract.Name);
-        }
+            ThrowIfSealed();
 
-        Ledger.Record(contract, instance);
-        return this;
+            var contract = typeof(TContract);
+
+            if (!CapabilityMatrix.IsPermitted(_granted, contract))
+            {
+                throw new PluginCapabilityException(
+                    Plugin,
+                    CapabilityMatrix.RequirementToReport(contract),
+                    contract.Name);
+            }
+
+            Ledger.Record(contract, instance);
+            return this;
+        }
     }
 
     private PluginRegistry AdmitProvider(ProviderTypeRegistration registration, Capability capability)
     {
         ArgumentNullException.ThrowIfNull(registration);
-        ThrowIfSealed();
 
-        if (!_granted.Has(capability))
+        lock (_gate)
         {
-            throw new PluginCapabilityException(Plugin, capability, registration.Family.ToString());
-        }
+            ThrowIfSealed();
 
-        Ledger.RecordProvider(registration, capability);
-        return this;
+            if (!_granted.Has(capability))
+            {
+                throw new PluginCapabilityException(Plugin, capability, registration.Family.ToString());
+            }
+
+            Ledger.RecordProvider(registration, capability);
+            return this;
+        }
     }
 
     private void ThrowIfSealed()

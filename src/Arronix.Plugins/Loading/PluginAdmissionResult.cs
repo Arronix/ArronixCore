@@ -3,9 +3,38 @@ using System.Linq;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Plugins;
 
 
 namespace Arronix.Plugins.Loading;
+
+/// <summary>
+/// One host admission attempt whose candidates have been built but not published.
+/// </summary>
+/// <remarks>
+/// Preparation may activate extension types, derive media projections and validate every candidate. Commit
+/// must only publish those already-built values. Implementations must make rollback attempt-scoped: it may
+/// remove values published by this attempt, but never values merely sharing its extension identifier.
+/// </remarks>
+internal interface IPluginAdmissionAttempt
+{
+    /// <summary>Gets the extension this attempt belongs to.</summary>
+    PluginId Plugin { get; }
+
+    /// <summary>Gets the authoritative inventory derived from this attempt's prepared media candidates.</summary>
+    AdmittedInventory Inventory { get; }
+
+    /// <summary>Publishes every prepared contribution, or publishes none.</summary>
+    /// <param name="errorCode">The failure class when publication was refused.</param>
+    /// <param name="defects">Every publication defect, or an empty list on success.</param>
+    /// <returns><see langword="true"/> when the attempt was committed.</returns>
+    bool TryCommit(out CoreErrorCode errorCode, out IReadOnlyList<string> defects);
+
+    /// <summary>
+    /// Abandons an uncommitted attempt or withdraws exactly the values this attempt committed.
+    /// </summary>
+    void Rollback();
+}
 
 /// <summary>
 /// One media kind exactly as the host admitted it.
@@ -34,8 +63,13 @@ public sealed class AdmittedMediaKind
     {
         ArgumentNullException.ThrowIfNull(tokens);
 
+        if (tokens.Any(static token => token is null))
+        {
+            throw new ArgumentException("An admitted token collection must not contain null entries.", nameof(tokens));
+        }
+
         Kind = kind;
-        Tokens = tokens;
+        Tokens = Array.AsReadOnly(tokens.ToArray());
     }
 
     /// <summary>
@@ -61,14 +95,44 @@ public sealed class AdmittedMediaKind
 /// admitted, and the loader's remaining checks read that rather than the manifest.
 /// </para>
 /// <para>
-/// An empty inventory is not an error. A loader driven without a host admission check, or an extension that
-/// contributes no media kind at all, both produce one, and the loader keeps its transitional declaration
-/// path for exactly those cases.
+/// An authoritative empty inventory is not an error: it means Host admission ran and the extension
+/// contributed no media kind. That is distinct from the loader's pre-admission state, so an authoritative
+/// empty result never falls back to a manifest or legacy declaration as though admission had not run.
 /// </para>
 /// </remarks>
 public sealed class AdmittedInventory
 {
     private readonly Dictionary<MediaKindId, AdmittedMediaKind> _byKind;
+
+    private AdmittedInventory(IReadOnlyList<AdmittedMediaKind> mediaKinds, bool isAuthoritative)
+    {
+        ArgumentNullException.ThrowIfNull(mediaKinds);
+
+        var snapshot = new List<AdmittedMediaKind>(mediaKinds.Count);
+        _byKind = [];
+
+        foreach (var kind in mediaKinds)
+        {
+            if (kind is null)
+            {
+                throw new ArgumentException(
+                    "An admitted media-kind collection must not contain null entries.",
+                    nameof(mediaKinds));
+            }
+
+            if (!_byKind.TryAdd(kind.Kind, kind))
+            {
+                throw new ArgumentException(
+                    $"Media kind '{kind.Kind}' appears more than once in one admitted inventory.",
+                    nameof(mediaKinds));
+            }
+
+            snapshot.Add(kind);
+        }
+
+        MediaKinds = snapshot.AsReadOnly();
+        IsAuthoritative = isAuthoritative;
+    }
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AdmittedInventory"/> class.
@@ -77,22 +141,8 @@ public sealed class AdmittedInventory
     /// <exception cref="ArgumentNullException"><paramref name="mediaKinds"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">Two entries claim one media kind.</exception>
     public AdmittedInventory(IReadOnlyList<AdmittedMediaKind> mediaKinds)
+        : this(mediaKinds, isAuthoritative: true)
     {
-        ArgumentNullException.ThrowIfNull(mediaKinds);
-
-        _byKind = [];
-
-        foreach (var kind in mediaKinds)
-        {
-            if (!_byKind.TryAdd(kind.Kind, kind))
-            {
-                throw new ArgumentException(
-                    $"Media kind '{kind.Kind}' appears more than once in one admitted inventory.",
-                    nameof(mediaKinds));
-            }
-        }
-
-        MediaKinds = mediaKinds;
     }
 
     /// <summary>
@@ -101,9 +151,20 @@ public sealed class AdmittedInventory
     public static AdmittedInventory Empty { get; } = new([]);
 
     /// <summary>
+    /// Gets the absence of a Host admission result, used only by pre-admission and quarantined states.
+    /// </summary>
+    internal static AdmittedInventory NotAdmitted { get; } = new([], isAuthoritative: false);
+
+    /// <summary>
     /// Gets the admitted kinds, in admission order.
     /// </summary>
     public IReadOnlyList<AdmittedMediaKind> MediaKinds { get; }
+
+    /// <summary>
+    /// Gets a value indicating whether Host admission produced this inventory, including an authoritative
+    /// result containing no media kinds.
+    /// </summary>
+    public bool IsAuthoritative { get; }
 
     /// <summary>
     /// Gets a value indicating whether the host admitted any media kind for this extension.
@@ -144,18 +205,20 @@ public sealed class AdmittedInventory
 /// go looking for the facts again — which is exactly how the loader ended up asking a declaration file what
 /// a typed media kind contains.
 /// </remarks>
-public sealed class PluginAdmissionResult
+internal sealed class PluginAdmissionResult
 {
     private PluginAdmissionResult(
         bool isAdmitted,
         AdmittedInventory inventory,
         CoreErrorCode errorCode,
-        IReadOnlyList<string> defects)
+        IReadOnlyList<string> defects,
+        IPluginAdmissionAttempt? attempt)
     {
         IsAdmitted = isAdmitted;
         Inventory = inventory;
         ErrorCode = errorCode;
-        Defects = defects;
+        Defects = Array.AsReadOnly(defects.ToArray());
+        Attempt = attempt;
     }
 
     /// <summary>
@@ -164,8 +227,8 @@ public sealed class PluginAdmissionResult
     public bool IsAdmitted { get; }
 
     /// <summary>
-    /// Gets what the host admitted. Empty when admission refused, and legitimately empty when the extension
-    /// contributes no media kind.
+    /// Gets what the host admitted. Non-authoritative when admission refused, and authoritatively empty when
+    /// the extension contributes no media kind.
     /// </summary>
     public AdmittedInventory Inventory { get; }
 
@@ -180,16 +243,23 @@ public sealed class PluginAdmissionResult
     public IReadOnlyList<string> Defects { get; }
 
     /// <summary>
-    /// Records an admission that succeeded.
+    /// Gets the prepared Host attempt, or <see langword="null"/> when admission was refused.
     /// </summary>
-    /// <param name="inventory">What the host admitted.</param>
-    /// <returns>The result.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="inventory"/> is <see langword="null"/>.</exception>
-    public static PluginAdmissionResult Admitted(AdmittedInventory inventory)
-    {
-        ArgumentNullException.ThrowIfNull(inventory);
+    public IPluginAdmissionAttempt? Attempt { get; }
 
-        return new PluginAdmissionResult(isAdmitted: true, inventory, CoreErrorCode.Unknown, defects: []);
+    /// <summary>Records a successful preparation whose values still require final publication.</summary>
+    /// <param name="attempt">The attempt that owns the prepared values.</param>
+    /// <returns>The prepared result.</returns>
+    public static PluginAdmissionResult Prepared(IPluginAdmissionAttempt attempt)
+    {
+        ArgumentNullException.ThrowIfNull(attempt);
+
+        return new PluginAdmissionResult(
+            isAdmitted: true,
+            attempt.Inventory,
+            CoreErrorCode.Unknown,
+            defects: [],
+            attempt);
     }
 
     /// <summary>
@@ -203,6 +273,11 @@ public sealed class PluginAdmissionResult
     {
         ArgumentNullException.ThrowIfNull(defects);
 
-        return new PluginAdmissionResult(isAdmitted: false, AdmittedInventory.Empty, errorCode, defects);
+        return new PluginAdmissionResult(
+            isAdmitted: false,
+            AdmittedInventory.NotAdmitted,
+            errorCode,
+            defects,
+            attempt: null);
     }
 }

@@ -10,7 +10,8 @@ Read `CONTEXT.md`, `INTERFACE.md`, and `ARCHITECTURE.md` before changing the rep
 - A media kind retains `TItem`, `TTarget`, `TRelease`, and its parser through `MediaType<TItem,TTarget,TRelease,TParser>`.
 - Catalogers and Curators are paired with the media-owned item type they return.
 - Format capabilities own representation semantics and vocabularies. Video does not belong in Abstractions or Host.
-- Provider modules register implementation types; Host activates admitted providers through DI.
+- Provider modules register implementation types; Host activates admitted providers only through an exact
+  public `(IPluginContext)` or parameterless constructor, never through Host DI.
 - Do not add a second non-generic public media-type model, a universal `Evidence<T>` wrapper, a globally ordered evidence source, or executable objects to wire descriptors.
 - Use Television, not only Movies, to pressure-test changes to typed media and release coverage.
 - Do not add vendor-specific identifiers, routes, endpoints, or implementations to a media definition.
@@ -22,7 +23,10 @@ Read `CONTEXT.md`, `INTERFACE.md`, and `ARCHITECTURE.md` before changing the rep
 
 ## Contract lifecycle
 
-The current contract version is `0.8.0`; first-party manifests declare `>=0.8 <0.9`. Below 1.0, breaking public contract changes require a new minor identity and a synchronized `docs/contracts/stability.md` entry. Do not ship changed contracts under an older assembly version.
+The plugin-consumable `Arronix.Abstractions` contract version is `0.8.0`; first-party manifests declare
+`>=0.8 <0.9`. Below 1.0, breaking SDK contract changes require a new minor identity and a synchronized
+`docs/contracts/stability.md` entry. Public cross-assembly Host infrastructure is not thereby an extension
+authoring contract. Do not ship changed SDK contracts under an older assembly version.
 
 When a change alters public interfaces, domain ownership, dependency direction, lifecycle, or side effects, update `INTERFACE.md`, `HISTORY.md`, and `CONTEXT.md` atomically. Remove stale text rather than leaving competing descriptions.
 
@@ -30,4 +34,8 @@ When a change alters public interfaces, domain ownership, dependency direction, 
 
 Movies is typed. Television, Music, and Books retain legacy imperative seams during conversion. `IQualityModel`, ladder DTOs, and the untyped parsed-quality string exist only as migration scaffolding. New features use typed releases, format-owned representations, `ReleasePolicy<TRelease>`, and `TargetMatch<TTarget>`; do not extend the legacy quality architecture.
 
-The real packaged Movies loader path is closed: post-admission checks consume the admitted typed projection, Movies' manifest is no longer a second media schema, and late failure withdraws published state atomically. The active gate is package dependency and version rules with one exact CLR type identity. Do not move ahead to provider pairing, parser redesign, or Client loading until it passes.
+The real packaged Movies loader path is closed: late checks consume an authoritative prepared projection;
+one gate publishes Host values, token claims, and Active runtime state only after all checks pass; exact stop
+withdraws the matching receipt; and Movies' manifest is no longer a second media schema. The active gate is
+package dependency and version rules with one exact CLR type identity. Do not move ahead to provider pairing,
+parser redesign, or Client loading until it passes.

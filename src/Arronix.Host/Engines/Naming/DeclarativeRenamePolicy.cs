@@ -3,6 +3,7 @@ using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Naming;
 using Arronix.Abstractions.Shape;
+using Arronix.Common.Naming;
 using Arronix.Host.Languages;
 
 namespace Arronix.Host.Engines.Naming;
@@ -164,39 +165,39 @@ internal sealed class DeclarativeRenamePolicy : IRenamePolicy
 
         foreach (var level in shape.Levels)
         {
-            tokens.Add(NamingTemplateParser.Canonicalize($"{level.Name} Title"));
+            tokens.Add(NamingTokenName.Canonicalize($"{level.Name} Title"));
 
             foreach (var field in level.Fields)
             {
-                tokens.Add(NamingTemplateParser.Canonicalize($"{level.Name} {field.Name}"));
+                tokens.Add(NamingTokenName.Canonicalize($"{level.Name} {field.Name}"));
             }
 
             foreach (var scheme in level.Identity.ExternalIds)
             {
-                tokens.Add(NamingTemplateParser.Canonicalize($"{level.Name} {scheme.Scheme} Id"));
+                tokens.Add(NamingTokenName.Canonicalize($"{level.Name} {scheme.Scheme} Id"));
             }
 
             foreach (var axis in level.SequenceAxes)
             {
-                tokens.Add(NamingTemplateParser.Canonicalize(axis.Name));
-                tokens.Add(NamingTemplateParser.Canonicalize($"{axis.Name} Name"));
+                tokens.Add(NamingTokenName.Canonicalize(axis.Name));
+                tokens.Add(NamingTokenName.Canonicalize($"{axis.Name} Name"));
             }
         }
 
         foreach (var space in shape.CoordinateSpaces)
         {
-            tokens.Add(NamingTemplateParser.Canonicalize(space.Name));
+            tokens.Add(NamingTokenName.Canonicalize(space.Name));
 
             foreach (var component in space.Components)
             {
-                tokens.Add(NamingTemplateParser.Canonicalize(component.Name));
+                tokens.Add(NamingTokenName.Canonicalize(component.Name));
             }
         }
 
         foreach (var declared in shape.Tokens)
         {
             // D16: contributed extras, declared verbatim.
-            tokens.Add(NamingTemplateParser.Canonicalize(declared.Name));
+            tokens.Add(NamingTokenName.Canonicalize(declared.Name));
         }
 
         return tokens;

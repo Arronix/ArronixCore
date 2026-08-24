@@ -58,7 +58,7 @@ Legend:
 | ID | Owner signal | Provenance | Current state |
 |---|---|---|---|
 | O-13 | Prowlarr is a shared search/index concern, not a media plugin. Its application-sync role disappears when all media types share one host; duplicated indexer management belongs in the host. | 2026-08-16 15:12–15:17 UTC · `897a0a72`, `dc5b07d1` | **Partial.** The old Prowlarr application was not retained, but the ownership decision is still missing from current authoritative architecture documentation. |
-| O-14 | Concrete qBittorrent, SABnzbd, Deluge, Discord, Telegram, and similar implementations must leave Common/Core and become plugins behind common abstractions. | 2026-08-16 15:20 UTC · `0be1f014` | **Not built as the intended model.** Neutral interfaces exist, but provider activation still passes preconstructed instances and the named integrations have not been rebuilt as DI-activated provider plugins. |
+| O-14 | Concrete qBittorrent, SABnzbd, Deluge, Discord, Telegram, and similar implementations must leave Common/Core and become plugins behind common abstractions. | 2026-08-16 15:20 UTC · `0be1f014` | **Partially built.** Neutral interfaces and Host-owned constrained activation exist, but the named integrations have not been rebuilt as provider plugins. |
 | O-15 | Web Push and Webhook are ordinary `INotifier` implementations. Do not bake Web Push into the host. The UI may require the relevant plugin. | 2026-08-16 15:33 UTC · `1febfb11` | **Not built.** Design documentation and runtime seams still do not establish these as ordinary installed notifier implementations. |
 | O-16 | Clients may themselves be plugins. | 2026-08-16 15:34 UTC · queued message `a709c94b` | **Open / not built.** The direction is explicit; the exact `IClient` contract, lifecycle, trust model, and packaging were never decided by the owner. |
 | O-17 | Movies must not know about TMDb, IMDb, TVDB, or any concrete catalog provider. Those belong behind `ICataloger`. | 2026-08-17 03:42 UTC · `490445ba`; repeated 14:56 UTC · `735f14f7` | **Contradicted.** `MoviesCatalogDeclaration` still contains TMDb/IMDb schemes, routes, mappings, and identifier behavior inside the Movies assembly. |
@@ -174,7 +174,7 @@ state and outstanding actions.
 1. Restore `ICataloger<T>` and `ICurator<T> where T : IMediaType`, redesigning the current generic/non-generic media-type split as needed while retaining an erased runtime/DI bridge.
 2. Move TMDb/IMDb/TVDB knowledge entirely out of Movies.
 3. Introduce vendor-owned cataloger plugins with shared vendor mechanics and typed per-media bindings.
-4. Replace preconstructed provider instances with host-owned DI activation and lifetimes.
+4. Replace preconstructed provider instances with host-owned activation and lifetimes that do not expose Host DI.
 5. Remove `FieldSemantics` as the provider/media binding surface; keep typed media classes as source of truth.
 
 ### Media and format ownership

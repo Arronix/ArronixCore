@@ -122,7 +122,7 @@ Unknown remains explicit. Multi-valued facts such as audio tracks and dynamic-ra
 
 A media type states the language of its titles and localized payloads. It does not own the linguistic
 rules for those languages. `ILanguageDefinition` implementations are registered by type under the
-`language` capability and activated by Host DI. They own comparison preparation, provider-query spelling,
+`language` capability and activated through the same constrained plugin constructors as providers. They own comparison preparation, provider-query spelling,
 file-name spelling, and alphabetical sort spelling. The reference language extension currently supplies English, German, and
 French implementations.
 
@@ -139,7 +139,7 @@ Core preferences are lexicographic. Facets are deliberately secondary and bounde
 
 Provenance is retained as an `InterpretationTrace<TSubject>` sidecar. It explains whether a property was claimed, measured, or inferred and by whom. It does not impose a universal trust order, and ordinary properties are not wrapped in `Evidence<T>` by default.
 
-## 7. Provider boundary and DI
+## 7. Provider boundary and activation
 
 Provider families are platform-owned dispatch seams:
 
@@ -151,7 +151,9 @@ Provider families are platform-owned dispatch seams:
 
 Cataloger and Curator are generic because their output is media-shaped. A cataloger returns authoritative `TItem` values; a curator proposes `TItem` values for inclusion. Neither returns a universal field dictionary.
 
-Registration records implementation types. After compatibility and capability admission, Host activates them with `ActivatorUtilities` and the plugin's scoped `IPluginContext`. Modules do not construct provider objects.
+Registration records implementation types. After compatibility and capability admission, Host activates them
+through an exact public `(IPluginContext)` constructor, or a public parameterless constructor when no context is
+needed. Host DI is never consulted and modules do not construct provider objects.
 
 ## 8. Plugin lifecycle
 
@@ -162,17 +164,28 @@ The loader:
 3. creates an isolated load context and capability-scoped context;
 4. invokes the single module's registration method;
 5. seals and verifies the registration ledger in both capability directions;
-6. hands admitted registrations to Host and takes back the inventory Host admitted;
+6. asks Host to prepare complete attempt-local kind, provider, language, job, and health candidates and takes
+   back their authoritative admitted inventory without publishing them;
 7. checks declaration agreement, naming-token ownership and installation-wide identity against that
    inventory rather than against the declaration file;
-8. quarantines any invalid extension without terminating Host, giving back everything it had committed —
-   the kind, its token claims, and its provider, language, job and health registrations.
+8. under one shared publication gate, commits the per-kind token plan, exact Host attempt, and Active runtime
+   result as one change, or quarantines and completely releases the attempt.
 
 The admitted inventory is keyed per `MediaKindId` and carries each admitted kind's own derived naming
-tokens. A media extension therefore does not restate its kinds, identifier vocabularies, tokens, policies or
-actions in its manifest: those are derived from its types and settled against what Host admitted. The
-manifest keeps what cannot be derived from code the loader has not yet allowed to run — package identity,
-contract compatibility, the entry assembly, and explicit capability and security grants.
+tokens. A media extension therefore does not restate its kinds, tokens, policies, or actions in its manifest:
+those are compiled from its types and settled against what Host admitted. Nor does it claim external
+identifier vocabularies: the media type owns the roles, while installed catalogers own the schemes and
+release markers which fill them. The current manifest keeps what cannot be learned from code the loader has
+not yet allowed to run — package identity, contract compatibility, the entry assembly, and requested
+capabilities. Per-extension network and filesystem access grants are operator configuration; package
+dependencies are G03 work.
+
+Shutdown is the inverse transaction. The bootstrapper explicitly stops and drains the scheduler before
+teardown, including when hosted services stop concurrently; an exact runtime-to-Host receipt atomically
+withdraws Host registrations, token claims, and Active state, leaving a
+reference-free `Stopped` result. Owned instances are then disposed outside the publication gate in
+async-preferred reverse order, with the module and collectible load context last. A genuinely overrun job
+retains the plugin's Active roots rather than allowing executing code to be unloaded.
 
 Format dependencies are part of an extension's local dependency closure. Only Abstractions and framework assemblies unify with the default context today. A future shared media-definition assembly model is required before independent cataloger packages can safely compile against media-owned item types or the Blazor client can load those exact types dynamically.
 

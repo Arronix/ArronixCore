@@ -1,10 +1,12 @@
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Arronix.Abstractions.Serialization;
 using Arronix.Plugins.Composition;
 using Arronix.Plugins.Configuration;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Manifest;
+using Arronix.Plugins.Registration;
 using Arronix.Plugins.Registry;
 using Arronix.Plugins.Tests.Support;
 using Microsoft.Extensions.Configuration;
@@ -104,7 +106,7 @@ public sealed class CompositionTests
 
         provider.GetRequiredService<PluginLoader>();
 
-        provider.GetRequiredService<IPluginRuntimeRegistry>().All.Should().BeEmpty(
+        provider.GetRequiredService<IPluginRuntimeRegistry>().Snapshot().Should().BeEmpty(
             "an extension must never be able to observe a half-built host, so loading is the host's decision and not a side effect of registration");
     }
 
@@ -143,5 +145,39 @@ public sealed class CompositionTests
             .Should().NotContain(
                 typeof(IServiceProvider),
                 "resolving from the container at load time is exactly the pattern the closed registration surface exists to replace");
+    }
+
+    [Test]
+    public void TheLoaderRefusesRegistriesFromDifferentPublicationBoundaries()
+    {
+        var publication = new PluginPublicationGate();
+        var runtime = new PluginRuntimeRegistry(publication);
+        var tokens = new TokenRegistry(new PluginPublicationGate());
+
+        var construct = () => new PluginLoader(
+            Options.Create(new PluginRuntimeOptions()),
+            new PluginPlatformServices(new StubJsonSerializer(), TimeProvider.System),
+            runtime,
+            tokens,
+            TimeProvider.System,
+            NullLogger<PluginLoader>.Instance,
+            publication);
+
+        construct.Should().Throw<InvalidOperationException>()
+            .WithMessage("*must share one publication boundary*");
+    }
+
+    [Test]
+    public void LoadingAndRawRuntimeAuthorityAreNotPublicConsumerSurfaces()
+    {
+        typeof(PluginLoader)
+            .GetMethods(BindingFlags.Instance | BindingFlags.Public)
+            .Select(static method => method.Name)
+            .Should().NotContain(["Load", "LoadAll"]);
+
+        typeof(IPluginRuntimeRegistry)
+            .GetMethods()
+            .Select(static method => method.Name)
+            .Should().Equal(nameof(IPluginRuntimeRegistry.Snapshot));
     }
 }

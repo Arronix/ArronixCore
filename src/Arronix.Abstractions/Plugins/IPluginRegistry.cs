@@ -27,8 +27,9 @@ namespace Arronix.Abstractions.Plugins;
 /// least privilege mechanical rather than aspirational.
 /// </para>
 /// <para>
-/// Provider contributions are implementation types, not instances. Host activates them through DI after
-/// manifest and capability admission, while per-invocation configuration stays on
+/// Provider contributions are implementation types, not instances. After manifest and capability admission,
+/// Host constructs them through an exact public <c>(IPluginContext)</c> constructor, or a public parameterless
+/// constructor when no context is needed. Host DI is never consulted. Per-invocation configuration stays on
 /// <see cref="ProviderInvocation"/> rather than mutable singleton state. The instance-taking media-engine
 /// methods below are temporary compatibility seams for media kinds that have not completed typed
 /// conversion.

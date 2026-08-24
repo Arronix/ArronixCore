@@ -7,6 +7,7 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Scheduling;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
+using Arronix.Plugins.Registry;
 
 
 namespace Arronix.Host.Scheduling;
@@ -37,6 +38,7 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     private readonly ConcurrentDictionary<string, RegisteredJob> _jobs = new(StringComparer.Ordinal);
     private readonly JobQueue _queue;
     private readonly TimeProvider _clock;
+    private readonly PluginPublicationGate _publication;
 
     /// <summary>
     /// Creates a registry.
@@ -45,13 +47,26 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     /// <param name="clock">The clock schedules are measured against.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     public BackgroundTaskRegistry(JobQueue queue, TimeProvider clock)
+        : this(queue, clock, new PluginPublicationGate())
+    {
+    }
+
+    /// <summary>Creates a task registry participating in the supplied publication boundary.</summary>
+    public BackgroundTaskRegistry(
+        JobQueue queue,
+        TimeProvider clock,
+        PluginPublicationGate publication)
     {
         ArgumentNullException.ThrowIfNull(queue);
         ArgumentNullException.ThrowIfNull(clock);
 
         _queue = queue;
         _clock = clock;
+        _publication = publication ?? throw new ArgumentNullException(nameof(publication));
     }
+
+    /// <summary>Gets the publication boundary this registry participates in.</summary>
+    internal PluginPublicationGate PublicationGate => _publication;
 
     /// <inheritdoc />
     /// <exception cref="ArronixException">
@@ -74,36 +89,116 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     /// The schedule text is not one of the four accepted forms, or a job with the same identifier is already
     /// registered.
     /// </exception>
-    public void RegisterJob(
+    internal void RegisterJob(
         PluginId owner,
         CapabilitySet capabilities,
         IScheduledJob job,
         string schedule,
         MediaKindId? mediaKind)
     {
-        ArgumentNullException.ThrowIfNull(job);
-
-        if (!JobScheduleParser.TryParse(schedule, out var parsed, out var error))
+        if (!TryPrepare(owner, capabilities, job, schedule, mediaKind, out var candidate, out var error))
         {
             throw new ArronixException(
                 CoreErrorCode.JobSchedulingFailed,
-                $"Job '{job.JobId}' cannot be scheduled: {error}");
+                error!);
         }
 
-        var registered = new RegisteredJob(
+        if (!TryPublish(candidate!, out error))
+        {
+            throw new ArronixException(
+                CoreErrorCode.JobSchedulingFailed,
+                error!);
+        }
+    }
+
+    /// <summary>Parses and validates one scheduled-job candidate without publishing it.</summary>
+    internal bool TryPrepare(
+        PluginId owner,
+        CapabilitySet capabilities,
+        IScheduledJob job,
+        string schedule,
+        MediaKindId? mediaKind,
+        out RegisteredJob? candidate,
+        out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(job);
+
+        // These are extension getters. Read each exactly once while admission is still a quarantine
+        // boundary, then serve and schedule only the captured values.
+        var jobId = job.JobId;
+        var name = job.Name;
+        var description = job.Description;
+        var priority = job.Priority;
+        var maxConcurrency = job.MaxConcurrency;
+        var shutdownDeadline = JobScheduler.ClampShutdownDeadline(job.ShutdownDeadline);
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(jobId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        ArgumentNullException.ThrowIfNull(description);
+
+        if (!JobScheduleParser.TryParse(schedule, out var parsed, out var parseError))
+        {
+            candidate = null;
+            error = $"Job '{jobId}' cannot be scheduled: {parseError}";
+            return false;
+        }
+
+        var granted = capabilities.WithImplied();
+        candidate = new RegisteredJob(
+            jobId,
+            name,
+            description,
+            priority,
+            maxConcurrency,
+            shutdownDeadline,
             job,
             parsed,
             owner,
-            capabilities.WithImplied(),
+            granted,
             mediaKind,
-            ConcurrencyGovernor.KeysFor(owner, capabilities.WithImplied(), mediaKind?.Value));
+            ConcurrencyGovernor.KeysFor(owner, granted, mediaKind?.Value));
 
-        if (!_jobs.TryAdd(job.JobId, registered))
+        using var publication = _publication.EnterRead();
+        if (_jobs.ContainsKey(jobId))
         {
-            throw new ArronixException(
-                CoreErrorCode.JobSchedulingFailed,
-                $"A job with identifier '{job.JobId}' is already registered.");
+            candidate = null;
+            error = $"A job with identifier '{jobId}' is already registered.";
+            return false;
         }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>Publishes one already-built job candidate.</summary>
+    internal bool TryPublish(RegisteredJob candidate, out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(candidate);
+
+        using var publication = _publication.EnterWrite();
+        if (!_jobs.TryAdd(candidate.RegistrationId, candidate))
+        {
+            error = $"A job with identifier '{candidate.RegistrationId}' is already registered.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>Removes exactly one published job and drops only that job's queued work.</summary>
+    internal bool Remove(RegisteredJob candidate)
+    {
+        using var publication = _publication.EnterWrite();
+        var removed = ((ICollection<KeyValuePair<string, RegisteredJob>>)_jobs)
+            .Remove(new KeyValuePair<string, RegisteredJob>(candidate.RegistrationId, candidate));
+
+        if (removed)
+        {
+            _queue.DropJobs([candidate.RegistrationId]);
+        }
+
+        return removed;
     }
 
     /// <inheritdoc />
@@ -111,7 +206,21 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(jobId);
 
-        if (_jobs.TryRemove(jobId, out _))
+        using var publication = _publication.EnterWrite();
+        if (!_jobs.TryGetValue(jobId, out var registered))
+        {
+            return;
+        }
+
+        if (registered.Owner != HostOwner)
+        {
+            throw new InvalidOperationException(
+                $"Job '{jobId}' belongs to active extension '{registered.Owner}' and can be withdrawn only "
+                + "through that extension's exact lifecycle receipt.");
+        }
+
+        if (((ICollection<KeyValuePair<string, RegisteredJob>>)_jobs)
+            .Remove(new KeyValuePair<string, RegisteredJob>(jobId, registered)))
         {
             _queue.DropJobs([jobId]);
         }
@@ -119,11 +228,17 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
 
     /// <inheritdoc />
     public IScheduledJob? GetJob(string jobId)
-        => jobId is not null && _jobs.TryGetValue(jobId, out var registered) ? registered.Job : null;
+    {
+        using var publication = _publication.EnterRead();
+        return jobId is not null && _jobs.TryGetValue(jobId, out var registered) ? registered.Job : null;
+    }
 
     /// <inheritdoc />
     public IReadOnlyList<IScheduledJob> GetAllJobs()
-        => [.. _jobs.Values.OrderBy(job => job.Job.JobId, StringComparer.Ordinal).Select(job => job.Job)];
+    {
+        using var publication = _publication.EnterRead();
+        return [.. _jobs.Values.OrderBy(job => job.RegistrationId, StringComparer.Ordinal).Select(job => job.Job)];
+    }
 
     /// <inheritdoc />
     /// <remarks>
@@ -139,13 +254,24 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (jobId is null || !_jobs.TryGetValue(jobId, out var registered))
+        using (_publication.EnterRead())
         {
-            return Task.FromResult(false);
-        }
+            if (jobId is null || !_jobs.TryGetValue(jobId, out var registered))
+            {
+                return Task.FromResult(false);
+            }
 
-        Enqueue(registered, parameters, _clock.GetUtcNow(), correlationId);
-        return Task.FromResult(true);
+            // Keep the same publication snapshot through entry construction and insertion. A withdrawal
+            // cannot replace this identifier between lookup and queuing and leave an envelope carrying the
+            // previous owner's throttle or media metadata behind.
+            return Task.FromResult(TryEnqueueCurrent(
+                registered,
+                parameters,
+                _clock.GetUtcNow(),
+                correlationId,
+                items: null,
+                out _));
+        }
     }
 
     /// <summary>
@@ -153,11 +279,12 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     /// </summary>
     /// <param name="owner">The extension.</param>
     /// <returns>How many jobs were removed.</returns>
-    public int RemoveByPlugin(PluginId owner)
+    internal int RemoveByPlugin(PluginId owner)
     {
+        using var publication = _publication.EnterWrite();
         var owned = _jobs.Values
             .Where(job => job.Owner == owner)
-            .Select(job => job.Job.JobId)
+            .Select(job => job.RegistrationId)
             .ToList();
 
         foreach (var jobId in owned)
@@ -173,16 +300,32 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     /// Gets every registration, for the scheduler and for reporting.
     /// </summary>
     /// <returns>The registrations, ordered by job identifier.</returns>
-    public IReadOnlyList<RegisteredJob> Registrations()
-        => [.. _jobs.Values.OrderBy(job => job.Job.JobId, StringComparer.Ordinal)];
+    internal IReadOnlyList<RegisteredJob> Registrations()
+    {
+        using var publication = _publication.EnterRead();
+        return [.. _jobs.Values.OrderBy(job => job.RegistrationId, StringComparer.Ordinal)];
+    }
 
     /// <summary>
     /// Looks up one registration.
     /// </summary>
     /// <param name="jobId">The job's identifier.</param>
     /// <returns>The registration, or <see langword="null"/> when there is none.</returns>
-    public RegisteredJob? Find(string jobId)
-        => jobId is not null && _jobs.TryGetValue(jobId, out var registered) ? registered : null;
+    internal RegisteredJob? Find(string jobId)
+    {
+        using var publication = _publication.EnterRead();
+        return jobId is not null && _jobs.TryGetValue(jobId, out var registered) ? registered : null;
+    }
+
+    /// <summary>Determines whether this exact registration remains the published authority for its id.</summary>
+    internal bool IsCurrent(RegisteredJob registered)
+    {
+        ArgumentNullException.ThrowIfNull(registered);
+
+        using var publication = _publication.EnterRead();
+        return _jobs.TryGetValue(registered.RegistrationId, out var current)
+            && ReferenceEquals(current, registered);
+    }
 
     /// <summary>
     /// Describes every registration for a consumer.
@@ -195,15 +338,15 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
         return
         [
             .. Registrations().Select(registered => new JobView(
-                registered.Job.JobId,
-                registered.Job.Name,
-                registered.Job.Description,
+                registered.RegistrationId,
+                registered.Name,
+                registered.Description,
                 registered.Owner.ToString(),
                 registered.Schedule.Raw,
                 registered.LastRun,
                 registered.Schedule.NextRun(now, registered.LastRun),
                 registered.LastSucceeded,
-                registered.Job.Priority)),
+                registered.Priority)),
         ];
     }
 
@@ -223,19 +366,52 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
     /// published string key is a fact nothing can check.
     /// </remarks>
     /// <exception cref="ArgumentNullException"><paramref name="registered"/> is <see langword="null"/>.</exception>
-    public JobQueueEntry Enqueue(
+    internal JobQueueEntry Enqueue(
         RegisteredJob registered,
         IReadOnlyDictionary<string, object>? parameters,
         DateTimeOffset now,
         string? correlationId,
         IReadOnlyList<MediaItemRef>? items = null)
     {
+        if (!TryEnqueueCurrent(registered, parameters, now, correlationId, items, out var entry))
+        {
+            throw new InvalidOperationException(
+                $"Job registration '{registered.RegistrationId}' is no longer the published authority.");
+        }
+
+        return entry;
+    }
+
+    /// <summary>
+    /// Queues work only while the exact registration remains published.
+    /// </summary>
+    /// <remarks>
+    /// The read lease spans both the identity check and queue insertion. Withdrawal takes the matching
+    /// write lease and drops queued entries before it returns, so a stale registration can neither enqueue
+    /// after withdrawal nor target a replacement which reused its textual identifier.
+    /// </remarks>
+    internal bool TryEnqueueCurrent(
+        RegisteredJob registered,
+        IReadOnlyDictionary<string, object>? parameters,
+        DateTimeOffset now,
+        string? correlationId,
+        IReadOnlyList<MediaItemRef>? items,
+        [System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out JobQueueEntry? entry)
+    {
         ArgumentNullException.ThrowIfNull(registered);
 
-        var entry = new JobQueueEntry
+        using var publication = _publication.EnterRead();
+        if (!_jobs.TryGetValue(registered.RegistrationId, out var current)
+            || !ReferenceEquals(current, registered))
+        {
+            entry = null;
+            return false;
+        }
+
+        entry = new JobQueueEntry
         {
             EntryId = Guid.NewGuid(),
-            JobId = registered.Job.JobId,
+            JobId = registered.RegistrationId,
             Owner = registered.Owner,
             CorrelationId = correlationId ?? CorrelationContext.New(),
             Parameters = parameters is null
@@ -245,13 +421,14 @@ public sealed class BackgroundTaskRegistry : IBackgroundTaskRegistry
             EnqueuedAt = now,
             NotBefore = now,
             Attempt = 1,
-            Priority = registered.Job.Priority,
+            Priority = registered.Priority,
             MediaKind = registered.MediaKind,
-            Items = items ?? [],
+            Items = items is null ? [] : [.. items],
+            Registration = registered,
         };
 
         registered.MarkQueued(now);
         _queue.Enqueue(entry);
-        return entry;
+        return true;
     }
 }

@@ -190,32 +190,38 @@ Implement:
   legacy `IMediaShapeProvider` path;
 - remove manually duplicated media schema, token, policy, and action transcripts from `plugin.json`, or
   generate any inventory genuinely needed before code load from the typed source;
-- retain manifest ownership of package identity, contract compatibility, declared package dependencies,
-  admission-relevant capabilities, and explicit security grants;
-- preserve atomic publication and withdrawal when a late validation fails.
+- retain current manifest ownership of package identity, contract compatibility, and admission-relevant
+  capabilities; leave explicit package dependencies to G03 and operator access grants to runtime configuration;
+- keep Host preparation invisible through every late validation, then publish the complete attempt atomically
+  or roll it back without visibility.
 
 Exit gate:
 
 - Movies finishes `Active` and `movies` is present in `MediaKindRegistry`;
 - every derived token is claimed once by its real owner;
-- a deliberately invalid late check quarantines the extension and withdraws kind, tokens, and registrations;
+- a deliberately invalid late check quarantines the extension without ever exposing its prepared kind,
+  tokens, or registrations;
 - the integration test fails if a direct-binder shortcut is reintroduced;
 - the manifest is not a second hand-maintained media definition.
 
 Completion proof recorded on 2026-08-24:
 
-- `IPluginAdmissionCheck.Admit` returns a `PluginAdmissionResult` carrying an `AdmittedInventory`: one entry
-  per `MediaKindId` Host actually registered, each holding that admitted kind's own derived `NamingToken`
-  collection, read back off its `RegisteredMediaKind` rather than derived a second time;
+- `IPluginAdmissionCheck.Prepare` returns a `PluginAdmissionResult` carrying one exact attempt receipt and an
+  `AdmittedInventory`: one entry per `MediaKindId` Host is prepared to register, each holding that kind's own
+  derived `NamingToken` collection read back off its `RegisteredMediaKind` rather than derived a second time;
 - late declaration agreement, scheduled-job kind association, cross-installation duplicate-kind checking, and
-  token ownership consume that inventory. Legacy `IMediaShapeProvider` registrations remain the transitional
-  answer only when no host admission ran;
+  token ownership consume that inventory. Legacy `IMediaShapeProvider` registrations remain transitional
+  inputs to the same mandatory Host admission path;
 - token ownership is claimed per admitted kind through `TokenClaimRequest`, so an extension supplying several
   kinds cannot claim the cross product of its kinds and its combined vocabulary;
-- any quarantine after the claim releases it, and host withdrawal gives back token ownership alongside kinds,
-  providers, languages, jobs, and health contributors, on both a late loader failure and `StopAsync`;
-- manifest validation permits a media extension to omit derivable kinds and tokens. Capabilities and security
-  grants remain explicit manifest-owned least-privilege requests;
+- no prepared value is visible during late checks. One shared gate publishes the per-kind token plan, exact
+  Host attempt, and Active runtime result only after every check passes; refusal and exception release the
+  complete attempt, and a failed reload cannot replace an existing Active authority;
+- Host stop runs after scheduler cancellation and drain, atomically withdraws the exact Host/token/runtime
+  receipt, records a root-free `Stopped` result, and then disposes owned objects in deterministic
+  async-preferred order. A genuine deadline overrun retains the plugin Active rather than unloading its code;
+- manifest validation permits a media extension to omit derivable kinds and tokens. Requested capabilities
+  remain explicit manifest-owned least-privilege requests; operator access grants remain Host configuration;
 - the real packaged Movies output reaches `Active`, publishes `movies`, owns exactly its derived tokens once
   each, and proves its admitted item type resolved inside the extension's own `PluginLoadContext`. A planted
   conflicting token claim and a restaged manifest declaring an unsupplied kind each quarantine the package
@@ -225,8 +231,11 @@ Completion proof recorded on 2026-08-24:
   operator-facing name, version, description, the Arronix contract range, the entry assembly, and explicit
   capability grants. The manifest mirror fixture is replaced by one proving those derived facts are absent
   and that the manifest carries nothing outside what it owns; and
-- the full rail reports 2,127 passed, 302 skipped, zero failed, and zero inconclusive from 2,429 cases across
-  11 test projects.
+- the separately packaged G02 fixture proves a real kind, provider, language, job, health contribution,
+  runtime-envelope propagation, late rollback, scheduler drain, overrun deferral, exact cleanup order,
+  stopped-root removal, and containment of a throwing load-context unloading handler; and
+- the full rail reports 2,168 passed, 302 registered skips, zero failed, and zero inconclusive from 2,470
+  cases across all 11 test projects; compatibility and required-sentinel ratchets pass.
 
 Deliberately out of scope: the Books, Music, and Television manifests keep their `mediaKinds`, `identifiers`,
 and `tokens`. Those declarations belong to the legacy media paths those kinds still use and are removed with
@@ -282,6 +291,9 @@ Resolve and implement:
 - preservation of the cataloger's exact media-shaped contract and ordinary CLR types throughout materialization;
 - registration which infers or generates the already-closed `ICataloger<TItem>` or `ICurator<TItem>` pairing
   rather than repeating `TItem` in a second generic argument;
+- the closed registration as the single authority for provider family and the Host-qualified registration as
+  the single authority for provider identity, removing implementation- and descriptor-side restatements
+  rather than adding agreement checks between several supposed authorities;
 - admission against the exact active media type, while retaining the non-generic cataloger floor only for
   genuinely kind-blind external-identifier recognition.
 
@@ -304,7 +316,7 @@ Implement:
 - provider code grouped by vendor/reason-for-change, with shared vendor transport and separate typed media
   bindings where one vendor serves several media kinds;
 - provider-owned settings, DTOs, identity namespace, marker recognition, authority, and transport behaviour;
-- DI activation through the admitted capability-scoped plugin context;
+- constrained Host activation through the admitted capability-scoped plugin context, never through Host DI;
 - identifier recognition which is local, deterministic, and performs no network call.
 
 TMDb is a sensible first concrete Movies cataloger, but nothing in the provider contract, Movies, Host, or
@@ -1156,7 +1168,8 @@ replacement.
 
 ## Current next task
 
-Take **G02 only**: make post-admission token agreement consume the admitted typed Movies projection, remove or
-derive any manifest data which is currently a second media schema, and prove active publication plus atomic
-withdrawal through the real packaged loader path. Do not redesign package identity, provider pairing, parsers,
-or Client loading in this gate. The G01 ledger and proof rail remain mandatory throughout the repair.
+Take **G03 only**: define explicit package dependencies and compatible version ranges, deterministic load
+ordering, shared contract-facet identity, executable-facet isolation, and dependency-aware quarantine and
+withdrawal. Prove the exact same `Movie` and `Video` CLR identities are observed by independent dependent
+fixtures. Do not expand this gate into provider semantics, parser redesign, Television conversion, or Client
+loading. The G01 proof rail and G02 packaged-admission transaction remain mandatory throughout the work.

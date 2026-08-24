@@ -27,7 +27,8 @@ internal static class SchedulingRegistration
         services.TryAddSingleton<ConcurrencyGovernor>();
         services.TryAddSingleton<FailureClassifier>();
         services.TryAddSingleton<BackgroundTaskRegistry>();
-        services.TryAddSingleton<IBackgroundTaskRegistry>(
+        services.RemoveAll<IBackgroundTaskRegistry>();
+        services.AddSingleton<IBackgroundTaskRegistry>(
             provider => provider.GetRequiredService<BackgroundTaskRegistry>());
 
         services.TryAddSingleton<JobScheduler>();

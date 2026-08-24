@@ -56,6 +56,9 @@ public sealed class ProviderDefinitionStore
         _clock = clock;
     }
 
+    /// <summary>Determines whether this store observes the exact provider registry supplied by its caller.</summary>
+    internal bool Uses(ProviderRegistry providers) => ReferenceEquals(_providers, providers);
+
     /// <summary>
     /// Gets every definition, ordered by identifier.
     /// </summary>

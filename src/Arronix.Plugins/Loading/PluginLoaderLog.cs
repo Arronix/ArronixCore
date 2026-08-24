@@ -42,4 +42,10 @@ internal static partial class PluginLoaderLog
         Level = LogLevel.Warning,
         Message = "Extension {Plugin} was quarantined ({ErrorCode}): {Reason}")]
     internal static partial void Quarantined(ILogger logger, string plugin, CoreErrorCode errorCode, string reason);
+
+    [LoggerMessage(
+        EventId = 1004,
+        Level = LogLevel.Error,
+        Message = "Extension {Plugin} failed while releasing an owned runtime value: {Reason}")]
+    internal static partial void CleanupFailed(ILogger logger, string plugin, string reason);
 }

@@ -5,7 +5,7 @@ namespace Arronix.Abstractions.Providers;
 
 /// <summary>An external catalog authority, including recognition of its own identifier markers.</summary>
 /// <remarks>
-/// The non-generic floor lets the kind-blind host compose identifier readings after DI activation. Shaped
+/// The non-generic floor lets the kind-blind host compose identifier readings after constrained activation. Shaped
 /// search and fetch operations remain on <see cref="ICataloger{TItem}"/>.
 /// </remarks>
 public interface ICataloger : IProvider

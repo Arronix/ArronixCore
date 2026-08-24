@@ -43,7 +43,7 @@ public sealed class JobQueue
     /// </summary>
     /// <param name="entry">The entry.</param>
     /// <exception cref="ArgumentNullException"><paramref name="entry"/> is <see langword="null"/>.</exception>
-    public void Enqueue(JobQueueEntry entry)
+    internal void Enqueue(JobQueueEntry entry)
     {
         ArgumentNullException.ThrowIfNull(entry);
 
@@ -63,7 +63,7 @@ public sealed class JobQueue
         "Design",
         "CA1021:Avoid out parameters",
         Justification = "The try-and-out form is the standard queue idiom and avoids a nullable return whose null the caller would have to interpret.")]
-    public bool TryDequeue(DateTimeOffset now, [NotNullWhen(true)] out JobQueueEntry? entry)
+    internal bool TryDequeue(DateTimeOffset now, [NotNullWhen(true)] out JobQueueEntry? entry)
     {
         lock (_gate)
         {
@@ -108,7 +108,7 @@ public sealed class JobQueue
     /// saturated throttle, a job already at its own concurrency ceiling — must not hold up the ones behind
     /// it. Entries are removed by identifier once a start is committed to.
     /// </remarks>
-    public IReadOnlyList<JobQueueEntry> Ready(DateTimeOffset now)
+    internal IReadOnlyList<JobQueueEntry> Ready(DateTimeOffset now)
     {
         lock (_gate)
         {
@@ -128,7 +128,7 @@ public sealed class JobQueue
     /// </summary>
     /// <param name="entryId">The entry's identifier.</param>
     /// <returns><see langword="true"/> when the entry was there to remove.</returns>
-    public bool Remove(Guid entryId)
+    internal bool Remove(Guid entryId)
     {
         lock (_gate)
         {
@@ -146,7 +146,7 @@ public sealed class JobQueue
     /// Used when an extension is stopped or quarantined. Leaving its work queued would mean the scheduler
     /// repeatedly dequeuing entries for a job that no longer exists.
     /// </remarks>
-    public int DropJobs(IReadOnlyCollection<string> jobIds)
+    internal int DropJobs(IReadOnlyCollection<string> jobIds)
     {
         ArgumentNullException.ThrowIfNull(jobIds);
 

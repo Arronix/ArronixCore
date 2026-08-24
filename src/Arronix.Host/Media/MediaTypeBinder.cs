@@ -68,6 +68,10 @@ public sealed class MediaTypeBinder
         _providers = providers;
     }
 
+    /// <summary>Determines whether this binder uses the exact registries coordinated by its caller.</summary>
+    internal bool Uses(MediaKindRegistry kinds, ProviderRegistry providers)
+        => ReferenceEquals(_kinds, kinds) && ReferenceEquals(_providers, providers);
+
     /// <summary>
     /// Admits one captured typed media kind.
     /// </summary>
@@ -80,14 +84,34 @@ public sealed class MediaTypeBinder
         "Design",
         "CA1021:Avoid out parameters",
         Justification = "Admission returns three results — whether it succeeded, the admitted kind and the complete defect list — and the caller quarantines the extension on the third.")]
-    public bool TryRegister(
+    internal bool TryRegister(
+        TypedContribution contribution,
+        out RegisteredMediaKind? registered,
+        out IReadOnlyList<ShapeDefect> defects)
+    {
+        if (!TryPrepare(contribution, out registered, out defects))
+        {
+            return false;
+        }
+
+        if (_kinds.TryPublish(registered!, out defects))
+        {
+            return true;
+        }
+
+        registered = null;
+        return false;
+    }
+
+    /// <summary>Derives and validates one typed media candidate without publishing it.</summary>
+    internal bool TryPrepare(
         TypedContribution contribution,
         out RegisteredMediaKind? registered,
         out IReadOnlyList<ShapeDefect> defects)
     {
         ArgumentNullException.ThrowIfNull(contribution);
 
-        return TryRegister(
+        return TryPrepare(
             contribution.Plugin,
             contribution.PluginVersion,
             contribution.Capabilities,
@@ -111,6 +135,29 @@ public sealed class MediaTypeBinder
     /// caller chose. Every rule below is a rule about a model, not about how one was obtained.
     /// </remarks>
     internal bool TryRegister(
+        PluginId plugin,
+        string pluginVersion,
+        CapabilitySet capabilities,
+        IMediaTypeRuntime derived,
+        out RegisteredMediaKind? registered,
+        out IReadOnlyList<ShapeDefect> defects)
+    {
+        if (!TryPrepare(plugin, pluginVersion, capabilities, derived, out registered, out defects))
+        {
+            return false;
+        }
+
+        if (_kinds.TryPublish(registered!, out defects))
+        {
+            return true;
+        }
+
+        registered = null;
+        return false;
+    }
+
+    /// <summary>Builds one already-derived media candidate without publishing it.</summary>
+    internal bool TryPrepare(
         PluginId plugin,
         string pluginVersion,
         CapabilitySet capabilities,
@@ -169,7 +216,7 @@ public sealed class MediaTypeBinder
             Definition = validated,
         };
 
-        return _kinds.TryRegister(bundle, out registered, out defects);
+        return _kinds.TryPrepare(bundle, out registered, out defects);
     }
 
     private static TSeam? Build<TSeam>(

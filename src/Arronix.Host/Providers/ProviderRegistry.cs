@@ -6,6 +6,7 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
+using Arronix.Plugins.Registry;
 
 
 namespace Arronix.Host.Providers;
@@ -13,19 +14,42 @@ namespace Arronix.Host.Providers;
 /// <summary>
 /// One provider implementation, as the host holds it.
 /// </summary>
-/// <param name="Id">The host-minted identifier.</param>
-/// <param name="Family">Which of the five families it belongs to.</param>
-/// <param name="Descriptor">What it declares about itself and its settings.</param>
-/// <param name="Provider">The implementation, which is stateless and takes its configuration per call.</param>
-/// <param name="Plugin">The extension that contributed it.</param>
-/// <param name="MediaItemType">The paired media item type for typed catalogers and curators.</param>
-public readonly record struct RegisteredProvider(
-    ProviderId Id,
-    ProviderFamily Family,
-    ProviderDescriptor Descriptor,
-    IProvider Provider,
-    PluginId Plugin,
-    Type? MediaItemType);
+public sealed class RegisteredProvider
+{
+    internal RegisteredProvider(
+        ProviderId id,
+        ProviderFamily family,
+        ProviderDescriptor descriptor,
+        IProvider provider,
+        PluginId plugin,
+        Type? mediaItemType)
+    {
+        Id = id;
+        Family = family;
+        Descriptor = descriptor;
+        Provider = provider;
+        Plugin = plugin;
+        MediaItemType = mediaItemType;
+    }
+
+    /// <summary>Gets the host-minted identifier.</summary>
+    public ProviderId Id { get; }
+
+    /// <summary>Gets which provider family this implementation belongs to.</summary>
+    public ProviderFamily Family { get; }
+
+    /// <summary>Gets what the provider declares about itself and its settings.</summary>
+    public ProviderDescriptor Descriptor { get; }
+
+    /// <summary>Gets the stateless implementation.</summary>
+    public IProvider Provider { get; }
+
+    /// <summary>Gets the extension which contributed the implementation.</summary>
+    public PluginId Plugin { get; }
+
+    /// <summary>Gets the paired media item type for a typed cataloger or curator.</summary>
+    public Type? MediaItemType { get; }
+}
 
 /// <summary>
 /// Every provider implementation a loaded extension contributed.
@@ -48,12 +72,34 @@ public readonly record struct RegisteredProvider(
 public sealed class ProviderRegistry
 {
     private readonly ConcurrentDictionary<ProviderId, RegisteredProvider> _providers = new();
+    private readonly PluginPublicationGate _publication;
+
+    /// <summary>Creates a standalone provider registry with its own publication boundary.</summary>
+    public ProviderRegistry()
+        : this(new PluginPublicationGate())
+    {
+    }
+
+    /// <summary>Creates a provider registry participating in one publication boundary.</summary>
+    public ProviderRegistry(PluginPublicationGate publication)
+    {
+        _publication = publication ?? throw new ArgumentNullException(nameof(publication));
+    }
+
+    /// <summary>Gets the publication boundary this registry participates in.</summary>
+    internal PluginPublicationGate PublicationGate => _publication;
 
     /// <summary>
     /// Gets every registered provider, ordered by identifier.
     /// </summary>
     public IReadOnlyList<RegisteredProvider> All
-        => [.. _providers.Values.OrderBy(provider => provider.Id.Value, StringComparer.Ordinal)];
+    {
+        get
+        {
+            using var publication = _publication.EnterRead();
+            return [.. _providers.Values.OrderBy(provider => provider.Id.Value, StringComparer.Ordinal)];
+        }
+    }
 
     /// <summary>
     /// Lists the declarations of one family, or of every family.
@@ -71,8 +117,11 @@ public sealed class ProviderRegistry
     /// <param name="id">The identifier.</param>
     /// <param name="provider">The provider when it is registered.</param>
     /// <returns><see langword="true"/> when it is registered.</returns>
-    public bool TryGet(ProviderId id, out RegisteredProvider provider)
-        => _providers.TryGetValue(id, out provider);
+    public bool TryGet(ProviderId id, [NotNullWhen(true)] out RegisteredProvider? provider)
+    {
+        using var publication = _publication.EnterRead();
+        return _providers.TryGetValue(id, out provider);
+    }
 
     /// <summary>
     /// Registers a provider.
@@ -89,26 +138,73 @@ public sealed class ProviderRegistry
     /// <exception cref="ArronixException">
     /// The extension has already registered a provider under the same local name.
     /// </exception>
-    public ProviderId Register(
+    internal ProviderId Register(
         PluginId plugin,
         ProviderFamily family,
         ProviderDescriptor descriptor,
         IProvider implementation,
         Type? mediaItemType = null)
     {
+        if (!TryPrepare(plugin, family, descriptor, implementation, mediaItemType, out var candidate, out var error))
+        {
+            throw new ArronixException(CoreErrorCode.PluginIdConflict, error!);
+        }
+
+        if (!TryPublish(candidate, out error))
+        {
+            throw new ArronixException(CoreErrorCode.PluginIdConflict, error!);
+        }
+
+        return candidate.Id;
+    }
+
+    /// <summary>Builds and validates one provider candidate without publishing it.</summary>
+    internal bool TryPrepare(
+        PluginId plugin,
+        ProviderFamily family,
+        ProviderDescriptor descriptor,
+        IProvider implementation,
+        Type? mediaItemType,
+        out RegisteredProvider candidate,
+        out string? error)
+    {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(implementation);
 
         var id = ProviderId.Create(plugin, descriptor.LocalId);
+        candidate = new RegisteredProvider(id, family, descriptor, implementation, plugin, mediaItemType);
 
-        if (!_providers.TryAdd(id, new RegisteredProvider(id, family, descriptor, implementation, plugin, mediaItemType)))
+        using var publication = _publication.EnterRead();
+        if (_providers.ContainsKey(id))
         {
-            throw new ArronixException(
-                CoreErrorCode.PluginIdConflict,
-                $"Extension '{plugin}' has already registered a provider called '{descriptor.LocalId}'.");
+            error = $"Extension '{plugin}' has already registered a provider called '{descriptor.LocalId}'.";
+            return false;
         }
 
-        return id;
+        error = null;
+        return true;
+    }
+
+    /// <summary>Publishes one already-built provider candidate.</summary>
+    internal bool TryPublish(RegisteredProvider candidate, [NotNullWhen(false)] out string? error)
+    {
+        using var publication = _publication.EnterWrite();
+        if (!_providers.TryAdd(candidate.Id, candidate))
+        {
+            error = $"Extension '{candidate.Plugin}' has already registered provider '{candidate.Id}'.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>Removes exactly one provider candidate and never a later replacement.</summary>
+    internal bool Remove(RegisteredProvider candidate)
+    {
+        using var publication = _publication.EnterWrite();
+        return ((ICollection<KeyValuePair<ProviderId, RegisteredProvider>>)_providers)
+            .Remove(new KeyValuePair<ProviderId, RegisteredProvider>(candidate.Id, candidate));
     }
 
     /// <summary>
@@ -122,8 +218,9 @@ public sealed class ProviderRegistry
     /// configuration whose implementation has gone missing — under an extension model that means
     /// uninstalling an extension destroys the operator's configuration.
     /// </remarks>
-    public int RemoveByPlugin(PluginId plugin)
+    internal int RemoveByPlugin(PluginId plugin)
     {
+        using var publication = _publication.EnterWrite();
         var owned = _providers.Values.Where(provider => provider.Plugin == plugin).Select(p => p.Id).ToList();
 
         foreach (var id in owned)
@@ -144,6 +241,7 @@ public sealed class ProviderRegistry
     public bool TryGet<TProvider>(ProviderId id, [NotNullWhen(true)] out TProvider? provider)
         where TProvider : class, IProvider
     {
+        using var publication = _publication.EnterRead();
         if (_providers.TryGetValue(id, out var registered) && registered.Provider is TProvider typed)
         {
             provider = typed;

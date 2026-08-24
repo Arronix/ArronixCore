@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.Scheduling;
+using Arronix.Abstractions.Plugins;
 using Arronix.Host.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -41,7 +42,7 @@ public sealed partial class JobScheduler : BackgroundService
     /// clamped for the same reason its concurrency is: an extension must not be able to hold the whole
     /// process open by declaring a large one. Past this point the host stops waiting and says so.
     /// </remarks>
-    public static readonly TimeSpan MaxShutdownDeadline = TimeSpan.FromMinutes(2);
+    internal static readonly TimeSpan MaxShutdownDeadline = TimeSpan.FromMinutes(2);
 
     private readonly ConcurrentDictionary<Guid, InFlightRun> _running = new();
     private readonly BackgroundTaskRegistry _registry;
@@ -121,10 +122,13 @@ public sealed partial class JobScheduler : BackgroundService
         _jitter = jitter;
     }
 
+    /// <summary>Determines whether this scheduler consumes the exact task registry supplied by its caller.</summary>
+    internal bool UsesRegistry(BackgroundTaskRegistry registry) => ReferenceEquals(_registry, registry);
+
     /// <summary>
     /// Gets how many runs are in flight across every job.
     /// </summary>
-    public int InFlight => Volatile.Read(ref _inFlight);
+    internal int InFlight => Volatile.Read(ref _inFlight);
 
     private int _inFlight;
 
@@ -134,7 +138,7 @@ public sealed partial class JobScheduler : BackgroundService
     /// <remarks>
     /// Called once, by the extension bootstrapper, after every extension has been admitted or quarantined.
     /// </remarks>
-    public void ReleaseStartupJobs() => _startupReleased = true;
+    internal void ReleaseStartupJobs() => _startupReleased = true;
 
     /// <summary>
     /// Runs one pass: queue what is due, start what can start.
@@ -142,10 +146,10 @@ public sealed partial class JobScheduler : BackgroundService
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>How many runs were started.</returns>
     /// <remarks>
-    /// Public because a pass is the unit a test drives. The hosted loop does nothing but call this on a
-    /// timer, so a test that calls it directly exercises the same code the deployment runs.
+    /// A pass is the unit the hosted loop drives and the friend test assembly can exercise directly. It is
+    /// not a public scheduling command; callers trigger declared jobs through <see cref="IBackgroundTaskRegistry"/>.
     /// </remarks>
-    public async Task<int> TickAsync(CancellationToken cancellationToken = default)
+    internal async Task<int> TickAsync(CancellationToken cancellationToken = default)
     {
         var now = _clock.GetUtcNow();
 
@@ -157,40 +161,53 @@ public sealed partial class JobScheduler : BackgroundService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var registered = _registry.Find(entry.JobId);
+            var registered = entry.Registration;
+            IAsyncDisposable? lease = null;
+            InFlightRun? run = null;
 
-            if (registered is null)
+            // Publication withdrawal takes the matching write lease. Keep this read lease until the exact
+            // registration has reserved capacity, its queue entry is removed and its in-flight receipt is
+            // visible; stop therefore observes either no start at all or a run it must drain/defer.
+            using (_registry.PublicationGate.EnterRead())
             {
-                // The owning extension was quarantined or stopped between queuing and now. Dropping the
-                // entry is the only option that terminates; leaving it would be a permanent dequeue loop.
-                _queue.Remove(entry.EntryId);
-                continue;
+                if (registered is null || !_registry.IsCurrent(registered))
+                {
+                    // The owning extension was quarantined, stopped or replaced between queuing and now.
+                    // Dropping the stale envelope is the only terminating and identity-safe outcome.
+                    _queue.Remove(entry.EntryId);
+                }
+                else if (registered.TryMarkStarted())
+                {
+                    if (_governor.TryAcquire(entry.ThrottleKeys, out lease)
+                        && lease is not null
+                        && _queue.Remove(entry.EntryId))
+                    {
+                        run = new InFlightRun(
+                            entry.JobId,
+                            registered.Owner,
+                            registered.ShutdownDeadline);
+                        _running[entry.EntryId] = run;
+                        Interlocked.Increment(ref _inFlight);
+                    }
+                    else
+                    {
+                        registered.ReleaseStart();
+                    }
+                }
             }
 
-            if (!registered.HasCapacity())
+            if (run is null)
             {
-                continue;
-            }
+                if (lease is not null)
+                {
+                    await lease.DisposeAsync().ConfigureAwait(false);
+                }
 
-            if (!_governor.TryAcquire(entry.ThrottleKeys, out var lease) || lease is null)
-            {
-                continue;
-            }
-
-            if (!_queue.Remove(entry.EntryId))
-            {
-                await lease.DisposeAsync().ConfigureAwait(false);
                 continue;
             }
 
             started++;
-            Interlocked.Increment(ref _inFlight);
-            registered.MarkStarted();
-
-            var run = new InFlightRun(entry.JobId, Clamp(registered.Job.ShutdownDeadline));
-            _running[entry.EntryId] = run;
-
-            _ = RunAsync(registered, entry, lease, run, cancellationToken);
+            _ = RunAsync(registered!, entry, lease!, run, cancellationToken);
         }
 
         return started;
@@ -212,7 +229,7 @@ public sealed partial class JobScheduler : BackgroundService
     /// or a restart decision has to be made against.
     /// </para>
     /// </remarks>
-    public async Task<IReadOnlyList<string>> DrainAsync(CancellationToken cancellationToken = default)
+    internal async Task<IReadOnlyList<string>> DrainAsync(CancellationToken cancellationToken = default)
     {
         var pending = _running.Values.ToList();
 
@@ -234,6 +251,10 @@ public sealed partial class JobScheduler : BackgroundService
         return names;
     }
 
+    /// <summary>Determines whether an extension still has code executing after the scheduler drain.</summary>
+    internal bool HasInFlight(PluginId owner)
+        => _running.Values.Any(run => run.Owner == owner);
+
     private async Task<string?> WaitForAsync(InFlightRun run, CancellationToken cancellationToken)
     {
         try
@@ -250,7 +271,8 @@ public sealed partial class JobScheduler : BackgroundService
         }
     }
 
-    private static TimeSpan Clamp(TimeSpan declared)
+    /// <summary>Constrains an extension-declared shutdown promise to the Host ceiling.</summary>
+    internal static TimeSpan ClampShutdownDeadline(TimeSpan declared)
         => declared <= TimeSpan.Zero ? TimeSpan.Zero
             : declared > MaxShutdownDeadline ? MaxShutdownDeadline
             : declared;
@@ -258,9 +280,14 @@ public sealed partial class JobScheduler : BackgroundService
     /// <summary>
     /// One run the scheduler started and has not yet seen finish.
     /// </summary>
-    private sealed class InFlightRun(string jobId, TimeSpan shutdownDeadline)
+    private sealed class InFlightRun(
+        string jobId,
+        PluginId owner,
+        TimeSpan shutdownDeadline)
     {
         public string JobId { get; } = jobId;
+
+        public PluginId Owner { get; } = owner;
 
         public TimeSpan ShutdownDeadline { get; } = shutdownDeadline;
 
@@ -314,7 +341,13 @@ public sealed partial class JobScheduler : BackgroundService
                 continue;
             }
 
-            _registry.Enqueue(registered, parameters: null, now, correlationId: null);
+            _registry.TryEnqueueCurrent(
+                registered,
+                parameters: null,
+                now,
+                correlationId: null,
+                items: null,
+                out _);
         }
     }
 

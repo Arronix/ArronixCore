@@ -7,11 +7,14 @@ using Arronix.Abstractions.Scheduling;
 using Arronix.Host.Composition;
 using Arronix.Host.Health;
 using Arronix.Host.Intent;
+using Arronix.Host.Languages;
 using Arronix.Host.Media;
 using Arronix.Host.Providers;
 using Arronix.Host.Runtime;
 using Arronix.Host.Scheduling;
 using Arronix.Host.Storage;
+using Arronix.Plugins.Loading;
+using Arronix.Plugins.Registry;
 using FluentAssertions;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -124,6 +127,56 @@ internal sealed class HostCompositionTests
         using var provider = Build();
 
         provider.GetServices<IHostedService>().OfType<PluginBootstrapper>().Should().ContainSingle();
+    }
+
+    [Test]
+    public void EveryExtensionTransactionParticipantSharesOnePublicationBoundary()
+    {
+        using var provider = Build();
+
+        var publication = provider.GetRequiredService<PluginPublicationGate>();
+        var runtime = provider.GetRequiredService<PluginRuntimeRegistry>();
+        var kinds = provider.GetRequiredService<MediaKindRegistry>();
+        var languages = provider.GetRequiredService<LanguageDefinitionRegistry>();
+        var providers = provider.GetRequiredService<ProviderRegistry>();
+        var jobs = provider.GetRequiredService<BackgroundTaskRegistry>();
+        var pluginHealth = provider.GetRequiredService<PluginHealthContributor>();
+
+        provider.GetRequiredService<PluginLoader>().PublicationGate.Should().BeSameAs(publication);
+        runtime.PublicationGate.Should().BeSameAs(publication);
+        kinds.PublicationGate.Should().BeSameAs(publication);
+        languages.PublicationGate.Should().BeSameAs(publication);
+        providers.PublicationGate.Should().BeSameAs(publication);
+        jobs.PublicationGate.Should().BeSameAs(publication);
+        pluginHealth.PublicationGate.Should().BeSameAs(publication);
+        provider.GetRequiredService<IMediaKindRegistry>().Should().BeSameAs(kinds);
+        provider.GetRequiredService<IBackgroundTaskRegistry>().Should().BeSameAs(jobs);
+
+        provider.GetRequiredService<MediaTypeBinder>().Uses(kinds, providers).Should().BeTrue();
+        provider.GetRequiredService<ProviderDefinitionStore>().Uses(providers).Should().BeTrue();
+        pluginHealth.UsesRuntime(runtime).Should().BeTrue();
+        provider.GetRequiredService<JobScheduler>().UsesRegistry(jobs).Should().BeTrue();
+    }
+
+    [Test]
+    public void HostCompositionReplacesForeignRegistryAliasesWithItsTransactionParticipants()
+    {
+        var configuration = new ConfigurationBuilder().Build();
+        var services = new ServiceCollection();
+
+        services.AddLogging();
+        services.AddSingleton<IMediaKindRegistry>(_ =>
+            throw new InvalidOperationException("A foreign media registry alias must not be resolved."));
+        services.AddSingleton<IBackgroundTaskRegistry>(_ =>
+            throw new InvalidOperationException("A foreign scheduling registry alias must not be resolved."));
+        services.AddArronixHost(configuration);
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IMediaKindRegistry>()
+            .Should().BeSameAs(provider.GetRequiredService<MediaKindRegistry>());
+        provider.GetRequiredService<IBackgroundTaskRegistry>()
+            .Should().BeSameAs(provider.GetRequiredService<BackgroundTaskRegistry>());
     }
 
     [Test]

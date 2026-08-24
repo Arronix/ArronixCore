@@ -24,7 +24,9 @@ namespace Arronix.Host.Composition;
 /// The order of the lines is not arbitrary in two places. The platform's own file system is registered
 /// before the extension runtime, because the shared assembly consumes the file-system contract without
 /// shipping an implementation and because the extension runtime wraps that implementation per extension. And
-/// the extension bootstrapper is registered last, because it commits into every registry above it.
+/// the extension bootstrapper is registered as a hosted service immediately before the scheduler. Default
+/// sequential shutdown therefore reaches the scheduler first; the bootstrapper also stops it explicitly so
+/// concurrent hosted-service shutdown cannot dispose extension instances before their jobs drain.
 /// </para>
 /// </remarks>
 public static class ArronixHostServiceCollectionExtensions
@@ -64,11 +66,16 @@ public static class ArronixHostServiceCollectionExtensions
         services.AddMediaRegistry();
         services.AddDefinitionEngines();
         services.AddInMemoryStorage();
+
+        // Dependencies may be registered later in the collection; hosted-service position controls
+        // lifecycle order, not constructor resolution order. Start admits jobs before the scheduler loop;
+        // reverse sequential stop drains that loop first, while PluginBootstrapper explicitly owns the same
+        // drain when the Generic Host is configured to stop hosted services concurrently.
+        services.AddHostedService<PluginBootstrapper>();
+
         services.AddScheduling();
         services.AddProviderRegistry();
         services.AddHealthAggregation();
-
-        services.AddHostedService<PluginBootstrapper>();
 
         return services;
     }

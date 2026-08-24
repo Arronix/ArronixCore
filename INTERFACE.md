@@ -60,6 +60,10 @@ carriers, expression trees, or runtime descriptors part of the supported authori
 authors must not implement or reason about those mechanics. The typed CLR definitions remain the sole
 semantic source; generated binding data and serializable descriptors are one-way projections.
 
+The public `IPluginAdmissionCheck` and `IPluginAdmissionAttempt` types are a cross-assembly Host/loader
+transaction seam, not extension-authoring SDK. `Arronix.Plugins` is Host infrastructure; a plugin package
+references `Arronix.Abstractions` and the format or language contracts it composes, never that loader assembly.
+
 Media plugins register with:
 
 ```csharp
@@ -83,13 +87,15 @@ That repeated `TItem` is current registration SPI, not the ergonomic end state. 
 closed media/provider relationship once; compiler or Host infrastructure should infer or generate the
 erased registration without another manually synchronized type argument.
 
-Language plugins register implementation types for Host DI activation:
+Language plugins register implementation types for constrained Host activation:
 
 ```csharp
 registry.AddLanguage<TLanguage>();
 ```
 
-The Host activates provider types through DI only after manifest and capability admission.
+Only after manifest and capability admission, Host constructs provider and language implementations through
+an exact public `(IPluginContext)` constructor, or a public parameterless constructor when no context is needed.
+The Host service provider is never an activation source.
 
 Installed format capabilities must contribute representation recognition, probing, and policy for their
 owned facts; language capabilities contribute linguistic mechanics. A media parser owns media structure
@@ -105,9 +111,11 @@ and is never reported as accepted.
 - Universal contracts and Host remain media- and vendor-neutral.
 - The public SDK is minimal through complete common primitives, typed defaults, generic relationships, and derivation. It is never made small by erasing owner-shaped data, requiring string dictionaries, or moving implementation mechanics into plugin code.
 - Plugin authors state their domain types and genuine differences once. Host derives standard behaviour and may erase the result internally, but no runtime or wire projection becomes a second source of semantic truth.
-- An abstraction is not complete until its meaning is preserved through authoring, registration, DI activation, runtime execution, persistence where relevant, wire projection, Client use, tests, and documentation. A descriptor or passing unit test does not prove production wiring.
+- An abstraction is not complete until its meaning is preserved through authoring, registration, constrained activation, runtime execution, persistence where relevant, wire projection, Client use, tests, and documentation. A descriptor or passing unit test does not prove production wiring.
 - Full *arr feature coverage and observable ecosystem compatibility are acceptance constraints. Intentional differences must be explicit and tested; difficult legacy behaviour may not be silently discarded to simplify the common model.
-- The complete public contract is one pre-1.0 surface. Stability is expressed by the assembly version and plugin manifest range; no per-type experimental marker, diagnostic registry, or compiler opt-in exists.
+- The plugin-consumable `Arronix.Abstractions` SDK is one pre-1.0 surface. Stability is expressed by its
+  assembly version and plugin manifest range; no per-type experimental marker, diagnostic registry, or
+  compiler opt-in exists. Public visibility on cross-assembly Host infrastructure does not make it SDK.
 - A media type owns its entity shape; catalogers and curators return that exact type.
 - A cataloger owns its external identifier namespace and marker spellings. Media parsers consume validated `ExternalIdReading` values and never duplicate vendor marker regular expressions.
 - Every item and group exposes `Key`, `ExternalIds`, `Title`, `TitleLanguage`, `Overview`, and `Artwork` through `IMediaEntity`; media-specific facts extend that floor as ordinary typed properties.
@@ -131,9 +139,27 @@ and is never reported as accepted.
 - Artwork may be carried by a typed workbench row. A consumer chooses its presentation; the semantic contract does not infer layout.
 - Media extensions do not declare the platform action catalogue or its wire keys.
 - Client binds affordances through `StandardMediaAction`; only the API route and action request serialize string identifiers.
-- A plugin manifest owns package identity, compatibility, dependencies, capabilities requiring admission, and explicit security grants. It is not a second media schema; derivable kinds, fields, tokens, policies, and actions are generated or mechanically validated rather than manually restated. A manifest may omit every derivable media fact, and validation does not demand that a media extension restate the kinds it supplies. A manifest which does state kinds or tokens is held to them exactly and in both directions against what was admitted. The reference typed extension declares none of them: `Arronix.Plugin.Movies` ships manifest schema version, package identity, name, version, description, contract range, entry assembly, and capabilities, and nothing else. Capabilities and security grants stay manifest-owned because least privilege is stated before the extension's code runs.
-- After Host admission, the admitted projection is the authority on what an extension supplies. Host answers the loader with an admitted inventory keyed per media kind, each entry carrying that kind's own derived naming tokens; late agreement, scheduled-job kind association, duplicate-kind checking, and token ownership read it rather than the manifest. Legacy shape-provider registrations remain a transitional path for a loader running without Host admission.
+- The current plugin manifest owns its schema version, package identity and description, contract range, entry
+  assembly, and requested capabilities. It is not a second media schema: derivable kinds, fields, tokens,
+  policies, and actions are generated or mechanically validated rather than manually restated. A manifest
+  may omit every derivable media fact; one which does state kinds or tokens is held to them exactly and in
+  both directions against the prepared projection. `Arronix.Plugin.Movies` therefore ships only those current
+  manifest-owned fields. Capabilities stay explicit because least privilege is stated before extension code
+  runs. Operator-specific network/filesystem access is runtime configuration, not a manifest grant; explicit
+  package dependencies are future G03 ownership and do not exist in the current schema.
+- Once Host preparation runs, its admitted projection is the authority on what an extension is prepared to
+  supply. Host answers the loader with an inventory keyed per media kind, each entry carrying that kind's own
+  derived naming tokens; late agreement, scheduled-job kind association, duplicate-kind checking, and token
+  ownership read it rather than the manifest. Legacy shape-provider registrations remain a transitional path
+  for a loader running without Host preparation.
 - Naming-token ownership is per media kind. A kind claims the tokens it derived, once each; an extension supplying several kinds never claims the cross product of its kinds and its combined vocabulary.
+- Naming-token equality is the invariant-lowercased alphanumeric spelling shared by parsing, declaration
+  agreement, reserved-name validation, ownership, and rendering. Separator or case variants cannot bypass a
+  reservation or acquire another owner.
+- Successful Host preparation carries one exact attempt receipt but publishes nothing. The loader commits
+  the prepared Host values, per-kind token plan, and Active runtime result under one shared publication gate
+  only after all remaining checks pass. Rollback and stop remove exact receipts rather than values which
+  merely share an identifier.
 - Every known compatibility omission has a stable semantic ledger entry with provenance. Published semantics,
   bindings, and source digests are compared with the prior committed ledger. A skipped fixture, renamed test,
   coordinated ledger-and-source weakening, or replacement without independently anchored executable evidence
@@ -159,7 +185,14 @@ and is never reported as accepted.
 
 ## 6. Side effects
 
-The loader reads plugin manifests and assemblies, creates isolated load contexts, and may quarantine invalid plugins. Quarantine after admission withdraws every committed contribution, including naming-token ownership. Host provider calls may perform network and filesystem activity only through capability-scoped services. The current media store and queue are in memory; restart durability is not promised.
+The loader reads plugin manifests and assemblies, creates isolated load contexts, and may quarantine invalid
+plugins. A quarantined attempt publishes nothing and releases every object it created. Host shutdown drains
+scheduled plugin work, withdraws the exact active attempt and its naming-token ownership, disposes owned
+instances, and requests collectible-context unload; a job still executing after its bounded deadline keeps
+that plugin rooted and Active. The sanctioned provider SPI supplies network and filesystem access through
+capability-scoped services. Extensions run in process, so this is an admission and audit boundary rather than
+a sandbox against direct BCL use. The current media store and queue are in memory; restart durability is not
+promised.
 
 ## 7. Dependency boundaries
 
@@ -179,7 +212,23 @@ duplicate loads or a fallback to string projection.
 
 ## 8. Lifecycle and execution
 
-While a media extension builds, `Arronix.Generators` emits its closed item, group, and workbench-row projections. At startup the loader validates manifests and static references, constructs a capability-scoped context, invokes the plugin module, seals registration, and hands admitted registrations to Host. Host validates and derives its kind-blind model from those generated projections, activates provider and language implementation types through DI, publishes admitted kinds/providers/languages atomically, and returns the inventory it admitted. The loader's remaining checks — declaration agreement, naming-token ownership, and identity across the installation — consume that inventory. Failure quarantines the plugin; it does not terminate Host, and a failure after any of those checks has committed something gives all of it back: the kind, its token claims, and the extension's provider, language, job, and health registrations. Host teardown reverses activation the same way.
+While a media extension builds, `Arronix.Generators` emits its closed item, group, and workbench-row
+projections. At startup the loader validates manifests and static references, constructs a capability-scoped
+context, invokes the plugin module, and seals registration. Host then validates and derives an attempt-local
+kind-blind model, activates provider and language types through their supported plugin constructors without
+consulting Host DI, and returns the authoritative inventory
+it is prepared to publish. Nothing is visible yet. The loader uses that inventory for declaration agreement,
+scheduled-job association, naming-token ownership, and installation-wide identity. Only after all checks pass
+does one shared gate publish the token plan, exact Host attempt, and Active runtime result. Any failure
+quarantines and completely releases that attempt without terminating Host.
+
+The bootstrapper explicitly stops and drains the scheduler before plugin teardown; reverse hosted-service
+ordering provides the same sequence and concurrent hosted-service stop cannot bypass it. For each non-running
+Active plugin, Host verifies the exact runtime-to-admission receipt, atomically withdraws Host, token, and runtime
+state, records a reference-free `Stopped` result, then disposes owned instances outside the publication gate.
+Async disposal is preferred, direct registrations are released once in reverse order, the module is last,
+and the collectible load context is unloaded after it. A job which exceeds its shutdown deadline retains the
+Active receipt and roots because unloading executing extension code would be unsound.
 
 Replacement-grade execution must continue from those admitted types through catalog/curation, acquisition
 targeting, semantic queries, raw indexer listings, media interpretation plus format/language contributions,

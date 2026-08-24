@@ -28,17 +28,16 @@ namespace Arronix.Plugin.Movies.Tests.Shape;
 public class ManifestOwnershipTests
 {
     /// <summary>
-    /// Everything a media extension derives from its own types. None of it may appear in the manifest.
+    /// Media facts compiled from the media definition. None may be restated in the manifest.
     /// </summary>
     /// <remarks>
     /// <c>actions</c> has never been a manifest key and is listed so it cannot quietly become one. Platform
     /// actions are derived by the host from the compiled media definition; a manifest naming them would be
     /// an extension declaring the platform's own operation catalogue.
     /// </remarks>
-    private static readonly string[] DerivedProperties =
+    private static readonly string[] MediaDefinitionProperties =
     [
         "mediaKinds",
-        "identifiers",
         "tokens",
         "policies",
         "actions"
@@ -62,13 +61,21 @@ public class ManifestOwnershipTests
 
     private static JsonElement Manifest { get; } = ReadManifest();
 
-    [TestCaseSource(nameof(DerivedProperties))]
+    [TestCaseSource(nameof(MediaDefinitionProperties))]
     public void RestatesNoDerivedMediaFact(string property)
         => Assert.That(
             Manifest.TryGetProperty(property, out _),
             Is.False,
             $"'{property}' is derived from the media type and settled against the projection the host "
             + "admitted. Restating it in the manifest makes the manifest a second media schema.");
+
+    [Test]
+    public void ClaimsNoCatalogerOwnedIdentifierVocabulary()
+        => Assert.That(
+            Manifest.TryGetProperty("identifiers", out _),
+            Is.False,
+            "Movies owns identity roles, while installed catalogers own the external schemes and release "
+            + "markers which can fill them. The media package must not bake a provider vocabulary into its manifest.");
 
     [Test]
     public void CarriesNothingButWhatItOwns()

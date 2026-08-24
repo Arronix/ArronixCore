@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 0,
+  "id": "g02.admission.fixture",
+  "name": "G02 admission fixture",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.8 <0.9" },
+  "entryAssembly": "Arronix.Host.Tests.G02AdmissionFixture.dll",
+  "description": "A test-only packaged extension with enough distinct contributions to prove complete admission and withdrawal.",
+  "capabilities": [
+    "media-kind",
+    "parsing",
+    "matching",
+    "indexing",
+    "notification",
+    "language"
+  ]
+}

@@ -1,9 +1,11 @@
 using System.Collections.Frozen;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
+using Arronix.Common.Naming;
 using Arronix.Plugins.Manifest;
 
 
@@ -68,13 +70,34 @@ public sealed class TokenRegistry
         "{Ext}"
     }.ToFrozenSet(StringComparer.OrdinalIgnoreCase);
 
+    private static readonly FrozenSet<string> ReservedCanonical = Reserved
+        .Select(NamingTokenName.Canonicalize)
+        .ToFrozenSet(StringComparer.Ordinal);
+
     /// <summary>
     /// The prefix of the reserved family of media-information tokens.
     /// </summary>
-    private const string MediaInfoPrefix = "{MediaInfo";
+    private static readonly string MediaInfoPrefix = NamingTokenName.Canonicalize("{MediaInfo");
 
     private readonly Dictionary<(string Kind, string Token), TokenClaim> _claims = [];
     private readonly Lock _gate = new();
+    private readonly PluginPublicationGate _publication;
+
+    /// <summary>Creates a standalone token registry with its own publication boundary.</summary>
+    public TokenRegistry()
+        : this(new PluginPublicationGate())
+    {
+    }
+
+    /// <summary>Creates a token registry participating in the supplied publication boundary.</summary>
+    /// <param name="publication">The shared publication gate.</param>
+    public TokenRegistry(PluginPublicationGate publication)
+    {
+        _publication = publication ?? throw new ArgumentNullException(nameof(publication));
+    }
+
+    /// <summary>Gets the publication boundary this registry participates in.</summary>
+    internal PluginPublicationGate PublicationGate => _publication;
 
     /// <summary>
     /// Gets the tokens the platform reserves for itself.
@@ -87,9 +110,16 @@ public sealed class TokenRegistry
     /// <param name="tokenName">The token, brace-delimited.</param>
     /// <returns><see langword="true"/> when the platform owns it.</returns>
     public static bool IsReserved(string? tokenName)
-        => tokenName is not null
-            && (Reserved.Contains(tokenName)
-                || tokenName.StartsWith(MediaInfoPrefix, StringComparison.OrdinalIgnoreCase));
+    {
+        if (tokenName is null)
+        {
+            return false;
+        }
+
+        var canonical = NamingTokenName.Canonicalize(tokenName);
+        return ReservedCanonical.Contains(canonical)
+            || canonical.StartsWith(MediaInfoPrefix, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// Gets every claim currently held.
@@ -98,6 +128,7 @@ public sealed class TokenRegistry
     {
         get
         {
+            using var publication = _publication.EnterRead();
             lock (_gate)
             {
                 return [.. _claims.Values];
@@ -125,25 +156,43 @@ public sealed class TokenRegistry
     /// that produces the cross product of an extension's kinds and its whole token vocabulary.
     /// </para>
     /// </remarks>
-    public bool TryClaimAll(
+    internal bool TryClaimAll(
         PluginId plugin,
         IReadOnlyList<TokenClaimRequest> requests,
+        out IReadOnlyList<ManifestDefect> defects)
+    {
+        if (!TryPrepareClaims(plugin, requests, out var plan, out defects))
+        {
+            return false;
+        }
+
+        return plan!.TryCommit(out defects);
+    }
+
+    /// <summary>Validates and snapshots a complete claim without publishing it.</summary>
+    internal bool TryPrepareClaims(
+        PluginId plugin,
+        IReadOnlyList<TokenClaimRequest> requests,
+        [NotNullWhen(true)] out TokenClaimPlan? plan,
         out IReadOnlyList<ManifestDefect> defects)
     {
         ArgumentNullException.ThrowIfNull(requests);
 
         var found = new List<ManifestDefect>();
+        var staged = new Dictionary<(string Kind, string Token), TokenClaim>();
 
+        using var publication = _publication.EnterRead();
         lock (_gate)
         {
-            var staged = new Dictionary<(string Kind, string Token), TokenClaim>();
-
             foreach (var request in requests)
             {
                 ArgumentNullException.ThrowIfNull(request);
+                ArgumentNullException.ThrowIfNull(request.Tokens);
 
                 foreach (var token in request.Tokens)
                 {
+                    ArgumentNullException.ThrowIfNull(token);
+
                     if (IsReserved(token.Name))
                     {
                         found.Add(new ManifestDefect(
@@ -153,7 +202,7 @@ public sealed class TokenRegistry
                         continue;
                     }
 
-                    var key = (request.MediaKind.Value, token.Name);
+                    var key = (request.MediaKind.Value, NamingTokenName.Canonicalize(token.Name));
 
                     if (_claims.TryGetValue(key, out var existing))
                     {
@@ -164,24 +213,67 @@ public sealed class TokenRegistry
                         continue;
                     }
 
-                    staged[key] = new TokenClaim(plugin, request.MediaKind, token);
+                    staged.TryAdd(key, new TokenClaim(plugin, request.MediaKind, token));
                 }
-            }
-
-            if (found.Count > 0)
-            {
-                defects = found;
-                return false;
-            }
-
-            foreach (var (key, claim) in staged)
-            {
-                _claims[key] = claim;
             }
         }
 
+        if (found.Count > 0)
+        {
+            plan = null;
+            defects = found;
+            return false;
+        }
+
+        plan = new TokenClaimPlan(this, plugin, staged);
         defects = [];
         return true;
+    }
+
+    private bool TryCommit(TokenClaimPlan plan, out IReadOnlyList<ManifestDefect> defects)
+    {
+        var found = new List<ManifestDefect>();
+
+        using var publication = _publication.EnterWrite();
+        lock (_gate)
+        {
+            foreach (var (key, claim) in plan.Claims)
+            {
+                if (_claims.TryGetValue(key, out var existing))
+                {
+                    found.Add(new ManifestDefect(
+                        $"tokens['{claim.Token.Name}']",
+                        $"'{claim.Token.Name}' is already declared for media kind '{claim.MediaKind.Value}' by extension '{existing.Plugin}'.",
+                        CoreErrorCode.PluginTokenConflict));
+                }
+            }
+
+            if (found.Count == 0)
+            {
+                foreach (var (key, claim) in plan.Claims)
+                {
+                    _claims.Add(key, claim);
+                }
+            }
+        }
+
+        defects = found;
+        return found.Count == 0;
+    }
+
+    private void Rollback(TokenClaimPlan plan)
+    {
+        using var publication = _publication.EnterWrite();
+        lock (_gate)
+        {
+            foreach (var (key, claim) in plan.Claims)
+            {
+                if (_claims.TryGetValue(key, out var current) && ReferenceEquals(current, claim))
+                {
+                    _claims.Remove(key);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -192,8 +284,9 @@ public sealed class TokenRegistry
     /// Called when an extension is quarantined after its tokens were claimed. Without it a failed extension
     /// would keep its tokens hostage until the host restarted.
     /// </remarks>
-    public void Release(PluginId plugin)
+    internal void Release(PluginId plugin)
     {
+        using var publication = _publication.EnterWrite();
         lock (_gate)
         {
             var owned = _claims
@@ -204,6 +297,75 @@ public sealed class TokenRegistry
             foreach (var key in owned)
             {
                 _claims.Remove(key);
+            }
+        }
+    }
+
+    /// <summary>A complete attempt-local claim which has not yet become visible.</summary>
+    internal sealed class TokenClaimPlan
+    {
+        private readonly TokenRegistry _owner;
+        private int _state;
+
+        internal TokenClaimPlan(
+            TokenRegistry owner,
+            PluginId plugin,
+            IReadOnlyDictionary<(string Kind, string Token), TokenClaim> claims)
+        {
+            _owner = owner;
+            Plugin = plugin;
+            Claims = claims;
+        }
+
+        internal PluginId Plugin { get; }
+
+        internal IReadOnlyDictionary<(string Kind, string Token), TokenClaim> Claims { get; }
+
+        internal bool TryCommit(out IReadOnlyList<ManifestDefect> defects)
+        {
+            using var publication = _owner._publication.EnterWrite();
+
+            lock (this)
+            {
+                if (_state != 0)
+                {
+                    defects =
+                    [
+                        new ManifestDefect(
+                            "tokens",
+                            $"The token claim attempt for extension '{Plugin}' is no longer pending.",
+                            CoreErrorCode.PluginTokenConflict),
+                    ];
+                    return false;
+                }
+
+                if (!_owner.TryCommit(this, out defects))
+                {
+                    return false;
+                }
+
+                _state = 1;
+                return true;
+            }
+        }
+
+        internal void Rollback()
+        {
+            using var publication = _owner._publication.EnterWrite();
+
+            lock (this)
+            {
+                if (_state == 2)
+                {
+                    return;
+                }
+
+                if (_state == 1)
+                {
+                    _owner.Rollback(this);
+                }
+
+                _state = 2;
             }
         }
     }

@@ -1,5 +1,6 @@
 using System.Linq;
 using Arronix.Abstractions.Events;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Scheduling;
 using Arronix.Plugins.Registration;
@@ -137,6 +138,48 @@ public sealed class RegistryAdmissionTests
     }
 
     [Test]
+    public async Task SealingWaitsForARegistrationAlreadyInsideTheAdmissionGate()
+    {
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var sealStarted = new ManualResetEventSlim();
+        using var sealReturned = new ManualResetEventSlim();
+
+        var reader = new BlockingCapabilityReader(entered, release);
+        var ledger = new PluginRegistrationLedger(Plugin);
+        var registry = new PluginRegistry(
+            Plugin,
+            CapabilitySet.Of(
+                Capability.MediaKind,
+                Capability.Parsing,
+                Capability.Matching,
+                Capability.Indexing),
+            ledger,
+            reader);
+
+        var registration = Task.Run(() => registry.AddMediaType<ExampleKind>());
+        entered.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+
+        var sealing = Task.Run(() =>
+        {
+            sealStarted.Set();
+            registry.Seal();
+            sealReturned.Set();
+        });
+
+        sealStarted.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+        sealReturned.Wait(TimeSpan.FromMilliseconds(100)).Should().BeFalse(
+            "Seal cannot return while a checked registration still has its ledger mutation outstanding");
+
+        release.Set();
+        await Task.WhenAll(registration, sealing);
+
+        ledger.Registered<IMediaTypeRegistration>().Should().ContainSingle();
+        var late = () => registry.AddMediaType<ExampleKind>();
+        late.Should().Throw<InvalidOperationException>();
+    }
+
+    [Test]
     public void AskingForASingleRegistrationWhereThereAreSeveralIsAProgrammingError()
     {
         var (registry, ledger) = Create(Capability.Parsing);
@@ -194,5 +237,17 @@ public sealed class RegistryAdmissionTests
 
         public Task<JobExecutionResult> ExecuteAsync(JobExecutionContext context, CancellationToken cancellationToken)
             => Task.FromResult(new JobExecutionResult(true));
+    }
+
+    private sealed class BlockingCapabilityReader(
+        ManualResetEventSlim entered,
+        ManualResetEventSlim release) : IMediaTypeCapabilityReader
+    {
+        public IReadOnlyList<DefinitionSectionRequirement> Requirements(IMediaTypeRegistration registration)
+        {
+            entered.Set();
+            release.Wait();
+            return DefinitionCapabilityRules.Requirements(MediaKindModels.RequiredSectionsOnly());
+        }
     }
 }

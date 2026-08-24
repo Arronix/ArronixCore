@@ -58,7 +58,7 @@ public sealed class PluginIsolationException : ArronixException
     public PluginIsolationException(string blockedAssembly, string requestedBy)
         : base(
             CoreErrorCode.PluginIsolationViolation,
-            $"'{requestedBy}' references '{blockedAssembly}', which extensions may not reference. An extension references the contract assembly and nothing else.")
+            $"'{requestedBy}' references forbidden implementation assembly '{blockedAssembly}'. Extensions may reference supported contracts and their own private dependency closure, never Host, platform, or legacy implementation assemblies.")
     {
         BlockedAssembly = blockedAssembly;
         RequestedBy = requestedBy;

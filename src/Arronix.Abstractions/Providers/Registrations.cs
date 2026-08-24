@@ -2,11 +2,12 @@ using Arronix.Abstractions.Media;
 
 namespace Arronix.Abstractions.Providers;
 
-/// <summary>A provider declaration paired with implementation and contract types for DI activation.</summary>
+/// <summary>A provider declaration paired with implementation and contract types for Host activation.</summary>
 /// <remarks>
 /// Registration carries types, never an already-constructed implementation. The host activates the type
-/// only after the plugin and capability declaration have been admitted, supplying the scoped plugin
-/// context through DI.
+/// only after the plugin and capability declaration have been admitted. It supplies the scoped plugin
+/// context through an exact public <c>(IPluginContext)</c> constructor, or uses a public parameterless
+/// constructor when no context is needed. Host DI is never consulted.
 /// </remarks>
 public sealed record ProviderTypeRegistration
 {

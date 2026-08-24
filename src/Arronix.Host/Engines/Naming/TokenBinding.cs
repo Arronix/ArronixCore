@@ -1,4 +1,5 @@
 using Arronix.Abstractions.DTOs;
+using Arronix.Common.Naming;
 
 namespace Arronix.Host.Engines.Naming;
 
@@ -71,7 +72,7 @@ internal sealed record TokenBinding
         int depth = 0) =>
         new()
         {
-            CanonicalName = NamingTemplateParser.Canonicalize(name),
+            CanonicalName = NamingTokenName.Canonicalize(name),
             DisplayName = name,
             Values = [value],
             Elasticity = elasticity,

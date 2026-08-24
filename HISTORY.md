@@ -1,28 +1,55 @@
 # Arronix History
 
-## 2026-08-24 — Remove Movies' second media schema and close G02
+## 2026-08-24 — Make admission transactional, remove Movies' second schema, and close G02
+
+- Replaced provisional Host publication with attempt-scoped preparation. Host derives and activates complete
+  candidates but exposes none of them; a successful `PluginAdmissionResult` carries the exact
+  `IPluginAdmissionAttempt` which owns its inventory, commit, rollback, and Host-created instances.
+- Made Host admission mandatory for every loader entry point. Provider and language implementation types are
+  constructed only through an exact public `(IPluginContext)` or parameterless constructor; plugin activation
+  never resolves from Host DI.
+- Added one shared Host-owned publication gate across token, Host, and runtime registries. After declaration agreement,
+  token planning, and identity checks all pass, the loader commits the token plan, exact Host attempt, and
+  `Active` result as one change. Every exceptional or refused path gives back only that attempt, and a failed
+  reload cannot overwrite the existing Active authority.
+- Made stop the inverse exact transaction. The bootstrapper owns scheduler cancellation and drain even when
+  hosted services stop concurrently;
+  Host and token registrations are withdrawn with the matching runtime receipt; a stopped result retains no
+  ledger, runtime lease, or load-context root; and extension-created values dispose once by reference in
+  reverse registration order, with async disposal preferred, the module last, and the collectible context
+  unloaded last. A genuine job overrun deliberately retains the Active roots.
+- Added a separately packaged G02 fixture with a real media kind, notifier, language, scheduled job, health
+  contributor, naming tokens, self-registered module, and disposal telemetry. It proves complete publication,
+  runtime-envelope propagation, late-failure rollback, exact async cleanup order, ordinary scheduler drain,
+  overrun deferral, stopped-root removal, and containment of a throwing load-context unloading handler before
+  another package is loaded.
+- Moved the naming-token equality operation to `Arronix.Common.Naming` rather than widening the plugin SDK.
+  Its Rune-based canonical form is now shared by parsing, declaration agreement, reserved-name checks,
+  ownership, and rendering, including supplementary-plane letters.
+- The exact .NET 11 proof rail finished with 2,168 passed, 302 registered skips, zero failed, and zero
+  inconclusive from 2,470 cases across all 11 test projects; compatibility and required-sentinel ratchets pass.
 
 - Removed `mediaKinds`, `identifiers`, `tokens`, and `policies` from `src/Arronix.Plugin.Movies/plugin.json`.
-  Every one of them was derivable from the media type, none of them is read as authority by the runtime any
-  more, and a duplicate nothing consumes is a duplicate that drifts. The manifest now carries only what the
-  loader cannot learn from code it has not been allowed to run: manifest schema version, package identity,
-  operator-facing name, version, description, the Arronix contract range, the entry assembly, and explicit
-  capability grants.
-- Kept capabilities and security grants in the manifest deliberately. Least privilege is a statement made
-  before the extension's code runs, so it cannot be derived from that code without granting the privilege in
-  order to discover whether it was wanted.
+  Kinds, tokens, and policy are compiled from the media definition; external identifier schemes and their
+  release markers belong to installed catalogers, while Movies owns only the roles those identifiers can
+  fill. None is manifest authority. The manifest now carries only what the loader cannot learn from admitted
+  code: manifest schema version, package identity, operator-facing name, version, description, the Arronix
+  contract range, the entry assembly, and explicit capability grants.
+- Kept requested capabilities in the manifest deliberately. Least privilege is a statement made before the
+  extension's code runs, so it cannot be derived from that code without granting the privilege in order to
+  discover whether it was wanted. Per-extension host and filesystem grants remain operator configuration;
+  they are not manifest fields.
 - Replaced the manifest mirror fixture. It existed to keep a hand-maintained copy honest, and its own
-  documentation said so; with the copy gone the fixture asserts the inverse — that no derived media kind,
-  identifier vocabulary, token, policy, or action list appears in the manifest, and that the manifest carries
-  nothing outside what it owns. `actions` has never been a manifest key and is now pinned so it cannot
-  quietly become one. The derived-vocabulary assertions remain, checked against the media type rather than
-  against the manifest.
+  documentation said so; with the copy gone the fixture asserts that no media-derived kind, token, policy,
+  or action list and no cataloger-owned identifier vocabulary appears in the manifest, and that the manifest
+  carries nothing outside what it owns. `actions` has never been a manifest key and is now pinned so it
+  cannot quietly become one. Derived-vocabulary assertions remain against the media type itself.
 - Left the Books, Music, and Television manifests alone. Their declarations belong to the legacy media paths
   those kinds still use and are removed with their conversions.
 - Corrected the stale statement that no CI workflow exists. G01 added the proof rail.
 
-This closes G02. The real packaged Movies extension survives discovery, typed admission, activation, late
-agreement, publication, and atomic withdrawal, and its declaration is no longer a second media definition.
+This closes G02. The real packaged Movies extension survives discovery, typed preparation, late agreement,
+atomic publication, and exact withdrawal, and its declaration is no longer a second media definition.
 G03 is now active: package dependency and version rules, and one exact CLR type identity across host and
 dynamically loaded client code.
 
@@ -45,8 +72,8 @@ dynamically loaded client code.
 - Made a manifest able to omit derivable media facts. Holding the `media-kind` capability without restating
   the kinds is now valid, because which kinds an extension supplies is settled against what was admitted. A
   manifest that does state kinds or tokens is still held to them exactly, in both directions. Capabilities
-  and security grants remain explicit manifest-owned least-privilege requests, because a privilege cannot be
-  derived from code that has not been allowed to run.
+  remain explicit manifest-owned least-privilege requests, because a privilege cannot be derived from code
+  that has not been allowed to run.
 - Made post-admission withdrawal complete. The loader releases token claims on any quarantine after the
   claim rather than at one hand-picked step, and Host withdrawal — used for both a late loader failure and
   `StopAsync` — now gives back token ownership alongside kinds, providers, languages, jobs, and health
@@ -134,7 +161,7 @@ instead of being executed when they conflict with current context, owner intent,
 
 - Adopted the third-party authoring experience as a product contract: an extension author should be able to own a complete Sonarr-, Radarr-, Lidarr-, Readarr-, or new-media-style domain through a few intuitive, strongly typed abstractions while Arronix derives common application machinery.
 - Defined minimal surface area as the result of complete common types, generic relationships, constructor-owned invariants, typed defaults, and generated projections. Rejected field bags, reflection conventions, builder transcripts, repeated type juggling, and Host callbacks as false reductions in complexity which merely transfer it to extension authors.
-- Required every claimed abstraction to remain coherent through authoring, registration, DI activation, runtime execution, persistence where relevant, wire and Client projection, tests, and documentation. Types, descriptors, tests, or registration seams alone are not completion evidence.
+- Required every claimed abstraction to remain coherent through authoring, registration, Host-owned activation, runtime execution, persistence where relevant, wire and Client projection, tests, and documentation. Types, descriptors, tests, or registration seams alone are not completion evidence.
 - Retained full *arr feature coverage and observable ecosystem compatibility as acceptance constraints. Consolidation may remove accidental coupling, but it may not simplify away hard-earned product behaviour without an explicit, tested divergence.
 - Made durable owner signal the input to bounded feature work. Fresh tasks consume the current context, interface, north star, history, and owner ledger; questions, hypotheses, and illustrative models do not silently become approved architecture.
 

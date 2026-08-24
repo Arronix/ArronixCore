@@ -1,16 +1,18 @@
-# Arronix Naming, Tokens and Renaming — Design (ARCHITECTURE §9)
+# Arronix Naming, Tokens and Renaming — Historical Design
 
-> **Status:** Design. No code has been written. This document is the direct input to the implementation
-> phase for the subsystem `docs/arronix-common-extraction-plan.md` resolution **#12** deferred.
+> **Status:** Historical implementation design, partially implemented and subsequently reshaped by the typed
+> media refactor. It records the reasoning behind the naming grammar, derivation, and collision model; it is
+> not current path, API, or work-package authority. Use `CONTEXT.md`, `INTERFACE.md`, `ARCHITECTURE.md`, and
+> the live types for current state.
 >
 > **Why it was deferred, verbatim:** *"§9 validation is against `IMediaKind.NamingTokens`, which is the
 > Policy Engine's job; a formatter without validation is exactly what `Expansive` was."* This document
 > designs the validation first and the formatter second, which is the order that inverts that objection.
 >
-> **Scope:** additive to `Arronix.Abstractions.Naming` (**`ARX0009`**, an area that already exists),
-> `src/Arronix.Common/Naming/` (which already ships `TokenSanitizer` and `TextFolding`), and new
-> `src/Arronix.Host/Naming/`. One additive amendment is requested to `Arronix.Abstractions.Shape`
-> (**`ARX0013`**) and is called out explicitly in §12.
+> **Current placement note:** token-name equality is implemented by
+> `src/Arronix.Common/Naming/NamingTokenName.cs`; grammar and rendering currently live under
+> `src/Arronix.Host/Engines/Naming`; public semantic values remain in `Arronix.Abstractions`. The placement
+> sketches and proposed work packages below are historical, not outstanding instructions.
 >
 > **Empirical basis:** the four production naming engines —
 > `src/NzbDrone.Core/Organizer/FileNameBuilder.cs` (1,279 lines, 46 distinct token handlers),
@@ -19,11 +21,11 @@
 > `src/NzbDrone.Core.Test/OrganizerTests/` (29 fixtures, 3,791 lines, of which three fixtures exist purely
 > for truncation).
 >
-> **Governing documents:** `docs/design/unified-host-runtime.md` §1 resolutions **#43** (token collisions),
+> **Then-governing documents:** `docs/design/unified-host-runtime.md` §1 resolutions **#43** (token collisions),
 > **#44** (token declaration), **#6** (no polymorphic JSON), **#35** (derive, do not declare), §2 (the shape
 > model), §4.1 (the load pipeline), §6.3/§6.5 (intent and the workbench);
 > `docs/arronix-common-extraction-plan.md` (three-tier promotion rule); `docs/contracts/stability.md`
-> (the experimental gate); `ARCHITECTURE.md` §4.1, §9, §11.
+> (the then-current experimental gate, since removed); the then-current `ARCHITECTURE.md` §4.1, §9, §11.
 >
 > Related documents being written concurrently and **not duplicated here**:
 > `acquisition-pipeline.md` (where a rename is triggered from an import), `storage-layer.md` (the physical

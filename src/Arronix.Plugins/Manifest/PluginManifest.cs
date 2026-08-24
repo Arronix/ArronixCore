@@ -63,17 +63,17 @@ public sealed record PluginManifest
     public string? Description { get; init; }
 
     /// <summary>
-    /// Gets the media kinds the extension claims.
+    /// Gets the transitional media-kind inventory supplied by a legacy shape-based extension.
     /// </summary>
     public IReadOnlyList<string> MediaKinds { get; init; } = [];
 
     /// <summary>
-    /// Gets the external identifier schemes the extension understands.
+    /// Gets the transitional, non-authoritative identifier inventory supplied by a legacy extension.
     /// </summary>
     public IReadOnlyList<string> Identifiers { get; init; } = [];
 
     /// <summary>
-    /// Gets the naming tokens the extension declares.
+    /// Gets the transitional naming-token inventory supplied by a legacy extension.
     /// </summary>
     /// <remarks>
     /// Declared as the contract assembly's token descriptor rather than as bare strings, because the host
@@ -84,7 +84,7 @@ public sealed record PluginManifest
     public IReadOnlyList<NamingToken> Tokens { get; init; } = [];
 
     /// <summary>
-    /// Gets the declared policy identifiers, by category.
+    /// Gets the transitional legacy policy identifiers, by category.
     /// </summary>
     public PolicyGraph? Policies { get; init; }
 }

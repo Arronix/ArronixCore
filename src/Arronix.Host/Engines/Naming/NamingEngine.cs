@@ -259,7 +259,7 @@ internal sealed class NamingEngine
     {
         foreach (var rule in _declaration.Fallbacks)
         {
-            var canonical = NamingTemplateParser.Canonicalize(rule.Token);
+            var canonical = NamingTokenName.Canonicalize(rule.Token);
 
             if (canonical.Length == 0)
             {

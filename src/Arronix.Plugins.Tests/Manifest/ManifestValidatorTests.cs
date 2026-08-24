@@ -147,6 +147,7 @@ public sealed class ManifestValidatorTests
     [TestCase("Title}")]
     [TestCase("{}")]
     [TestCase("{A}{B}")]
+    [TestCase("{---}")]
     [TestCase("   ")]
     public void AMalformedTokenIsRefused(string name)
         => ShouldHaveDefect(
@@ -161,6 +162,18 @@ public sealed class ManifestValidatorTests
         [
             new NamingToken("{Title}", string.Empty, string.Empty),
             new NamingToken("{Title}", string.Empty, string.Empty)
+        ]);
+
+        ShouldHaveDefect(manifest, "tokens[1].name", CoreErrorCode.PluginManifestInvalid);
+    }
+
+    [Test]
+    public void TokensEquivalentUnderTheNamingGrammarAreDuplicates()
+    {
+        var manifest = Valid(builder => builder.Tokens =
+        [
+            new NamingToken("{Series Title}", string.Empty, string.Empty),
+            new NamingToken("{series.title}", string.Empty, string.Empty)
         ]);
 
         ShouldHaveDefect(manifest, "tokens[1].name", CoreErrorCode.PluginManifestInvalid);

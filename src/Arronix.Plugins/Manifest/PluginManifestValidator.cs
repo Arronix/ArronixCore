@@ -5,6 +5,7 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
+using Arronix.Common.Naming;
 using Arronix.Plugins.Versioning;
 
 
@@ -402,9 +403,23 @@ public static class PluginManifestValidator
                 continue;
             }
 
-            if (!seen.Add(name))
+            var canonical = NamingTokenName.Canonicalize(name);
+
+            if (canonical.Length == 0)
             {
-                found.Add(new ManifestDefect($"tokens[{index}].name", $"'{name}' is declared more than once.", CoreErrorCode.PluginManifestInvalid));
+                found.Add(new ManifestDefect(
+                    $"tokens[{index}].name",
+                    $"'{name}' contains no letter or digit and therefore has no naming-grammar identity.",
+                    CoreErrorCode.PluginManifestInvalid));
+                continue;
+            }
+
+            if (!seen.Add(canonical))
+            {
+                found.Add(new ManifestDefect(
+                    $"tokens[{index}].name",
+                    $"'{name}' is equivalent to a token already declared under the naming grammar.",
+                    CoreErrorCode.PluginManifestInvalid));
                 continue;
             }
 

@@ -21,6 +21,12 @@ public sealed class RegisteredJob
     private int _succeeded = 1;
 
     internal RegisteredJob(
+        string registrationId,
+        string name,
+        string description,
+        int priority,
+        int maxConcurrency,
+        TimeSpan shutdownDeadline,
         IScheduledJob job,
         JobSchedule schedule,
         PluginId owner,
@@ -28,13 +34,37 @@ public sealed class RegisteredJob
         MediaKindId? mediaKind,
         IReadOnlyList<string> throttleKeys)
     {
+        RegistrationId = registrationId;
+        Name = name;
+        Description = description;
+        Priority = priority;
+        MaxConcurrency = maxConcurrency;
+        ShutdownDeadline = shutdownDeadline;
         Job = job;
         Schedule = schedule;
         Owner = owner;
         Capabilities = capabilities;
         MediaKind = mediaKind;
-        ThrottleKeys = throttleKeys;
+        ThrottleKeys = [.. throttleKeys];
     }
+
+    /// <summary>Gets the job identifier captured before publication.</summary>
+    public string RegistrationId { get; }
+
+    /// <summary>Gets the display name captured during admission.</summary>
+    public string Name { get; }
+
+    /// <summary>Gets the description captured during admission.</summary>
+    public string Description { get; }
+
+    /// <summary>Gets the queue priority captured during admission.</summary>
+    public int Priority { get; }
+
+    /// <summary>Gets the concurrency ceiling captured during admission.</summary>
+    public int MaxConcurrency { get; }
+
+    /// <summary>Gets the Host-clamped shutdown deadline captured during admission.</summary>
+    public TimeSpan ShutdownDeadline { get; }
 
     /// <summary>Gets the job itself.</summary>
     public IScheduledJob Job { get; }
@@ -78,12 +108,31 @@ public sealed class RegisteredJob
 
     /// <summary>Determines whether another run may start.</summary>
     /// <returns><see langword="true"/> when the job is below its own concurrency ceiling.</returns>
-    public bool HasCapacity() => Job.MaxConcurrency <= 0 || Running < Job.MaxConcurrency;
+    public bool HasCapacity() => MaxConcurrency <= 0 || Running < MaxConcurrency;
 
     internal void MarkQueued(DateTimeOffset when)
         => Interlocked.Exchange(ref _lastRunTicks, when.UtcTicks);
 
-    internal void MarkStarted() => Interlocked.Increment(ref _running);
+    /// <summary>Atomically reserves one execution slot.</summary>
+    internal bool TryMarkStarted()
+    {
+        while (true)
+        {
+            var running = Volatile.Read(ref _running);
+            if (MaxConcurrency > 0 && running >= MaxConcurrency)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _running, running + 1, running) == running)
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>Releases a reserved slot when queue or global-capacity admission did not complete.</summary>
+    internal void ReleaseStart() => Interlocked.Decrement(ref _running);
 
     internal void MarkFinished(bool succeeded)
     {

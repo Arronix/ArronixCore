@@ -12,19 +12,21 @@ using Arronix.Abstractions.Throttling;
 namespace Arronix.Abstractions.Plugins;
 
 /// <summary>
-/// The whole of what an extension can reach.
+/// The complete Arronix service surface intentionally exposed to an extension.
 /// </summary>
 /// <remarks>
 /// <para>
 /// Deliberately a locator, which is normally an anti-pattern. Here it is the enforcement point: "what can
 /// an extension reach?" is answerable by reading one interface, and the paired try-and-require form makes
-/// every gated dependency visible at the call site rather than hidden in a constructor signature.
+/// every gated Arronix dependency visible at the call site rather than hidden in a constructor signature.
 /// </para>
 /// <para>
 /// The alternative — handing an extension the host's service container and filtering afterwards — is
 /// unavailable by construction, because this assembly takes no package references and so cannot name a
 /// container type at all. That constraint turned out to be a benefit: admission control is strictly
-/// stronger than post-hoc filtering, and it is checkable before any extension code runs.
+/// stronger than post-hoc filtering, and it is checkable before any extension code runs. This is an API and
+/// admission boundary, not an in-process security sandbox: ordinary runtime and BCL APIs remain reachable by
+/// extension code.
 /// </para>
 /// <para>
 /// Every gated instance handed out is a scoping decorator built by the host: outbound calls are attributed

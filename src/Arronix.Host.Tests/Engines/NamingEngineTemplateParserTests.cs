@@ -12,14 +12,6 @@ namespace Arronix.Host.Tests.Engines;
 internal sealed class NamingEngineTemplateParserTests
 {
     [Test]
-    public void CanonicalizationFoldsSpellingsTogether()
-    {
-        NamingTemplateParser.Canonicalize("Entry Title").Should().Be("entrytitle");
-        NamingTemplateParser.Canonicalize("entry.title").Should().Be("entrytitle");
-        NamingTemplateParser.Canonicalize("ENTRY_TITLE").Should().Be("entrytitle");
-    }
-
-    [Test]
     public void ATokenCarriesItsAffixes()
     {
         var compiled = NamingTemplateParser.Parse("{Entry Title}{ (Year)}");
