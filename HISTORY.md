@@ -1,5 +1,31 @@
 # Arronix History
 
+## 2026-08-24 — Remove Movies' second media schema and close G02
+
+- Removed `mediaKinds`, `identifiers`, `tokens`, and `policies` from `src/Arronix.Plugin.Movies/plugin.json`.
+  Every one of them was derivable from the media type, none of them is read as authority by the runtime any
+  more, and a duplicate nothing consumes is a duplicate that drifts. The manifest now carries only what the
+  loader cannot learn from code it has not been allowed to run: manifest schema version, package identity,
+  operator-facing name, version, description, the Arronix contract range, the entry assembly, and explicit
+  capability grants.
+- Kept capabilities and security grants in the manifest deliberately. Least privilege is a statement made
+  before the extension's code runs, so it cannot be derived from that code without granting the privilege in
+  order to discover whether it was wanted.
+- Replaced the manifest mirror fixture. It existed to keep a hand-maintained copy honest, and its own
+  documentation said so; with the copy gone the fixture asserts the inverse — that no derived media kind,
+  identifier vocabulary, token, policy, or action list appears in the manifest, and that the manifest carries
+  nothing outside what it owns. `actions` has never been a manifest key and is now pinned so it cannot
+  quietly become one. The derived-vocabulary assertions remain, checked against the media type rather than
+  against the manifest.
+- Left the Books, Music, and Television manifests alone. Their declarations belong to the legacy media paths
+  those kinds still use and are removed with their conversions.
+- Corrected the stale statement that no CI workflow exists. G01 added the proof rail.
+
+This closes G02. The real packaged Movies extension survives discovery, typed admission, activation, late
+agreement, publication, and atomic withdrawal, and its declaration is no longer a second media definition.
+G03 is now active: package dependency and version rules, and one exact CLR type identity across host and
+dynamically loaded client code.
+
 ## 2026-08-24 — Make the admitted projection, not the manifest, the authority after admission
 
 - Changed `IPluginAdmissionCheck` from a verdict to `PluginAdmissionResult`, carrying an `AdmittedInventory`

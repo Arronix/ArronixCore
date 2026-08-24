@@ -162,15 +162,24 @@ The loader:
 3. creates an isolated load context and capability-scoped context;
 4. invokes the single module's registration method;
 5. seals and verifies the registration ledger in both capability directions;
-6. hands admitted registrations to Host;
-7. quarantines any invalid extension without terminating Host.
+6. hands admitted registrations to Host and takes back the inventory Host admitted;
+7. checks declaration agreement, naming-token ownership and installation-wide identity against that
+   inventory rather than against the declaration file;
+8. quarantines any invalid extension without terminating Host, giving back everything it had committed —
+   the kind, its token claims, and its provider, language, job and health registrations.
+
+The admitted inventory is keyed per `MediaKindId` and carries each admitted kind's own derived naming
+tokens. A media extension therefore does not restate its kinds, identifier vocabularies, tokens, policies or
+actions in its manifest: those are derived from its types and settled against what Host admitted. The
+manifest keeps what cannot be derived from code the loader has not yet allowed to run — package identity,
+contract compatibility, the entry assembly, and explicit capability and security grants.
 
 Format dependencies are part of an extension's local dependency closure. Only Abstractions and framework assemblies unify with the default context today. A future shared media-definition assembly model is required before independent cataloger packages can safely compile against media-owned item types or the Blazor client can load those exact types dynamically.
 
 ## 9. Migration state
 
-Movies is on the typed media path and registers the empty nominal closure
-`Movie : MediaItem<Movie,MovieReleaseTimeline,MovieReleaseStage>`. The complete reusable item shape lives
+Movies is on the typed media path, loads as a real package through the complete loader, and registers the
+empty nominal closure `Movie : MediaItem<Movie,MovieReleaseTimeline,MovieReleaseStage>`. The complete reusable item shape lives
 in the base; the nominal type exists so typed movie catalogers, curators, targets, collections, and future
 movie-specific additions all close over the same public domain identity.
 Television has typed release/target models and coverage tests but still uses its legacy production shape
@@ -186,4 +195,8 @@ topology, vocabulary, and media neutrality. The complete solution build and test
 gate. Skips must be reported because Movies compatibility scenarios account for most of them. Parser
 regression cases live in test projects and are not carried by production media definitions.
 
-There is no CI workflow yet. Local green results are not continuous enforcement.
+`eng/ci/run-tests.sh` is that gate as one command, run locally and in repository CI: locked restore, one
+Release warnings-as-errors solution build whose binlog is retained as compiler-input evidence, a non-empty
+NUnit result from every discovered test project, exact NUnit-leaf/method/assembly/PDB/source binding, the
+exact 302-skip ratchet, and current-plus-prior compatibility validation. Local green results now are
+continuous enforcement; what they do not establish is cryptographic or hermetic build attestation.

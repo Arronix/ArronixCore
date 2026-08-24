@@ -2,7 +2,7 @@
 
 **Status:** active
 
-**Current gate:** G02 — make the real packaged Movies extension load
+**Current gate:** G03 — define package dependencies and one CLR type identity
 
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
@@ -177,7 +177,7 @@ Completion proof recorded on 2026-08-21:
 
 ### G02 — Make the real packaged Movies extension load
 
-**Status:** active. The loader and lifecycle half is done; the manifest half is not.
+**Status:** complete.
 
 **Outcome:** the actual Movies and Video build outputs survive discovery, admission, typed binding,
 activation, publication, and withdrawal through the real plugin pipeline.
@@ -202,7 +202,7 @@ Exit gate:
 - the integration test fails if a direct-binder shortcut is reintroduced;
 - the manifest is not a second hand-maintained media definition.
 
-Progress recorded on 2026-08-24:
+Completion proof recorded on 2026-08-24:
 
 - `IPluginAdmissionCheck.Admit` returns a `PluginAdmissionResult` carrying an `AdmittedInventory`: one entry
   per `MediaKindId` Host actually registered, each holding that admitted kind's own derived `NamingToken`
@@ -219,18 +219,24 @@ Progress recorded on 2026-08-24:
 - the real packaged Movies output reaches `Active`, publishes `movies`, owns exactly its derived tokens once
   each, and proves its admitted item type resolved inside the extension's own `PluginLoadContext`. A planted
   conflicting token claim and a restaged manifest declaring an unsupplied kind each quarantine the package
-  and leave nothing behind; and
-- the full rail reports 2,121 passed, 302 skipped, zero failed, and zero inconclusive from 2,423 cases across
+  and leave nothing behind;
+- `src/Arronix.Plugin.Movies/plugin.json` no longer contains `mediaKinds`, `identifiers`, `tokens`, or
+  `policies`, and has never contained `actions`. It carries manifest schema version, package identity,
+  operator-facing name, version, description, the Arronix contract range, the entry assembly, and explicit
+  capability grants. The manifest mirror fixture is replaced by one proving those derived facts are absent
+  and that the manifest carries nothing outside what it owns; and
+- the full rail reports 2,127 passed, 302 skipped, zero failed, and zero inconclusive from 2,429 cases across
   11 test projects.
 
-Still open: `src/Arronix.Plugin.Movies/plugin.json` continues to hand-maintain `mediaKinds`, `identifiers`,
-`tokens`, and `policies`. Nothing in the runtime treats them as authority any more, so they are exactly the
-second media definition this gate exists to remove. Books, Music, and Television keep their transitional
-declarations until their own conversions.
+Deliberately out of scope: the Books, Music, and Television manifests keep their `mediaKinds`, `identifiers`,
+and `tokens`. Those declarations belong to the legacy media paths those kinds still use and are removed with
+their conversions, not by this gate.
 
 This gate does **not** claim the parser, selector, providers, persistence, or Client vertical is complete.
 
 ### G03 — Define package dependencies and one CLR type identity
+
+**Status:** active.
 
 **Outcome:** independently shipped media, format, language, and provider packages can close generic contracts
 over the exact same domain types.

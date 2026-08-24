@@ -6,14 +6,18 @@ using Arronix.Plugin.Movies.Tests.Support;
 namespace Arronix.Plugin.Movies.Tests.Shape;
 
 /// <summary>
-/// The manifest and the derived model, checked against each other.
+/// What the manifest is allowed to own, and what it must no longer restate.
 /// </summary>
 /// <remarks>
 /// <para>
-/// <c>plugin.json</c> is read by the loader before any of this assembly's code runs, and the model is
-/// derived after it. Nothing in the platform compares them, so every disagreement between the two is a
-/// defect that surfaces as a missing feature at run time rather than as a build failure. This fixture is
-/// that comparison.
+/// This fixture replaces the mirror it used to be. While the loader compared a manifest's media kinds and
+/// tokens against a media shape, Movies had to carry a hand-maintained copy of both and something had to
+/// check the copy — so the fixture checked it, and the copy stayed. The runtime now reads the projection
+/// the host admitted, which makes the copy pure duplication: a second media definition that can only drift.
+/// </para>
+/// <para>
+/// So the assertions are inverted. A derivable fact must be absent from <c>plugin.json</c>, and the derived
+/// vocabulary is still checked — against the media type, which is where it comes from.
 /// </para>
 /// <para>
 /// The manifest is read from the working tree rather than from the build output, because it is not copied
@@ -21,17 +25,66 @@ namespace Arronix.Plugin.Movies.Tests.Shape;
 /// </para>
 /// </remarks>
 [TestFixture]
-public class ManifestAgreementTests
+public class ManifestOwnershipTests
 {
+    /// <summary>
+    /// Everything a media extension derives from its own types. None of it may appear in the manifest.
+    /// </summary>
+    /// <remarks>
+    /// <c>actions</c> has never been a manifest key and is listed so it cannot quietly become one. Platform
+    /// actions are derived by the host from the compiled media definition; a manifest naming them would be
+    /// an extension declaring the platform's own operation catalogue.
+    /// </remarks>
+    private static readonly string[] DerivedProperties =
+    [
+        "mediaKinds",
+        "identifiers",
+        "tokens",
+        "policies",
+        "actions"
+    ];
+
+    /// <summary>
+    /// Everything the manifest genuinely owns: what the loader cannot learn from code it has not been
+    /// allowed to run yet.
+    /// </summary>
+    private static readonly string[] ManifestOwnedProperties =
+    [
+        "schemaVersion",
+        "id",
+        "name",
+        "version",
+        "description",
+        "contracts",
+        "entryAssembly",
+        "capabilities"
+    ];
+
     private static JsonElement Manifest { get; } = ReadManifest();
+
+    [TestCaseSource(nameof(DerivedProperties))]
+    public void RestatesNoDerivedMediaFact(string property)
+        => Assert.That(
+            Manifest.TryGetProperty(property, out _),
+            Is.False,
+            $"'{property}' is derived from the media type and settled against the projection the host "
+            + "admitted. Restating it in the manifest makes the manifest a second media schema.");
+
+    [Test]
+    public void CarriesNothingButWhatItOwns()
+        => Assert.That(
+            Manifest.EnumerateObject().Select(static property => property.Name),
+            Is.SubsetOf(ManifestOwnedProperties));
 
     [Test]
     public void DeclaresTheSameExtensionIdentifierAsTheCode()
         => Assert.That(Manifest.GetProperty("id").GetString(), Is.EqualTo(new MoviesPluginModule().Id.Value));
 
     [Test]
-    public void DeclaresTheSameMediaKindAsTheType()
-        => Assert.That(Strings("mediaKinds"), Is.EqualTo(new[] { new Movies().Kind.Value }));
+    public void DeclaresTheContractRangeTheFirstPartyLineShips()
+        => Assert.That(
+            Manifest.GetProperty("contracts").GetProperty("arronix").GetString(),
+            Is.EqualTo(">=0.8 <0.9"));
 
     [Test]
     public void NamesTheAssemblyTheModuleActuallyLivesIn()
@@ -39,31 +92,19 @@ public class ManifestAgreementTests
             Manifest.GetProperty("entryAssembly").GetString(),
             Is.EqualTo(typeof(MoviesPluginModule).Assembly.GetName().Name + ".dll"));
 
-    /// <summary>The media type declares identity roles but owns no catalog scheme.</summary>
     [Test]
-    public void NamesNoCatalogScheme()
-    {
-        var advertised = Strings("identifiers").ToHashSet(StringComparer.Ordinal);
-
-        Assert.Multiple(() =>
+    public void NamesTheExtensionAndSaysWhatItIsFor()
+        => Assert.Multiple(() =>
         {
-            Assert.That(advertised, Is.Empty);
-
-            Assert.That(
-                MoviesDeclaration.Level.Identity.ExternalIds,
-                Is.Empty,
-                "The level declares roles; which schemes fill them is a fact about the installed catalogers.");
-            Assert.That(
-                MoviesDeclaration.Shape.GroupingAxes.SelectMany(static axis => axis.ExternalIds),
-                Is.Empty,
-                "And the axis likewise, for its own key space.");
-
+            Assert.That(Manifest.GetProperty("name").GetString(), Is.Not.Null.And.Not.Empty);
+            Assert.That(Manifest.GetProperty("version").GetString(), Is.EqualTo("0.1.0"));
+            Assert.That(Manifest.GetProperty("description").GetString(), Is.Not.Null.And.Not.Empty);
         });
-    }
 
     /// <summary>
-    /// The capability list is an admission check in both directions: a registration the manifest does not
-    /// cover is refused, and a capability nothing uses quarantines the extension.
+    /// The capability list stays. It is an admission check in both directions — a registration the manifest
+    /// does not cover is refused, and a capability nothing uses quarantines the extension — and neither
+    /// direction can be derived from code the loader has not yet been allowed to run.
     /// </summary>
     [Test]
     public void AsksForExactlyTheCapabilitiesTheModuleExercises()
@@ -80,23 +121,20 @@ public class ManifestAgreementTests
     public void AsksForNoPrivilegeItDoesNotUse(string privilege)
         => Assert.That(Strings("capabilities"), Does.Not.Contain(privilege));
 
-    /// <summary>
-    /// The manifest's token list must mirror the derived vocabulary exactly. It is duplicated because the
-    /// loader reads it before any of this assembly's code runs, and a duplicate that nothing compares is a
-    /// duplicate that goes stale — which is precisely what the mirror is here to prevent now that the
-    /// vocabulary is derived rather than hand-written.
-    /// </summary>
+    /// <summary>The media type declares identity roles but owns no catalog scheme.</summary>
     [Test]
-    public void MirrorsTheDerivedTokenVocabulary()
-    {
-        var derived = MoviesDeclaration.Shape.Tokens;
-        var manifest = Manifest.GetProperty("tokens").EnumerateArray().ToList();
-
-        Assert.That(manifest, Has.Count.EqualTo(derived.Count));
-        Assert.That(
-            manifest.Select(static token => token.GetProperty("name").GetString()),
-            Is.EqualTo(derived.Select(static token => token.Name)));
-    }
+    public void NamesNoCatalogScheme()
+        => Assert.Multiple(() =>
+        {
+            Assert.That(
+                MoviesDeclaration.Level.Identity.ExternalIds,
+                Is.Empty,
+                "The level declares roles; which schemes fill them is a fact about the installed catalogers.");
+            Assert.That(
+                MoviesDeclaration.Shape.GroupingAxes.SelectMany(static axis => axis.ExternalIds),
+                Is.Empty,
+                "And the axis likewise, for its own key space.");
+        });
 
     /// <summary>
     /// No token is required any more, and that is a closed defect rather than a relaxation: the rule about
@@ -109,10 +147,6 @@ public class ManifestAgreementTests
         {
             Assert.That(
                 MoviesDeclaration.Shape.Tokens.Where(static token => token.IsRequired),
-                Is.Empty);
-            Assert.That(
-                Manifest.GetProperty("tokens").EnumerateArray()
-                    .Where(static token => token.TryGetProperty("isRequired", out var flag) && flag.GetBoolean()),
                 Is.Empty);
             Assert.That(
                 MoviesDeclaration.Carried.TemplateRules.Select(static rule => rule.RuleId),
