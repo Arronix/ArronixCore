@@ -409,10 +409,11 @@ internal sealed class SharedContractStore
             // running it while holding the registry lock would let a third party stall every other caller.
             context?.Unload();
         }
-// A hostile unloading handler is reported rather than rethrown into shutdown, but a process-fatal
-// condition is not an ordinary shutdown refusal and keeps propagating.
+        // An external-callback boundary, not the staged-file one: an Unloading handler is code a package
+        // registered and may throw any type it likes, so the file boundary's closed allowlist would let one
+        // escape and skip the terminal-state transition below. Only a process-fatal condition propagates.
 #pragma warning disable CA1031
-        catch (Exception failure) when (LoadFailurePolicy.IsContainableContractFailure(failure))
+        catch (Exception failure) when (LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
         {
             refusal = $"The shared contract context could not be released: {failure.Message}";
@@ -919,8 +920,9 @@ internal sealed class SharedContractStore
                 {
                     assembly = provisional.Add(contract.Staged);
                 }
-// The file is package-controlled and the exception surface behind LoadFromStream is not enumerable. See
-// IsContainableLoadFailure for what is deliberately not caught, and why naming classes would be worse.
+// Staging and loading a file is a bounded operation, so this boundary uses the closed allowlist: a failure
+// type it does not name is not one this platform knows how to contain, and admitting the rest of an
+// installation after it would be guesswork.
 #pragma warning disable CA1031
                 catch (Exception failure) when (LoadFailurePolicy.IsContainableContractFailure(failure))
 #pragma warning restore CA1031

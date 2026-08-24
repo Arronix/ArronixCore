@@ -135,23 +135,6 @@ internal sealed class InstalledPackage
     /// </remarks>
     public string Described => $"{Version} at {Folder}";
 
-    /// <summary>Gets the same package with a different availability state.</summary>
-    /// <param name="availability">The state to apply.</param>
-    /// <returns>The package, or this one when the state is unchanged.</returns>
-    /// <exception cref="ArgumentOutOfRangeException"><paramref name="availability"/> is not a defined state.</exception>
-    public InstalledPackage WithAvailability(PackageAvailability availability)
-        => Availability == PackageAvailabilityReason.Required(availability, nameof(availability))
-            ? this
-            : new InstalledPackage(
-                Id,
-                Version,
-                Source,
-                Folder,
-                EntryAssemblyFileName,
-                ContractAssemblies,
-                Requirements,
-                availability);
-
     /// <inheritdoc />
     public override string ToString() => $"{Id} {Version} ({Folder})";
 }

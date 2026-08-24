@@ -94,14 +94,16 @@ internal static class LoadFailurePolicy
     }
 
     /// <summary>
-    /// Determines whether a failure raised by a package's own code may be contained as its quarantine.
+    /// Determines whether a failure raised by a package's own code, or by a callback it registered, may be
+    /// contained.
     /// </summary>
     /// <param name="failure">The failure.</param>
-    /// <returns><see langword="true"/> when the package may be quarantined and loading may continue.</returns>
+    /// <returns><see langword="true"/> when the caller may record it and continue.</returns>
     /// <remarks>
-    /// Deliberately not an allowlist. A package's module, constructors and property getters may throw any
-    /// type, and refusing to contain one the platform has not seen before would mean a novel extension bug
-    /// stopped the whole installation — which is the failure containment exists to prevent.
+    /// Deliberately not an allowlist. A package's module, constructors, property getters and load-context
+    /// event handlers may throw any type, and refusing to contain one the platform has not seen before would
+    /// mean a novel extension bug stopped the whole installation — which is the failure containment exists to
+    /// prevent.
     /// </remarks>
     public static bool IsContainablePackageFailure(Exception failure) => !IsProcessFatal(failure);
 
