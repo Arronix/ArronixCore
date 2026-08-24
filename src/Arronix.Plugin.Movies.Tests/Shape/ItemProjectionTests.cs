@@ -35,7 +35,7 @@ public class ItemProjectionTests
                 ? group
                 : null;
 
-            var view = MoviesDeclaration.Model.Project(MoviesSeedProjection.ToMovie(record, collection));
+            var view = MoviesDeclaration.Project(MoviesSeedProjection.ToMovie(record, collection));
 
             Assert.That(view.Title, Is.EqualTo(record.Title));
             Assert.That(view.TitleLanguage?.Code, Is.EqualTo("en"));
@@ -49,13 +49,16 @@ public class ItemProjectionTests
     [Test]
     public void AddressesTheItemByTheKindAndTheDerivedLevel()
     {
-        var view = MoviesDeclaration.Model.Project(Godfather);
+        var view = MoviesDeclaration.Project(Godfather);
 
         Assert.Multiple(() =>
         {
             Assert.That(view.Ref.Kind, Is.EqualTo(new Movies().Kind));
             Assert.That(view.Ref.Level, Is.EqualTo(MoviesDeclaration.Level.Id));
-            Assert.That(view.Ref.Id.Value, Is.EqualTo(Godfather.Key.Value));
+            Assert.That(
+                view.Ref,
+                Is.EqualTo(MoviesDeclaration.Reference(Godfather)),
+                "the reference is the host's, and the same one however often it is asked for.");
         });
     }
 
@@ -72,7 +75,7 @@ public class ItemProjectionTests
     [Test]
     public void CarriesTheIdentifierSetRatherThanOneFieldPerCatalog()
     {
-        var view = MoviesDeclaration.Model.Project(Godfather);
+        var view = MoviesDeclaration.Project(Godfather);
 
         Assert.Multiple(() =>
         {
@@ -86,17 +89,17 @@ public class ItemProjectionTests
     public void ReadsOneFieldWithoutProjectingTheWholeItem()
         => Assert.Multiple(() =>
         {
-            Assert.That(MoviesDeclaration.Model.Read(Godfather, "title").Text, Is.EqualTo("The Godfather"));
-            Assert.That(MoviesDeclaration.Model.Read(Godfather, "year").Number, Is.EqualTo(1972));
+            Assert.That(MoviesDeclaration.Read(Godfather, "title").Text, Is.EqualTo("The Godfather"));
+            Assert.That(MoviesDeclaration.Read(Godfather, "year").Number, Is.EqualTo(1972));
             Assert.That(
-                MoviesDeclaration.Model.Read(Godfather, "status").Text,
+                MoviesDeclaration.Read(Godfather, "status").Text,
                 Is.EqualTo("released"),
                 "An enumerated value crosses as the identifier the derived choices are keyed by.");
         });
 
     [Test]
     public void RefusesAFieldTheStructureDoesNotDeclare()
-        => Assert.Throws<ArgumentException>(() => MoviesDeclaration.Model.Read(Godfather, "sortTitle"));
+        => Assert.Throws<ArgumentException>(() => MoviesDeclaration.Read(Godfather, "sortTitle"));
 
     /// <summary>
     /// A repeated composite crosses as a list of composites with named components, which is the whole of
@@ -107,7 +110,7 @@ public class ItemProjectionTests
     public void CarriesARepeatedCompositeWithItsCorrelationIntact()
     {
         var descriptor = MoviesDeclaration.Fields["ratings"];
-        var value = MoviesDeclaration.Model.Read(Godfather, "ratings");
+        var value = MoviesDeclaration.Read(Godfather, "ratings");
 
         Assert.Multiple(() =>
         {
@@ -125,7 +128,7 @@ public class ItemProjectionTests
     {
         var movie = new Movie
         {
-            Key = Godfather.Key,
+            ExternalIds = Godfather.ExternalIds,
             Title = Godfather.Title,
             Lifecycle = Godfather.Lifecycle,
             Translations =
@@ -135,7 +138,7 @@ public class ItemProjectionTests
                     new ItemInfo("Le Parrain", "Chronique d'une famille")),
             ],
         };
-        var value = MoviesDeclaration.Model.Read(movie, "translations");
+        var value = MoviesDeclaration.Read(movie, "translations");
         var localized = value.Items!.Single();
         var payload = localized.Items![1].Items!;
 
@@ -152,7 +155,7 @@ public class ItemProjectionTests
     public void CarriesTheMovieOwnedReleaseTimelineAsAComposite()
     {
         var descriptor = MoviesDeclaration.Fields["lifecycle"];
-        var value = MoviesDeclaration.Model.Read(Godfather, "lifecycle");
+        var value = MoviesDeclaration.Read(Godfather, "lifecycle");
 
         Assert.Multiple(() =>
         {
@@ -178,7 +181,7 @@ public class ItemProjectionTests
     [Test]
     public void AddressesAGroupByItsAxisBecauseAGroupIsNotALevel()
     {
-        var value = MoviesDeclaration.Model.Read(Godfather, "collections");
+        var value = MoviesDeclaration.Read(Godfather, "collections");
         var collection = value.Items!.Single();
 
         Assert.Multiple(() =>
@@ -195,7 +198,7 @@ public class ItemProjectionTests
     [Test]
     public void CarriesArtworkAsOneSetRatherThanOneFieldPerRole()
     {
-        var value = MoviesDeclaration.Model.Read(Godfather, "artwork");
+        var value = MoviesDeclaration.Read(Godfather, "artwork");
 
         Assert.Multiple(() =>
         {
@@ -244,7 +247,6 @@ public class ItemProjectionTests
     {
         var cinemaOnly = new Movie
         {
-            Key = Abstractions.Identity.MediaItemId.FromInt64(1),
             Title = "Cinema Only",
             Lifecycle = new MovieReleaseTimeline
             {

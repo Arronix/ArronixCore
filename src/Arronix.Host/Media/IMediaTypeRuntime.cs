@@ -4,6 +4,7 @@ using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Parsing;
 using Arronix.Abstractions.Releases;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Media.Catalog;
 
 
 namespace Arronix.Host.Media;
@@ -39,9 +40,19 @@ public interface IMediaTypeRuntime
     /// <summary>Invokes the statically bound parser through this closed runtime.</summary>
     IRelease? Parse(ReleaseParseContext context);
 
-    ItemView Project(object item);
+    /// <summary>Projects one entity into the descriptor-shaped view.</summary>
+    /// <param name="reference">The host-owned reference the entity is held under.</param>
+    /// <param name="item">The entity.</param>
+    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
+    /// <returns>The view.</returns>
+    ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity);
 
-    FieldValue Read(object item, string fieldId);
+    /// <summary>Reads one field off one entity.</summary>
+    /// <param name="item">The entity.</param>
+    /// <param name="fieldId">The field identifier.</param>
+    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
+    /// <returns>The value.</returns>
+    FieldValue Read(object item, string fieldId, CatalogIdentity identity);
 }
 
 /// <summary>The typed host runtime available after the registration reopens its type arguments.</summary>

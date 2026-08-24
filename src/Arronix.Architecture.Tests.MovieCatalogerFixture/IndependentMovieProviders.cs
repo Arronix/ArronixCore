@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
@@ -33,8 +33,11 @@ public sealed class IndependentMovieCataloger : ICataloger<Movie>
     /// <inheritdoc />
     public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
 
-    /// <summary>Gets the identifier namespace this fixture owns, spelled by the provider and nowhere else.</summary>
-    public static string Scheme => "fixture";
+    /// <summary>The identifier namespace this fixture owns, spelled by the provider and nowhere else.</summary>
+    internal const string Scheme = "fixture";
+
+    /// <inheritdoc />
+    public string CatalogScheme => Scheme;
 
     /// <inheritdoc />
     public Task<ValidationOutcome> TestAsync(
@@ -110,9 +113,13 @@ public sealed class IndependentMovieCataloger : ICataloger<Movie>
     /// <param name="title">The movie title.</param>
     /// <param name="digital">The digital release date.</param>
     /// <returns>The shaped movie.</returns>
+    /// <remarks>
+    /// The item states this catalog's identity for itself and no durable key. There is no key to state:
+    /// nothing in what a provider can reach carries one.
+    /// </remarks>
     internal static Movie Shape(string title, DateOnly digital) => new()
     {
-        Key = MediaItemId.FromInt64(title.Length),
+        ExternalIds = ExternalIdSet.Of(ExternalId.Of(Scheme, title)),
         Title = title,
         Year = digital.Year,
         Lifecycle = new MovieReleaseTimeline
@@ -143,11 +150,19 @@ public sealed class IndependentMovieCurator : ICurator<Movie>
         Task.FromResult<IReadOnlyList<FacetValue>>([]);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// References only. The list says which items are worth having; the cataloger that owns the scheme
+    /// says what they are.
+    /// </remarks>
     public Task<CuratedListFetch<Movie>> FetchAsync(
         ProviderInvocation invocation,
         CancellationToken cancellationToken = default) =>
         Task.FromResult(new CuratedListFetch<Movie>(
-            [IndependentMovieCataloger.Shape("Curated", new DateOnly(2023, 11, 2))],
+            [
+                new CuratedReference(
+                    ExternalId.Of(IndependentMovieCataloger.Scheme, "Curated"),
+                    CuratedEntryId.Of("entry-1"))
+            ],
             AnyFailure: false,
             Warnings: []));
 }

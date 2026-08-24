@@ -1,7 +1,6 @@
 using System;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
-using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
 
@@ -18,7 +17,6 @@ public sealed class CommonMediaValuesTests
             typeof(IMediaEntity).GetProperties().Select(static property => property.Name),
             Is.EquivalentTo(new[]
             {
-                nameof(IMediaEntity.Key),
                 nameof(IMediaEntity.ExternalIds),
                 nameof(IMediaEntity.Title),
                 nameof(IMediaEntity.TitleLanguage),
@@ -45,7 +43,6 @@ public sealed class CommonMediaValuesTests
     {
         var item = new MediaItem<TestLifecycle, TestStatus>
         {
-            Key = MediaItemId.FromInt64(9),
             Title = "Example",
             Lifecycle = new TestLifecycle(new DateOnly(2026, 8, 20), TestStatus.Available)
         };
@@ -63,7 +60,6 @@ public sealed class CommonMediaValuesTests
     {
         var collection = new MediaCollection<MediaItem<TestLifecycle, TestStatus>>
         {
-            Key = MediaItemId.FromInt64(10),
             Title = "A Collection",
             MemberCount = 3
         };
@@ -80,7 +76,6 @@ public sealed class CommonMediaValuesTests
     {
         var item = new MediaItem<TestLifecycle, TestStatus>
         {
-            Key = MediaItemId.FromInt64(11),
             Title = "Requested item",
             Lifecycle = new TestLifecycle(null, TestStatus.Unknown)
         };
@@ -174,7 +169,6 @@ public sealed class CommonMediaValuesTests
     {
         var item = new TestItem
         {
-            Key = MediaItemId.FromInt64(7),
             Title = "Example",
             Artwork = ArtworkSet.Of(new ArtworkImage("cover", new Uri("https://example.invalid/cover.jpg"))),
         };
@@ -203,8 +197,6 @@ public sealed class CommonMediaValuesTests
 
     private sealed class TestItem : IMediaItem
     {
-        public required MediaItemId Key { get; init; }
-
         public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
         public required string Title { get; init; }

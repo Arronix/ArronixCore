@@ -186,18 +186,24 @@ supplied one.
 
 ## 2. What was deliberately not done
 
+*This section describes this branch. The identity question it left open was answered on 2026-08-25; §4
+records what changed.*
+
 - **No materialization seam.** Adding the first Host member that consumes a shaped `ICataloger<TItem>` or
-  `ICurator<TItem>` result requires the durable identity rule to exist. It does not, so none was added, and
-  a test asserts none exists.
+  `ICurator<TItem>` result requires the durable identity rule to exist. It did not, so none was added, and a
+  test asserted none existed. `CatalogDispatcher` is that seam now, and that test is replaced by proofs of
+  what it does.
 - **No candidate, draft or partially-materialized type**, no optional `MediaItemId`, no softening of
   `MediaItemId`'s "host-minted surrogate" documentation, no provider-minted identity, no field bag. Each of
-  those would have decided the open question by omission.
+  those would have decided the open question by omission — and the answer took none of them either: the key
+  left the entity rather than being weakened on it.
 - **`ProviderDefinition.Family` was left in place.** It looks like a fourth restatement and is not: a
   definition whose implementation has been uninstalled is retained and marked orphaned, and it must still be
   listable and routable by family with no registration to derive one from. The type documents that reason;
   this branch verified it rather than removing it.
-- **The `MovieCatalogerFixture` key fabrication was left as it is.** It is labelled in its own source as
-  compile-time package-shape evidence and explicitly not provider coverage. Rewriting it would hide the gap.
+- **The `MovieCatalogerFixture` key fabrication was left as it is.** It was labelled in its own source as
+  compile-time package-shape evidence and explicitly not provider coverage, and rewriting it would have
+  hidden the gap. It is gone now: there is no key for the fixture to fabricate.
 - **`Arronix.Plugin.Tv`'s private release-key identifier was left as it is.** It is not a contract member
   and threading the invocation through TV's release synthesis belongs to TV's conversion.
 
@@ -257,29 +263,28 @@ the same case.
 integrated run on the merge commit reports `projects=11 total=2871 enabled=2569 passed=2569 failed=0
 skipped=302 inconclusive=0`, with the ledger unchanged at 302 cases and 0 replacements and the three
 required sentinels passing. The counts in the block above are this branch's own run at its tip and are kept
-as the branch record; the integrated numbers are current truth.
+as the branch record; these integrated numbers were the truth before G04's identity half landed.
 
 ---
 
-## 4. Unresolved owner decisions
+## 4. Owner decisions — since answered
 
-**One, and it is the remainder of G04's exit gate:** who chooses a catalog item's durable `MediaItemId`, and
-how collision, merge, redirect and retry resolve.
+**One stood open when this branch was written:** who chooses a catalog item's durable `MediaItemId`, and how
+collision, merge, redirect and retry resolve. The owner answered it on 2026-08-25, and the option paper this
+section pointed at has been replaced by the invariant it settled on:
+**`docs/research/g04/media-item-identity.md`**.
 
-Full record, with the constraints, the alternatives, what each forecloses, and the one-sentence answer that
-unblocks the rest: **`docs/research/g04/media-item-identity-decision.md`**.
+The answer: a cataloger owns an item's identity in its own declared scheme and returns the exact item;
+a curator returns references to catalog identities, never items; Host alone assigns `MediaItemId`, at
+materialization, and resolves repeats, redirects and converging identifiers to one. `IMediaEntity` no longer
+declares `Key`, which is what makes a cataloger's item complete without one, and
+`CatalogerCapabilities.IdentifierRedirects` now means something: the identifier asked for and the record the
+catalog answered with are bound to one durable identity.
 
-The short form: `MediaItem.Key` is a `required MediaItemId`, so a cataloger cannot return a valid item
-without choosing one; `MediaItemId` documents itself as a host-minted surrogate that nothing outside the
-platform chooses. The decision separates into a *mechanism* (how an item travels before its key exists) and
-a *policy* (whether the durable key is a host surrogate over an owned natural-key map, or the vendor's
-natural key itself). Only the second determines whether the already-declared
-`CatalogerCapabilities.IdentifierRedirects` can mean anything.
-
-This is corroborated independently. The G05 TMDb pressure test (`claude/g05-tmdb-proof`, commit
+The pressure this section recorded was real. The G05 TMDb pressure test (`claude/g05-tmdb-proof`, commit
 `72de1fa5a`, `docs/research/g05/tmdb-provider-pressure-test.md`) built a real vendor package, mapped every
 `Movie` fact including the lifecycle, and stopped at exactly three members — `SearchAsync`, `GetAsync`,
-`FetchAsync` — rather than fabricate a key.
+`FetchAsync` — rather than fabricate a key. Those three members are the ones the answer changed.
 
 ### G04 exit gate, item by item
 
@@ -288,16 +293,21 @@ This is corroborated independently. The G05 TMDb pressure test (`claude/g05-tmdb
 | a cataloger or curator author names `Movie` once | **met** — one generic position per contract, none in registration; the pairing is read from the contract implemented, not from a claim |
 | admission rejects a provider whose closed item contract has no active matching media package | **met** — the whole contract relationship and the supply are both proved before any construction |
 | the closed registration is the single authority for family, and the Host-qualified registration for identity | **met** — the competing authorities are removed, not reconciled |
-| durable identity has one documented authority, collision, merge and retry rule reflected in `INTERFACE.md` | **open** — recorded as an owner decision; `INTERFACE.md` states that it is open and where |
-| Host can produce a fully valid `Movie` without a public field bag or temporarily invalid domain object | **open** — blocked on the same decision |
-| any approved construction type is an exact typed lifecycle boundary | **not applicable yet** — nothing was approved, so nothing was built |
+| durable identity has one documented authority, collision, merge and retry rule reflected in `INTERFACE.md` | **met** — Host assigns it at materialization; repeats, redirects and converging identifiers resolve to one, on the lower assignment |
+| Host can produce a fully valid `Movie` without a public field bag or temporarily invalid domain object | **met** — an entity carries no durable key, so a catalog-shaped `Movie` is already valid |
+| any approved construction type is an exact typed lifecycle boundary | **met** — `MaterializedItem<TItem>` carries the host identity, catalog identity, exact item and optional curator entry identity, with no second item schema |
+
+G04 is closed. Its final rail reports `projects=11 total=2905 enabled=2603 passed=2603 failed=0 skipped=302
+inconclusive=0`, with 302 ledger cases, no replacements, all three required sentinels and a zero-warning
+Release build. No production cataloger exercises the seam yet, and nothing persists; those are G05 and
+later work rather than unstated G04 claims.
 
 ---
 
 ## 5. Integration notes
 
 **For the G05 TMDb provider package.** Its module and declarations need three mechanical edits against this
-branch, and no logic change:
+branch, followed by the identity-boundary adaptation the owner decision now makes possible:
 
 - `AddCataloger<Movie, TmdbMovieCataloger>(descriptor)` → `AddCataloger<TmdbMovieCataloger>(descriptor)`;
   same for the curator.
@@ -306,16 +316,14 @@ branch, and no logic change:
   that removing them is not signalled by a compiler error — they stop implementing anything and become
   ordinary public members — but `ProviderPairingAuthorityTests` fails on them once the package is added to
   the assemblies that fixture scans.
-- Nothing else changes: both types already implement `ICataloger<Movie>` / `ICurator<Movie>`, which is where
-  the pairing is now read from.
-- If TMDb ends up serving a second media kind from one class, that now compiles and each registration keeps
-  its own pairing.
-
-**For whoever closes the identity decision.** The three blocked provider members and
-`TmdbMovieMapper.ToMovie` are unchanged by whatever is chosen; only the identity assignment moves. On the
-Host side, `CatalogMaterializationBoundaryTests.NoHostSeamConsumesAShapedCatalogerOrCuratorResult` is the
-tripwire: it fails the moment a materialization seam is added, which is the moment the decision must already
-have been made.
+- Add `CatalogScheme => "tmdb"` to `TmdbMovieCataloger`; remove the local-key argument from
+  `TmdbMovieMapper.ToMovie`, and return the resulting exact `Movie` from search and fetch.
+- Make `TmdbMovieCurator` return `CuratedReference` values carrying TMDb catalog identifiers and any
+  curator-owned entry identifiers, never `Movie` values. Host materializes those references and assigns
+  `MediaItemId`.
+- Keep one implementation closed over one item type per provider family. A provider serving another media
+  item type uses another unambiguous implementation; registration deliberately refuses a class closing two
+  `ICataloger<>` or two `ICurator<>` contracts.
 
 **For G06.** `IClosedCataloger` and `IClosedCurator` join `CompiledShapes`, the capture visitors and the
 erased registrations as public-but-not-authoring surface. They are the newest members of the set G06 exists

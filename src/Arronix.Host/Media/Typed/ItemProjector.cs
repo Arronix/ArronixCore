@@ -5,6 +5,7 @@ using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Media.Catalog;
 
 namespace Arronix.Host.Media.Typed;
 
@@ -45,35 +46,51 @@ internal sealed class ItemProjector
     private ItemTypeReader Reading { get; }
 
     /// <summary>
-    /// Projects one entity.
+    /// Projects one entity under the reference the host holds it by.
     /// </summary>
+    /// <param name="reference">The host-owned reference.</param>
     /// <param name="item">The entity.</param>
+    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
     /// <returns>The view.</returns>
-    /// <exception cref="ArgumentNullException"><paramref name="item"/> is <see langword="null"/>.</exception>
-    /// <exception cref="ArgumentException"><paramref name="item"/> is of the wrong type.</exception>
-    internal ItemView Project(object item)
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="reference"/> belongs to another media kind or level, or <paramref name="item"/> is
+    /// of the wrong type.
+    /// </exception>
+    /// <remarks>
+    /// The caller supplies the root reference, so projecting an entity does not derive its identity and an
+    /// entity no catalog has named remains projectable. Reference-valued fields are resolved through the
+    /// explicit host identity state.
+    /// </remarks>
+    internal ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity)
     {
         Require(item);
+        ArgumentNullException.ThrowIfNull(identity);
+
+        if (reference.Kind != Kind || reference.Level != LevelId)
+        {
+            throw new ArgumentException(
+                $"The '{Kind}' runtime projects level '{LevelId}', not '{reference.Kind}:{reference.Level}'.",
+                nameof(reference));
+        }
 
         var fields = new Dictionary<string, FieldValue>(StringComparer.Ordinal);
 
         foreach (var candidate in Reading.Fields)
         {
-            fields[candidate.FieldId] = ValueOf(candidate, item);
+            fields[candidate.FieldId] = ValueOf(candidate, item, identity);
         }
 
         var entity = (IMediaEntity)item;
-        var externalIds = entity.ExternalIds.Values;
-        var id = entity.Key;
 
         return new ItemView
         {
-            Ref = new MediaItemRef(Kind, LevelId, id),
+            Ref = reference,
             Title = entity.Title,
             TitleLanguage = entity.TitleLanguage,
             Fields = fields,
-            ExternalIds = externalIds,
-            SortIndex = id.Value
+            ExternalIds = entity.ExternalIds.Values,
+            SortIndex = reference.Id.Value
         };
     }
 
@@ -82,16 +99,18 @@ internal sealed class ItemProjector
     /// </summary>
     /// <param name="item">The entity.</param>
     /// <param name="fieldId">The field identifier.</param>
+    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
     /// <returns>The value, or an absent value when the entity carries none.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The entity is of the wrong type, or the field is unknown.</exception>
-    internal FieldValue Read(object item, string fieldId)
+    internal FieldValue Read(object item, string fieldId, CatalogIdentity identity)
     {
         Require(item);
         ArgumentException.ThrowIfNullOrWhiteSpace(fieldId);
+        ArgumentNullException.ThrowIfNull(identity);
 
         return _byFieldId.TryGetValue(fieldId, out var candidate)
-            ? ValueOf(candidate, item)
+            ? ValueOf(candidate, item, identity)
             : throw new ArgumentException(
                 $"'{fieldId}' names no field of '{Reading.EntityType.Name}'.",
                 nameof(fieldId));
@@ -109,7 +128,7 @@ internal sealed class ItemProjector
         }
     }
 
-    private FieldValue ValueOf(DerivedField field, object item)
+    private FieldValue ValueOf(DerivedField field, object item, CatalogIdentity identity)
     {
         var raw = field.Read(item);
         var kind = field.Descriptor.ValueKind;
@@ -139,17 +158,19 @@ internal sealed class ItemProjector
 
             foreach (var element in sequence)
             {
-                elements.Add(element is null ? FieldValue.Absent(kind) : Scalar(field, kind, element));
+                elements.Add(element is null
+                    ? FieldValue.Absent(kind)
+                    : Scalar(field, kind, element, identity));
             }
 
             return FieldValue.OfItems(kind, elements);
         }
 
-        return Scalar(field, kind, raw);
+        return Scalar(field, kind, raw, identity);
     }
 
-    private FieldValue Scalar(DerivedField field, FieldValueKind kind, object raw) =>
-        kind == FieldValueKind.Reference ? Reference(raw) : ScalarOfKind(field, kind, raw);
+    private FieldValue Scalar(DerivedField field, FieldValueKind kind, object raw, CatalogIdentity identity) =>
+        kind == FieldValueKind.Reference ? Reference(raw, identity) : ScalarOfKind(field, kind, raw);
 
     private static FieldValue ScalarOfKind(DerivedField field, FieldValueKind kind, object raw) =>
         kind switch
@@ -178,7 +199,7 @@ internal sealed class ItemProjector
             _ => FieldValue.Absent(kind)
         };
 
-    private FieldValue Reference(object raw)
+    private FieldValue Reference(object raw, CatalogIdentity identity)
     {
         // A reference carries both the handle and the referent's own title: the handle so a consumer can
         // follow it, the title so a consumer that will not follow it still has something to show a person.
@@ -197,10 +218,21 @@ internal sealed class ItemProjector
             ? MediaLevelId.FromString(axisId)
             : LevelId;
 
+        if (entity.ExternalIds.Values.Count == 0)
+        {
+            throw new ArgumentException(
+                $"'{raw.GetType().FullName}' is compiled as a reference but states no catalog identifier, "
+                + "so there is nothing to address it by.",
+                nameof(raw));
+        }
+
         return new FieldValue
         {
             Kind = FieldValueKind.Reference,
-            Reference = new MediaItemRef(Kind, address, entity.Key),
+
+            // The referent is addressed in its own level, which is its own key space: a group's identifiers
+            // and an item's are never compared.
+            Reference = identity.Identify(Kind, address, entity.ExternalIds.Values),
             Text = entity.Title
         };
     }

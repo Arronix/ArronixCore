@@ -5,6 +5,7 @@ using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
 using Arronix.Format.Video;
 using Arronix.Host.Media;
+using Arronix.Host.Media.Catalog;
 using Arronix.Host.Media.Typed;
 using Arronix.Plugin.Movies.Definition;
 
@@ -24,6 +25,19 @@ internal static class MoviesDeclaration
             Release<Video>,
             MovieReleaseParser,
             Movies>();
+
+    /// <summary>Host identity state, standing in for the one a running host owns.</summary>
+    internal static CatalogIdentity Identity { get; } = new();
+
+    /// <summary>The reference the host holds one entity under, assigned from its catalog identifiers.</summary>
+    internal static MediaItemRef Reference(IMediaEntity entity) =>
+        Identity.Identify(Model.Kind, Level.Id, entity!.ExternalIds.Values);
+
+    /// <summary>Projects one entity the way the host does: host states the reference, model reads the item.</summary>
+    internal static ItemView Project(IMediaEntity entity) => Model.Project(Reference(entity), entity, Identity);
+
+    /// <summary>Reads one field off one entity.</summary>
+    internal static FieldValue Read(object item, string fieldId) => Model.Read(item, fieldId, Identity);
 
     /// <summary>The derived structure.</summary>
     internal static MediaShape Shape => Model.Shape;

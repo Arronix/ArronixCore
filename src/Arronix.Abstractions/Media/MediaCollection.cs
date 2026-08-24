@@ -1,5 +1,4 @@
 using Arronix.Abstractions.DTOs;
-using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Media;
@@ -13,9 +12,6 @@ namespace Arronix.Abstractions.Media;
 public class MediaCollection<TItem> : IMediaGroup<TItem>
     where TItem : IMediaItem
 {
-    /// <inheritdoc />
-    public required MediaItemId Key { get; init; }
-
     /// <inheritdoc />
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 

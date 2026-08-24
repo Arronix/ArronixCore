@@ -2,7 +2,6 @@
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
-using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 
 namespace Arronix.Plugin.Movies.Tests.Fixtures;
@@ -45,7 +44,6 @@ internal static class MoviesSeedProjection
             ? throw new ArgumentNullException(nameof(record))
             : new Movie
             {
-                Key = MediaItemId.FromInt64(record.Id),
                 ExternalIds = ExternalIdSet.From(IdentifiersOf(record)),
                 Title = record.Title,
                 TitleLanguage = Language.English,
@@ -94,7 +92,6 @@ internal static class MoviesSeedProjection
             ? throw new ArgumentNullException(nameof(record))
             : new MediaCollection<Movie>
             {
-                Key = MediaItemId.FromInt64(record.TmdbId),
                 Title = record.Title,
                 TitleLanguage = Language.English,
                 Overview = record.Overview,

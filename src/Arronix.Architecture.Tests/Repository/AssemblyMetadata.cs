@@ -91,6 +91,41 @@ internal static class AssemblyMetadata
             .ToArray();
     }
 
+    /// <summary>
+    /// Lists the namespace-qualified names of the types a project's built assembly references.
+    /// </summary>
+    /// <param name="projectName">The project, which is also its assembly name.</param>
+    /// <returns>The referenced type names, or an empty list when the project has not been built.</returns>
+    /// <remarks>
+    /// A type reference is emitted for every type the assembly names in metadata, so this answers "does
+    /// this compiled assembly touch that type at all" without loading it or taking a reference to it.
+    /// </remarks>
+    public static IReadOnlyList<string> ReferencedTypeNames(string projectName)
+    {
+        var path = AssemblyPath(projectName);
+        if (path is null)
+        {
+            return [];
+        }
+
+        using var stream = File.OpenRead(path);
+        using var reader = new PEReader(stream);
+        var metadata = reader.GetMetadataReader();
+
+        return metadata
+            .TypeReferences
+            .Select(metadata.GetTypeReference)
+            .Select(reference =>
+            {
+                var space = metadata.GetString(reference.Namespace);
+                var name = metadata.GetString(reference.Name);
+                return space.Length == 0 ? name : space + "." + name;
+            })
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+    }
+
     private static string? AssemblyPath(string projectName)
     {
         var candidate = RepositoryLayout.BuildOutputFile(projectName, projectName + ".dll");

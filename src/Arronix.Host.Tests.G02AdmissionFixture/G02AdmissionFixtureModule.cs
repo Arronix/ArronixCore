@@ -68,9 +68,6 @@ public enum G02FixtureStage
 public sealed class G02FixtureItem : IMediaItem
 {
     /// <inheritdoc />
-    [Identity]
-    public required MediaItemId Key { get; init; }
-
     /// <inheritdoc />
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 

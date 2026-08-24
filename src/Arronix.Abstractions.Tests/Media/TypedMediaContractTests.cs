@@ -109,14 +109,15 @@ public sealed class TypedMediaContractTests
     }
 
     [Test]
-    public void AnIdentifierSetFindsBySchemeWithoutRegardToCase()
+    public void AnIdentifierSetFindsOnlyTheCanonicalSchemeSpelling()
     {
         var set = ExternalIdSet.Of(ExternalId.Of("tmdb", "335984"), ExternalId.Of("imdb", "tt1856101"));
 
         Assert.Multiple(() =>
         {
-            Assert.That(set.TryGet("TMDB", out var found), Is.True);
+            Assert.That(set.TryGet("tmdb", out var found), Is.True);
             Assert.That(found.Value, Is.EqualTo("335984"));
+            Assert.That(set.TryGet("TMDB", out _), Is.False);
             Assert.That(set.TryGet("tvdb", out _), Is.False);
         });
     }
@@ -143,11 +144,15 @@ public sealed class TypedMediaContractTests
     /// scope here, and if either collided the vocabulary would be unusable in exactly the file that needs
     /// it.
     /// </remarks>
-    private sealed class Sample : IMediaItem
+    /// <summary>A row shape, not a media entity: the identity attribute is the legacy explicit form.</summary>
+    private sealed class IdentityNamed
     {
         [Identity]
-        public required MediaItemId Key { get; init; }
+        public required MediaItemId Id { get; init; }
+    }
 
+    private sealed class Sample : IMediaItem
+    {
         public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
         [Title, Searchable, Prominence(Prominence.Primary)]
@@ -169,7 +174,7 @@ public sealed class TypedMediaContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(typeof(Sample).GetProperty(nameof(Sample.Key))!
+            Assert.That(typeof(IdentityNamed).GetProperty(nameof(IdentityNamed.Id))!
                 .GetCustomAttribute<IdentityAttribute>(), Is.Not.Null);
             Assert.That(title.GetCustomAttribute<TitleAttribute>(), Is.Not.Null);
             Assert.That(

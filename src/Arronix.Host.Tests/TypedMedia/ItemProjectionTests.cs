@@ -3,6 +3,7 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Media;
+using Arronix.Host.Media.Catalog;
 using Arronix.Host.Media.Typed;
 using FluentAssertions;
 
@@ -21,12 +22,21 @@ namespace Arronix.Host.Tests.TypedMedia;
 [TestFixture]
 internal sealed class ItemProjectionTests
 {
-    private static IMediaTypeRuntime Model =>
+    private static IMediaTypeRuntime Model { get; } =
         MediaTypeModelFactory.Build<Work, WorkTarget, WorkRelease, WorkParser, Works>();
+
+    /// <summary>Host identity state, standing in for the one a running host owns.</summary>
+    private static CatalogIdentity Identity { get; } = new();
+
+    private static MediaItemRef Reference(IMediaEntity entity) =>
+        Identity.Identify(Model.Kind, Model.Shape.Levels[0].Id, entity.ExternalIds.Values);
+
+    private static ItemView Project(IMediaEntity entity) => Model.Project(Reference(entity), entity, Identity);
+
+    private static FieldValue Read(object item, string fieldId) => Model.Read(item, fieldId, Identity);
 
     private static Work Sample { get; } = new()
     {
-        Key = MediaItemId.FromInt64(42),
         Title = "Arrival",
         OriginalTitle = "Arrival",
         Year = 2016,
@@ -38,19 +48,28 @@ internal sealed class ItemProjectionTests
         ExternalIds = ExternalIdSet.Of(ExternalId.Of("tmdb", "329865")),
         Artwork = ArtworkSet.Of(new ArtworkImage("poster", new Uri("https://example.invalid/p.jpg"))),
         AlternateTitles = [new AlternateTitle("Premier Contact", AlternateTitleRole.Translation)],
-        Collections = [new WorkCollection { Key = MediaItemId.FromInt64(7), Title = "Villeneuve" }]
+        Collections =
+        [
+            new WorkCollection
+            {
+                ExternalIds = ExternalIdSet.Of(ExternalId.Of("tmdb-collection", "7")),
+                Title = "Villeneuve"
+            }
+        ]
     };
 
     [Test]
     public void ProjectingCarriesTheIdentityTheTitleAndEveryField()
     {
-        var view = Model.Project(Sample);
+        var view = Project(Sample);
 
         Assert.Multiple(() =>
         {
             view.Ref.Kind.Should().Be(Works.Id);
             view.Ref.Level.Value.Should().Be("work");
-            view.Ref.Id.Value.Should().Be(42);
+            view.Ref.Should().Be(
+                Reference(Sample),
+                "the reference is the host's and is stated by the caller, not derived while projecting");
             view.Title.Should().Be("Arrival");
             view.ExternalIds.Should().Equal(ExternalId.Of("tmdb", "329865"));
             view.Fields.Keys.Should().BeEquivalentTo(
@@ -61,7 +80,7 @@ internal sealed class ItemProjectionTests
     [Test]
     public void EveryProjectedValueCarriesTheShapeItsDescriptorPromised()
     {
-        var view = Model.Project(Sample);
+        var view = Project(Sample);
 
         foreach (var descriptor in Model.Shape.Levels[0].Fields)
         {
@@ -75,25 +94,25 @@ internal sealed class ItemProjectionTests
     [TestCase("title", "Arrival")]
     [TestCase("stage", "published")]
     public void ScalarValuesReadBackAsTheirDeclaredShape(string fieldId, string expected) =>
-        Model.Read(Sample, fieldId).Text.Should().Be(expected);
+        Read(Sample, fieldId).Text.Should().Be(expected);
 
     [Test]
     public void TypedValuesKeepTheirTypeRatherThanBecomingText()
     {
         Assert.Multiple(() =>
         {
-            Model.Read(Sample, "year").Number.Should().Be(2016);
-            Model.Read(Sample, "shippedBytes").Number.Should().Be(8_000_000_000);
-            Model.Read(Sample, "shippedBytes").Kind.Should().Be(FieldValueKind.ByteSize);
-            Model.Read(Sample, "runtime").Duration.Should().Be(TimeSpan.FromMinutes(116));
-            Model.Read(Sample, "publishedOn").Date.Should().Be(new DateOnly(2017, 2, 14));
+            Read(Sample, "year").Number.Should().Be(2016);
+            Read(Sample, "shippedBytes").Number.Should().Be(8_000_000_000);
+            Read(Sample, "shippedBytes").Kind.Should().Be(FieldValueKind.ByteSize);
+            Read(Sample, "runtime").Duration.Should().Be(TimeSpan.FromMinutes(116));
+            Read(Sample, "publishedOn").Date.Should().Be(new DateOnly(2017, 2, 14));
         });
     }
 
     [Test]
     public void AMultivaluedFieldProjectsItsElementsRatherThanAJoinedString()
     {
-        var genres = Model.Read(Sample, "genres");
+        var genres = Read(Sample, "genres");
 
         Assert.Multiple(() =>
         {
@@ -105,7 +124,7 @@ internal sealed class ItemProjectionTests
     [Test]
     public void ARepeatedTupleProjectsAsCompositesWithComponentsInDeclaredOrder()
     {
-        var alternates = Model.Read(Sample, "alternateTitles");
+        var alternates = Read(Sample, "alternateTitles");
 
         Assert.Multiple(() =>
         {
@@ -121,7 +140,7 @@ internal sealed class ItemProjectionTests
     [Test]
     public void GroupMembershipsCarryHandlesAndTheReferentsOwnTitles()
     {
-        var memberships = Model.Read(Sample, "collections");
+        var memberships = Read(Sample, "collections");
         var reference = memberships.Items.Should().ContainSingle().Subject;
 
         Assert.Multiple(() =>
@@ -129,7 +148,9 @@ internal sealed class ItemProjectionTests
             memberships.Items.Should().ContainSingle();
             reference.Kind.Should().Be(FieldValueKind.Reference);
             reference.Text.Should().Be("Villeneuve");
-            reference.Reference!.Value.Id.Value.Should().Be(7);
+            reference.Reference!.Value.Should().Be(
+                Identity.Identify(Model.Kind, MediaLevelId.FromString("collection"), [ExternalId.Of("tmdb-collection", "7")]),
+                "a referenced group is addressed in its own level, which is its own key space");
 
             // A group is addressed per axis rather than per level, so the axis identifier fills the level
             // slot: inventing a level per grouping axis is the fused shape the descriptor keeps apart.
@@ -140,7 +161,7 @@ internal sealed class ItemProjectionTests
     [Test]
     public void AnArtworkSetProjectsItsAddresses()
     {
-        var images = Model.Read(Sample, "artwork");
+        var images = Read(Sample, "artwork");
 
         Assert.Multiple(() =>
         {
@@ -153,7 +174,7 @@ internal sealed class ItemProjectionTests
     [Test]
     public void AnAbsentValueIsAbsentRatherThanEmpty()
     {
-        var value = Model.Read(Sample, "overview");
+        var value = Read(Sample, "overview");
 
         Assert.Multiple(() =>
         {
@@ -164,11 +185,66 @@ internal sealed class ItemProjectionTests
 
     [Test]
     public void ReadingAnUnknownFieldIsRefusedRatherThanReturningNothing() =>
-        FluentActions.Invoking(() => Model.Read(Sample, "notAField"))
+        FluentActions.Invoking(() => Read(Sample, "notAField"))
             .Should().Throw<ArgumentException>();
 
     [Test]
     public void ProjectingTheWrongTypeIsRefused() =>
-        FluentActions.Invoking(() => Model.Project("not a work"))
+        FluentActions.Invoking(() => Model.Project(Reference(Sample), "not a work", Identity))
             .Should().Throw<ArgumentException>();
+
+    [Test]
+    public void ProjectingUnderAReferenceFromAnotherKindIsRefused()
+    {
+        var reference = Reference(Sample) with { Kind = MediaKindId.FromString("other") };
+
+        FluentActions.Invoking(() => Model.Project(reference, Sample, Identity))
+            .Should().Throw<ArgumentException>()
+            .WithParameterName("reference");
+    }
+
+    [Test]
+    public void ProjectingUnderAReferenceFromAnotherLevelIsRefused()
+    {
+        var reference = Reference(Sample) with { Level = MediaLevelId.FromString("collection") };
+
+        FluentActions.Invoking(() => Model.Project(reference, Sample, Identity))
+            .Should().Throw<ArgumentException>()
+            .WithParameterName("reference");
+    }
+
+    /// <summary>
+    /// The root reference is supplied rather than derived, so an entity no catalog has named still projects
+    /// under the reference the host states.
+    /// </summary>
+    [Test]
+    public void AnEntityWithNoCatalogIdentifierProjectsUnderTheReferenceTheHostStates()
+    {
+        var unnamed = new Work { Title = "Unnamed", Stage = WorkStage.Published };
+        var reference = new MediaItemRef(Model.Kind, Model.Shape.Levels[0].Id, MediaItemId.FromInt64(99));
+
+        var view = Model.Project(reference, unnamed, Identity);
+
+        Assert.Multiple(() =>
+        {
+            view.Ref.Should().Be(reference);
+            view.ExternalIds.Should().BeEmpty();
+            view.SortIndex.Should().Be(99);
+        });
+    }
+
+    /// <summary>A referenced group with no catalog identifier cannot be addressed, and says so.</summary>
+    [Test]
+    public void AGroupReferenceWithNoCatalogIdentifierIsRefused()
+    {
+        var item = new Work
+        {
+            Title = "Arrival",
+            ExternalIds = ExternalIdSet.Of(ExternalId.Of("tmdb", "329865")),
+            Collections = [new WorkCollection { Title = "Unnamed collection" }],
+        };
+
+        FluentActions.Invoking(() => Model.Read(item, "collections", Identity))
+            .Should().Throw<ArgumentException>().WithMessage("*states no catalog identifier*");
+    }
 }

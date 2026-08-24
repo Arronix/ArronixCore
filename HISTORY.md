@@ -1,5 +1,33 @@
 # Arronix History
 
+## 2026-08-25 — Give catalog identity to the cataloger and durable identity to the host
+
+- Answered G04's open identity question as the owner decided it, and removed `Key` from `IMediaEntity` to
+  make it true. A required durable key on the entity was why a cataloger had to invent one; no wrapper or
+  optional key removes that obligation while the member is there. No catalog contract reaches a
+  `MediaItemId` now, asserted against the compiled contracts and against a compiled provider package.
+- `ICataloger.CatalogScheme` declares the one scheme a cataloger is the authority for, and every item it
+  returns states exactly one identifier in it. That identifier is read off the item rather than restated in
+  a wrapper, because the item already carries it. `CuratedListFetch<TItem>.Items` became `CuratedReference`
+  — a catalog identity plus an optional curator-owned `CuratedEntryId`, a separate type — so a list proposes
+  what to look at and the owning catalog remains the authority on what it is.
+- Made durable identity host state rather than a media-runtime member. `CatalogIdentity` has the host's
+  lifetime, is scoped by media kind and level so an item's and a group's identifiers are never compared, and
+  survives the reload that rebuilds a kind's runtime. Projection takes the reference as an argument rather
+  than deriving the root identity, so an entity no catalog has named still projects; reference-valued fields
+  resolve through the explicit host identity state.
+- Bounded what a merge means. Repeats, aliases and redirects resolve to one reference; identifiers assigned
+  separately and later found to name one item merge onto the lower assignment, and the superseded reference
+  resolves through `Canonical`. Library rows already written under it are not moved, which is recorded as a
+  limitation rather than implied to be handled.
+- Routing is by scheme alone — never provider identifier or implementation type — and the scheme is captured
+  once at registration, then its canonical form is enforced at activation. `CatalogSchemeUnowned` is an
+  installation problem, `CatalogIdentityInvalid` an extension defect; a curated list's schemes are all
+  checked before any of it is fetched.
+- Record: `docs/research/g04/media-item-identity.md`. Nothing persists and no production cataloger exercises
+  the seam. The rail finished with 2,603 passed, 302 registered skips, zero inconclusive and zero failures,
+  from 2,905 cases across 11 test projects.
+
 ## 2026-08-24 — Read a provider's pairing from the contract it implements, not from a value it claims
 
 - Closed a hole in the pairing SPI that the same day's earlier entry claimed was closed. The two pairing
@@ -80,11 +108,10 @@
 - Recorded, rather than answered, the durable identity question. A cataloger must return an item whose `Key`
   is a required `MediaItemId`, and that type documents itself as host-minted and not chosen from outside the
   platform; both cannot hold. No candidate type, optional key, provider-minted identifier or parallel schema
-  was introduced. The alternatives, what each forecloses for collision, merge, redirect and retry, and the
-  one-sentence owner answer that unblocks the rest are in
-  `docs/research/g04/media-item-identity-decision.md`, and the contradiction now fails a test if either side
-  of it is quietly changed. The independent G05 TMDb pressure test reached the same three blocked members
-  from the provider side.
+  was introduced. The alternatives were recorded in a decision paper and the contradiction was pinned by a
+  fixture; the owner answered it the next day, and both were replaced by
+  `docs/research/g04/media-item-identity.md`. The independent G05 TMDb pressure test reached the same three
+  blocked members from the provider side.
 
 ## 2026-08-24 — Close G03: one installation model, one resolved graph, one shared contract identity
 

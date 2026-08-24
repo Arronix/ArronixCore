@@ -113,6 +113,24 @@ internal sealed class ProviderMediaPairingAdmissionTests
     }
 
     /// <summary>
+    /// Routing compares a cataloger's declared scheme ordinally, so a scheme in any other spelling would
+    /// route to nothing. It is refused at activation rather than left to fail silently later.
+    /// </summary>
+    [Test]
+    public void ACatalogerDeclaringASchemeThatIsNotInCanonicalFormIsRefused()
+    {
+        var result = Prepare(registry => registry
+            .AddMediaType<Works>()
+            .AddCataloger<ShoutingCataloger>(Descriptor("shouting")));
+
+        using var assertions = new AssertionScope();
+
+        result.IsAdmitted.Should().BeFalse();
+        result.Defects.Should().ContainSingle().Which.Should().Match(
+            "*shouting*lower-case*Work Cataloger*");
+    }
+
+    /// <summary>
     /// No installed kind supplies the item type, so the provider is refused and never constructed.
     /// </summary>
     [Test]
@@ -445,9 +463,17 @@ internal sealed class ProviderMediaPairingAdmissionTests
         return validated!;
     }
 
-    /// <summary>A cataloger paired with the fixture kind, counting the constructions Host performs.</summary>
-    private sealed class WorkCataloger : ICataloger<Work>
+    /// <summary>A cataloger whose declared scheme is not in the canonical form the host routes by.</summary>
+    private sealed class ShoutingCataloger : WorkCataloger
     {
+        public override string CatalogScheme => "Work Cataloger";
+    }
+
+    /// <summary>A cataloger paired with the fixture kind, counting the constructions Host performs.</summary>
+    private class WorkCataloger : ICataloger<Work>
+    {
+        public virtual string CatalogScheme => "work-cataloger";
+
         public WorkCataloger() => Constructions++;
 
         internal static int Constructions { get; set; }
@@ -484,6 +510,8 @@ internal sealed class ProviderMediaPairingAdmissionTests
     /// <summary>The non-generic floor and the family marker, with no closed contract behind either.</summary>
     private sealed class FloorOnlyCataloger : IClosedCataloger
     {
+        public string CatalogScheme => "floor-only-cataloger";
+
         public FloorOnlyCataloger() => Constructions++;
 
         internal static int Constructions { get; set; }
@@ -503,8 +531,6 @@ internal sealed class ProviderMediaPairingAdmissionTests
     /// <summary>An item type deliberately supplied by no media kind anywhere in the solution.</summary>
     private sealed class UnpairedItem : IMediaItem
     {
-        public required Abstractions.Identity.MediaItemId Key { get; init; }
-
         public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
         public CatalogRecordState CatalogState { get; init; }
@@ -521,6 +547,8 @@ internal sealed class ProviderMediaPairingAdmissionTests
     /// <summary>A cataloger closed over that item type. Registering it is the whole of the defect.</summary>
     private sealed class UnpairedCataloger : ICataloger<UnpairedItem>
     {
+        public string CatalogScheme => "unpaired-cataloger";
+
         public UnpairedCataloger() => Constructions++;
 
         internal static int Constructions { get; set; }

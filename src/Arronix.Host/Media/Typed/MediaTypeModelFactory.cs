@@ -6,6 +6,7 @@ using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Parsing;
 using Arronix.Abstractions.Releases;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Media.Catalog;
 using Arronix.Host.Media.Typed.Compilation;
 
 namespace Arronix.Host.Media.Typed;
@@ -281,9 +282,11 @@ public static class MediaTypeModelFactory
         public ReleasePolicy<TRelease>? ReleasePolicy { get; } = releasePolicy;
 
         /// <inheritdoc />
-        public ItemView Project(object item) => projector.Project(item);
+        public ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity)
+            => projector.Project(reference, item, identity);
 
         /// <inheritdoc />
-        public FieldValue Read(object item, string fieldId) => projector.Read(item, fieldId);
+        public FieldValue Read(object item, string fieldId, CatalogIdentity identity)
+            => projector.Read(item, fieldId, identity);
     }
 }

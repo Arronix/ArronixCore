@@ -30,6 +30,7 @@ public sealed class RegisteredProvider
         Provider = provider;
         Plugin = plugin;
         MediaItemType = mediaItemType;
+        CatalogScheme = provider is ICataloger cataloger ? cataloger.CatalogScheme : null;
         Catalog = new ProviderCatalogEntry(id, family, descriptor);
     }
 
@@ -50,6 +51,13 @@ public sealed class RegisteredProvider
 
     /// <summary>Gets the paired media item type for a typed cataloger or curator.</summary>
     public Type? MediaItemType { get; }
+
+    /// <summary>Gets the external identifier scheme a cataloger declared it is the authority for.</summary>
+    /// <remarks>
+    /// Read once, from the implementation's own declaration, because only the cataloger knows it. Catalog
+    /// work routes by this rather than by <see cref="Id"/> or implementation type.
+    /// </remarks>
+    public string? CatalogScheme { get; }
 
     /// <summary>Gets the entry a consumer configures this provider from.</summary>
     /// <remarks>
@@ -266,6 +274,9 @@ public sealed class ProviderRegistry
     /// <param name="mediaItemType">The exact media-owned item type being interpreted.</param>
     /// <param name="text">The complete release, file, or folder name.</param>
     /// <returns>Distinct recognized identities in provider and source order.</returns>
+    /// <exception cref="InvalidOperationException">
+    /// A cataloger returns a malformed marker or an identifier outside its declared scheme.
+    /// </exception>
     public IReadOnlyList<ExternalIdReading> ReadExternalIds(Type mediaItemType, string text)
     {
         ArgumentNullException.ThrowIfNull(mediaItemType);
@@ -278,15 +289,25 @@ public sealed class ProviderRegistry
         {
             if (registered.Family != ProviderFamily.Cataloger
                 || registered.MediaItemType != mediaItemType
-                || registered.Provider is not ICataloger cataloger)
+                || registered.Provider is not ICataloger cataloger
+                || registered.CatalogScheme is not { } catalogScheme)
             {
                 continue;
             }
 
             foreach (var reading in cataloger.ReadExternalIds(text).OrderBy(static reading => reading.Index))
             {
-                if (reading.Index < 0
-                    || reading.Index + reading.Marker.Length > text.Length
+                if (!string.Equals(reading.Id.Scheme, catalogScheme, StringComparison.Ordinal)
+                    || string.IsNullOrWhiteSpace(reading.Id.Value))
+                {
+                    throw new InvalidOperationException(
+                        $"Cataloger '{registered.Id}' declared scheme '{catalogScheme}' but returned an "
+                        + $"external-id marker for '{reading.Id.Scheme}'.");
+                }
+
+                if (string.IsNullOrEmpty(reading.Marker)
+                    || reading.Index < 0
+                    || reading.Marker.Length > text.Length - reading.Index
                     || !string.Equals(
                         text.Substring(reading.Index, reading.Marker.Length),
                         reading.Marker,

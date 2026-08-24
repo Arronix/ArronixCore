@@ -20,9 +20,6 @@ namespace Arronix.Plugins.Tests.Support;
 /// </remarks>
 internal sealed class ExampleItem : IMediaItem
 {
-    [Identity]
-    public required MediaItemId Key { get; init; }
-
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
     /// <summary>Gets the item's title.</summary>

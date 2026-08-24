@@ -43,9 +43,11 @@ only to contracts published by itself or by a package in its exact transitive de
 `docs/research/g04/integrated-package-runtime.md`.
 
 The real packaged Movies loader path is closed and package dependency, version rules and one exact CLR type
-identity are closed with it. The active gate is G04, and it is open. Its pairing half is closed: a provider
-names its item type once, in the contract it closes; family, item type and identity have one authority each;
-and admission refuses an incoherent or unpairable provider contract before package code runs. What remains
-is durable media item identity and catalog materialization, an owner decision recorded unchosen in
-`docs/research/g04/media-item-identity-decision.md`. Do not move ahead to parser redesign or Client loading
-until the gate passes, and do not report G04 complete on the strength of the pairing work.
+identity are closed with it. The active gate is G04. Its pairing half is closed: a provider names its item
+type once, in the contract it closes; family, item type and identity have one authority each; and admission
+refuses an incoherent or unpairable provider contract before package code runs. Its identity half is closed
+too: a cataloger owns catalog identity in its own declared scheme, a curator returns references rather than
+items, and Host alone assigns `MediaItemId` at materialization, as host state — see
+`docs/research/g04/media-item-identity.md` for the invariant and its limits. No production cataloger
+exercises it yet, and nothing persists.
+Do not move ahead to parser redesign or Client loading until the owner closes the gate.

@@ -94,6 +94,19 @@ public enum CoreErrorCode
     /// </summary>
     MediaItemTypeConflict = 3003,
 
+    /// <summary>
+    /// No active cataloger is the authority for the catalog scheme a reference names, so the reference
+    /// cannot be resolved to an item. This is an installation problem: the catalog that owns the identifier
+    /// has no installed cataloger.
+    /// </summary>
+    CatalogSchemeUnowned = 3004,
+
+    /// <summary>
+    /// An item a cataloger returned does not state exactly one identifier in that cataloger's own scheme,
+    /// so the platform cannot say which record it is. This is a defect in the extension's code.
+    /// </summary>
+    CatalogIdentityInvalid = 3005,
+
     /// <summary>Parsing failed.</summary>
     ParsingFailed = 4000,
 

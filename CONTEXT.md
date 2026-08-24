@@ -42,11 +42,17 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
 - The `MediaType` primary constructor captures its stable kind identifier, singular/plural display names, non-empty format composition, typed minimum-availability selection, and file binding. File binding defaults to `OnePerItem`; other relationships must state their shape explicitly. Kind identity is never derived from mutable display wording. The remaining optional or repeatable media-specific declarations are virtual values for identity, groups, additional selections, searches, matching, release policy, query planning, naming, summaries, intent exceptions, workbenches, and derivations. Parsing is the deliberate exception: `IReleaseParser<TRelease>.Parse` is static abstract because the parser type itself is the executable declaration. `CompiledShapes` is the generator-owned abstract member; authors do not implement it. There are no public whole-media replay builders, per-kind action transcripts, parse-declaration DSLs on typed media, `IUses...` capability badges, or test corpora on the runtime contract.
 - `IMediaEntity` is the minimum interface shared by items and groups. `MediaItem<TReleaseTimeline,TReleaseStage>` is directly usable; `MediaItem<TItem,TReleaseTimeline,TReleaseStage>` retains the exact derived item type for relationships. `MediaCollection<TItem>` is the common group class.
 - `ReleaseTarget<TItem>` is the concrete one-item acquisition target. `Release<TRepresentation>` is the concrete common release carrying title, year, edition, and format-owned representation. Media types use the closed common types directly unless they add real coverage or release facts. Television's set-shaped target and coordinate-bearing release are the counterexamples which justify media-owned types.
-- The common item class exposes identity, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
+- The common item class exposes external identifiers, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. It carries no durable key: `MediaItemId` is host-assigned at materialization and is not a media entity fact. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
 - Entity and workbench-row descriptor shapes are generated from their CLR definitions at build time. Host consumes generated closed getters and validates the result; it does not discover media schema with property or attribute reflection.
 - `ItemInfo` is the common localized title/overview payload. `Localized<ItemInfo>` is used when no media-specific localized facts exist.
 - The plugin SDK has no second non-generic `IMediaType`. Host-only `IMediaTypeRuntime` is the kind-blind bridge.
-- `ICataloger<TItem>` and `ICurator<TItem>` return the media type's own shaped items. Field dictionaries are not an alternative contract. The non-generic `ICataloger` floor recognizes its own external-identifier markers locally; media parsers receive those typed readings and do not embed catalog-vendor marker vocabulary.
+- `ICataloger<TItem>` returns the media type's own shaped items. Field dictionaries are not an alternative contract. The non-generic `ICataloger` floor declares the external identifier scheme the cataloger is the authority for and recognizes its own markers locally. Host captures the declaration once at registration and rejects readings in another scheme; media parsers receive validated typed readings and do not embed catalog-vendor marker vocabulary.
+- Identity at the catalog boundary has one rule. A cataloger owns an item's identity in its own declared
+  scheme, and every item it returns states exactly one identifier in that scheme. A curator returns
+  references to catalog identities, never items, and its own entry identifier is a separate type that cannot
+  stand in for one. Host alone assigns `MediaItemId`, at materialization, and holds it as host state scoped
+  by kind and level, so a reload that rebuilds a kind's runtime does not reissue it. Routing is by scheme,
+  never by provider identifier or implementation type. See `docs/research/g04/media-item-identity.md`.
 - A provider author names the media item type once, in the contract the implementation closes. Registration
   reads that pairing back from the contracts the implementation actually implements, by one-time type
   inspection; a family marker on the closed contracts makes the wrong family a compiler error but carries no
@@ -143,14 +149,13 @@ coverage.
 - The typed Movie parser currently materializes common release text facts but does not compose format-owned recognizers into a populated `Video` representation. No production typed cataloger supplies catalog-owned embedded-identifier readings. The manifest's related capability claims therefore outrun the executable production path.
 - Typed release policy and deterministic selection exist, but production acquisition does not yet materialize typed releases and call the selector end to end.
 - No production typed cataloger or curator ships yet. Their typed registration, constrained Host activation,
-  media-contract admission, and catalog-owned identifier-reading boundary exist and are tested.
-- Catalog materialization is unbuilt and is blocked on one owner decision. A typed provider result crosses
-  into Host as the exact item type and projects through the kind-blind runtime, but no Host member takes or
-  returns a shaped `ICataloger<TItem>` or `ICurator<TItem>` result, because a cataloger cannot supply the
-  `MediaItemId` a valid item requires and nothing in Host mints one. The alternatives, their consequences,
-  and the smallest owner answer are in `docs/research/g04/media-item-identity-decision.md`; the independent
-  G05 TMDb pressure test on `claude/g05-tmdb-proof` reaches the same three blocked members from the provider
-  side.
+  media-contract admission, catalog-owned identifier-reading boundary, and catalog materialization exist and
+  are tested.
+- Catalog materialization is built and unwired. `CatalogDispatcher` fetches through the cataloger that owns a
+  reference's scheme, assigns the durable identity, and materializes a curated list through the catalogs its
+  references name; it has no production caller, because no production cataloger ships. `CatalogIdentity` is
+  in memory, as `IMediaStore` is, and a merge does not move library rows already keyed by the superseded
+  reference.
 - Typed workbench proposal/commit values and generic standard rows exist, but the current `IMediaItemSource` execution seam still projects proposals and commits through the kind-blind wire form.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
@@ -183,19 +188,25 @@ work does not substitute for closing an earlier dependency.
   admits each shared contract once into one Host-owned collectible context, and a separately packaged
   provider closes `ICataloger<Movie>` over the same runtime type the registered movies kind publishes. See
   `docs/research/g04/integrated-package-runtime.md` for the evidence and the residual risks.
-- G04 is the active gate and it remains open. Its provider-pairing half is integrated: provider family, item
-  type and identifier each have exactly one authority; the closed pairing is read from the contracts an
-  implementation actually implements, once, by type inspection when the registration is built; Host proves
-  every registration's contract, item type and implementation agree, and that an admitted kind supplies that
-  item type, before it constructs anything in the package, refusing with `PluginProviderContractInvalid` or
+- G04 is complete. Its provider-pairing half establishes that provider family, item type and identifier
+  each have exactly one authority; the closed pairing is read from the contracts an implementation actually
+  implements, once, by type inspection when the registration is built; Host proves every registration's
+  contract, item type and implementation agree, and that an admitted kind supplies that item type, before it
+  constructs anything in the package, refusing with `PluginProviderContractInvalid` or
   `PluginMediaPairingUnsatisfied`; two kinds closed over one item type are refused at kind admission with
   `MediaItemTypeConflict`; and consumers receive `ProviderCatalogEntry`, carrying the minted identifier and
-  the family the registration fixed, instead of reconstructing either. What is still unresolved, and what
-  keeps the gate open, is durable item identity: no Host member takes or returns a shaped
-  `ICataloger<TItem>` or `ICurator<TItem>` result, because a cataloger cannot supply the `MediaItemId` a
-  valid item requires and nothing in Host mints one. The alternatives are recorded unchosen in
-  `docs/research/g04/media-item-identity-decision.md`; catalog materialization waits on that owner decision,
-  and G04 is not complete until it is answered.
+  the family the registration fixed, instead of reconstructing either.
+- Its identity half is answered and built. The owner settled the rule on 2026-08-25: a cataloger owns an
+  item's identity in its own declared scheme, a curator returns references rather than items, and Host alone
+  assigns `MediaItemId` at materialization. `IMediaEntity` no longer carries a key, `CatalogIdentity` is host
+  state, and `CatalogDispatcher` routes by scheme and materializes. The invariant and its current limits are
+  in `docs/research/g04/media-item-identity.md`: a merge resolves the superseded reference but moves no
+  library rows, nothing persists, and no production cataloger exercises the seam. The full close rail is
+  2,603 passed, 302 registered skips, zero failed and zero inconclusive across 11 test projects.
+- G05 is active. The isolated TMDb pressure package exists on `claude/g05-tmdb-proof`, but it predates the
+  final G04 identity contract. Reconcile its real HTTP boundary and provider-local hardening onto the G04
+  close, remove provider-minted keys, make its cataloger return `Movie`, and make its curator return TMDb
+  catalog references before treating it as integration evidence.
 
 The later gates cover the hidden binding SPI, dynamic typed Client loading, compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
@@ -218,8 +229,8 @@ duplicated checklist drifting from current state.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-24) reports 2,569 passed, 302 skipped, zero failed,
-  and zero inconclusive from 2,871 total cases across 11 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-25) reports 2,587 passed, 302 skipped, zero failed,
+  and zero inconclusive from 2,889 total cases across 11 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

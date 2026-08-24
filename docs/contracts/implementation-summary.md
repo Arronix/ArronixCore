@@ -61,7 +61,7 @@ contract, because nothing had ever shipped against them.
 
 What exists today is one spine, **`IProvider`**, and five families — `IIndexer`, `IDownloader`, `INotifier`,
 `ICataloger<TItem>` (external authorities returning a media-owned shape) and `ICurator<TItem>` (external
-lists proposing that same shape). See `ARCHITECTURE.md` §6 and the 0.4.0
+lists proposing catalog references to that item type). See `ARCHITECTURE.md` §6 and the 0.4.0
 entry in [`stability.md`](stability.md) for the full rename table.
 
 ### 6. Scheduling (`Scheduling/`)

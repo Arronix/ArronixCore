@@ -312,6 +312,8 @@ public sealed class ProviderPairingAuthorityTests
     /// </remarks>
     private sealed class FloorOnlyCataloger : IClosedCataloger
     {
+        public string CatalogScheme => "floor-only-cataloger";
+
         public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
 
         public Task<ValidationOutcome> TestAsync(
@@ -345,6 +347,8 @@ public sealed class ProviderPairingAuthorityTests
     /// <summary>Two closed cataloger contracts on one class, which is ambiguous rather than clever.</summary>
     private sealed class TwoKindCataloger : ICataloger<Movie>, ICataloger<SecondItem>
     {
+        public string CatalogScheme => "two-kind-cataloger";
+
         public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
 
         public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
@@ -392,6 +396,8 @@ public sealed class ProviderPairingAuthorityTests
     /// </remarks>
     private sealed class DualFamilyMovieProvider : ICataloger<Movie>, ICurator<Movie>
     {
+        public string CatalogScheme => "dual-family-movie-provider";
+
         public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
 
         public TimeSpan MinimumRefreshInterval => TimeSpan.FromHours(6);

@@ -8,7 +8,8 @@ namespace Arronix.Abstractions.Identity;
 /// <remarks>
 /// The width is 64-bit because the column that stores it is, and a narrower runtime type in front of a
 /// wider column is a truncation waiting to be discovered by the row that first exceeds it. The identifier
-/// is a host-minted surrogate, so nothing outside the platform chooses its value or its range.
+/// is a host-minted surrogate: the host assigns it when a catalog item is materialized into local library
+/// state, and no provider contract carries one.
 /// </remarks>
 public readonly record struct MediaItemId(long Value)
 {

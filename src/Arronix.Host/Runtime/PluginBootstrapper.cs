@@ -17,6 +17,7 @@ using Arronix.Abstractions.Shape;
 using Arronix.Host.Health;
 using Arronix.Host.Languages;
 using Arronix.Host.Media;
+using Arronix.Host.Media.Catalog;
 using Arronix.Host.Providers;
 using Arronix.Host.Scheduling;
 using Arronix.Plugins.Dependencies;
@@ -1183,6 +1184,20 @@ public sealed partial class PluginBootstrapper : IHostedService
                     out var error))
                 {
                     found.Add($"provider[{registration.Descriptor.LocalId}]: {error}");
+                    DisposeActivated(provider);
+                    continue;
+                }
+
+                // Registration captures the cataloger's declaration once. Validate and route by that
+                // captured value; a mutable implementation getter cannot change the contract after
+                // admission.
+                if (candidate.Provider is ICataloger
+                    && !CatalogIdentity.IsCanonicalScheme(candidate.CatalogScheme))
+                {
+                    found.Add(
+                        $"provider[{registration.Descriptor.LocalId}]: a cataloger declares the external "
+                        + "identifier scheme it is the authority for, lower-case and without white space; "
+                        + $"'{candidate.CatalogScheme}' is not one.");
                     DisposeActivated(provider);
                     continue;
                 }

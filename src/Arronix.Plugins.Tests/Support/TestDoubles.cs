@@ -80,9 +80,6 @@ internal sealed class FakeIndexer : IIndexer
 
 internal sealed class FakeCatalogItem : IMediaItem
 {
-    [Identity]
-    public required MediaItemId Key { get; init; }
-
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
     [Title]
@@ -100,6 +97,8 @@ internal sealed class FakeCatalogItem : IMediaItem
 internal sealed class FakeCataloger : ICataloger<FakeCatalogItem>
 {
     public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
+
+    public string CatalogScheme => "fake";
 
     public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => [];
 

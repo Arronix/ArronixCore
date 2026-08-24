@@ -223,9 +223,8 @@ public class ManifestOwnershipTests
             withoutExample,
             Is.EquivalentTo(new[]
             {
-                // The surrogate key and the identifier set: tokens nobody would type, derived because the
-                // derivation makes a token of every nameable field.
-                "{Movie Key}",
+                // The identifier set: a token nobody would type, derived because the derivation makes a
+                // token of every nameable field.
                 "{Movie ExternalIds}",
 
                 // Fields with no worked example written on them, which is a judgement rather than a gap.

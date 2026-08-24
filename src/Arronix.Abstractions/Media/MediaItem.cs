@@ -1,5 +1,4 @@
 using Arronix.Abstractions.DTOs;
-using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Media;
@@ -27,9 +26,6 @@ public class MediaItem<TItem, TReleaseTimeline, TReleaseStage>
     where TReleaseTimeline : IReleaseTimeline<TReleaseStage>
     where TReleaseStage : struct, Enum
 {
-    /// <inheritdoc />
-    public required MediaItemId Key { get; init; }
-
     /// <inheritdoc />
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 

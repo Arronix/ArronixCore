@@ -18,8 +18,8 @@ Claude's proposals, workflow plans, design programmes, and self-authored backlog
 
 Status for O-01 through O-34 is assessed against the repository at commit `e24b81837` on 18 August 2026.
 Those historical status cells intentionally retain that audit point; current implementation state belongs in
-`CONTEXT.md`. O-35 onward records direct owner signal added on 21 August 2026 during the current typed-media
-refactor.
+`CONTEXT.md`. O-35 onward records direct owner signal added during the current typed-media refactor, dated
+per row.
 
 Legend:
 
@@ -109,6 +109,7 @@ Legend:
 | O-37 | A minimal SDK must remain fully expressive. Reduce author ceremony by hoisting common semantics into complete types, generics, defaults, derivation, and compile-time projection; never by replacing owner-shaped data with strings, field bags, reflection conventions, builders, or repeated type juggling. | 2026-08-21 · current Codex conversation | **Active invariant.** The typed refactor follows this direction while legacy seams remain. |
 | O-38 | Judge abstractions holistically and vertically. A feature is not complete because its type, descriptor, test, or registration exists; authoring, DI, runtime execution, persistence where relevant, wire/Client projection, tests, and documentation must carry the same meaning. Feature-local workarounds which weaken the common model create compounding platform rot. | 2026-08-21 · current Codex conversation | **Active completion rule.** Several production paths are explicitly still migration work. |
 | O-39 | Preserve hard-earned architectural context across tasks. Fresh feature threads must consume durable current context and the relevant owner signal; they must not make the owner reconstruct hundreds of turns. Distinguish direct claims and approvals from guesses, examples, and genuine requests to investigate. | 2026-08-21 · current Codex conversation | **Active process invariant.** Canonical context, interface, history, north-star, and owner-ledger documents now carry this handoff. |
+| O-40 | Media item identity has one rule. `ICataloger` owns an item's identity in a semantic catalog namespace, independent of any implementation; `ICurator` may own its own list and entry identifiers but references items only through a cataloger's catalog identity and never supplies an authoritative item; Host alone assigns `MediaItemId`, if and when a catalog item is materialized into local library state; repeated fetches, aliases, redirects and converging natural keys resolve idempotently to one local `MediaItemId`; and no catalog reference carries a `ProviderId`, a configured definition or a CLR implementation type. | 2026-08-25 · current Claude Code conversation | **Implemented.** `IMediaEntity` no longer declares a key; `CatalogIdentity` is host state scoped by kind and level; `CatalogDispatcher` routes by scheme and materializes. A merge resolves the superseded reference but moves no library rows, nothing persists, and no production cataloger exercises it. Record: `docs/research/g04/media-item-identity.md`. |
 
 ## Explicitly rejected or superseded directions
 

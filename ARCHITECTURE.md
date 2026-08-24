@@ -157,7 +157,9 @@ Provider families are platform-owned dispatch seams:
 - `ICataloger<TItem>`
 - `ICurator<TItem>`
 
-Cataloger and Curator are generic because their output is media-shaped. A cataloger returns authoritative `TItem` values; a curator proposes `TItem` values for inclusion. Neither returns a universal field dictionary.
+Cataloger and Curator are generic because both are paired with one media-owned item type. A cataloger returns
+authoritative `TItem` values. A curator proposes catalog references for that item type, and the cataloger
+owning each reference supplies the item. Neither returns a universal field dictionary.
 
 Registration records implementation types. After compatibility and capability admission, Host activates them
 through an exact public `(IPluginContext)` constructor, or a public parameterless constructor when no context is

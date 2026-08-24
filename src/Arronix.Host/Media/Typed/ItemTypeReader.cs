@@ -36,11 +36,6 @@ internal sealed class ItemTypeReader
         Fields.FirstOrDefault(candidate =>
             string.Equals(candidate.PropertyName, nameof(IMediaEntity.TitleLanguage), StringComparison.Ordinal));
 
-    /// <summary>Gets the field carrying the entity's key.</summary>
-    internal DerivedField Key =>
-        Fields.Single(candidate => candidate.Carries(FieldSemantics.Identity)
-            && candidate.PropertyType == typeof(MediaItemId));
-
     /// <summary>Gets the field carrying the entity's external identifiers, when it has one.</summary>
     internal DerivedField? ExternalIds =>
         Fields.FirstOrDefault(candidate => candidate.PropertyType == typeof(ExternalIdSet));
@@ -131,7 +126,6 @@ internal sealed class ItemTypeReader
     {
         var required = new Dictionary<string, Type>(StringComparer.Ordinal)
         {
-            [nameof(IMediaEntity.Key)] = typeof(MediaItemId),
             [nameof(IMediaEntity.ExternalIds)] = typeof(ExternalIdSet),
             [nameof(IMediaEntity.Title)] = typeof(string),
             [nameof(IMediaEntity.TitleLanguage)] = typeof(Language),

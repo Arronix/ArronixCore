@@ -41,8 +41,6 @@ internal sealed record Score(string Source, double Value, long? Votes = null);
 /// <summary>A collection a work belongs to: monitorable, independently lived, with metadata of its own.</summary>
 internal sealed class WorkCollection : IMediaGroup<Work>
 {
-    public required MediaItemId Key { get; init; }
-
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
     [Searchable]
@@ -72,8 +70,6 @@ internal sealed class WorkCollection : IMediaGroup<Work>
 /// </remarks>
 internal sealed class Work : IMediaItem
 {
-    public required MediaItemId Key { get; init; }
-
     public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
 
     public CatalogRecordState CatalogState { get; init; }

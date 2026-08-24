@@ -60,14 +60,14 @@ public sealed record ExternalIdSet
     /// <summary>
     /// Attempts to read the identifier assigned by one catalog.
     /// </summary>
-    /// <param name="scheme">The assigning catalog, compared case-insensitively.</param>
+    /// <param name="scheme">The assigning catalog, compared ordinally in its canonical lower-case form.</param>
     /// <param name="id">The identifier when one was carried; otherwise the default value.</param>
     /// <returns><see langword="true"/> when one was carried; otherwise <see langword="false"/>.</returns>
     public bool TryGet(string scheme, out ExternalId id)
     {
         foreach (var candidate in Values)
         {
-            if (string.Equals(candidate.Scheme, scheme, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(candidate.Scheme, scheme, StringComparison.Ordinal))
             {
                 id = candidate;
                 return true;

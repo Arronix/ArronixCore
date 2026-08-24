@@ -167,9 +167,17 @@ not a list of what to avoid.
 - Raw indexer output is `ReleaseListing`. Typed `TargetMatch<TTarget>`,
   `ReleaseOption<TTarget,TRelease>`, and `ReleasePolicy<TRelease>` separate provider statements, coverage,
   and deterministic selection.
-- `ICataloger<TItem>` and `ICurator<TItem>` return media-owned item types. Provider registration carries an
-  implementation type, and the `ICataloger` floor recognizes its own external-identifier marker syntax.
-  implementation type; Host performs DI activation after capability admission.
+- Typed provider registration names the implementation once. Host derives the closed
+  `ICataloger<TItem>` or `ICurator<TItem>` pairing from the implemented contract, takes the family from the
+  registration method, and mints provider identity from the plugin and declared local name before DI
+  activation.
+- Media item identity moved off the contracts. `IMediaEntity` no longer declares `Key`: `MediaItemId` is
+  host-assigned when a catalog item is materialized, and no provider contract carries one. `ICataloger` adds
+  `CatalogScheme`, the external identifier scheme it is the authority for, and every item it returns states
+  exactly one identifier in that scheme; scheme tokens are canonical lower-case and compared ordinally.
+  `ICurator<TItem>` returns `CuratedReference` values — a catalog
+  identity with an optional curator-owned `CuratedEntryId` — instead of items. See
+  `docs/research/g04/media-item-identity.md`.
 - The universal `Evidence<T>`, axis, point, quality-family, video-token, and video-evidence contracts are
   deleted. `ARX0021` is retired.
 - Video moves to `Arronix.Format.Video`, which owns `Video`, observable channel-relative

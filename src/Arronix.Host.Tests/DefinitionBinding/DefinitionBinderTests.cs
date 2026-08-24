@@ -6,6 +6,7 @@ using Arronix.Host.Configuration;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Media;
 using Arronix.Host.Media;
+using Arronix.Host.Media.Catalog;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
@@ -254,10 +255,12 @@ internal sealed class DefinitionBinderTests
 
         public IRelease? Parse(Arronix.Abstractions.Parsing.ReleaseParseContext context) => null;
 
-        public ItemView Project(object item) => throw new NotSupportedException(
-            "Admission never projects an item; this stub carries a model, not a catalog.");
+        public ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity)
+            => throw new NotSupportedException(
+                "Admission never projects an item; this stub carries a model, not a catalog.");
 
-        public FieldValue Read(object item, string fieldId) => throw new NotSupportedException(
-            "Admission never reads an item; this stub carries a model, not a catalog.");
+        public FieldValue Read(object item, string fieldId, CatalogIdentity identity)
+            => throw new NotSupportedException(
+                "Admission never reads an item; this stub carries a model, not a catalog.");
     }
 }

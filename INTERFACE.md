@@ -34,7 +34,7 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `TargetMatch<TTarget>` describes typed coverage of an acquisition target.
 - `ReleaseOption<TTarget,TRelease>` joins a listing, interpreted release, and target match.
 - `ReleasePolicy<TRelease>` provides hard admission, lexicographic preference, and bounded facet comparison.
-- `ICataloger<TItem>` supplies authoritative shaped items. Its `ICataloger` floor recognizes identifiers from its own namespace when they occur in release text. `ICurator<TItem>` proposes shaped items for inclusion. Each contract answers its own closed pairing, so `TItem` is named once by the author and read back by registration.
+- `ICataloger<TItem>` supplies authoritative shaped items. Its `ICataloger` floor declares the external identifier scheme it is the authority for and recognizes identifiers from that scheme when they occur in release text. Host captures that declaration at registration and rejects a reading in another scheme. `ICurator<TItem>` proposes `CuratedReference` values — a catalog identity, and optionally the curator's own `CuratedEntryId` — never items. Each contract answers its own closed pairing, so `TItem` is named once by the author and read back by registration.
 - `ProviderCatalogEntry` is what a consumer configures a provider from: the host-minted `ProviderId`, the family its registration fixed, and the extension's own `ProviderDescriptor`.
 - `IIndexer`, `IDownloader`, and `INotifier` remain media-neutral provider families.
 - `ItemInfo` is the common title/overview value and `Localized<T>` attaches a language to a typed payload. `Rating`, `RatingScale`, and `ContentCertification` preserve common semantics without naming a media kind or vendor.
@@ -133,7 +133,8 @@ and is never reported as accepted.
 - The plugin-consumable `Arronix.Abstractions` SDK is one pre-1.0 surface. Stability is expressed by its
   assembly version and plugin manifest range; no per-type experimental marker, diagnostic registry, or
   compiler opt-in exists. Public visibility on cross-assembly Host infrastructure does not make it SDK.
-- A media type owns its entity shape; catalogers and curators return that exact type.
+- A media type owns its entity shape. Catalogers return that exact type; curators pair with it but return only
+  catalog references, leaving the owning cataloger authoritative for the item.
 - A provider's media relationship has one authority: the closed contract its implementation actually
   implements, read by one-time type inspection when the registration is built and re-checked at admission.
   A marker interface names the family for the compiler; it never carries the relationship, because a value
@@ -148,11 +149,22 @@ and is never reported as accepted.
 - Admission is against the exact active media type. A cataloger or curator whose closed item type no active
   media kind supplies is refused before its implementation is constructed. The non-generic `ICataloger`
   floor remains only for kind-blind external-identifier recognition.
-- Durable media item identity at the catalog boundary is an open owner decision, recorded in
-  `docs/research/g04/media-item-identity-decision.md`. No Host seam consumes a shaped cataloger or curator
-  result until it is answered.
+- Durable media item identity is host-owned. A cataloger owns an item's identity in the scheme it declares,
+  captured once and enforced as lower-case at activation, and every item it returns states exactly one
+  identifier in that scheme. Host assigns `MediaItemId` when a catalog item is materialized into local
+  library state, and no cataloger or curator contract reaches one. It is host state scoped by media kind and
+  level — an item's and a group's identifiers are separate key spaces — with the host's lifetime rather than
+  a media runtime's, and
+  projection takes the reference as an argument rather than deriving one. Repeated fetches, aliases and
+  redirects resolve to one reference; identifiers assigned separately and later found to name one item merge
+  onto the lower assignment, and the superseded reference resolves through `CatalogIdentity.Canonical`,
+  which moves no library rows. Catalog work routes by scheme, never by provider identifier or implementation
+  type, and a catalog reference carries neither. A reference in a scheme no installed cataloger owns is
+  refused with `CatalogSchemeUnowned`; an item stating other than exactly one identifier in its own
+  cataloger's scheme is refused with `CatalogIdentityInvalid`. The record is
+  `docs/research/g04/media-item-identity.md`.
 - A cataloger owns its external identifier namespace and marker spellings. Media parsers consume validated `ExternalIdReading` values and never duplicate vendor marker regular expressions.
-- Every item and group exposes `Key`, `ExternalIds`, `Title`, `TitleLanguage`, `Overview`, and `Artwork` through `IMediaEntity`; media-specific facts extend that floor as ordinary typed properties.
+- Every item and group exposes `ExternalIds`, `Title`, `TitleLanguage`, `Overview`, and `Artwork` through `IMediaEntity`; media-specific facts extend that floor as ordinary typed properties. `IMediaEntity` declares no durable key, so an item a cataloger shapes is complete without one.
 - The common item class remains fully visible and strongly typed. Release dates and availability behaviour live in a media-owned lifecycle object; typed release stage, catalog presence, and plural collection membership are common item facts.
 - Common closed item, collection, target, and release classes carry the complete reusable shape. A media type may still publish an empty nominal item closure when that stable domain name is what its cataloger, curator, target, collection, and future extensions pair with; `Movie` does exactly this without repeating a property.
 - Media schema discovery is a compile-time operation. Renaming or changing a projected property recompiles generated closed getters; Host does not reflect across plugin properties to invent the schema at startup.

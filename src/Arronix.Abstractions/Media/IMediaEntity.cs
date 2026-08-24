@@ -7,15 +7,18 @@ namespace Arronix.Abstractions.Media;
 /// The compiled structural floor shared by every durable media entity, whether it is an item or a group.
 /// </summary>
 /// <remarks>
+/// <para>
 /// These members are common domain facts, not a host storage model and not a presentation schema. A media
 /// extension remains free to add its own strongly typed properties; the host derives a descriptor from the
 /// resulting type for kind-blind navigation.
+/// </para>
+/// <para>
+/// There is no durable library identity here. An entity is identified outside the library by its catalog
+/// identifiers; the host assigns a <see cref="MediaItemId"/> when the entity enters local library state.
+/// </para>
 /// </remarks>
 public interface IMediaEntity
 {
-    /// <summary>Gets the host-minted identity, unique within the media kind.</summary>
-    MediaItemId Key { get; }
-
     /// <summary>Gets the identifiers assigned by external catalogs.</summary>
     ExternalIdSet ExternalIds { get; }
 

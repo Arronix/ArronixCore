@@ -111,7 +111,7 @@ internal sealed class StagingExcludesStaleBuildOutputTests
             ? configured
             : "dotnet";
 
-        using var process = Process.Start(new ProcessStartInfo(dotnet)
+        var start = new ProcessStartInfo(dotnet)
         {
             ArgumentList =
             {
@@ -126,7 +126,14 @@ internal sealed class StagingExcludesStaleBuildOutputTests
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             WorkingDirectory = RepositoryRoot(),
-        });
+        };
+
+        // Reusable MSBuild nodes inherit redirected handles from this child on macOS. If they outlive the
+        // publish process, ReadToEnd never observes EOF even though publishing finished. This proof owns a
+        // single nested build, so its nodes must end with it.
+        start.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+
+        using var process = Process.Start(start);
 
         process.Should().NotBeNull("the .NET command must be runnable for this proof to mean anything");
 

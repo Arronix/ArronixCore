@@ -60,6 +60,29 @@ internal sealed class CatalogerIdentityReadingTests
             .WithMessage("*returned an external-id marker outside the supplied text*");
     }
 
+    [Test]
+    public void RejectsAMarkerFromANameOtherThanTheCatalogersDeclaredScheme()
+    {
+        const string text = "{catalog-42} {foreign-9}";
+        var registry = new ProviderRegistry();
+        registry.Register(
+            PluginId.FromString("example.catalog"),
+            ProviderFamily.Cataloger,
+            Descriptor("catalog"),
+            new ReadingCataloger(
+                new ExternalIdReading(ExternalId.Of("catalog", "42"), "{catalog-42}", 0),
+                new ExternalIdReading(
+                    ExternalId.Of("foreign", "9"),
+                    "{foreign-9}",
+                    text.IndexOf("{foreign-9}", StringComparison.Ordinal))),
+            typeof(Work));
+
+        var act = () => registry.ReadExternalIds(typeof(Work), text);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*declared scheme 'catalog'*marker for 'foreign'*");
+    }
+
     private static ProviderDescriptor Descriptor(string localId) => new()
     {
         LocalId = localId,
@@ -69,6 +92,8 @@ internal sealed class CatalogerIdentityReadingTests
 
     private sealed class ReadingCataloger(params ExternalIdReading[] readings) : ICataloger<Work>
     {
+        public string CatalogScheme => readings.Length > 0 ? readings[0].Id.Scheme : "reading";
+
         public CatalogerCapabilities Capabilities => CatalogerCapabilities.Search;
 
         public IReadOnlyList<ExternalIdReading> ReadExternalIds(string text) => readings;

@@ -141,7 +141,11 @@ internal sealed class ShapeDerivationTests
         Assert.Multiple(() =>
         {
             Level.Fields.Select(field => field.FieldId).Should().Contain(
-                ["key", "externalIds", "title", "originalTitle", "year", "stage", "collections"]);
+                ["externalIds", "title", "originalTitle", "year", "stage", "collections"]);
+
+            Level.Fields.Should().NotContain(
+                field => string.Equals(field.FieldId, "key", StringComparison.Ordinal),
+                "an entity carries no durable key, so no field is derived from one");
 
             Level.Fields.Should().NotContain(field =>
                 string.Equals(field.FieldId, "isPublished", StringComparison.Ordinal));
@@ -205,9 +209,8 @@ internal sealed class ShapeDerivationTests
             Field("title").Semantics.Should().Be(
                 FieldSemantics.Title | FieldSemantics.Searchable | FieldSemantics.Sortable);
 
-            // Identity is derived twice over and written neither time: the key carries it, and so does any
-            // external-identifier set, because both are how something names the same entity.
-            Field("key").Semantics.Should().HaveFlag(FieldSemantics.Identity);
+            // Identity is derived rather than written: an external-identifier set is how something names
+            // the same entity, and it is the only identity an entity carries.
             Field("externalIds").Semantics.Should().HaveFlag(FieldSemantics.Identity);
             Field("shippedBytes").Semantics.Should().HaveFlag(FieldSemantics.Size);
             Field("stage").Semantics.Should().HaveFlag(FieldSemantics.Status);

@@ -1,3 +1,4 @@
+using Arronix.Host.Media.Catalog;
 using Arronix.Host.Providers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -26,6 +27,8 @@ internal static class ProviderRegistration
         services.TryAddSingleton<ProviderStatusStore>();
         services.TryAddSingleton<ProviderSessionStore>();
         services.TryAddSingleton<ProviderTestService>();
+        services.TryAddSingleton<CatalogIdentity>();
+        services.TryAddSingleton<CatalogDispatcher>();
         services.TryAddSingleton<IndexerDispatcher>();
         services.TryAddSingleton<NotificationDispatcher>();
 
