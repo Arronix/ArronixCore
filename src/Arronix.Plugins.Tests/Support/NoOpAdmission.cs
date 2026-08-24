@@ -9,6 +9,12 @@ namespace Arronix.Plugins.Tests.Support;
 /// <summary>An explicit empty Host transaction used by loader-only tests.</summary>
 internal sealed class NoOpAdmission : IPluginAdmissionCheck
 {
+    public bool MayPublish(PluginId package, out string? refusal)
+    {
+        refusal = null;
+        return true;
+    }
+
     public static NoOpAdmission Instance { get; } = new();
 
     private NoOpAdmission()

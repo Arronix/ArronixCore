@@ -163,3 +163,45 @@ public sealed class IndependentMovieCurator : ICurator<Movie>
             AnyFailure: false,
             Warnings: []));
 }
+
+/// <summary>
+/// The provider package's entry module.
+/// </summary>
+/// <remarks>
+/// One closed registration each, naming <c>Movie</c> once. The package requires the movies package by
+/// identifier and never references its executable assembly, so the <c>Movie</c> these generics close over is
+/// the one the installation admitted rather than a copy shipped here.
+/// </remarks>
+public sealed class IndependentMovieProviderModule : IPluginModule
+{
+    /// <inheritdoc />
+    public PluginId Id { get; } = PluginId.FromString("fixture.movies.provider");
+
+    /// <inheritdoc />
+    public string Name => "Independent movie provider";
+
+    /// <inheritdoc />
+    public string Version => "0.1.0";
+
+    /// <inheritdoc />
+    public void Configure(IPluginContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        context.Registry
+            .AddCataloger<Movie, IndependentMovieCataloger>(new ProviderDescriptor
+            {
+                LocalId = "independent",
+                Family = ProviderFamily.Cataloger,
+                Name = "Independent movie cataloger",
+                Settings = [],
+            })
+            .AddCurator<Movie, IndependentMovieCurator>(new ProviderDescriptor
+            {
+                LocalId = "independent-curator",
+                Family = ProviderFamily.Curator,
+                Name = "Independent movie curator",
+                Settings = [],
+            });
+    }
+}

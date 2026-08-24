@@ -24,17 +24,21 @@ namespace Arronix.Plugins.Loading;
 /// the deny list exists to withhold, because the default context can resolve all of them.
 /// </para>
 /// <para>
-/// The second rule is the opposite, and it is the single most common way a plugin host is broken. The
-/// contract assembly must resolve to the host's own instance, so it returns <see langword="null"/> on
-/// purpose and lets the default context win. If an extension loaded its own copy, the interface it
-/// implements would be a different runtime type from the one the host asks for, every cast would fail, and
-/// the failure would present as "the extension registered nothing" rather than as a load error. It is
-/// silent, it is baffling, and it has its own test.
+/// The second rule is the opposite, and it is the single most common way a plugin host is broken. The host
+/// contract assembly must resolve to the host's own instance, so it returns <see langword="null"/> and lets
+/// the default context win. An extension that loaded its own copy would implement a different runtime type
+/// from the one the host asks for, every cast would fail, and the failure would present as "the extension
+/// registered nothing" rather than as a load error.
 /// </para>
 /// <para>
-/// Everything else the extension brought with it is loaded from a byte array rather than from a path, so no
-/// file stays locked and the context remains genuinely collectible. Collectibility is switched on from the
-/// first day even though nothing unloads yet: it costs nothing now and forecloses nothing later.
+/// The third rule is the second, distinct sharing path and it is not the default context's. Contracts
+/// published by packages are admitted once into the Host-owned contract context, and this context resolves
+/// only the ones its own package declared a dependency on. Everything else the extension brought with it is
+/// loaded privately from a byte array, so no file stays locked and the context remains collectible.
+/// </para>
+/// <para>
+/// Anything that matches none of the four rules is refused rather than handed to the default context, where
+/// Host, the API and everything the host itself loaded already live.
 /// </para>
 /// </remarks>
 public sealed class PluginLoadContext : AssemblyLoadContext
@@ -201,10 +205,10 @@ public sealed class PluginLoadContext : AssemblyLoadContext
             throw new PluginIsolationException(name!, Plugin.ToString());
         }
 
-        // 2. The one shared contract assembly, plus the shared framework: yield to the default context so
-        //    the extension's types and the host's types are the same types.
-        if (string.Equals(name, SharedContractAssembly, StringComparison.Ordinal)
-            || IsSharedFramework(name))
+        // 2. The host contract assembly and the shared framework: yield to the default context so the
+        //    extension's types and the host's types are the same types. Above rule 3 on purpose, so nothing
+        //    about package contracts can dislodge Arronix.Abstractions unification.
+        if (IsHostContract(name) || IsSharedFramework(name))
         {
             return null;
         }

@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Fixture.VideoDependant</RootNamespace>
+    <AssemblyName>Arronix.Fixture.VideoDependant</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>A second, independently packaged dependant of the video package. It exists so the shared-identity claim is checked between two packages that know nothing about each other.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+       Video is referenced for compilation and deliberately not copied here: it arrives from the installed
+       package this one requires. A private copy would give this package its own Video type, which is the
+       failure the proof exists to detect.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

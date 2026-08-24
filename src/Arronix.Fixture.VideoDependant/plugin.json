@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "fixture.video.dependant",
+  "name": "Video dependant fixture",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.8 <0.9" },
+  "entryAssembly": "Arronix.Fixture.VideoDependant.dll",
+  "description": "A second independently packaged dependant of the video package, used to check that two packages receive one shared Video identity.",
+  "dependencies": [
+    { "package": "arronix.format.video", "range": ">=0.1 <0.2" }
+  ],
+  "capabilities": [
+    "notification"
+  ]
+}

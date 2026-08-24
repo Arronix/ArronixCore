@@ -21,6 +21,14 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
-    <ProjectReference Include="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj" />
+    <!--
+         Compilation only. The movies media domain is published by the movies package this one requires,
+         and a private copy here would be a second CLR identity for the exact type the pairing is about.
+    -->
+    <ProjectReference Include="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

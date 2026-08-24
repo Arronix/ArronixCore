@@ -45,6 +45,19 @@ internal interface IPluginAdmissionCheck
     /// <param name="ledger">Everything it registered.</param>
     /// <returns>The prepared attempt with its authoritative inventory, or the complete defect list.</returns>
     PluginAdmissionResult Prepare(ValidatedManifest manifest, PluginRegistrationLedger ledger);
+
+    /// <summary>
+    /// Authorizes one package to become active, inside the publication lease that would publish it.
+    /// </summary>
+    /// <param name="package">The package about to be published.</param>
+    /// <param name="refusal">Why Host will not authorize it, or <see langword="null"/>.</param>
+    /// <returns><see langword="true"/> when the package may be published.</returns>
+    /// <remarks>
+    /// Every package passes through this, including one that contributes no executable code and therefore
+    /// never reaches <see cref="Prepare"/>. Without it a contract-only package could root itself while Host
+    /// was shutting down, because the only state gate on the way in belonged to executable admission.
+    /// </remarks>
+    bool MayPublish(PluginId package, out string? refusal);
 }
 
 /// <summary>
@@ -257,8 +270,7 @@ public sealed class PluginLoader
         foreach (var failure in unreadable)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            _registry.Record(failure);
-            results.Add(failure);
+            results.Add(Record(failure));
         }
 
         // Steps 2 and 3: every declaration is proved well-formed, and the operator's configuration becomes
@@ -811,7 +823,12 @@ public sealed class PluginLoader
 
             using (_publication.EnterWrite())
             {
-                if (!_registry.CanActivate(package.Id))
+                if (!admission.MayPublish(package.Id, out var authorization))
+                {
+                    publicationError = CoreErrorCode.PluginLoadFailure;
+                    publicationDefects = [authorization ?? "Host did not authorize this package to publish."];
+                }
+                else if (!_registry.CanActivate(package.Id))
                 {
                     publicationError = CoreErrorCode.PluginIdConflict;
                     publicationDefects = [$"Extension '{package.Id}' already has an active runtime attempt."];
@@ -1259,6 +1276,19 @@ public sealed class PluginLoader
         }
     }
 
+    /// <summary>Records one already-built result exactly once.</summary>
+    private PluginLoadResult Record(PluginLoadResult result)
+    {
+        _registry.Record(result);
+        PluginLoaderLog.Quarantined(
+            _logger,
+            result.Id?.ToString() ?? result.Source,
+            result.ErrorCode ?? CoreErrorCode.PluginLoadFailure,
+            result.Message ?? string.Empty);
+
+        return result;
+    }
+
     private PluginLoadResult Quarantine(
         string source,
         PluginId? id,
@@ -1267,11 +1297,13 @@ public sealed class PluginLoader
         string message,
         IReadOnlyList<string> defects)
     {
-        var result = PluginLoadResult.Quarantined(source, id, manifest, errorCode, message, defects, _clock.GetUtcNow());
-
-        _registry.Record(result);
-        PluginLoaderLog.Quarantined(_logger, id?.ToString() ?? source, errorCode, message);
-
-        return result;
+        return Record(PluginLoadResult.Quarantined(
+            source,
+            id,
+            manifest,
+            errorCode,
+            message,
+            defects,
+            _clock.GetUtcNow()));
     }
 }

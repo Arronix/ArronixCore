@@ -358,6 +358,12 @@ public sealed class AdmittedInventoryTests
     /// <summary>A host that admits whatever it is told to, so the loader's own steps can be isolated.</summary>
     private sealed class StubAdmission : IPluginAdmissionCheck
     {
+        public bool MayPublish(PluginId package, out string? refusal)
+        {
+            refusal = null;
+            return true;
+        }
+
         private readonly Dictionary<string, AdmittedInventory> _byPlugin = [];
         private readonly AdmittedInventory _fallback;
 
@@ -408,6 +414,12 @@ public sealed class AdmittedInventoryTests
     /// <summary>A broken Host double proving that even malformed success retains rollback ownership.</summary>
     private sealed class MalformedAdmission : IPluginAdmissionCheck
     {
+        public bool MayPublish(PluginId package, out string? refusal)
+        {
+            refusal = null;
+            return true;
+        }
+
         public List<string> Events { get; } = [];
 
         public PluginAdmissionResult Prepare(ValidatedManifest manifest, PluginRegistrationLedger ledger)
@@ -438,6 +450,12 @@ public sealed class AdmittedInventoryTests
     /// <summary>A transactional Host double which tracks attempt-specific commit and rollback ownership.</summary>
     private sealed class TrackingAdmission : IPluginAdmissionCheck
     {
+        public bool MayPublish(PluginId package, out string? refusal)
+        {
+            refusal = null;
+            return true;
+        }
+
         private readonly AdmittedInventory _inventory;
 
         public TrackingAdmission(params AdmittedMediaKind[] kinds)

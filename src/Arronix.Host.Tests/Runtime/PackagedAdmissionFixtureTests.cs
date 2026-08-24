@@ -908,6 +908,8 @@ internal sealed class PackagedAdmissionFixtureTests
     {
         public PreparationVisibility? Visibility { get; private set; }
 
+        public bool MayPublish(PluginId package, out string? refusal) => inner.MayPublish(package, out refusal);
+
         public PluginAdmissionResult Prepare(ValidatedManifest manifest, PluginRegistrationLedger ledger)
         {
             var result = inner.Prepare(manifest, ledger);

@@ -18,6 +18,17 @@
     <ProjectReference Include="..\Arronix.Host\Arronix.Host.csproj" />
     <ProjectReference Include="..\Arronix.Host.Tests.G02AdmissionFixture\Arronix.Host.Tests.G02AdmissionFixture.csproj"
                       ReferenceOutputAssembly="false" />
+
+    <!--
+         The two independently packaged dependants the identity proofs need. Project dependencies but not
+         compile-time references: the tests can reach their types only by sending the packages through
+         discovery and the isolated loader, which is what makes the identity claim a runtime observation
+         rather than a compile-time one.
+    -->
+    <ProjectReference Include="..\Arronix.Architecture.Tests.MovieCatalogerFixture\Arronix.Architecture.Tests.MovieCatalogerFixture.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Arronix.Fixture.VideoDependant\Arronix.Fixture.VideoDependant.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!--
@@ -85,6 +96,23 @@
       Projects="..\Arronix.Plugin.Tv\Arronix.Plugin.Tv.csproj"
       Targets="Publish"
       Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)PackagePayloads\tv\" />
+  </Target>
+
+  <!--
+       The two independently packaged dependants, staged into a directory of their own. A test installs the
+       combination it needs by copying folders from here, so no fixture's presence changes another test's
+       installation.
+  -->
+  <Target Name="StageDependantFixtures" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)G04PackagedPlugins" />
+    <MSBuild
+      Projects="..\Arronix.Architecture.Tests.MovieCatalogerFixture\Arronix.Architecture.Tests.MovieCatalogerFixture.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)G04PackagedPlugins\fixture.movies.provider\" />
+    <MSBuild
+      Projects="..\Arronix.Fixture.VideoDependant\Arronix.Fixture.VideoDependant.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)G04PackagedPlugins\fixture.video.dependant\" />
   </Target>
 
   <!--

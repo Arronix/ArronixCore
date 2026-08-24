@@ -294,6 +294,32 @@ internal sealed class PackageDependencyRegistry
             return false;
         }
 
+        // A retained attempt's code may still be resident, so its identifier is occupied for the life of
+        // the process. Refusing here rather than at publication is what stops a replacement running a
+        // single line against types the incumbent may still hold.
+        if (_retained.TryGetValue(dependant.Id, out var retained) && !ReferenceEquals(retained, dependant))
+        {
+            defects =
+            [
+                $"Package '{dependant.Id}' is retained by an installation attempt at version "
+                + $"{retained.Version} whose instances, load context or contract hold could not be "
+                + "released. Its identifier stays occupied for the life of the process.",
+            ];
+            return false;
+        }
+
+        // A second attempt preparing the same identifier at the same time would race for every resource
+        // this one is about to take. Nothing in the platform produces one today; the check is here because
+        // the cost of being wrong is code from two attempts running against one identifier's state.
+        if (_preparing.Keys.Any(other => other.Id == dependant.Id))
+        {
+            defects =
+            [
+                $"Package '{dependant.Id}' is already being prepared by another installation attempt.",
+            ];
+            return false;
+        }
+
         var found = new List<string>();
 
         foreach (var edge in dependant.Edges)

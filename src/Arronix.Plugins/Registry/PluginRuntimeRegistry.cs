@@ -18,9 +18,10 @@ namespace Arronix.Plugins.Registry;
 /// a status page during startup — which is exactly when an operator most wants one.
 /// </para>
 /// <para>
-/// An extension too broken to yield an identifier is still recorded, keyed by where it was found. Dropping
-/// it would mean the one failure an operator cannot diagnose from the logs is also the one the status page
-/// does not mention.
+/// Every record is keyed by where the package was found, because that is the one thing unique to an
+/// installed copy. Two folders claiming one identifier are two records: an operator has two folders to act
+/// on, and keying by identifier would show them one. An extension too broken to yield an identifier at all
+/// is recorded for the same reason.
 /// </para>
 /// </remarks>
 public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
@@ -49,7 +50,7 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
         get
         {
             using var publication = _publication.EnterRead();
-            return [.. _results.Values.OrderBy(result => Key(result), StringComparer.Ordinal)];
+            return [.. _results.Values.OrderBy(Order, StringComparer.Ordinal)];
         }
     }
 
@@ -59,15 +60,26 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
         get
         {
             using var publication = _publication.EnterRead();
-            return [.. _results.Values.Where(result => result.IsActive).OrderBy(Key, StringComparer.Ordinal)];
+            return [.. _results.Values.Where(result => result.IsActive).OrderBy(Order, StringComparer.Ordinal)];
         }
     }
 
     /// <summary>Finds one raw result for the lifecycle coordinator.</summary>
+    /// <remarks>
+    /// A live result wins over a refused one: an identifier claimed by two folders has at most one outcome
+    /// that matters to a caller asking about the extension rather than about a folder.
+    /// </remarks>
     internal bool TryGet(PluginId plugin, out PluginLoadResult? result)
     {
         using var publication = _publication.EnterRead();
-        return _results.TryGetValue(plugin.ToString(), out result);
+
+        result = _results.Values
+            .Where(candidate => candidate.Id == plugin)
+            .OrderByDescending(candidate => candidate.IsActive)
+            .ThenBy(candidate => candidate.Source, StringComparer.Ordinal)
+            .FirstOrDefault();
+
+        return result is not null;
     }
 
     /// <inheritdoc />
@@ -77,7 +89,7 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
         return
         [
             .. _results.Values
-                .OrderBy(result => Key(result), StringComparer.Ordinal)
+                .OrderBy(Order, StringComparer.Ordinal)
                 .Select(result => result.ToStatusView()),
         ];
     }
@@ -96,15 +108,19 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
         ArgumentNullException.ThrowIfNull(result);
 
         using var publication = _publication.EnterWrite();
-        var key = Key(result);
-        if (_results.TryGetValue(key, out var existing)
-            && existing.IsActive
-            && !ReferenceEquals(existing, result))
+
+        // A folder has one outcome, and an identifier has at most one live one. Both are checked: replacing
+        // this folder's record is ordinary, but taking an identifier another folder is actively serving is
+        // the conflict the publication gate exists to catch.
+        if (_results.Values.Any(existing =>
+                existing.IsActive
+                && existing.Id == result.Id
+                && !ReferenceEquals(existing, result)))
         {
             return false;
         }
 
-        _results[key] = result;
+        _results[Key(result)] = result;
         return true;
     }
 
@@ -128,7 +144,7 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
     internal bool CanActivate(PluginId plugin)
     {
         using var publication = _publication.EnterRead();
-        return !_results.TryGetValue(plugin.ToString(), out var existing) || !existing.IsActive;
+        return !_results.Values.Any(existing => existing.IsActive && existing.Id == plugin);
     }
 
     /// <summary>
@@ -158,5 +174,10 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
         return true;
     }
 
-    private static string Key(PluginLoadResult result) => result.Id?.ToString() ?? result.Source;
+    /// <summary>The identity of one installed copy: where it was found.</summary>
+    private static string Key(PluginLoadResult result) => result.Source;
+
+    /// <summary>The order results are reported in: by identifier, then by folder.</summary>
+    private static string Order(PluginLoadResult result)
+        => $"{result.Id?.ToString() ?? string.Empty}\u0000{result.Source}";
 }

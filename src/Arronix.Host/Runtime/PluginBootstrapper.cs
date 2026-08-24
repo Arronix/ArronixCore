@@ -279,7 +279,15 @@ public sealed partial class PluginBootstrapper : IHostedService
                 return;
             }
 
-            SetLifecycleState(LifecycleState.Stopping);
+            // Taken under the same write lease a publication takes, so the two are a total order: a
+            // package either commits wholly before shutdown claims the gate, or it observes Stopping inside
+            // the lease and is refused. A state write outside the gate would leave a third outcome, in
+            // which a package roots itself after Stop has begun and nothing withdraws it.
+            using (_publication.EnterWrite())
+            {
+                SetLifecycleState(LifecycleState.Stopping);
+            }
+
             var failures = new List<Exception>();
             IReadOnlyList<PluginId> incomplete = [];
 
@@ -1475,6 +1483,23 @@ public sealed partial class PluginBootstrapper : IHostedService
             ValidatedManifest manifest,
             PluginRegistrationLedger ledger)
             => owner.Prepare(manifest, ledger);
+
+        /// <remarks>
+        /// Read inside the lease that would publish, so a package cannot slip between the check and the
+        /// write. A package with no executable half never reaches <c>Prepare</c>, and this is the one gate
+        /// it does pass.
+        /// </remarks>
+        bool IPluginAdmissionCheck.MayPublish(PluginId package, out string? refusal)
+        {
+            if (owner.AdmissionMayPublish)
+            {
+                refusal = null;
+                return true;
+            }
+
+            refusal = $"Extension '{package}' cannot become active after Host extension shutdown has begun.";
+            return false;
+        }
     }
 
     private void Report(PluginLoadResult result)
