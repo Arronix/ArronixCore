@@ -1,5 +1,21 @@
 # Arronix History
 
+## 2026-08-25 — Ship the first independent production provider package
+
+- Added `Arronix.Provider.Tmdb` as a separately versioned package depending on the Movies package while
+  compiling only against Abstractions and `Arronix.Media.Movies`. TMDb settings, DTOs, transport, identity
+  grammar, embedded markers, mapping, cataloger, and curator remain in that vendor package.
+- Applied the G04 ownership rule to a real provider. `TmdbMovieCataloger` returns exact `Movie` values with
+  TMDb catalog identity and no durable key; `TmdbMovieCurator` returns catalog references; Host resolves those
+  references through the cataloger and assigns `MediaItemId`.
+- Exercised the published provider through the real package loader and capability-scoped HTTP gateway. The
+  proof observes one shared installed `Movie` type, repeated-fetch identity, curator-to-catalog materialization,
+  provider-owned marker readings reaching the Movie parser, and isolated quarantine for missing or incompatible
+  Movies dependencies.
+- Added structural gates for the provider's source and binary dependencies and for vendor-vocabulary
+  containment. Recorded deferred persistence, credentialed live verification, pagination, certification
+  authority, and language resolution as later coverage rather than weakening the typed boundary.
+
 ## 2026-08-25 — Give catalog identity to the cataloger and durable identity to the host
 
 - Answered G04's open identity question as the owner decided it, and removed `Key` from `IMediaEntity` to

@@ -57,6 +57,9 @@ internal static class RepositoryLayout
     /// <summary>The stand-in for a separately shipped movie provider package.</summary>
     public const string MovieCatalogerFixture = "Arronix.Architecture.Tests.MovieCatalogerFixture";
 
+    /// <summary>The independently shipped production TMDb provider package.</summary>
+    public const string TmdbProvider = "Arronix.Provider.Tmdb";
+
     /// <summary>The reference language implementation assembly.</summary>
     public const string ReferenceLanguages = "Arronix.Language.Reference";
 

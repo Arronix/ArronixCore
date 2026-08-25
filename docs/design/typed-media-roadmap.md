@@ -2,7 +2,7 @@
 
 **Status:** active
 
-**Current gate:** G04 — close the typed provider-pairing contract
+**Current gate:** G06 — separate authoring SDK from generated and Host binding SPI
 
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
@@ -346,7 +346,7 @@ any implementation in the package is constructed. Durable identity was settled b
 a cataloger owns catalog identity in its own declared scheme, a curator returns references rather than
 items, and Host alone assigns `MediaItemId` at materialization, as host state scoped by kind and level. The
 invariant and its current limits are `docs/research/g04/media-item-identity.md`; the materialization seam is
-`CatalogDispatcher`. G04 is closed. A production cataloger exercising the seam is G05's work, and
+`CatalogDispatcher`. G04 is closed. G05 now exercises the seam with a production provider package;
 persistence remains later work because no part of the store has it.
 
 Exit gate:
@@ -374,6 +374,14 @@ Implement:
 TMDb is a sensible first concrete Movies cataloger, but nothing in the provider contract, Movies, Host, or
 Abstractions may name it. A test provider may prove mechanics, but must not be reported as production
 provider coverage.
+
+Landed: `Arronix.Provider.Tmdb` is independently versioned and depends on the Movies package while compiling
+only against Abstractions and the Movies domain. Its cataloger returns the installed package's exact `Movie`,
+its curator returns TMDb catalog references, and Host assigns durable identity when those values materialize.
+The real loader proof covers constrained HTTP invocation, shared Movie identity, repeat materialization,
+curator-to-catalog resolution, marker readings reaching the Movie parser, and isolated quarantine when Movies
+is absent or incompatible. Architecture gates keep all vendor vocabulary in the provider package. See
+`docs/research/g05/tmdb-provider-pressure-test.md`. G05 is closed; credentialed live coverage remains G30.
 
 Exit gate:
 
@@ -1220,8 +1228,10 @@ replacement.
 
 ## Current next task
 
-Take **G03 only**: define explicit package dependencies and compatible version ranges, deterministic load
-ordering, shared contract-facet identity, executable-facet isolation, and dependency-aware quarantine and
-withdrawal. Prove the exact same `Movie` and `Video` CLR identities are observed by independent dependent
-fixtures. Do not expand this gate into provider semantics, parser redesign, Television conversion, or Client
-loading. The G01 proof rail and G02 packaged-admission transaction remain mandatory throughout the work.
+Take **G06 only**: separate the semantic authoring SDK from generated and Host binding SPI. Inventory every
+public capture visitor, erased registration, `System.Type` carrier, generated getter, expression reducer, and
+compiled-shape bridge; then hide, generate, or explicitly classify it without weakening the typed authoring
+relationship or adding a second declaration path. Prove an ordinary extension needs only supported semantic
+contracts and performs one media registration or one closed provider registration. Do not expand this gate
+into Client loading, durable persistence, parser redesign, or another media conversion. The completed package
+runtime and production TMDb vertical remain mandatory regression proofs.

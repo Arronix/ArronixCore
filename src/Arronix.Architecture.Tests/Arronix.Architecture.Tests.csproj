@@ -45,12 +45,15 @@
   </ItemGroup>
 
   <!--
-       The provider fixture is referenced for the same reason the extensions are: the pairing rule is
-       asserted against a real assembly that was really compiled without the Movies extension in its
-       reference set. Its own project file is the declaration half of that rule, and its metadata is the
-       binary half.
+       These are build dependencies for binary-topology assertions. The fixture and production TMDb
+       provider prove closed Movie pairing without the Movies extension; Video.Contributions is inspected
+       as the executable half of the split format package. The latter two are not compile-time references.
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Architecture.Tests.MovieCatalogerFixture\Arronix.Architecture.Tests.MovieCatalogerFixture.csproj" />
+    <ProjectReference Include="..\Arronix.Provider.Tmdb\Arronix.Provider.Tmdb.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Arronix.Format.Video.Contributions\Arronix.Format.Video.Contributions.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

@@ -15,7 +15,7 @@ Current ownership:
 - generic host orchestration, storage seams, scheduling, provider dispatch, and API projection;
 - derivation of standard media operations, generic presentation, and runtime dispatch from typed owner-authored definitions;
 - an authoring contract whose cognitive load is proportional to a plugin's genuine semantic differences rather than the size of the platform;
-- reference media and format extensions.
+- reference media, format, and language extensions, plus the independently packaged TMDb provider.
 
 Potential future ownership includes persistent storage, authenticated multi-user hosting, dynamic .NET client definition loading, and independently distributed format packages.
 
@@ -94,6 +94,11 @@ contract of that family, or several, is refused there. One class may serve both 
 reads only its own family's contract. The declaration carries neither the family nor a qualified identifier:
 the registration called fixes the family, and Host mints the identifier from the contributing extension and
 the declaration's `LocalId`.
+
+`Arronix.Provider.Tmdb` is the first concrete package using this surface. It closes
+`ICataloger<Movie>` and `ICurator<Movie>` against `Arronix.Media.Movies`; the cataloger returns exact Movie
+values and the curator returns TMDb catalog references. The package never receives or assigns a
+`MediaItemId`.
 
 Language plugins register implementation types for constrained Host activation:
 
@@ -258,6 +263,9 @@ promised.
 - Host depends on Abstractions, Common, and Plugins, but not on a media or format implementation.
 - Client depends on Abstractions only.
 - vendor provider implementations must not be placed in Host, Abstractions, a format assembly, or a media definition.
+- `Arronix.Provider.Tmdb` depends only on Abstractions and `Arronix.Media.Movies`. It ships its executable
+  provider assembly independently, declares a runtime dependency on package `movies`, and owns every TMDb
+  endpoint, credential field, DTO, identifier, marker, transport, and mapping rule.
 
 A separately shipped provider compiles against a media domain without taking the extension: an
 `ICataloger<Movie>` or `ICurator<Movie>` needs Abstractions and `Arronix.Media.Movies`, two media packages

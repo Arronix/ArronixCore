@@ -2,7 +2,7 @@
 
 ## Purpose and state
 
-Arronix is a clean-sheet, pre-alpha media automation platform. A media kind owns its typed domain while the host owns generic orchestration. The product goal is a consolidated, extensible replacement for the *arr applications with their practical feature coverage preserved, not merely a plugin framework or a simplified demonstration of their common path. The repository builds as one .NET 11 Preview 7 solution pinned to SDK `11.0.100-preview.7.26381.103`; persistence, authentication, production provider packages, and an end-to-end acquisition flow are not complete.
+Arronix is a clean-sheet, pre-alpha media automation platform. A media kind owns its typed domain while the host owns generic orchestration. The product goal is a consolidated, extensible replacement for the *arr applications with their practical feature coverage preserved, not merely a plugin framework or a simplified demonstration of their common path. The repository builds as one .NET 11 Preview 7 solution pinned to SDK `11.0.100-preview.7.26381.103`; persistence, authentication, broad production-provider coverage, and an end-to-end acquisition flow are not complete.
 
 The plugin SDK is part of the product. A third party should be able to own a Sonarr-, Radarr-, Lidarr-, Readarr-, or new-media-style application through a small set of intuitive, strongly typed abstractions. Small means that Arronix derives common behaviour and supplies sound defaults; it never means erasing media shape, moving semantics into string bags, or making an author understand Host implementation mechanics.
 
@@ -21,6 +21,9 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
 - The video package is two assemblies. `Arronix.Format.Video` is the shared domain surface and owns video's owner semantics: the representation and quality facts a `Release<Video>` carries, the format family a media type names in its constructor, and the release preferences video contributes to a dependant's compiled policy. `Arronix.Format.Video.Contributions` is the isolated half and owns video's executable work, currently the release-term recognition vocabulary. A media declaration references only the domain assembly.
 - The movies package is two assemblies. `Arronix.Media.Movies` is the shared half and owns `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline`; `Arronix.Plugin.Movies` is the isolated entry assembly and owns the `Movies` definition, `MovieReleaseParser`, the plugin module, and the generated projections.
 - `Arronix.Language.Reference` is a separately loadable language capability with English, German, and French implementations.
+- `Arronix.Provider.Tmdb` is the first production provider package. It depends on Abstractions and the Movies
+  domain only, closes `ICataloger<Movie>` and `ICurator<Movie>`, and owns all TMDb settings, transport, DTO,
+  identity, marker, and mapping vocabulary.
 - `Arronix.Generators` emits closed entity readers and descriptor projections while a media extension compiles. It is an analyzer-only build dependency and is never loaded as a plugin runtime dependency.
 - `Arronix.Compatibility.Ratchet` validates the canonical compatibility ledger against fresh test results and its prior committed form. The ledger under `verification/compatibility` gives every known omission a stable semantic identity, immutable published binding and expectation, provenance source, and explicit replacement path. The same-build solution binlog is the authoritative practical record of the actual `Csc` inputs, embedded inputs, warning policy, and build configuration. Each registered execution must resolve from its exact NUnit leaf to the declared CLR method in NUnit's exact executed assembly; the associated Portable PDB must bind that method to the primary and support documents, whose embedded source bytes must exactly match the locked repository files. This is layered same-build provenance, not a cryptographic or hermetic-build attestation claim. Replacement topology is independent of its semantic outcome; outcome must match the source disposition and requirement transition. Acyclic one-to-one replacement chains close to a fixed point, so a published witness can later be retired without rewriting earlier edges. Partition records remain non-closing until aggregate semantic composition is modeled. Required owner decisions resolve to pinned prior-ledger sources attached to the decided requirement. Passing tests do not self-attest proof through an output marker.
 - Media extensions may reference Abstractions, the format capabilities they compose, and their own media domain assembly. An extension does not reference another kind's media domain. Host and Client reference neither half of Video.
@@ -146,16 +149,18 @@ coverage.
   cannot be derived from code before it is allowed to run. Operator-specific host/root access grants are
   runtime configuration.
 - Books, Music, and Television manifests still carry `mediaKinds`, `identifiers`, and `tokens`. Those are transitional declarations belonging to their legacy media paths and are removed with their conversions, not here.
-- The typed Movie parser currently materializes common release text facts but does not compose format-owned recognizers into a populated `Video` representation. No production typed cataloger supplies catalog-owned embedded-identifier readings. The manifest's related capability claims therefore outrun the executable production path.
+- The typed Movie parser currently materializes common release text facts and consumes catalog-owned external
+  identifier readings, including the installed TMDb provider's `{tmdb-...}` markers. It does not yet compose
+  format-owned recognizers into a populated `Video` representation, so the complete release-interpretation
+  path remains unwired.
 - Typed release policy and deterministic selection exist, but production acquisition does not yet materialize typed releases and call the selector end to end.
-- No production typed cataloger or curator ships yet. Their typed registration, constrained Host activation,
-  media-contract admission, catalog-owned identifier-reading boundary, and catalog materialization exist and
-  are tested.
-- Catalog materialization is built and unwired. `CatalogDispatcher` fetches through the cataloger that owns a
-  reference's scheme, assigns the durable identity, and materializes a curated list through the catalogs its
-  references name; it has no production caller, because no production cataloger ships. `CatalogIdentity` is
-  in memory, as `IMediaStore` is, and a merge does not move library rows already keyed by the superseded
-  reference.
+- The production TMDb package supplies a typed Movie cataloger and curator through constrained Host activation.
+  Its cataloger returns exact `Movie` values; its curator returns TMDb catalog references. Missing or
+  incompatible Movies quarantines only the provider package.
+- `CatalogDispatcher` fetches through the cataloger that owns a reference's scheme, assigns durable identity,
+  and materializes a curated list through the catalogs its references name. The installed TMDb proof executes
+  that full generic path, but no API/Client user workflow reaches it yet. `CatalogIdentity` and `IMediaStore`
+  remain in memory, and a merge does not move library rows already keyed by a superseded reference.
 - Typed workbench proposal/commit values and generic standard rows exist, but the current `IMediaItemSource` execution seam still projects proposals and commits through the kind-blind wire form.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
@@ -201,12 +206,15 @@ work does not substitute for closing an earlier dependency.
   assigns `MediaItemId` at materialization. `IMediaEntity` no longer carries a key, `CatalogIdentity` is host
   state, and `CatalogDispatcher` routes by scheme and materializes. The invariant and its current limits are
   in `docs/research/g04/media-item-identity.md`: a merge resolves the superseded reference but moves no
-  library rows, nothing persists, and no production cataloger exercises the seam. The full close rail is
+  library rows and nothing persists. The full close rail is
   2,603 passed, 302 registered skips, zero failed and zero inconclusive across 11 test projects.
-- G05 is active. The isolated TMDb pressure package exists on `claude/g05-tmdb-proof`, but it predates the
-  final G04 identity contract. Reconcile its real HTTP boundary and provider-local hardening onto the G04
-  close, remove provider-minted keys, make its cataloger return `Movie`, and make its curator return TMDb
-  catalog references before treating it as integration evidence.
+- G05 is complete. The independently packaged TMDb cataloger returns the installed Movies package's exact
+  `Movie`; its curator returns catalog references which `CatalogDispatcher` resolves through that cataloger;
+  Host assigns the durable reference; marker readings reach the Movie parser; and real package admission
+  isolates missing or incompatible Movies failures to TMDb. The provider owns its HTTP, credential, DTO,
+  settings, identity, marker, and mapping vocabulary. See `docs/research/g05/tmdb-provider-pressure-test.md`.
+- G06 is active: separate semantic authoring SDK from generated and Host binding SPI without losing the
+  compiled typed relationship or introducing a second authoring path.
 
 The later gates cover the hidden binding SPI, dynamic typed Client loading, compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
@@ -229,8 +237,8 @@ duplicated checklist drifting from current state.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-25) reports 2,587 passed, 302 skipped, zero failed,
-  and zero inconclusive from 2,889 total cases across 11 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-25) reports 2,749 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,051 total cases across 12 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

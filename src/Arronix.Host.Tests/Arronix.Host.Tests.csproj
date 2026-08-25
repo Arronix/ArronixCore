@@ -29,6 +29,8 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Arronix.Fixture.VideoDependant\Arronix.Fixture.VideoDependant.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Arronix.Provider.Tmdb\Arronix.Provider.Tmdb.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!--
@@ -113,6 +115,18 @@
       Projects="..\Arronix.Fixture.VideoDependant\Arronix.Fixture.VideoDependant.csproj"
       Targets="Publish"
       Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)G04PackagedPlugins\fixture.video.dependant\" />
+  </Target>
+
+  <!--
+       Stage the production G05 provider as its own installed package. The tests have a build dependency,
+       not a compile-time reference, so every type they observe came through discovery and isolation.
+  -->
+  <Target Name="StageTmdbProviderPackage" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)G05PackagedPlugins\tmdb" />
+    <MSBuild
+      Projects="..\Arronix.Provider.Tmdb\Arronix.Provider.Tmdb.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)G05PackagedPlugins\tmdb\" />
   </Target>
 
   <!--

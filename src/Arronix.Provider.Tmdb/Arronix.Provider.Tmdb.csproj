@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Provider.Tmdb</RootNamespace>
+    <AssemblyName>Arronix.Provider.Tmdb</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>A separately installed TMDb provider package. Its movies binding compiles ICataloger&lt;Movie&gt; and ICurator&lt;Movie&gt; against the universal contracts and the movies media domain only; cataloger and curator are capabilities this vendor package offers, not its identity.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       This vendor package must be able to close ICataloger<Movie>/ICurator<Movie> without taking on the
+       Movies extension's parser, module, definition or generated reader delegates: it references only the
+       universal contracts and the movies media domain, never Arronix.Plugin.Movies, Host, Client, or Host DI.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Arronix.Provider.Tmdb.Tests" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "tmdb",
+  "name": "TMDb",
+  "version": "0.1.0",
+  "contracts": { "arronix": ">=0.8 <0.9" },
+  "entryAssembly": "Arronix.Provider.Tmdb.dll",
+  "description": "A separately packaged TMDb provider, whose movies binding pairs with the movies media domain and takes nothing from the movies extension.",
+  "dependencies": [
+    { "package": "movies", "range": ">=0.1 <0.2" }
+  ],
+  "capabilities": [
+    "metadata",
+    "curation"
+  ]
+}
