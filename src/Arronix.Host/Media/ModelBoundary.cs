@@ -16,10 +16,11 @@ namespace Arronix.Host.Media;
 /// internal hides it; it does not change who owns the objects, so every collection is rebuilt instead.
 /// </para>
 /// <para>
-/// Two values are not copied and cannot be, because they are executable by contract:
-/// <see cref="MediaKindModel.Respace"/> and each <c>TemplateRequirement.IsSatisfied</c> are delegates the
-/// media kind supplies. The lists holding them are rebuilt; the delegates themselves are retained for the
-/// life of the kind and released with it, so the host invokes them only while the kind is published.
+/// Two members are delegates by contract and cannot be copied. <see cref="MediaKindModel.Respace"/> is the
+/// media kind's own and is captured by the declarative release parser. Each
+/// <c>TemplateRequirement.IsSatisfied</c> is built by the host's definition compiler and is not invoked by
+/// any production path today. The lists holding both are rebuilt; the delegates are retained with the kind
+/// and released with it.
 /// </para>
 /// </remarks>
 internal static class ModelBoundary

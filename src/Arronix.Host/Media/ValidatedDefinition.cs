@@ -61,18 +61,22 @@ public sealed class ValidatedDefinition
     public MediaKindId Kind { get; }
 
     /// <summary>
-    /// Gets the per-kind inputs the engines compile, verbatim, so what they execute is what was derived.
-    /// </summary>
-    /// <summary>
-    /// Gets the derived runtime model the host's engines are compiled from.
+    /// Gets the derived runtime model the engines compile, saying exactly what was derived.
     /// </summary>
     /// <remarks>
     /// Internal because it is host machinery rather than a declaration. Its collections are copied into
     /// host-owned values before it is retained: the engines read this model outside any invocation lease,
-    /// so an extension-supplied collection here would run extension code with no ticket held. The one
-    /// members that stay the extension's are the two the contract declares as delegates —
-    /// <see cref="MediaKindModel.Respace"/> and each template requirement's predicate — which are invoked
-    /// only while the kind is published and are released with it.
+    /// so an extension-supplied collection here would run extension code with no ticket held.
+    /// <para>
+    /// Two members are delegates by contract and cannot be copied, and they differ.
+    /// <see cref="MediaKindModel.Respace"/> is the media kind's own; the one path that reaches it is the
+    /// declarative release parser compiled from this model, which is an internal seam of
+    /// <c>RegisteredMediaKind</c> and is obtainable only from a leased handle — so invoking it holds the
+    /// contributing extension's ticket. Each template requirement's predicate is built by the host's
+    /// definition compiler rather than supplied by the extension, and no production path invokes one at
+    /// all today; when a consumer is written it has to sit behind the same media-kind lease. Being
+    /// published is not the proof for either — the lease on the path that reaches them is.
+    /// </para>
     /// </remarks>
     internal MediaKindModel Model { get; }
 
