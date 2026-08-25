@@ -14,6 +14,15 @@
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
   </ItemGroup>
 
+  <!--
+       The platform reading surface behind the hosting facts, the cache namespace gate and the telemetry
+       pump are internal on purpose: they are host mechanics, not contracts. The tests prove their branches
+       directly rather than through a public seam nothing else needs.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Arronix.Common.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Options.DataAnnotations" />
     <PackageReference Include="Microsoft.Extensions.Http" />

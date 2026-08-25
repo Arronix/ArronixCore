@@ -1,9 +1,12 @@
 using System.IO;
 using System.Linq;
+using Arronix.Abstractions.Caching;
+using Arronix.Abstractions.Events;
 using Arronix.Abstractions.FileSystem;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Scheduling;
+using Arronix.Abstractions.Telemetry;
 using Arronix.Host.Composition;
 using Arronix.Host.Health;
 using Arronix.Host.Intent;
@@ -14,8 +17,10 @@ using Arronix.Host.Runtime;
 using Arronix.Host.Scheduling;
 using Arronix.Host.Storage;
 using Arronix.Plugins.Loading;
+using Arronix.Plugins.Registration;
 using Arronix.Plugins.Registry;
 using FluentAssertions;
+using FluentAssertions.Execution;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -284,12 +289,25 @@ internal sealed class HostCompositionTests
     }
 
     [Test]
-    public void TheHostRuntimeInformationExtensionsSeeIsNotRegisteredByThisAssembly()
+    public void TheHostSuppliesEveryPlatformServiceAnExtensionContextRequires()
     {
         using var provider = Build();
 
-        // Recorded rather than asserted away: the extension runtime's context needs this and the platform
-        // does not ship one yet, so an extension that reads it is the thing that will surface the gap.
-        provider.GetService<IHostRuntimeInfo>().Should().BeNull();
+        // The five services a package with an entry assembly cannot be activated without. A host missing
+        // any of them quarantines every such package before it contributes anything, so this is the
+        // registration list that decides whether an ordinary server can run the extension it ships with.
+        using (new AssertionScope())
+        {
+            provider.GetService<ICacheProvider>().Should().NotBeNull();
+            provider.GetService<IHostRuntimeInfo>().Should().NotBeNull();
+            provider.GetService<IOperatingSystemInfo>().Should().NotBeNull();
+
+            // Not yet: the telemetry pipeline and the event bus land with their own slices, and until they
+            // do this host still refuses to activate a package that carries an entry assembly.
+            provider.GetRequiredService<PluginPlatformServices>()
+                .MissingRequiredServices()
+                .Should()
+                .BeEquivalentTo([nameof(ITelemetryEmitter), nameof(IEventPublisher)]);
+        }
     }
 }

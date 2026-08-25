@@ -59,6 +59,8 @@ public static class ArronixCommonServiceCollectionExtensions
         // One line per subsystem, alphabetically, each implemented as an internal static extension method
         // in Composition/<Subsystem>Registration.cs. Nothing else belongs in this method.
         services.AddArchivesHashingAndNaming();
+        services.AddCaching(configuration);
+        services.AddHostingFacts();
         services.AddSerialization();
 
         return services;
