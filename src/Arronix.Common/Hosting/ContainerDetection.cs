@@ -54,9 +54,16 @@ internal static class ContainerDetector
             return new ContainerDetection(IsContainerized: true, IsDocker: true, IsPodman: false);
         }
 
+        var cgroup = FromCgroup(facts);
+
+        if (cgroup.IsDocker || cgroup.IsPodman)
+        {
+            return cgroup;
+        }
+
         if (IsTrue(facts.EnvironmentVariable(RunningInContainerVariable))
             || !string.IsNullOrWhiteSpace(declared)
-            || HasContainerCgroup(facts))
+            || cgroup.IsContainerized)
         {
             // Inside something, and nothing said what.
             return new ContainerDetection(IsContainerized: true, IsDocker: false, IsPodman: false);
@@ -69,16 +76,31 @@ internal static class ContainerDetector
         => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase)
             || string.Equals(value, "1", StringComparison.Ordinal);
 
-    private static bool HasContainerCgroup(IPlatformFacts facts)
+    /// <summary>
+    /// What the init process's cgroup path says. Two of these markers name the runtime that wrote them; the
+    /// others say a container and nothing about which one, so that is all they are read as.
+    /// </summary>
+    private static ContainerDetection FromCgroup(IPlatformFacts facts)
     {
         if (facts.ReadFile(CgroupFile) is not { Length: > 0 } cgroup)
         {
-            return false;
+            return ContainerDetection.None;
         }
 
-        return cgroup.Contains("/docker", StringComparison.Ordinal)
-            || cgroup.Contains("/containerd", StringComparison.Ordinal)
+        // Podman first, for the reason it is first above: its containers can carry Docker-shaped markers.
+        if (cgroup.Contains("/libpod", StringComparison.Ordinal))
+        {
+            return new ContainerDetection(IsContainerized: true, IsDocker: false, IsPodman: true);
+        }
+
+        if (cgroup.Contains("/docker", StringComparison.Ordinal))
+        {
+            return new ContainerDetection(IsContainerized: true, IsDocker: true, IsPodman: false);
+        }
+
+        return cgroup.Contains("/containerd", StringComparison.Ordinal)
             || cgroup.Contains("kubepods", StringComparison.Ordinal)
-            || cgroup.Contains("/libpod", StringComparison.Ordinal);
+                ? new ContainerDetection(IsContainerized: true, IsDocker: false, IsPodman: false)
+                : ContainerDetection.None;
     }
 }

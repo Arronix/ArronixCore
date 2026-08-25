@@ -63,7 +63,14 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
     private readonly Queue<Guid> _recentOrder = new();
     private readonly Lock _recentGate = new();
 
-    /// <summary>Completed when everything owed to contributed sinks has been delivered or evicted.</summary>
+    /// <summary>
+    /// Completed when no ordinary event-delivery extension callback can begin and the pipeline has stopped
+    /// awaiting the ones it started. A call abandoned at <see cref="TelemetryOptions.SinkAttempt"/> may
+    /// still be running; it holds its own owner's lease until it returns, which is what keeps that
+    /// extension loaded underneath it. The final <c>FlushAsync</c> inside
+    /// <see cref="CloseDynamicDeliveryAsync"/> is the one deliberate exception to the barrier, and it can
+    /// overlap such a call.
+    /// </summary>
     private readonly TaskCompletionSource _dynamicQuiet = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     private long _dropped;
@@ -71,8 +78,8 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
     private long _duplicates;
     private long _delivered;
     private long _evictedOwed;
+    private long _writtenOff;
     private int _pendingDynamic;
-    private int _pumping;
     private int _dynamicClosed;
     private int _closed;
 
@@ -124,13 +131,27 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
             Evicted);
     }
 
-    /// <summary>Gets how many accepted events were evicted because delivery fell behind.</summary>
+    /// <summary>
+    /// Gets how many accepted events were never delivered: evicted because delivery fell behind, or still
+    /// unread when the pump stopped.
+    /// </summary>
     internal long Dropped => Interlocked.Read(ref _dropped);
 
-    /// <summary>Gets how many of those evictions were of events owed to a contributed sink.</summary>
+    /// <summary>Gets how many queue evictions were of events marked for extension processing.</summary>
     internal long EvictedOwed => Interlocked.Read(ref _evictedOwed);
 
-    /// <summary>Gets how many accepted events are still owed to contributed sinks.</summary>
+    /// <summary>
+    /// Gets how many events marked for extension processing received none of it: they reached the pump
+    /// after the cutoff, or were left unread when it stopped. The first kind still reaches the host's own
+    /// sinks; the second is counted in <see cref="Dropped"/> as well.
+    /// </summary>
+    internal long WrittenOff => Interlocked.Read(ref _writtenOff);
+
+    /// <summary>
+    /// Gets how many events hold a permit to run extension callbacks — an enricher, a filter or a sink.
+    /// The permit is given up once the pipeline stops waiting, which for an abandoned sink call is before
+    /// that call returns.
+    /// </summary>
     internal int PendingDynamic => Volatile.Read(ref _pendingDynamic);
 
     /// <summary>Gets how many events were refused because the pipeline had already been closed.</summary>
@@ -152,7 +173,6 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         if (envelope.DynamicDelivery)
         {
             Interlocked.Increment(ref _evictedOwed);
-            ReleaseDynamic();
         }
     }
 
@@ -174,8 +194,6 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
     /// </remarks>
     internal async Task RunAsync(CancellationToken cancellationToken)
     {
-        Interlocked.Exchange(ref _pumping, 1);
-
         try
         {
             await foreach (var envelope in _queue.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
@@ -189,22 +207,17 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         }
         finally
         {
-            Interlocked.Exchange(ref _pumping, 0);
-
-            // A stopped pump settles whatever it will now never deliver, so a cutoff waiting on those
-            // envelopes is not waiting on a reader that has gone.
-            while (_queue.Reader.TryRead(out var stranded))
+            // Whatever is left will never be delivered. Emptying it is what makes the counts true and what
+            // stops a stopped pipeline holding a backlog nobody will read.
+            while (_queue.Reader.TryRead(out var abandoned))
             {
                 Interlocked.Increment(ref _dropped);
 
-                if (stranded.DynamicDelivery)
+                if (abandoned.DynamicDelivery)
                 {
-                    Interlocked.Increment(ref _evictedOwed);
-                    ReleaseDynamic();
+                    Interlocked.Increment(ref _writtenOff);
                 }
             }
-
-            SettleDynamic();
         }
     }
 
@@ -236,45 +249,35 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
     /// <inheritdoc />
     public async Task CloseDynamicDeliveryAsync(CancellationToken cancellationToken = default)
     {
-        // One cutoff, taken under the same lock acceptance marks under, so every envelope is either owed to
-        // the contributed sinks and waited for below, or accepted after the cutoff and never offered to
-        // them. There is no third outcome for the pump to disagree about.
+        // The cutoff and the permit count are read under one lock, so an event's extension processing
+        // either began before the cutoff — and is waited for below — or is refused. An envelope still
+        // queued when this happens is written off and counted: it was owed, and the extension it was owed
+        // to is about to be taken away.
         lock (_recentGate)
         {
             if (Interlocked.Exchange(ref _dynamicClosed, 1) != 0)
             {
                 return;
             }
+
+            SettleDynamic();
         }
 
-        // Nothing is left to deliver these if the pump never ran, so they are written off here rather than
-        // waited for: the alternative is a shutdown that waits for a reader that does not exist.
-        if (Volatile.Read(ref _pumping) == 0)
-        {
-            while (_queue.Reader.TryRead(out var stranded))
-            {
-                Interlocked.Increment(ref _dropped);
-
-                if (stranded.DynamicDelivery)
-                {
-                    Interlocked.Increment(ref _evictedOwed);
-                    ReleaseDynamic();
-                }
-            }
-        }
-
-        SettleDynamic();
-
-        // Awaited without a deadline, and that is the honest shape. Returning while an envelope is still
-        // owed to a contributed sink would let the caller unpublish the extension the pump is about to hand
-        // that event to. The stated consequence is that a trusted in-process sink which never returns holds
-        // shutdown here — the same trust the capability already grants it.
+        // A queued backlog does not hold this: an event that has not started its extension callbacks never
+        // will. What does hold it is an event already inside them. An enricher or filter is synchronous,
+        // cannot be abandoned, and holds this for as long as it runs; a sink await is bounded by
+        // TelemetryOptions.SinkAttempt, after which the pipeline stops waiting - the call itself may be
+        // running still, holding its own owner's lease until it returns. Then the contributed sinks are
+        // flushed, which is the last call they get, and which can overlap such a call.
         await _dynamicQuiet.Task.ConfigureAwait(false);
 
         await FlushContributedAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Records that one envelope's debt to the contributed sinks is settled.</summary>
+    /// <summary>
+    /// Completes the barrier once no extension callback may begin and none the pipeline is still awaiting
+    /// remains.
+    /// </summary>
     private void SettleDynamic()
     {
         if (Volatile.Read(ref _dynamicClosed) != 0 && Volatile.Read(ref _pendingDynamic) == 0)
@@ -283,10 +286,30 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         }
     }
 
+    /// <summary>Takes a permit to run this event's extension callbacks, or reports that they have closed.</summary>
+    private bool TryBeginDynamic()
+    {
+        lock (_recentGate)
+        {
+            if (Volatile.Read(ref _dynamicClosed) != 0)
+            {
+                return false;
+            }
+
+            Interlocked.Increment(ref _pendingDynamic);
+            return true;
+        }
+    }
+
+    /// <summary>Gives up this event's permit, once the pipeline has stopped waiting on its callbacks.</summary>
     private void ReleaseDynamic()
     {
         Interlocked.Decrement(ref _pendingDynamic);
-        SettleDynamic();
+
+        lock (_recentGate)
+        {
+            SettleDynamic();
+        }
     }
 
     /// <summary>
@@ -301,15 +324,38 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
             return;
         }
 
-        var contributed = _contributions.Acquire<ITelemetrySink>();
+        foreach (var owner in _contributions.ContributorsOf<ITelemetrySink>())
+        {
+            await EachSinkAsync(
+                    owner,
+                    (sink, hold, token) => AttemptAsync(sink, "flush", sink.FlushAsync, hold, token),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Runs one operation against each sink one extension contributed, holding that extension's lease and
+    /// nothing else.
+    /// </summary>
+    /// <remarks>
+    /// The lease is released when the loop ends, except that an abandoned call keeps it: the extension's
+    /// code is still running, and unloading it would be the one outcome worse than a slow sink. That hold
+    /// is the abandoning extension's alone.
+    /// </remarks>
+    private async Task EachSinkAsync(
+        PluginId owner,
+        Func<ITelemetrySink, LeaseHold, CancellationToken, Task> operation,
+        CancellationToken cancellationToken)
+    {
+        var contributed = _contributions!.AcquireOwned<ITelemetrySink>(owner);
         var hold = new LeaseHold(contributed);
 
         try
         {
             foreach (var contribution in contributed.Contributions)
             {
-                await AttemptAsync(contribution.Value, "flush", contribution.Value.FlushAsync, hold, cancellationToken)
-                    .ConfigureAwait(false);
+                await operation(contribution.Value, hold, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
@@ -356,25 +402,17 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
                 return;
             }
 
-            // The cutoff and the debt are taken together. An envelope marked for dynamic delivery is owed
-            // to the contributed sinks, and the close below waits for exactly these to be settled.
-            lock (_recentGate)
+            // Marked while extension processing is open. The mark is what the envelope is owed; whether any
+            // extension callback actually runs for it is decided again at delivery, because the cutoff may
+            // have happened while it waited in the queue.
+            if (Volatile.Read(ref _dynamicClosed) == 0)
             {
-                if (Volatile.Read(ref _dynamicClosed) == 0)
-                {
-                    envelope = envelope with { DynamicDelivery = true };
-                    Interlocked.Increment(ref _pendingDynamic);
-                }
+                envelope = envelope with { DynamicDelivery = true };
             }
 
             if (!_queue.Writer.TryWrite(envelope))
             {
                 Interlocked.Increment(ref _refused);
-
-                if (envelope.DynamicDelivery)
-                {
-                    ReleaseDynamic();
-                }
             }
         }
         catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
@@ -432,16 +470,28 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         Justification = "An exception's own members are third-party code when the exception is an extension's.")]
     private ExceptionSummary? Rendered(TelemetryEvent telemetryEvent)
     {
+        if (telemetryEvent.ExceptionSummary is { } summary)
+        {
+            return summary;
+        }
+
+        if (telemetryEvent.Exception is not { } failure)
+        {
+            return null;
+        }
+
         try
         {
-            return telemetryEvent.ExceptionSummary
-                ?? (telemetryEvent.Exception is { } failure ? ExceptionSummary.From(failure) : null);
+            return ExceptionSummary.From(failure);
         }
         catch (Exception unreadable) when (!ProcessFailure.IsFatal(unreadable))
         {
+            // The failure's own type, which is what ExceptionSummary promises to name. A message getter
+            // that objects says nothing about what was thrown, and naming its objection instead would put
+            // the wrong type in a support bundle. Reading a type cannot throw.
             return new ExceptionSummary(
-                unreadable.GetType().FullName ?? unreadable.GetType().Name,
-                "the failure would not describe itself",
+                failure.GetType().FullName ?? failure.GetType().Name,
+                $"the failure would not describe itself ({unreadable.GetType().Name})",
                 StackTrace: null);
         }
     }
@@ -535,11 +585,22 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
 
     private async Task DeliverAsync(TelemetryEnvelope envelope, CancellationToken cancellationToken)
     {
+        // The permit is taken before any extension callback and held across all of them: an enricher, a
+        // filter and a sink are equally this extension's code, and the cutoff means none of them begins.
+        var contributing = envelope.DynamicDelivery && _contributions is not null && TryBeginDynamic();
+
+        if (envelope.DynamicDelivery && !contributing)
+        {
+            // Owed, and written off: delivery to this extension's contributions closed while the event
+            // waited in the queue, and the extension is being taken away.
+            Interlocked.Increment(ref _writtenOff);
+        }
+
         try
         {
-            var enriched = Enriched(envelope);
+            var enriched = Enriched(envelope, contributing);
 
-            if (!Allowed(enriched))
+            if (!Allowed(enriched, contributing))
             {
                 return;
             }
@@ -554,24 +615,18 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
                 await SendAsync(sink, enriched.Event, hold: null, cancellationToken).ConfigureAwait(false);
             }
 
-            if (_contributions is not null && envelope.DynamicDelivery)
+            if (contributing)
             {
-                var contributed = _contributions.Acquire<ITelemetrySink>();
-                var hold = new LeaseHold(contributed);
-
-                try
+                // One lease per owner, in the order the source names them. A composite lease over every
+                // sink would mean one extension that ignores its token holds every other extension's
+                // package open as well, and none of them could then be torn down.
+                foreach (var owner in _contributions!.ContributorsOf<ITelemetrySink>())
                 {
-                    foreach (var contribution in contributed.Contributions)
-                    {
-                        await SendAsync(contribution.Value, enriched.Event, hold, cancellationToken)
-                            .ConfigureAwait(false);
-                    }
-                }
-                finally
-                {
-                    // Released here, but the lease itself outlives this call whenever a sink was abandoned
-                    // mid-send: the code is still running, and unloading it would be the one worse outcome.
-                    hold.Release();
+                    await EachSinkAsync(
+                            owner,
+                            (sink, hold, token) => SendAsync(sink, enriched.Event, hold, token),
+                            cancellationToken)
+                        .ConfigureAwait(false);
                 }
             }
 
@@ -579,7 +634,7 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         }
         finally
         {
-            if (envelope.DynamicDelivery)
+            if (contributing)
             {
                 ReleaseDynamic();
             }
@@ -587,7 +642,7 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
     }
 
     /// <summary>Runs the host's enrichers, then the raising extension's own.</summary>
-    private TelemetryEnvelope Enriched(TelemetryEnvelope envelope)
+    private TelemetryEnvelope Enriched(TelemetryEnvelope envelope, bool contributing)
     {
         var enriched = envelope;
 
@@ -598,12 +653,14 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
 
         // After the cutoff a cleanup event still goes through the host's enrichers and reaches the host's
         // sinks. It reaches no extension's contribution of any kind: those are being taken away.
-        if (_contributions is null || !envelope.DynamicDelivery || envelope.Origin is not { } raised)
+        if (!contributing || envelope.Origin is not { } raised)
         {
             return enriched;
         }
 
-        using var contributed = _contributions.AcquireOwned<ITelemetryEnricher>(raised);
+        var contributions = _contributions!;
+
+        using var contributed = contributions.AcquireOwned<ITelemetryEnricher>(raised);
 
         foreach (var contribution in contributed.Contributions)
         {
@@ -638,7 +695,7 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
     }
 
     /// <summary>Asks the host's filters, then the raising extension's own within what it may suppress.</summary>
-    private bool Allowed(TelemetryEnvelope envelope)
+    private bool Allowed(TelemetryEnvelope envelope, bool contributing)
     {
         foreach (var filter in _filters)
         {
@@ -650,15 +707,14 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
 
         // An extension may quiet its own noise. It may not quiet the host, another extension, or anything
         // serious enough that an operator would be misled by its absence.
-        if (_contributions is null
-            || !envelope.DynamicDelivery
+        if (!contributing
             || envelope.Origin is not { } raised
             || envelope.Severity >= TelemetrySeverity.Error)
         {
             return true;
         }
 
-        using var contributed = _contributions.AcquireOwned<ITelemetryEventFilter>(raised);
+        using var contributed = _contributions!.AcquireOwned<ITelemetryEventFilter>(raised);
 
         return contributed.Contributions.All(one => Asked(one.Value, envelope.Event));
     }
@@ -943,9 +999,4 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         Message = "Telemetry sink '{Sink}' did not finish its {What} within {Budget}; the wait was abandoned and its package stays held until the call returns.")]
     private static partial void SinkAbandoned(ILogger logger, string sink, string what, TimeSpan budget);
 
-    [LoggerMessage(
-        EventId = 9406,
-        Level = LogLevel.Warning,
-        Message = "Telemetry delivery to extension sinks did not settle within {Budget}; {Owed} event(s) were still owed.")]
-    private static partial void DynamicCutoffAbandoned(ILogger logger, TimeSpan budget, int owed);
 }

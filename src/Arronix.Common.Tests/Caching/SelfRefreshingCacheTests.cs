@@ -16,6 +16,8 @@ namespace Arronix.Common.Tests.Caching;
 [TestFixture]
 public class SelfRefreshingCacheTests
 {
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(20);
+
     private sealed class Owner;
 
     private FakeTimeProvider _clock = null!;
@@ -32,6 +34,114 @@ public class SelfRefreshingCacheTests
 
     [TearDown]
     public void TearDown() => _provider.Dispose();
+
+    [Test]
+    public async Task ACallerThatJoinedAFetchIsNotWokenBeforeItsContentsArePublishedAsync()
+    {
+        var publishing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var proceed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fetches = 0;
+
+        var cache = Bulk(() => Interlocked.Increment(ref fetches));
+
+        // Held open between the fetch producing contents and those contents becoming the cache's. A caller
+        // woken inside that window reads what the fetch was replacing - here, on contents never loaded,
+        // nothing at all.
+        cache.OnFetched = () =>
+        {
+            publishing.TrySetResult();
+            proceed.Task.GetAwaiter().GetResult();
+        };
+
+        var owner = Task.Run(() => cache.RefreshAsync());
+        var joinedRefresh = Task.CompletedTask;
+        var joinedRead = Task.FromResult("(never started)");
+        var wokenEarly = false;
+
+        try
+        {
+            await publishing.Task.WaitAsync(Patience).ConfigureAwait(false);
+
+            // Both join the flight, which cannot be retired while publication is held.
+            joinedRefresh = Task.Run(() => cache.RefreshAsync());
+            joinedRead = Task.Run(() => cache.GetAsync("k"));
+
+            var woken = await Task.WhenAny(joinedRefresh, joinedRead, Task.Delay(TimeSpan.FromMilliseconds(250)))
+                .ConfigureAwait(false);
+
+            wokenEarly = ReferenceEquals(woken, joinedRefresh) || ReferenceEquals(woken, joinedRead);
+        }
+        finally
+        {
+            // Released whatever was found. A gate a failed assertion left shut would strand the fetch and
+            // hang the provider's disposal, and a proof has to report red rather than have to be killed.
+            proceed.TrySetResult();
+        }
+
+        var ownerFailure = await SettledAsync(owner).ConfigureAwait(false);
+        var refreshFailure = await SettledAsync(joinedRefresh).ConfigureAwait(false);
+        var readFailure = await SettledAsync(joinedRead).ConfigureAwait(false);
+        var read = readFailure is null ? joinedRead.Result : null;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                wokenEarly,
+                Is.False,
+                "a caller woken by a fetch it joined goes straight on to read the contents");
+            Assert.That(ownerFailure, Is.Null);
+            Assert.That(refreshFailure, Is.Null);
+            Assert.That(readFailure, Is.Null, "the contents are the cache's before anyone is woken");
+            Assert.That(read, Is.EqualTo("v"), "and what it reads is what the fetch it joined produced");
+            Assert.That(fetches, Is.EqualTo(1), "which is that one fetch, not one of its own");
+        });
+    }
+
+    [Test]
+    public async Task ACallerHeldAtTheStalenessDecisionDoesNotFetchWhatAnotherJustMadeFreshAsync()
+    {
+        var deciding = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var published = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fetches = 0;
+
+        var cache = Bulk(() => Interlocked.Increment(ref fetches), TimeSpan.FromMinutes(10));
+
+        cache.OnDeciding = () =>
+        {
+            // One caller only: the refresh below must not wait for itself.
+            cache.OnDeciding = null;
+            deciding.TrySetResult();
+            published.Task.GetAwaiter().GetResult();
+        };
+
+        // This caller reaches the decision on contents that have never been loaded. Everything below
+        // happens before it makes that decision.
+        var held = Task.Run(() => cache.RefreshIfExpiredAsync());
+        Exception? refreshFailure = null;
+
+        try
+        {
+            await deciding.Task.WaitAsync(Patience).ConfigureAwait(false);
+            refreshFailure = await SettledAsync(cache.RefreshAsync()).ConfigureAwait(false);
+        }
+        finally
+        {
+            published.TrySetResult();
+        }
+
+        var heldFailure = await SettledAsync(held).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refreshFailure, Is.Null);
+            Assert.That(heldFailure, Is.Null);
+            Assert.That(
+                fetches,
+                Is.EqualTo(1),
+                "the staleness decision and the joining of a flight are one step, so contents made fresh "
+                + "in between are seen rather than fetched again");
+        });
+    }
 
     [Test]
     public async Task ConcurrentRefreshesObserveOneFetchAsync()
@@ -273,6 +383,38 @@ public class SelfRefreshingCacheTests
 
         Assert.That(cache.GetAsync("k").GetAwaiter().GetResult(), Is.EqualTo("v"), "a cache nobody can fill is not a cache");
     }
+
+    /// <summary>Waits for a caller to finish and reports how, rather than throwing here.</summary>
+    /// <remarks>
+    /// Every caller is observed even when an assertion has already failed, so a red proof leaves nothing
+    /// running against a provider that is about to be disposed.
+    /// </remarks>
+#pragma warning disable CA1031
+    private static async Task<Exception?> SettledAsync(Task caller)
+    {
+        try
+        {
+            await caller.WaitAsync(Patience).ConfigureAwait(false);
+            return null;
+        }
+        catch (Exception failure)
+        {
+            return failure;
+        }
+    }
+#pragma warning restore CA1031
+
+    /// <summary>The concrete cache, which is what the deterministic seams are declared on.</summary>
+    private SelfRefreshingCache<string> Bulk(Action onFetch, TimeSpan? lifetime = null)
+        => (SelfRefreshingCache<string>)_provider.GetSelfRefreshingCache<Owner, string>(
+            "bulk",
+            _ =>
+            {
+                onFetch();
+                return Task.FromResult<IReadOnlyDictionary<string, string>>(
+                    new Dictionary<string, string>(StringComparer.Ordinal) { ["k"] = "v" });
+            },
+            lifetime);
 
     private ISelfRefreshingCache<string> Cache(TimeSpan lifetime, Action onFetch)
         => _provider.GetSelfRefreshingCache<Owner, string>(

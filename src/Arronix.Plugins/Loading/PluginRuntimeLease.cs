@@ -160,7 +160,7 @@ internal sealed class PluginRuntimeLease
 #pragma warning restore CA1031
             {
                 failures.Add(
-                    $"{instance.GetType().FullName ?? instance.GetType().Name}: {failure.Message}");
+                    $"{instance.GetType().FullName ?? instance.GetType().Name}: {Describe(failure)}");
             }
         }
 
@@ -178,7 +178,7 @@ internal sealed class PluginRuntimeLease
             catch (Exception failure) when (LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
             {
-                failures.Add($"cache namespace '{_caches.Name}': {failure.Message}");
+                failures.Add($"cache namespace '{_caches.Name}': {Describe(failure)}");
             }
         }
 
@@ -212,7 +212,7 @@ internal sealed class PluginRuntimeLease
         catch (Exception failure) when (LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
         {
-            failures.Add($"load context: {failure.Message}");
+            failures.Add($"load context: {Describe(failure)}");
             return failures.AsReadOnly();
         }
 
@@ -220,4 +220,27 @@ internal sealed class PluginRuntimeLease
         Interlocked.Exchange(ref _context, null);
         return failures.AsReadOnly();
     }
+
+    /// <summary>Names a failure raised by a package, and says what it said, without trusting it to answer.</summary>
+    /// <remarks>
+    /// <see cref="Exception.Message"/> is a member a package may override, so reading it is calling into
+    /// that package once more. Here that call is inside the catch that contains the disposer it came from,
+    /// and an escape would abandon this extension's remaining objects and the packages withdrawn after it.
+    /// The type is read from the object and cannot throw; a process-fatal condition still propagates.
+    /// </remarks>
+#pragma warning disable CA1031
+    private static string Describe(Exception failure)
+    {
+        var named = failure.GetType().FullName ?? failure.GetType().Name;
+
+        try
+        {
+            return $"{named}: {failure.Message}";
+        }
+        catch (Exception unreadable) when (LoadFailurePolicy.IsContainablePackageFailure(unreadable))
+        {
+            return $"{named}: the failure would not describe itself ({unreadable.GetType().Name}).";
+        }
+    }
+#pragma warning restore CA1031
 }

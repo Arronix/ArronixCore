@@ -1,5 +1,7 @@
+using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Telemetry;
+using Arronix.Common.Lifetimes;
 using Arronix.Common.Telemetry;
 using Arronix.Plugins.Registry;
 
@@ -133,13 +135,40 @@ public sealed class PluginTelemetryEmitter : ITelemetryEmitter
         });
     }
 
-    /// <summary>Replaces a possibly extension-owned failure with three host-owned strings.</summary>
+    /// <summary>
+    /// Replaces a possibly extension-owned failure with three host-owned strings.
+    /// </summary>
+    /// <remarks>
+    /// Reading the failure is calling into the extension: its message and its stack trace are properties it
+    /// may have overridden. This runs on the teardown path, where an escape would turn cleanup telemetry
+    /// into a failed release and retain the package, so a failure that will not describe itself is
+    /// described instead.
+    /// </remarks>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "A failure's own members are third-party code when the failure is an extension's; a getter that throws must not escape an emit.")]
     private static TelemetryEvent Rendered(TelemetryEvent telemetryEvent)
-        => telemetryEvent.Exception is not { } failure
-            ? telemetryEvent
-            : telemetryEvent with
-            {
-                Exception = null,
-                ExceptionSummary = telemetryEvent.ExceptionSummary ?? ExceptionSummary.From(failure),
-            };
+    {
+        if (telemetryEvent.Exception is not { } failure)
+        {
+            return telemetryEvent;
+        }
+
+        ExceptionSummary summary;
+
+        try
+        {
+            summary = telemetryEvent.ExceptionSummary ?? ExceptionSummary.From(failure);
+        }
+        catch (Exception unreadable) when (!ProcessFailure.IsFatal(unreadable))
+        {
+            summary = new ExceptionSummary(
+                failure.GetType().FullName ?? failure.GetType().Name,
+                $"the failure would not describe itself ({unreadable.GetType().Name})",
+                StackTrace: null);
+        }
+
+        return telemetryEvent with { Exception = null, ExceptionSummary = summary };
+    }
 }

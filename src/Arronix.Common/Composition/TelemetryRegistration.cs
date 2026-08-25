@@ -26,8 +26,9 @@ internal static class TelemetryRegistration
     /// <returns>The same collection, for chaining.</returns>
     /// <remarks>
     /// The engine is compiled once, from every registered <see cref="IRedactionRuleProvider"/>, and a rule
-    /// that will not compile fails composition rather than silently stopping. Extensions add to it as they
-    /// are admitted; nothing ever removes from it.
+    /// that will not compile fails composition rather than silently stopping. An extension's rules are
+    /// added when its attempt publishes; they are reversible until that attempt is confirmed, and
+    /// permanent afterwards.
     /// </remarks>
     internal static IServiceCollection AddTelemetry(this IServiceCollection services, IConfiguration configuration)
     {

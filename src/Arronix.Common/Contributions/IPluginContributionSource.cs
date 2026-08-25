@@ -71,15 +71,14 @@ internal interface IPluginContributionSource
     IContributionLease<EventHandlerContribution> AcquireEventHandlers(Type eventType);
 
     /// <summary>
-    /// Leases the extension that defines a type, so an object of it can be held past the current call.
+    /// Names the active extensions contributing a contract, in dispatch order. Nothing is leased.
     /// </summary>
-    /// <param name="type">The type whose owner is wanted.</param>
-    /// <param name="owner">The extension that owns it, when one does.</param>
-    /// <param name="lease">The lease, when an active extension owns the type.</param>
-    /// <returns><see langword="false"/> when no active extension owns it.</returns>
+    /// <typeparam name="TContract">The contributed contract.</typeparam>
+    /// <returns>The extensions, in the order their contributions are dispatched.</returns>
     /// <remarks>
-    /// The telemetry queue uses this: a queued event can carry an exception whose type came from an
-    /// extension, and holding it past teardown would pin a context the host has declared gone.
+    /// For a caller that leases one extension at a time. A caller that must hold one package open should
+    /// not have to hold every package open to find it.
     /// </remarks>
-    bool TryAcquireOwner(Type type, out PluginId owner, out IDisposable? lease);
+    IReadOnlyList<PluginId> ContributorsOf<TContract>()
+        where TContract : class;
 }

@@ -62,6 +62,55 @@ public class HostingFactsTests
     }
 
     [Test]
+    public void AContainerdCgroupIsContainerizedWithoutClaimingARuntimeEither()
+    {
+        var facts = PlatformFactsStub.Linux()
+            .WithFile("/proc/1/cgroup", "0::/system.slice/containerd.service/abc");
+
+        var operatingSystem = new OperatingSystemInfo(NoProbes, facts);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(operatingSystem.IsContainerized, Is.True);
+            Assert.That(operatingSystem.IsDocker, Is.False, "containerd does not say who asked it");
+            Assert.That(operatingSystem.IsPodman, Is.False);
+        });
+    }
+
+    /// <remarks>A marker that names its runtime is read as naming it, not merely as saying "a container".</remarks>
+    [Test]
+    public void ADockerCgroupIsReportedAsDocker()
+    {
+        var facts = PlatformFactsStub.Linux()
+            .WithFile("/proc/1/cgroup", "0::/docker/9f2c1b");
+
+        var operatingSystem = new OperatingSystemInfo(NoProbes, facts);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(operatingSystem.IsDocker, Is.True);
+            Assert.That(operatingSystem.IsPodman, Is.False);
+            Assert.That(operatingSystem.IsContainerized, Is.True);
+        });
+    }
+
+    [Test]
+    public void ALibpodCgroupIsReportedAsPodmanEvenAlongsideADockerPath()
+    {
+        var facts = PlatformFactsStub.Linux()
+            .WithFile("/proc/1/cgroup", "0::/machine.slice/libpod-9f2c1b.scope/docker");
+
+        var operatingSystem = new OperatingSystemInfo(NoProbes, facts);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(operatingSystem.IsPodman, Is.True, "Podman takes precedence wherever both appear");
+            Assert.That(operatingSystem.IsDocker, Is.False);
+            Assert.That(operatingSystem.IsContainerized, Is.True);
+        });
+    }
+
+    [Test]
     public void AnOrdinaryHostIsNotContainerized()
     {
         var operatingSystem = new OperatingSystemInfo(NoProbes, PlatformFactsStub.Linux());

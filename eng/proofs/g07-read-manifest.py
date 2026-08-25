@@ -48,6 +48,8 @@ def main(manifest_path: str, plugins_path: str) -> int:
 
     values = {
         "package_order": ",".join(order),
+        "video_closure": ",".join(packages["arronix.format.video"]["closure"]),
+        "movies_closure": ",".join(packages["movies"]["closure"]),
         "video_hash": video["contentHash"],
         "video_file": video["fileName"],
         "video_identity": video["identity"],

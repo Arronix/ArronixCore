@@ -24,6 +24,16 @@ internal sealed class StubContributions : IPluginContributionSource
 
     internal int SinkLeasesReleased { get; private set; }
 
+    private readonly Dictionary<PluginId, int> _releasedByOwner = [];
+
+    internal int ReleasedFor(PluginId owner)
+    {
+        lock (_releasedByOwner)
+        {
+            return _releasedByOwner.TryGetValue(owner, out var count) ? count : 0;
+        }
+    }
+
     internal StubContributions Add(PluginId owner, object contribution)
     {
         if (!_byOwner.TryGetValue(owner, out var owned))
@@ -50,22 +60,23 @@ internal sealed class StubContributions : IPluginContributionSource
     {
         OwnedRequests.Add(owner);
 
-        return Lease<TContract>(_byOwner.TryGetValue(owner, out var owned)
-            ? owned.OfType<TContract>().Select(value => new PluginContribution<TContract>(owner, 0, value))
-            : []);
+        return Lease<TContract>(
+            _byOwner.TryGetValue(owner, out var owned)
+                ? owned.OfType<TContract>().Select(value => new PluginContribution<TContract>(owner, 0, value))
+                : [],
+            owner);
     }
 
     public IContributionLease<EventHandlerContribution> AcquireEventHandlers(Type eventType)
         => throw new NotSupportedException();
 
-    public bool TryAcquireOwner(Type type, out PluginId owner, out IDisposable? lease)
-    {
-        owner = default;
-        lease = null;
-        return false;
-    }
+    public IReadOnlyList<PluginId> ContributorsOf<TContract>()
+        where TContract : class
+        => [.. _byOwner.Where(pair => pair.Value.OfType<TContract>().Any()).Select(pair => pair.Key)];
 
-    private ContributionLease<TContract> Lease<TContract>(IEnumerable<PluginContribution<TContract>> contributions)
+    private ContributionLease<TContract> Lease<TContract>(
+        IEnumerable<PluginContribution<TContract>> contributions,
+        PluginId? owner = null)
         where TContract : class
         => new([.. contributions], () =>
         {
@@ -74,6 +85,14 @@ internal sealed class StubContributions : IPluginContributionSource
             if (typeof(TContract) == typeof(ITelemetrySink))
             {
                 SinkLeasesReleased++;
+            }
+
+            if (owner is { } released)
+            {
+                lock (_releasedByOwner)
+                {
+                    _releasedByOwner[released] = (_releasedByOwner.TryGetValue(released, out var count) ? count : 0) + 1;
+                }
             }
         });
 

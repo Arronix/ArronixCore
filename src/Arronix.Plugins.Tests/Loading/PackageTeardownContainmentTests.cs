@@ -187,6 +187,37 @@ internal sealed class PackageTeardownContainmentTests
         lease.LoadContext.Should().NotBeNull("an object the host built for this extension may still be live");
     }
 
+    /// <remarks>
+    /// Reading a failure's message is calling into the package once more, from inside the catch that was
+    /// containing it. A message getter that objects must not abandon the objects this extension still owns,
+    /// nor the packages withdrawn after it, and the note must still name the failure that was raised.
+    /// </remarks>
+    [Test]
+    public async Task AFailureThatWillNotDescribeItselfDoesNotAbortTheRestOfTeardown()
+    {
+        var order = new List<string>();
+        var ledger = new PluginRegistrationLedger(Package);
+        var later = new Recording("later", order);
+
+        // Reverse activation order: the hostile one is disposed first, and the other has to survive it.
+        ledger.RecordHostActivation(later);
+        ledger.RecordHostActivation(new ThrowingProvider(new UnreadableFixtureException()));
+
+        var lease = new PluginRuntimeLease(Context(), ledger, module: null);
+
+        var failures = await lease.DisposeAsync();
+
+        using var assertions = new AssertionScope();
+        failures.Should().HaveCount(2);
+        failures[0].Should()
+            .Contain(nameof(ThrowingProvider))
+            .And.Contain(typeof(UnreadableFixtureException).FullName)
+            .And.Contain("would not describe itself");
+        failures[1].Should().Contain("load context").And.Contain("retained");
+        later.DisposeCount.Should().Be(1, "an earlier disposer's failure does not end the teardown");
+        lease.LoadContext.Should().NotBeNull("an object this extension owns could not be released");
+    }
+
     /// <remarks>The containment boundary is the same one: a process-fatal condition is not a cleanup note.</remarks>
     [Test]
     public void AProcessFatalHostActivatedDisposerFailurePropagates()
@@ -245,6 +276,12 @@ internal sealed class PackageTeardownContainmentTests
 
     /// <summary>A failure type no policy in the platform names.</summary>
     private sealed class TeardownFixtureException(string message) : Exception(message);
+
+    /// <summary>A failure that will not say what went wrong, which is a package's prerogative too.</summary>
+    private sealed class UnreadableFixtureException : Exception
+    {
+        public override string Message => throw new TeardownFixtureException("nor will it say why");
+    }
 
     /// <summary>A module whose disposer raises whatever the fixture chose.</summary>
     private sealed class ThrowingModule(Exception failure) : IPluginModule, IDisposable

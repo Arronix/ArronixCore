@@ -546,12 +546,8 @@ public class HostEventPublisherTests
                 [.. handlers.Where(handler => handler.Value.EventType == eventType)],
                 () => Released++);
 
-        public bool TryAcquireOwner(Type type, out PluginId owner, out IDisposable? lease)
-        {
-            owner = default;
-            lease = null;
-            return false;
-        }
+        public IReadOnlyList<PluginId> ContributorsOf<TContract>()
+            where TContract : class => [];
 
         private sealed class Lease(
             IReadOnlyList<PluginContribution<EventHandlerContribution>> contributions,

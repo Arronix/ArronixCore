@@ -1,5 +1,4 @@
 using System.Linq;
-using System.Runtime.Loader;
 using Arronix.Abstractions.Plugins;
 using Arronix.Common.Contributions;
 using Arronix.Plugins.Loading;
@@ -87,37 +86,21 @@ internal sealed class PluginContributionSource : IPluginContributionSource
     }
 
     /// <inheritdoc />
-    public bool TryAcquireOwner(Type type, out PluginId owner, out IDisposable? lease)
+    public IReadOnlyList<PluginId> ContributorsOf<TContract>()
+        where TContract : class
     {
-        ArgumentNullException.ThrowIfNull(type);
-
-        var context = AssemblyLoadContext.GetLoadContext(type.Assembly);
-
-        if (context is null || ReferenceEquals(context, AssemblyLoadContext.Default))
-        {
-            owner = default;
-            lease = null;
-            return false;
-        }
-
         using (_registry.PublicationGate.EnterRead())
         {
-            foreach (var result in _registry.Active)
-            {
-                if (!ReferenceEquals(result.LoadContext, context) || result.RuntimeLease is not { } runtime)
-                {
-                    continue;
-                }
-
-                owner = RequireOwner(result);
-                lease = RequireLease(result, runtime);
-                return true;
-            }
+            return
+            [
+                .. _registry.Active
+                    .Where(result => result.Id is not null
+                        && result.RuntimeLease is not null
+                        && result.Ledger is { } ledger
+                        && ledger.Entries.Any(entry => entry.Contract == typeof(TContract)))
+                    .Select(result => result.Id!.Value),
+            ];
         }
-
-        owner = default;
-        lease = null;
-        return false;
     }
 
     /// <summary>

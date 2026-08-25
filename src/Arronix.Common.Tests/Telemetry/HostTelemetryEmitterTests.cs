@@ -189,6 +189,30 @@ public class HostTelemetryEmitterTests
     }
 
     [Test]
+    public async Task AFailureThatWillNotDescribeItselfIsStillNamedByItsOwnTypeAsync()
+    {
+        var sink = new RecordingSink();
+
+        await using var pipeline = Pipeline(sinks: [sink]);
+
+        pipeline.Emitter.Emit(Event("it failed") with { Exception = new Unreadable() });
+
+        await pipeline.DrainAsync().ConfigureAwait(false);
+
+        var summary = sink.Received.Single().ExceptionSummary!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                summary.TypeName,
+                Is.EqualTo(typeof(Unreadable).FullName),
+                "a getter that objects to being read says nothing about what was thrown");
+            Assert.That(summary.Message, Does.Contain("would not describe itself"));
+            Assert.That(sink.Received.Single().Exception, Is.Null);
+        });
+    }
+
+    [Test]
     public async Task AcceptingRunsNoContributionOnTheCallersThreadAsync()
     {
         using var entered = new ManualResetEventSlim();
@@ -365,6 +389,12 @@ public class HostTelemetryEmitterTests
         await using var pipeline = Pipeline(sinks: [host], contributions: contributions);
 
         pipeline.Emitter.Emit(Event("before the cutoff"), Movies);
+
+        Assert.That(
+            await Waited(() => pipeline.Emitter.Delivered == 1).ConfigureAwait(false),
+            Is.True,
+            "the first event is delivered before the cutoff, which is what the cutoff is then closing over");
+
         await pipeline.Emitter.CloseDynamicDeliveryAsync().ConfigureAwait(false);
 
         pipeline.Emitter.Emit(Event("cleanup, after the cutoff"), Movies);
@@ -373,17 +403,17 @@ public class HostTelemetryEmitterTests
         Assert.Multiple(() =>
         {
             Assert.That(
-                contributed.Received.Select(one => one.Message),
+                contributed.Received.Select(one => one.Message).ToArray(),
                 Is.EqualTo(new[] {"before the cutoff"}),
-                "what was accepted before the cutoff is owed to a contributed sink; what comes after is not");
+                "an extension's sink receives what reached it before the cutoff and nothing after");
             Assert.That(contributed.Flushes, Is.EqualTo(1), "and it is flushed while it can still be leased");
             Assert.That(
-                host.Received.Select(one => one.Message),
+                host.Received.Select(one => one.Message).ToArray(),
                 Is.EqualTo(new[] {"before the cutoff", "cleanup, after the cutoff"}),
                 "the host's own sinks go on receiving, which is what makes cleanup telemetry worth raising");
-            Assert.That(enricher.Seen, Has.Count.EqualTo(1), "no contribution of any kind after the cutoff");
+            Assert.That(enricher.Seen, Has.Count.EqualTo(1), "no extension callback of any kind after the cutoff");
             Assert.That(filter.Seen, Has.Count.EqualTo(1));
-            Assert.That(pipeline.Emitter.PendingDynamic, Is.Zero);
+            Assert.That(pipeline.Emitter.PendingDynamic, Is.Zero, "nothing is inside an extension callback");
         });
     }
 
@@ -401,8 +431,11 @@ public class HostTelemetryEmitterTests
         Assert.Multiple(() =>
         {
             Assert.That(emitter.Dropped, Is.EqualTo(4));
-            Assert.That(emitter.EvictedOwed, Is.EqualTo(4), "an evicted event's debt is written off, not left owed");
-            Assert.That(emitter.PendingDynamic, Is.EqualTo(2), "the two still queued are still owed");
+            Assert.That(
+                emitter.EvictedOwed,
+                Is.EqualTo(4),
+                "an evicted event was owed to a contributed sink and is counted as never reaching one");
+            Assert.That(emitter.PendingDynamic, Is.Zero, "nothing is inside a contributed sink");
         });
     }
 
@@ -435,6 +468,117 @@ public class HostTelemetryEmitterTests
             Is.True,
             "and the lease is given up once the call it abandoned actually returns");
 
+        await pipeline.DrainAsync().ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task AQueuedEventProcessedAfterTheCutoffReachesNoExtensionCallbackAsync()
+    {
+        var host = new RecordingSink("host");
+        var contributed = new RecordingSink("contributed");
+        var enricher = new RecordingEnricher();
+        var filter = new RecordingFilter();
+        var hostEnricher = new RecordingEnricher();
+
+        var contributions = new StubContributions()
+            .Add(Movies, contributed)
+            .Add(Movies, enricher)
+            .Add(Movies, filter);
+
+        // No pump: the event is accepted before the cutoff and is still in the queue when it closes.
+        var emitter = new HostTelemetryEmitter(
+            [hostEnricher],
+            [],
+            [host],
+            RedactionEngine.Empty,
+            TimeProvider.System,
+            NullLogger<HostTelemetryEmitter>.Instance,
+            Options.Create(new TelemetryOptions()),
+            contributions);
+
+        emitter.Emit(Event("queued before the cutoff"), Movies);
+        await emitter.CloseDynamicDeliveryAsync().ConfigureAwait(false);
+
+        var pump = emitter.RunAsync(CancellationToken.None);
+        await emitter.DrainAsync().ConfigureAwait(false);
+        await pump.ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(hostEnricher.Seen, Has.Count.EqualTo(1), "the host's own contributions still run");
+            Assert.That(host.Received, Has.Count.EqualTo(1), "and the host's own sinks still receive it");
+            Assert.That(enricher.Seen, Is.Empty, "no extension enricher begins after the cutoff");
+            Assert.That(filter.Seen, Is.Empty, "no extension filter begins after the cutoff");
+            Assert.That(contributed.Received, Is.Empty, "no extension sink begins after the cutoff");
+            Assert.That(emitter.WrittenOff, Is.EqualTo(1), "and what it was owed is written off and counted");
+        });
+    }
+
+    [Test]
+    public async Task OneExtensionsHangingSinkDoesNotHoldAnotherExtensionOpenAsync()
+    {
+        using var release = new ManualResetEventSlim();
+        var quick = new RecordingSink("quick");
+        var contributions = new StubContributions()
+            .Add(Movies, new HangingSink(release))
+            .Add(Television, quick);
+
+        await using var pipeline = Pipeline(
+            contributions: contributions,
+            options: new TelemetryOptions { SinkAttempt = TimeSpan.FromMilliseconds(100) });
+
+        pipeline.Emitter.Emit(Event("to both"));
+
+        Assert.That(
+            await Waited(() => quick.Received.Count == 1).ConfigureAwait(false),
+            Is.True,
+            "the extension that answers is not made to wait for the one that does not");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                contributions.ReleasedFor(Television),
+                Is.EqualTo(1),
+                "and its package is let go, because nothing of its code is still running");
+            Assert.That(
+                contributions.ReleasedFor(Movies),
+                Is.Zero,
+                "while the one that is still running holds only its own package open");
+        });
+
+        release.Set();
+
+        Assert.That(await Waited(() => contributions.ReleasedFor(Movies) == 1).ConfigureAwait(false), Is.True);
+        await pipeline.DrainAsync().ConfigureAwait(false);
+    }
+
+    [Test]
+    public async Task OneExtensionsHangingFlushDoesNotHoldAnotherExtensionOpenAsync()
+    {
+        using var release = new ManualResetEventSlim();
+        var quick = new RecordingSink("quick");
+        var contributions = new StubContributions()
+            .Add(Movies, new HangingSink(release, hangOnFlush: true))
+            .Add(Television, quick);
+
+        await using var pipeline = Pipeline(
+            contributions: contributions,
+            options: new TelemetryOptions { SinkAttempt = TimeSpan.FromMilliseconds(100) });
+
+        var flushing = pipeline.Emitter.FlushContributedAsync();
+
+        Assert.That(await Waited(() => quick.Flushes == 1).ConfigureAwait(false), Is.True);
+        await flushing.ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(contributions.ReleasedFor(Television), Is.EqualTo(1));
+            Assert.That(contributions.ReleasedFor(Movies), Is.Zero, "its flush is still running");
+        });
+
+        release.Set();
+
+        Assert.That(await Waited(() => contributions.ReleasedFor(Movies) == 1).ConfigureAwait(false), Is.True);
         await pipeline.DrainAsync().ConfigureAwait(false);
     }
 
@@ -566,13 +710,22 @@ public class HostTelemetryEmitterTests
             => throw new InvalidOperationException("the log is full");
     }
 
-    private sealed class HangingSink(ManualResetEventSlim release) : ITelemetrySink
+    /// <summary>A failure that will not say what went wrong.</summary>
+    private sealed class Unreadable : Exception
+    {
+        public override string Message => throw new InvalidOperationException("not telling");
+
+        public override string? StackTrace => throw new InvalidOperationException("nor that");
+    }
+
+    private sealed class HangingSink(ManualResetEventSlim release, bool hangOnFlush = false) : ITelemetrySink
     {
         public string SinkId => "hanging";
 
         public Task SendAsync(TelemetryEvent telemetryEvent, CancellationToken cancellationToken = default)
-            => Task.Run(() => release.Wait(Patience), CancellationToken.None);
+            => hangOnFlush ? Task.CompletedTask : Task.Run(() => release.Wait(Patience), CancellationToken.None);
 
-        public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task FlushAsync(CancellationToken cancellationToken = default)
+            => hangOnFlush ? Task.Run(() => release.Wait(Patience), CancellationToken.None) : Task.CompletedTask;
     }
 }

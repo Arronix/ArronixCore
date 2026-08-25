@@ -15,7 +15,8 @@ namespace Arronix.Abstractions.Telemetry;
 public interface ITelemetrySink
 {
     /// <summary>
-    /// Gets the stable identifier of this sink, used in diagnostics and to disable it by configuration.
+    /// Gets the stable identifier of this sink. It names the sink in the platform's own diagnostics when
+    /// one fails or has to be waited past.
     /// </summary>
     string SinkId { get; }
 

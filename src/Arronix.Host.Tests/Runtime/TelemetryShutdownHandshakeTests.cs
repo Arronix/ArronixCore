@@ -2,7 +2,10 @@ using System.IO;
 using System.Linq;
 using Arronix.Common.Telemetry;
 using Arronix.Host.Composition;
+using Arronix.Host.Runtime;
+using Arronix.Host.Telemetry;
 using FluentAssertions;
+using FluentAssertions.Execution;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -117,6 +120,98 @@ internal sealed class TelemetryShutdownHandshakeTests
         sink.Flushes.Should().Be(1);
     }
 
+    [Test]
+    public async Task ABacklogTheDrainCouldNotFinishIsAbandonedRatherThanWaitedForAsync()
+    {
+        var slow = new SlowSink(TimeSpan.FromMilliseconds(50));
+
+        using var provider = Build(services =>
+        {
+            services.AddSingleton<Arronix.Abstractions.Telemetry.ITelemetrySink>(slow);
+            services.Configure<Arronix.Common.Telemetry.TelemetryOptions>(options =>
+            {
+                options.ShutdownDrain = TimeSpan.FromMilliseconds(200);
+                options.SinkAttempt = TimeSpan.FromSeconds(5);
+            });
+        });
+
+        var services = provider.GetServices<IHostedService>().ToArray();
+
+        foreach (var service in services)
+        {
+            await service.StartAsync(CancellationToken.None).WaitAsync(Patience).ConfigureAwait(false);
+        }
+
+        var emitter = provider.GetRequiredService<HostTelemetryEmitter>();
+
+        for (var index = 0; index < 200; index++)
+        {
+            emitter.Emit(new Arronix.Abstractions.Telemetry.TelemetryEvent(
+                Guid.CreateVersion7(),
+                DateTimeOffset.UnixEpoch,
+                Arronix.Abstractions.Telemetry.TelemetrySeverity.Info,
+                $"backlog {index}"));
+        }
+
+        var started = System.Diagnostics.Stopwatch.StartNew();
+
+        foreach (var service in services.Reverse())
+        {
+            await service.StopAsync(CancellationToken.None).WaitAsync(Patience).ConfigureAwait(false);
+        }
+
+        started.Stop();
+
+        using var assertions = new AssertionScope();
+        slow.Received.Should().BeLessThan(
+            200,
+            "a backlog of ten seconds' work cannot be delivered inside a drain budget of a fifth of a second");
+        started.Elapsed.Should().BeLessThan(
+            TimeSpan.FromSeconds(5),
+            "the budget is the budget: what it could not drain is abandoned rather than waited for");
+
+        // Every accepted event is accounted for, and the queue is empty: what the budget cut short was the
+        // waiting on the sink, not the reading of the queue.
+        (emitter.Delivered + emitter.Dropped + emitter.Duplicates + emitter.Refused).Should().Be(200);
+    }
+
+    [Test]
+    public async Task ASecondStopReturnsWhenTheFirstOneDoesRatherThanBeforeItAsync()
+    {
+        using var provider = Build();
+        var services = provider.GetServices<IHostedService>().ToArray();
+
+        foreach (var service in services)
+        {
+            await service.StartAsync(CancellationToken.None).WaitAsync(Patience).ConfigureAwait(false);
+        }
+
+        var pump = services.OfType<TelemetryPumpService>().Single();
+        var extensions = services.OfType<PluginBootstrapper>().Single();
+
+        // Both callers are held at the same place, because the extensions have not said they are gone.
+        var first = pump.StopAsync(CancellationToken.None);
+        var second = pump.StopAsync(CancellationToken.None);
+
+        await Task.WhenAny(second, Task.Delay(TimeSpan.FromMilliseconds(250))).ConfigureAwait(false);
+
+        using (new AssertionScope())
+        {
+            second.IsCompleted.Should().BeFalse(
+                "a caller who finds a stop already running is told when stopping finished, not that it started");
+            first.IsCompleted.Should().BeFalse("the extensions have not been torn down yet");
+            second.Should().BeSameAs(first, "there is one stop, and every caller awaits that one");
+        }
+
+        await extensions.StopAsync(CancellationToken.None).WaitAsync(Patience).ConfigureAwait(false);
+
+        var both = Task.WhenAll(first, second);
+        var finished = await Task.WhenAny(both, Task.Delay(Patience)).ConfigureAwait(false);
+
+        finished.Should().BeSameAs(both, "the shared stop completes both callers");
+        await both.ConfigureAwait(false);
+    }
+
     private ServiceProvider Build(Action<IServiceCollection>? extra = null)
     {
         var configuration = new ConfigurationBuilder()
@@ -138,6 +233,26 @@ internal sealed class TelemetryShutdownHandshakeTests
             ValidateOnBuild = true,
             ValidateScopes = true,
         });
+    }
+
+    /// <summary>A sink slow enough that a backlog cannot be delivered inside a small drain budget.</summary>
+    private sealed class SlowSink(TimeSpan perEvent) : Arronix.Abstractions.Telemetry.ITelemetrySink
+    {
+        private int _received;
+
+        public string SinkId => "slow";
+
+        internal int Received => Volatile.Read(ref _received);
+
+        public async Task SendAsync(
+            Arronix.Abstractions.Telemetry.TelemetryEvent telemetryEvent,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(perEvent, cancellationToken).ConfigureAwait(false);
+            Interlocked.Increment(ref _received);
+        }
+
+        public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 
     /// <summary>A host-registered sink, which is what an extension's cleanup telemetry has left to reach.</summary>

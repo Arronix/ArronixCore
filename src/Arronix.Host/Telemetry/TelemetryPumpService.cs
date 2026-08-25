@@ -28,7 +28,10 @@ internal sealed class TelemetryPumpService(HostTelemetryEmitter emitter, PluginB
 
     private readonly CancellationTokenSource _stopping = new();
 
+    private readonly object _stopGate = new();
+
     private Task? _pump;
+    private Task? _stop;
 
     /// <inheritdoc />
     public Task StartAsync(CancellationToken cancellationToken)
@@ -40,17 +43,35 @@ internal sealed class TelemetryPumpService(HostTelemetryEmitter emitter, PluginB
     /// <inheritdoc />
     /// <remarks>
     /// Waits for the extensions to be gone, closes the queue, waits for the pump itself to finish — not
-    /// merely for the last item to be dequeued — and only then flushes the host's own sinks, because a
-    /// flush that overtakes the last send is a flush of something that had not arrived. The awaited pump
-    /// task is also where a process-fatal failure inside delivery surfaces.
+    /// merely for the last item to be dequeued — and only then flushes the host's own sinks, so the flush
+    /// does not overtake a send the pump was still awaiting. A host send the pipeline already abandoned at
+    /// its attempt bound may still be running, and the flush can overlap that one. The awaited pump task is
+    /// also where a process-fatal failure inside delivery surfaces.
     /// </remarks>
-    public async Task StopAsync(CancellationToken cancellationToken)
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        // Stopping is one-way, so a second caller - a host stopping its services, then a fixture disposing
+        // that host - is handed the same operation to await rather than a second one to race with. A caller
+        // returns when the stop is actually finished, not when it finds one already running.
+        lock (_stopGate)
+        {
+            return _stop ??= StopCoreAsync();
+        }
+    }
+
+    private async Task StopCoreAsync()
     {
         // The extensions go first, and this waits for them to say so. Deliberately not on the caller's
         // token: extension withdrawal itself ignores it, so abandoning the wait would leave the queue open
         // and the host's sinks unflushed while the withdrawal it was waiting for went on regardless.
         await _extensions.ExtensionsTornDown.ConfigureAwait(false);
-        await _emitter.DrainAsync(CancellationToken.None).ConfigureAwait(false);
+
+        if (!await _emitter.DrainAsync(CancellationToken.None).ConfigureAwait(false))
+        {
+            // The budget is the budget. A backlog the pump could not finish inside it is abandoned rather
+            // than allowed to make a bounded drain unbounded.
+            await _stopping.CancelAsync().ConfigureAwait(false);
+        }
 
         if (_pump is { } pump)
         {

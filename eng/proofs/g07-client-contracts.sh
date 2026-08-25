@@ -27,8 +27,8 @@
 # its evidence live; see docs/research/g07.
 #
 # The installation is a complete one: the contract-only video package and the movies package, which has an
-# entry assembly and activates. Both are expected Active and both publish a client facet, in dependency
-# order.
+# entry assembly and activates. Both are expected Active and both publish a client facet. The manifest
+# lists packages by identifier; the load order is each package's own closure.
 
 set -uo pipefail
 
@@ -162,7 +162,11 @@ header_of() { curl -s -D - -o /dev/null "$1" | tr -d '\r' | awk -v key="$2" 'tol
 
 check "both installed packages are active" "$active" "arronix.format.video,movies"
 check "nothing is quarantined" "$not_active" ""
-check "the manifest publishes both facets, dependency first" "$package_order" "arronix.format.video,movies"
+check "the manifest publishes both facets, by identifier" "$package_order" "arronix.format.video,movies"
+
+# The load order is each package's own closure, which is where dependency-first is the contract.
+check "the video closure is itself" "$video_closure" "arronix.format.video"
+check "the movies closure names its dependency first" "$movies_closure" "arronix.format.video,movies"
 check "the manifest refuses no facet" "$refused_packages" "0"
 check "video offers its contract assembly" "$video_file" "Arronix.Format.Video.dll"
 check "movies offers its contract assembly" "$movies_file" "Arronix.Media.Movies.dll"
@@ -176,9 +180,9 @@ check "the movies client contract is served at its content address" \
 check "a file the package does not offer is not served" \
     "$(status_of "$address/api/v1/client-contracts/arronix.format.video/$video_hash/Arronix.Abstractions.dll")" "404"
 check "an entry assembly is not offered to a client" \
-    "$(status_of "$address/api/v1/client-contracts/movies/$video_hash/Arronix.Plugin.Movies.dll")" "404"
+    "$(status_of "$address/api/v1/client-contracts/movies/$movies_hash/Arronix.Plugin.Movies.dll")" "404"
 check "one package's address does not serve another package's assembly" \
-    "$(status_of "$address/api/v1/client-contracts/movies/$video_hash/$video_file")" "404"
+    "$(status_of "$address/api/v1/client-contracts/movies/$movies_hash/$video_file")" "404"
 check "a package this host never installed offers nothing" \
     "$(status_of "$address/api/v1/client-contracts/books/$video_hash/$video_file")" "404"
 

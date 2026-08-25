@@ -1,3 +1,5 @@
+using System.Linq;
+using Arronix.Abstractions.Plugins;
 using Arronix.Common.Contributions;
 using Arronix.Plugins.Configuration;
 using Arronix.Plugins.Dependencies;
@@ -63,7 +65,20 @@ public static class ArronixPluginsServiceCollectionExtensions
         services
             .AddOptionsWithValidateOnStart<PluginRuntimeOptions>()
             .Bind(configuration.GetSection(PluginRuntimeOptions.SectionName))
-            .ValidateDataAnnotations();
+            .ValidateDataAnnotations()
+
+            // The trusted-tier grant is checked at startup rather than at the moment a package happens to
+            // ask for it. A misspelled identifier there is a grant that silently never applies, and an
+            // operator who wrote it believes they made one.
+            .Validate(
+                static options => options.TrustedSinks.All(id => PluginId.TryParse(id, out _)),
+                $"Every entry in '{PluginRuntimeOptions.SectionName}:{nameof(PluginRuntimeOptions.TrustedSinks)}' "
+                + "must be a well-formed extension identifier.")
+            .Validate(
+                static options => options.TrustedSinks.Distinct(StringComparer.Ordinal).Count() == options.TrustedSinks.Count,
+                $"'{PluginRuntimeOptions.SectionName}:{nameof(PluginRuntimeOptions.TrustedSinks)}' names the "
+                + "extensions this operator trusts with the whole diagnostic stream; a repeated entry means "
+                + "one of them was written twice or one of them is missing.");
 
         services.TryAddSingleton(TimeProvider.System);
 

@@ -29,7 +29,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
 
     private Func<CancellationToken, Task<IReadOnlyDictionary<string, TValue>>>? _fetch;
     private Snapshot _snapshot;
-    private Task<Snapshot>? _inFlight;
+    private Flight? _inFlight;
 
     /// <summary>Initializes a new instance of the <see cref="SelfRefreshingCache{TValue}"/> class.</summary>
     /// <param name="name">The fully-qualified cache name, including the owning partition.</param>
@@ -62,6 +62,21 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
 
     /// <inheritdoc />
     public string Name { get; }
+
+    /// <summary>
+    /// Gets or sets a hook run after a fetch has produced contents and before they are published. The seam
+    /// that makes the publish-before-waking order provable without a scheduler race: a test holds it and
+    /// observes that no caller who joined the fetch can have finished. Unset in production.
+    /// </summary>
+    internal Action? OnFetched { get; set; }
+
+    /// <summary>
+    /// Gets or sets a hook run as a caller reaches the staleness decision, before it takes the lock that
+    /// decision and the joining of a flight share. The seam for the other order: a test holds a caller here
+    /// while another publishes, and observes that the held caller then finds nothing left to fetch. Unset
+    /// in production.
+    /// </summary>
+    internal Action? OnDeciding { get; set; }
 
     /// <inheritdoc />
     /// <remarks>The count of what was last fetched; staleness here is a property of the whole snapshot.</remarks>
@@ -122,7 +137,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
 
         using var admission = Enter();
 
-        await RefreshIfExpiredCoreAsync(null, cancellationToken).ConfigureAwait(false);
+        await FetchAsync(timeToLive: null, unconditional: false, cancellationToken).ConfigureAwait(false);
 
         var snapshot = Volatile.Read(ref _snapshot);
 
@@ -156,7 +171,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
     public async Task RefreshAsync(CancellationToken cancellationToken = default)
     {
         using var admission = Enter();
-        await FetchAsync(cancellationToken).ConfigureAwait(false);
+        await FetchAsync(timeToLive: null, unconditional: true, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -167,7 +182,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         CacheLifetime.RequirePositive(timeToLive, nameof(timeToLive));
 
         using var admission = Enter();
-        await RefreshIfExpiredCoreAsync(timeToLive, cancellationToken).ConfigureAwait(false);
+        await FetchAsync(timeToLive, unconditional: false, cancellationToken).ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -251,91 +266,53 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         }
     }
 
-    private async Task RefreshIfExpiredCoreAsync(TimeSpan? timeToLive, CancellationToken cancellationToken)
-    {
-        var snapshot = Volatile.Read(ref _snapshot);
-
-        // Contents that have never been loaded are stale under any reading, threshold or no threshold.
-        // Without this a cache created with no lifetime would never call its fetch delegate at all.
-        if (!snapshot.HasLoaded)
-        {
-            await FetchAsync(cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        // Loaded, and with no threshold to measure against, nothing goes stale on its own.
-        if ((timeToLive ?? _lifetime) is not { } threshold)
-        {
-            return;
-        }
-
-        if (!snapshot.IsExpired(_clock.GetUtcNow(), threshold))
-        {
-            return;
-        }
-
-        await FetchAsync(cancellationToken).ConfigureAwait(false);
-    }
-
     /// <summary>Replaces the contents, collapsing concurrent callers onto one fetch.</summary>
-    /// <remarks>A fetch that fails is not published and is not left as the next caller's attempt.</remarks>
-    private async Task FetchAsync(CancellationToken cancellationToken)
+    /// <param name="timeToLive">The threshold this caller measures staleness against, when it has one.</param>
+    /// <param name="unconditional">Whether to fetch whatever the contents look like.</param>
+    /// <param name="cancellationToken">Abandons this caller's wait.</param>
+    /// <remarks>
+    /// A fetch that fails is not published, leaves the previous contents where they were, and is not left
+    /// as the next caller's attempt.
+    /// </remarks>
+    private async Task FetchAsync(TimeSpan? timeToLive, bool unconditional, CancellationToken cancellationToken)
     {
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            OnDeciding?.Invoke();
 
-            Task<Snapshot> attempt;
+            Flight attempt;
             var owned = false;
 
             lock (_gate)
             {
+                // Deciding staleness and joining a flight are one step. Read apart, a caller that paused
+                // between them would start a second fetch of contents another caller had just made fresh.
+                if (!unconditional && !NeedsFetch(_snapshot, timeToLive))
+                {
+                    return;
+                }
+
                 if (_inFlight is { } running)
                 {
                     attempt = running;
                 }
                 else
                 {
-                    attempt = RunFetchAsync(cancellationToken);
-                    _inFlight = attempt;
+                    attempt = _inFlight = new Flight();
                     owned = true;
                 }
             }
 
             if (owned)
             {
-                try
-                {
-                    var produced = await attempt.ConfigureAwait(false);
-
-                    lock (_gate)
-                    {
-                        // A release that ran while this fetch was in flight already dropped the delegate;
-                        // publishing now would put extension values back into a released cache.
-                        if (_fetch is not null)
-                        {
-                            _snapshot = produced;
-                        }
-
-                        _inFlight = null;
-                    }
-
-                    return;
-                }
-                catch
-                {
-                    lock (_gate)
-                    {
-                        _inFlight = null;
-                    }
-
-                    throw;
-                }
+                await PublishAsync(attempt, cancellationToken).ConfigureAwait(false);
+                return;
             }
 
             try
             {
-                await attempt.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await attempt.Completed.WaitAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -346,12 +323,84 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         }
     }
 
+    /// <summary>Whether these contents oblige a fetch.</summary>
+    private bool NeedsFetch(Snapshot snapshot, TimeSpan? timeToLive)
+    {
+        // Contents that have never been loaded are stale under any reading, threshold or no threshold.
+        // Without this a cache created with no lifetime would never call its fetch delegate at all.
+        if (!snapshot.HasLoaded)
+        {
+            return true;
+        }
+
+        // Loaded, and with no threshold to measure against, nothing goes stale on its own.
+        return (timeToLive ?? _lifetime) is { } threshold && snapshot.IsExpired(_clock.GetUtcNow(), threshold);
+    }
+
+    /// <summary>Runs one flight: fetch, publish, take the flight off the record, and only then wake it.</summary>
+    /// <remarks>
+    /// The order is the contract. A caller who joined is told the refresh finished and goes straight on to
+    /// read the contents, so waking it before publishing would let it read the contents this very fetch
+    /// replaced — or, for a cache never loaded, none at all.
+    /// </remarks>
+    private async Task PublishAsync(Flight flight, CancellationToken cancellationToken)
+    {
+        Snapshot produced;
+
+        try
+        {
+            produced = await RunFetchAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException canceled)
+        {
+            Retire(flight);
+            flight.Canceled(canceled);
+            throw;
+        }
+        catch (Exception failure)
+        {
+            Retire(flight);
+            flight.Failed(failure);
+            throw;
+        }
+
+        OnFetched?.Invoke();
+
+        lock (_gate)
+        {
+            // A release that ran while this fetch was in flight already dropped the delegate; publishing
+            // now would put extension values back into a released cache.
+            if (_fetch is not null)
+            {
+                _snapshot = produced;
+            }
+
+            Clear(flight);
+        }
+
+        flight.Landed();
+    }
+
+    /// <summary>Takes a failed flight off the record, so it is not left as the next caller's attempt.</summary>
+    private void Retire(Flight flight)
+    {
+        lock (_gate)
+        {
+            Clear(flight);
+        }
+    }
+
+    /// <summary>Forgets this flight, and only this one: a release may already have started another.</summary>
+    private void Clear(Flight flight)
+    {
+        if (ReferenceEquals(_inFlight, flight))
+        {
+            _inFlight = null;
+        }
+    }
+
     private async Task<Snapshot> RunFetchAsync(CancellationToken cancellationToken)
     {
-        // Keeps the fetch off the caller's stack while the publishing lock is held, so the delegate never
-        // runs under the snapshot lock.
-        await Task.Yield();
-
         var fetch = Volatile.Read(ref _fetch)
             ?? throw new ObjectDisposedException(
                 Name,
@@ -383,6 +432,41 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         }
 
         return ticket;
+    }
+
+    /// <summary>
+    /// One fetch-and-publish transaction, and what a caller who did not start it waits for.
+    /// </summary>
+    /// <remarks>
+    /// What completes here is the whole transaction rather than the fetch. Joining callers are woken by it
+    /// and read the contents immediately, so the fetched contents are the cache's contents by then.
+    /// </remarks>
+    private sealed class Flight
+    {
+        private readonly TaskCompletionSource _completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        /// <summary>Completes when what this flight fetched is published, or faults as it failed.</summary>
+        internal Task Completed => _completed.Task;
+
+        internal void Landed() => _completed.TrySetResult();
+
+        /// <summary>Every joining caller shares the failure, which is the one they would have had.</summary>
+        /// <remarks>
+        /// Observed here as well. The caller that owned the flight rethrows this failure itself and there
+        /// may have been no joiner at all, so nothing else would ever look at it.
+        /// </remarks>
+        internal void Failed(Exception failure)
+        {
+            _completed.TrySetException(failure);
+            _ = _completed.Task.Exception;
+        }
+
+        /// <summary>
+        /// Cancellation belongs to the caller that owned the flight. A joiner sees it, tells it apart from
+        /// its own, and tries again with a token that has not been cancelled.
+        /// </summary>
+        internal void Canceled(OperationCanceledException canceled)
+            => _completed.TrySetCanceled(canceled.CancellationToken);
     }
 
     /// <summary>One complete set of contents and when it was loaded.</summary>
