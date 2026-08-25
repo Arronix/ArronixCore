@@ -101,7 +101,7 @@ public sealed class PluginLoaderPipelineTests
 
     private static string Manifest(
         string id,
-        string range = ">=0.8 <0.9",
+        string range = ">=0.9 <0.10",
         string entry = "Arronix.Abstractions.dll",
         string capabilities = "\"parsing\"")
         => $$"""

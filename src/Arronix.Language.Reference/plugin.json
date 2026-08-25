@@ -3,7 +3,7 @@
   "id": "languages.reference",
   "name": "Reference languages",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.8 <0.9" },
+  "contracts": { "arronix": ">=0.9 <0.10" },
   "entryAssembly": "Arronix.Language.Reference.dll",
   "description": "Language-owned comparison, query and sort rules for English, German and French.",
   "capabilities": ["language"]

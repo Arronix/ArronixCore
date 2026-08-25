@@ -475,7 +475,7 @@ public sealed class PackageResolutionPlanTests
             Id = id,
             Name = id,
             Version = version,
-            Contracts = new ContractRequirements { Arronix = ">=0.8 <0.9" },
+            Contracts = new ContractRequirements { Arronix = ">=0.9 <0.10" },
             EntryAssembly = "Example.dll",
             Capabilities = ["parsing"],
             Dependencies = [.. dependencies.Select(Declaration)]

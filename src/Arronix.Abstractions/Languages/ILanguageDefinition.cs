@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Arronix.Abstractions.DTOs;
 
 namespace Arronix.Abstractions.Languages;
@@ -28,6 +29,7 @@ public interface ILanguageDefinition
 
 /// <summary>A language implementation type admitted for host-owned activation.</summary>
 /// <param name="ImplementationType">The concrete implementation type.</param>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record LanguageDefinitionRegistration(Type ImplementationType)
 {
     /// <summary>Creates a registration without constructing the implementation in the plugin module.</summary>

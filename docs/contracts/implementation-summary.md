@@ -120,7 +120,7 @@ Contract tests covering:
 
 - **Target Framework**: .NET 8.0 *(as delivered; the platform targets `net11.0` today)*
 - **Language Features**: C# latest with nullable reference types enabled
-- **Version**: 0.1.0 (semantic versioning) *(as delivered; `<Version>` is 0.8.0 today)*
+- **Version**: 0.1.0 (semantic versioning) *(as delivered; `<Version>` is 0.9.0 today)*
 - **Assembly**: `Arronix.Abstractions.dll`
 
 ### Key Design Decisions
@@ -206,10 +206,10 @@ is not a contract**: below 1.0.0 the assembly is free to change, and it has.
 | Since 0.1.0 | What happened |
 |---|---|
 | Target framework | `net8.0` → `net11.0` |
-| Assembly `<Version>` | 0.1.0 → **0.8.0**; first-party manifests require `>=0.8 <0.9` |
+| Assembly `<Version>` | 0.1.0 → **0.9.0**; first-party manifests require `>=0.9 <0.10` |
 | Solution membership | Removed from `src/Sonarr.sln`; `/Arronix.sln` is the only home |
 | Provider contracts | `IIndexerProvider`, `IMetadataProvider`, `IDownloadClientAdapter`, their DTOs and `StableProviderBridge` **deleted outright** in 0.4.0; replaced by `IProvider` + five families |
 | Contract stability | The whole assembly is one pre-1.0 surface; no per-type experimental tier or compiler opt-in remains |
 | Deprecation policy | **Deleted.** `[Obsolete]` is not used below 1.0.0; a contract with no implementer outside this repository is deleted, not deprecated |
-| Plugin contract ranges | The loader accepts a plugin when the installed contract version satisfies its declared range; first-party manifests currently use `>=0.8 <0.9` |
+| Plugin contract ranges | The loader accepts a plugin when the installed contract version satisfies its declared range; first-party manifests currently use `>=0.9 <0.10` |
 | Media and quality model | Typed item/target/release contracts and format-owned representation replaced the 0.7 quality-axes experiment; legacy `ParsedRelease` and `QualityTier` are removal-only scaffolding |

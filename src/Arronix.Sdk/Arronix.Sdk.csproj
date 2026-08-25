@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <PackageId>Arronix.Sdk</PackageId>
+    <Version>0.9.0</Version>
+    <Description>The Arronix extension-authoring SDK: semantic contracts plus compile-time generation and diagnostics.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <TargetsForTfmSpecificContentInPackage>
+      $(TargetsForTfmSpecificContentInPackage);IncludeArronixGeneratorInPackage
+    </TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The package exposes Abstractions as its sole runtime dependency. -->
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+
+    <!-- The generator is packaged as an analyzer asset and never enters the runtime dependency graph. -->
+    <ProjectReference Include="..\Arronix.Generators\Arronix.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Standard NuGet metapackage marker: the SDK adds no runtime assembly of its own. -->
+    <None Include="_._" Pack="true" PackagePath="lib/net11.0" />
+    <None Include="README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+  <Target Name="IncludeArronixGeneratorInPackage" DependsOnTargets="ResolveProjectReferences">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="@(Analyzer)"
+                              Condition="'%(Filename)' == 'Arronix.Generators'">
+        <PackagePath>analyzers/dotnet/cs</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+</Project>

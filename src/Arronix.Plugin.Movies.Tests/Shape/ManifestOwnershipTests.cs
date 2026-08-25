@@ -126,7 +126,7 @@ public class ManifestOwnershipTests
     public void DeclaresTheContractRangeTheFirstPartyLineShips()
         => Assert.That(
             Manifest.GetProperty("contracts").GetProperty("arronix").GetString(),
-            Is.EqualTo(">=0.8 <0.9"));
+            Is.EqualTo(">=0.9 <0.10"));
 
     [Test]
     public void NamesTheAssemblyTheModuleActuallyLivesIn()

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Linq;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
@@ -10,6 +11,7 @@ namespace Arronix.Abstractions.Media;
 /// generated against the closed property type, so renaming or changing that property fails the plugin build
 /// instead of becoming a runtime reflection error.
 /// </remarks>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record CompiledField
 {
     /// <summary>Gets the CLR property name used by typed cross-references.</summary>
@@ -47,6 +49,7 @@ public sealed record CompiledField
 }
 
 /// <summary>The compile-time projection of one entity or workbench-row type.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record CompiledEntityShape
 {
     /// <summary>Gets the exact CLR type projected by this shape.</summary>
@@ -57,6 +60,7 @@ public sealed record CompiledEntityShape
 }
 
 /// <summary>The generated shapes reachable from one media type definition.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed class CompiledShapeCatalog
 {
     private readonly IReadOnlyDictionary<Type, CompiledEntityShape> _byType;

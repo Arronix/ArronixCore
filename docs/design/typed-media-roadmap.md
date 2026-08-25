@@ -2,7 +2,7 @@
 
 **Status:** active
 
-**Current gate:** G06 — separate authoring SDK from generated and Host binding SPI
+**Current gate:** G07 — prove exact typed media loading in Blazor
 
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
@@ -395,6 +395,13 @@ Exit gate:
 ### G06 — Separate authoring SDK from generated and Host binding SPI
 
 **Outcome:** the public surface a normal extension author sees contains semantic contracts only.
+
+**Status:** complete on the `0.9` contract line. `Arronix.Sdk` is a packaging-only author dependency over
+Abstractions plus the analyzer asset; generated/capture/erased mechanics are hidden from ordinary completion
+lists and concrete semantic values; `ARX1003` reports a non-partial media declaration; architecture tests
+enforce the dependency and surface boundary; and a package-only external project restores and compiles from
+the packed SDK with no repository reference. The retained end-to-end external install/browser proof remains
+G07A rather than being implied by this package-boundary proof.
 
 Implement:
 
@@ -1228,10 +1235,10 @@ replacement.
 
 ## Current next task
 
-Take **G06 only**: separate the semantic authoring SDK from generated and Host binding SPI. Inventory every
-public capture visitor, erased registration, `System.Type` carrier, generated getter, expression reducer, and
-compiled-shape bridge; then hide, generate, or explicitly classify it without weakening the typed authoring
-relationship or adding a second declaration path. Prove an ordinary extension needs only supported semantic
-contracts and performs one media registration or one closed provider registration. Do not expand this gate
-into Client loading, durable persistence, parser redesign, or another media conversion. The completed package
-runtime and production TMDb vertical remain mandatory regression proofs.
+Take **G07 only**: define and prove the exact client-safe contract package identity and cache/update protocol,
+then load and render the admitted typed Movie shape in an actual Blazor WebAssembly browser without a static
+Movies or Video dependency and without reducing it to a string bag. Include clean-cache, update, removal,
+stale-tab, and incompatibility failures, plus generated trimming/AOT-safe metadata. Do not fold provider-result
+ingestion, durable catalog state, or the complete external-consumer vertical into this gate; G07A and G07B own
+those proofs. The G06 SDK package boundary and completed TMDb/provider ownership rules remain mandatory
+regression evidence.

@@ -8,13 +8,13 @@
       "arronix.format.video": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       },
       "arronix.media.movies": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       }
     }

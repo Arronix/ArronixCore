@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Linq;
 
 namespace Arronix.Abstractions.Providers;
@@ -9,6 +10,7 @@ namespace Arronix.Abstractions.Providers;
 /// context through an exact public <c>(IPluginContext)</c> constructor, or uses a public parameterless
 /// constructor when no context is needed. Host DI is never consulted.
 /// </remarks>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public sealed record ProviderTypeRegistration
 {
     public required ProviderDescriptor Descriptor { get; init; }

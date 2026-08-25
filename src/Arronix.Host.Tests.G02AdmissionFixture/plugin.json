@@ -3,7 +3,7 @@
   "id": "g02.admission.fixture",
   "name": "G02 admission fixture",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.8 <0.9" },
+  "contracts": { "arronix": ">=0.9 <0.10" },
   "entryAssembly": "Arronix.Host.Tests.G02AdmissionFixture.dll",
   "description": "A test-only packaged extension with enough distinct contributions to prove complete admission and withdrawal.",
   "capabilities": [

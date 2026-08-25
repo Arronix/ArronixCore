@@ -5,6 +5,7 @@
     <AssemblyName>Arronix.Generators</AssemblyName>
     <Version>0.1.0</Version>
     <Description>Compile-time projections for Arronix media definitions.</Description>
+    <IsPackable>false</IsPackable>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <IsRoslynComponent>true</IsRoslynComponent>
@@ -13,5 +14,9 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="AnalyzerReleases.Unshipped.md" />
   </ItemGroup>
 </Project>

@@ -3,7 +3,7 @@
   "id": "tv",
   "name": "Television",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.8 <0.9" },
+  "contracts": { "arronix": ">=0.9 <0.10" },
   "entryAssembly": "Arronix.Plugin.Tv.dll",
   "dependencies": [
     { "package": "arronix.format.video", "range": ">=0.1 <0.2" }

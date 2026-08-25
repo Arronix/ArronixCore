@@ -124,6 +124,7 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         source.Append("partial class ").Append(definition.Symbol.Name).AppendLine();
         source.AppendLine("{");
         source.AppendLine("    /// <inheritdoc />");
+        source.AppendLine("    [global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
         source.AppendLine("    public override global::Arronix.Abstractions.Media.CompiledShapeCatalog CompiledShapes { get; } =");
         source.AppendLine("        new(");
         source.AppendLine("            ItemShape,");

@@ -27,7 +27,7 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `MediaType<TItem,TTarget,TRelease,TParser>` is the current typed media-definition boundary. Its typed override values declare identity, groups, additional selections, semantic searches, matching, policy, querying, naming, summaries, intent exceptions, workbenches, and derivations without a whole-definition replay builder, action transcript, or capability badge. `TParser : IReleaseParser<TRelease>` is the executable parsing declaration. The outstanding SDK gaps in `CONTEXT.md` prevent treating this shape as frozen or independently validated.
 - `IMediaEntity` supplies the minimum common entity floor. `MediaItem<TReleaseTimeline,TReleaseStage>` is the directly usable common item. `MediaItem<TItem,TReleaseTimeline,TReleaseStage>` preserves an extending item's exact type in collection relationships. `MediaCollection<TItem>` is the common group.
 - `IReleaseTimeline<TReleaseStage>` exposes a media-owned lifecycle's current typed stage without flattening its milestones or availability behaviour.
-- `CompiledShapeCatalog` is generated compiler/Host binding SPI containing closed getters. It is not part of the semantic authoring vocabulary or a wire schema; normal extension authors do not implement it, and Host projects its validated fields into ordinary descriptors for generic consumers.
+- `CompiledShapeCatalog` is generated compiler/Host binding SPI containing closed getters. It is not part of the semantic authoring vocabulary or a wire schema. The generated `CompiledShapes` override remains public to preserve the published executable-generator proof, but is marked `EditorBrowsable(Never)` and is never author-implemented. Capture is an explicit hidden-interface operation and is absent from concrete media definitions' public surface. Host projects the validated fields into ordinary descriptors for generic consumers.
 - `ReleaseTarget<TItem>` directly represents a one-item request. `Release<TRepresentation>` directly carries the common title, year, edition, and format-owned representation. Media-specific target or release classes exist only for additional coverage or release facts.
 - `IRepresentation` is a format-owned artifact description carried by a release.
 - `ReleaseListing` is raw output from an `IIndexer`.
@@ -56,14 +56,22 @@ All runtime, SDK, plugin, Host, API, Client, and test projects currently target 
 .NET 11 Preview 7 SDK `11.0.100-preview.7.26381.103` pinned by `global.json`. `Arronix.Generators` alone targets
 `netstandard2.0` as an analyzer dependency; it is not a runtime compatibility escape hatch.
 
-Public visibility does not make generated getters, binder visitors, erased registrations, `System.Type`
-carriers, provider pairing interfaces, expression trees, or runtime descriptors part of the supported
-authoring vocabulary. Normal plugin authors must not implement or reason about those mechanics. The typed CLR definitions remain the sole
-semantic source; generated binding data and serializable descriptors are one-way projections.
+Extension authors reference the packaging-only `Arronix.Sdk`. It supplies `Arronix.Abstractions` as its sole
+runtime dependency and carries `Arronix.Generators` only under `analyzers/dotnet/cs`; the SDK contributes no
+runtime assembly. Authors then add only the format, language, and media-domain packages their extension
+actually composes.
+
+The CLR types needed to cross generated and Host assembly boundaries remain public only where the runtime
+requires that visibility. They and their erased members are `EditorBrowsable(Never)`, and concrete semantic
+values implement visitor dispatch and `System.Type` carriers explicitly. Normal plugin authors neither see
+nor implement generated getters, binder visitors, erased registrations, provider-family markers, expression
+carriers, or runtime descriptors. Typed CLR definitions remain the sole semantic source; generated binding
+data and serializable descriptors are one-way projections.
 
 The public `IPluginAdmissionCheck` and `IPluginAdmissionAttempt` types are a cross-assembly Host/loader
 transaction seam, not extension-authoring SDK. `Arronix.Plugins` is Host infrastructure; a plugin package
-references `Arronix.Abstractions` and the format or language contracts it composes, never that loader assembly.
+receives `Arronix.Abstractions` through `Arronix.Sdk` and references the format or language contracts it
+composes, never that loader assembly.
 
 Media plugins register with:
 
@@ -73,8 +81,9 @@ registry.AddMediaType<TMediaType>();
 
 `TMediaType` derives from `MediaType<TItem,TTarget,TRelease,TParser>`, supplies its invariant identity,
 names, formats, minimum availability, and file binding to the base constructor, and overrides only optional
-or repeatable media-specific members. Registration
-captures one definition instance. `TParser` implements the static
+or repeatable media-specific members. It is declared `partial`; otherwise the packaged generator reports
+`ARX1003` at that declaration. Registration captures one definition instance through the hidden generated
+bridge. `TParser` implements the static
 `IReleaseParser<TRelease>.Parse(ReleaseParseContext)` contract, which returns the exact `TRelease` type.
 
 Provider plugins register implementation types, including shaped pairs:
@@ -258,7 +267,7 @@ promised.
 - a package may ship zero or more shared contract assemblies and zero or one isolated executable entry assembly. A shared contract assembly depends on Abstractions and on other shared contract assemblies only; it carries typed owner semantics and pure deterministic behavior, never `IPluginModule`, parser or registration execution, provider implementations, I/O, mutable process state, or module initializers. Its intended lifetime is one copy per installation in a Host-owned collectible contract context, released once every dependant has withdrawn.
 - the video package is `Arronix.Format.Video` (video's owner semantics: the representation and quality facts a `Release<Video>` carries, the format family a media type names in its constructor, and the release preferences it contributes to a dependant's compiled policy) plus `Arronix.Format.Video.Contributions` (video's executable work, currently the release-term recognition vocabulary). Public domain types are spelled in `Arronix.Format.Video`; executable-only types are spelled in `Arronix.Format.Video.Contributions`, and no type is declared in both. The movies package is `Arronix.Media.Movies` (the shared `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline`) plus `Arronix.Plugin.Movies` (the isolated definition, parser, module, and generated projections).
 - language implementation assemblies depend on Abstractions and publish no shared contract assembly.
-- media extensions depend at runtime on Abstractions, the domain assembly of each format capability they compose, and their own media domain assembly. An extension never references another kind's media domain, and never a format capability's executable half: everything a media declaration needs from a format is domain semantics, so no media extension payload carries a format's executable assembly. They may take `Arronix.Generators` only as an analyzer with `ReferenceOutputAssembly=false`; a shared contract assembly takes no analyzer at all.
+- media extensions reference `Arronix.Sdk` for authoring and depend at runtime on Abstractions, the domain assembly of each format capability they compose, and their own media domain assembly. An extension never references another kind's media domain, and never a format capability's executable half: everything a media declaration needs from a format is domain semantics, so no media extension payload carries a format's executable assembly. `Arronix.Sdk` supplies `Arronix.Generators` only as an analyzer asset; a shared contract assembly takes no analyzer at all.
 - `Arronix.Common` and `Arronix.Plugins` depend toward Abstractions.
 - Host depends on Abstractions, Common, and Plugins, but not on a media or format implementation.
 - Client depends on Abstractions only.

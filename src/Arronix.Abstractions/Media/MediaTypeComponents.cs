@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Linq.Expressions;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
@@ -55,6 +56,7 @@ public interface IQueryArgumentDefinition<TItem>
     bool OmitWhenAbsent { get; }
 
     /// <summary>Gets the item expression supplying the value, when it comes from an item property.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     LambdaExpression? Property { get; }
 
     /// <summary>Gets the external identity role supplying the value, when it is an identifier.</summary>
@@ -132,6 +134,7 @@ public interface IGroupNamingDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Gets the closed group type.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     Type GroupType { get; }
 
     /// <summary>Gets the user-authored template.</summary>
@@ -144,7 +147,7 @@ public sealed record GroupNamingDefinition<TItem, TGroup>(string Template) : IGr
     where TGroup : class, IMediaGroup<TItem>
 {
     /// <inheritdoc />
-    public Type GroupType => typeof(TGroup);
+    Type IGroupNamingDefinition<TItem>.GroupType => typeof(TGroup);
 }
 
 /// <summary>A typed rule selecting one group folder segment.</summary>
@@ -152,6 +155,7 @@ public interface IGroupNamingSelection<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Gets the closed group type.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     Type GroupType { get; }
 
     /// <summary>Gets the stable rule identifier.</summary>
@@ -164,7 +168,7 @@ public sealed record GroupNamingSelection<TItem, TGroup>(string RuleId) : IGroup
     where TGroup : class, IMediaGroup<TItem>
 {
     /// <inheritdoc />
-    public Type GroupType => typeof(TGroup);
+    Type IGroupNamingSelection<TItem>.GroupType => typeof(TGroup);
 }
 
 /// <summary>A typed semantic requirement over a user-authored naming template.</summary>
@@ -179,6 +183,7 @@ public interface ITokenFallbackDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Gets the item expression naming the token.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     LambdaExpression Property { get; }
 
     /// <summary>Gets fallback file facts in precedence order.</summary>
@@ -229,9 +234,11 @@ public interface IGroupSummaryDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Gets the closed group type.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     Type GroupType { get; }
 
     /// <summary>Gets the headline expression.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     LambdaExpression Headline { get; }
 
     /// <summary>Gets additional summary fields.</summary>
@@ -246,7 +253,7 @@ public sealed record GroupSummaryDefinition<TItem, TGroup>(
     where TGroup : class, IMediaGroup<TItem>
 {
     /// <inheritdoc />
-    public Type GroupType => typeof(TGroup);
+    Type IGroupSummaryDefinition<TItem>.GroupType => typeof(TGroup);
 
     LambdaExpression IGroupSummaryDefinition<TItem>.Headline => HeadlineValue;
 }
@@ -258,6 +265,7 @@ public interface IGroupSummaryFieldDefinition
     string Label { get; }
 
     /// <summary>Gets the typed group expression.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     LambdaExpression Value { get; }
 
     /// <summary>Gets the field's summary weight.</summary>
@@ -298,6 +306,7 @@ public interface ISortDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Gets the typed property expression.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     LambdaExpression Property { get; }
 
     /// <summary>Gets whether the useful end is the beginning.</summary>
@@ -318,6 +327,7 @@ public interface IItemPropertyDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Gets the typed property expression.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     LambdaExpression Property { get; }
 }
 
@@ -351,6 +361,7 @@ public interface IWorkbenchDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Gets the closed row type.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     Type RowType { get; }
 
     /// <summary>Gets the stable workbench identifier.</summary>
@@ -377,7 +388,7 @@ public sealed record WorkbenchDefinition<TItem, TRow>(string Id, string Name) : 
     where TItem : class, IMediaItem
 {
     /// <inheritdoc />
-    public Type RowType => typeof(TRow);
+    Type IWorkbenchDefinition<TItem>.RowType => typeof(TRow);
 
     /// <inheritdoc />
     public WorkbenchSubject Subject { get; init; } = WorkbenchSubject.LibraryItems;

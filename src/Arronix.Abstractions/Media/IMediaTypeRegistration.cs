@@ -1,9 +1,11 @@
+using System.ComponentModel;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Parsing;
 
 namespace Arronix.Abstractions.Media;
 
 /// <summary>A media definition able to capture its own closed generic contract.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IMediaTypeDefinition
 {
     /// <summary>Captures this definition for the kind-blind plugin and host pipeline.</summary>
@@ -11,6 +13,7 @@ public interface IMediaTypeDefinition
 }
 
 /// <summary>One typed media definition carried across the kind-blind plugin boundary.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IMediaTypeRegistration
 {
     /// <summary>Gets the media kind identifier.</summary>
@@ -36,10 +39,13 @@ public interface IMediaTypeRegistration
 }
 
 /// <summary>The host side of the media-registration double dispatch.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IMediaTypeBinder<out TResult>
 {
     /// <summary>Binds one typed media definition.</summary>
-    TResult Bind<TItem, TTarget, TRelease, TParser>(MediaType<TItem, TTarget, TRelease, TParser> definition)
+    TResult Bind<TItem, TTarget, TRelease, TParser>(
+        MediaType<TItem, TTarget, TRelease, TParser> definition,
+        CompiledShapeCatalog compiledShapes)
         where TItem : class, IMediaItem
         where TTarget : class, IReleaseTarget
         where TRelease : class, IRelease
@@ -47,19 +53,21 @@ public interface IMediaTypeBinder<out TResult>
 }
 
 /// <summary>Captures typed media definitions without restating their closed types at registration.</summary>
-public static class MediaTypeRegistration
+internal static class MediaTypeRegistration
 {
     /// <summary>Captures one already-constructed typed media definition.</summary>
-    public static IMediaTypeRegistration For<TItem, TTarget, TRelease, TParser>(
-        MediaType<TItem, TTarget, TRelease, TParser> definition)
+    internal static IMediaTypeRegistration For<TItem, TTarget, TRelease, TParser>(
+        MediaType<TItem, TTarget, TRelease, TParser> definition,
+        CompiledShapeCatalog compiledShapes)
         where TItem : class, IMediaItem
         where TTarget : class, IReleaseTarget
         where TRelease : class, IRelease
         where TParser : IReleaseParser<TRelease> =>
-        new Captured<TItem, TTarget, TRelease, TParser>(definition);
+        new Captured<TItem, TTarget, TRelease, TParser>(definition, compiledShapes);
 
     private sealed class Captured<TItem, TTarget, TRelease, TParser>(
-        MediaType<TItem, TTarget, TRelease, TParser> definition) : IMediaTypeRegistration
+        MediaType<TItem, TTarget, TRelease, TParser> definition,
+        CompiledShapeCatalog compiledShapes) : IMediaTypeRegistration
         where TItem : class, IMediaItem
         where TTarget : class, IReleaseTarget
         where TRelease : class, IRelease
@@ -80,7 +88,7 @@ public static class MediaTypeRegistration
         public TResult Bind<TResult>(IMediaTypeBinder<TResult> binder)
         {
             ArgumentNullException.ThrowIfNull(binder);
-            return binder.Bind(definition);
+            return binder.Bind(definition, compiledShapes);
         }
     }
 }

@@ -6,8 +6,8 @@ Arronix is a clean-sheet, pre-alpha media automation platform. A media kind owns
 
 The plugin SDK is part of the product. A third party should be able to own a Sonarr-, Radarr-, Lidarr-, Readarr-, or new-media-style application through a small set of intuitive, strongly typed abstractions. Small means that Arronix derives common behaviour and supplies sound defaults; it never means erasing media shape, moving semantics into string bags, or making an author understand Host implementation mechanics.
 
-The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-party plugin manifests declare
-`>=0.8 <0.9`. That SDK surface is pre-1.0; it has no second per-type experimental tier or compiler opt-in.
+The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-party plugin manifests declare
+`>=0.9 <0.10`. That SDK surface is pre-1.0; it has no second per-type experimental tier or compiler opt-in.
 
 ## Current architecture
 
@@ -25,6 +25,10 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
   domain only, closes `ICataloger<Movie>` and `ICurator<Movie>`, and owns all TMDb settings, transport, DTO,
   identity, marker, and mapping vocabulary.
 - `Arronix.Generators` emits closed entity readers and descriptor projections while a media extension compiles. It is an analyzer-only build dependency and is never loaded as a plugin runtime dependency.
+- `Arronix.Sdk` is the packaging-only extension-authoring metapackage. It depends on
+  `Arronix.Abstractions`, carries `Arronix.Generators` under `analyzers/dotnet/cs`, and contributes no
+  runtime assembly. Extension authors take this one package plus the format and language packages they
+  compose.
 - `Arronix.Compatibility.Ratchet` validates the canonical compatibility ledger against fresh test results and its prior committed form. The ledger under `verification/compatibility` gives every known omission a stable semantic identity, immutable published binding and expectation, provenance source, and explicit replacement path. The same-build solution binlog is the authoritative practical record of the actual `Csc` inputs, embedded inputs, warning policy, and build configuration. Each registered execution must resolve from its exact NUnit leaf to the declared CLR method in NUnit's exact executed assembly; the associated Portable PDB must bind that method to the primary and support documents, whose embedded source bytes must exactly match the locked repository files. This is layered same-build provenance, not a cryptographic or hermetic-build attestation claim. Replacement topology is independent of its semantic outcome; outcome must match the source disposition and requirement transition. Acyclic one-to-one replacement chains close to a fixed point, so a published witness can later be retired without rewriting earlier edges. Partition records remain non-closing until aggregate semantic composition is modeled. Required owner decisions resolve to pinned prior-ledger sources attached to the decided requirement. Passing tests do not self-attest proof through an output marker.
 - Media extensions may reference Abstractions, the format capabilities they compose, and their own media domain assembly. An extension does not reference another kind's media domain. Host and Client reference neither half of Video.
 - `Arronix.Format.Video` ships as the installed package `arronix.format.video`: one shared contract
@@ -42,7 +46,7 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.8.0`. First-par
 - Authoring stays rich while its surface stays small. Strong generic relationships, complete common base types, constructor-owned invariants, typed defaults, and compiler-generated projections reduce ceremony; field dictionaries, duplicated descriptors, reflection conventions, builder transcripts, repeated type arguments, and implementation-specific callbacks do not.
 - Type erasure is a one-way internal compilation step. A typed media, format, language, or provider relationship may become a kind-blind Host or wire projection only after its compile-time relationship has been validated; the erased representation never becomes an alternative authoring model.
 - A media type derives from `MediaType<TItem,TTarget,TRelease,TParser>`; the first three types are respectively the durable catalog/library entity, ephemeral acquisition intent, and interpreted publication. `TParser : IReleaseParser<TRelease>` binds the media-owned parser at compile time.
-- The `MediaType` primary constructor captures its stable kind identifier, singular/plural display names, non-empty format composition, typed minimum-availability selection, and file binding. File binding defaults to `OnePerItem`; other relationships must state their shape explicitly. Kind identity is never derived from mutable display wording. The remaining optional or repeatable media-specific declarations are virtual values for identity, groups, additional selections, searches, matching, release policy, query planning, naming, summaries, intent exceptions, workbenches, and derivations. Parsing is the deliberate exception: `IReleaseParser<TRelease>.Parse` is static abstract because the parser type itself is the executable declaration. `CompiledShapes` is the generator-owned abstract member; authors do not implement it. There are no public whole-media replay builders, per-kind action transcripts, parse-declaration DSLs on typed media, `IUses...` capability badges, or test corpora on the runtime contract.
+- The `MediaType` primary constructor captures its stable kind identifier, singular/plural display names, non-empty format composition, typed minimum-availability selection, and file binding. File binding defaults to `OnePerItem`; other relationships must state their shape explicitly. Kind identity is never derived from mutable display wording. The remaining optional or repeatable media-specific declarations are virtual values for identity, groups, additional selections, searches, matching, release policy, query planning, naming, summaries, intent exceptions, workbenches, and derivations. Parsing is the deliberate exception: `IReleaseParser<TRelease>.Parse` is static abstract because the parser type itself is the executable declaration. `CompiledShapes` is a generator-supplied public override marked `EditorBrowsable(Never)`; its visibility preserves the immutable G01 executable-generator sentinel, while ordinary authors neither implement nor call it. Capture is an explicit hidden-interface operation and is absent from concrete media types' public surface. There are no public whole-media replay builders, per-kind action transcripts, parse-declaration DSLs on typed media, `IUses...` capability badges, or test corpora on the runtime contract.
 - `IMediaEntity` is the minimum interface shared by items and groups. `MediaItem<TReleaseTimeline,TReleaseStage>` is directly usable; `MediaItem<TItem,TReleaseTimeline,TReleaseStage>` retains the exact derived item type for relationships. `MediaCollection<TItem>` is the common group class.
 - `ReleaseTarget<TItem>` is the concrete one-item acquisition target. `Release<TRepresentation>` is the concrete common release carrying title, year, edition, and format-owned representation. Media types use the closed common types directly unless they add real coverage or release facts. Television's set-shaped target and coordinate-bearing release are the counterexamples which justify media-owned types.
 - The common item class exposes external identifiers, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. It carries no durable key: `MediaItemId` is host-assigned at materialization and is not a media entity fact. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
@@ -213,10 +217,16 @@ work does not substitute for closing an earlier dependency.
   Host assigns the durable reference; marker readings reach the Movie parser; and real package admission
   isolates missing or incompatible Movies failures to TMDb. The provider owns its HTTP, credential, DTO,
   settings, identity, marker, and mapping vocabulary. See `docs/research/g05/tmdb-provider-pressure-test.md`.
-- G06 is active: separate semantic authoring SDK from generated and Host binding SPI without losing the
-  compiled typed relationship or introducing a second authoring path.
+- G06 is complete. `Arronix.Sdk` is the ordinary author package: it brings the runtime contract plus the
+  generator as an analyzer, contributes no runtime assembly, and exposes no Host or Client dependency.
+  Generated shapes, capture visitors, erased registrations, expression carriers, and provider-family markers
+  remain CLR-visible only where a cross-assembly bridge requires it; they are hidden from completion lists,
+  concrete author values implement bridge members explicitly, `CompiledShapes` is generated and hidden from
+  ordinary completion lists, and a concrete media type publicly exposes no `Capture`. `ARX1003` reports a missing `partial` modifier at the media
+  declaration. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
+  repository project reference, and the packed SDK contains only its readme, metapackage marker, and analyzer.
 
-The later gates cover the hidden binding SPI, dynamic typed Client loading, compatibility
+The active G07 gate covers dynamic typed Client loading. Later gates cover compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
@@ -229,16 +239,14 @@ duplicated checklist drifting from current state.
 - The format-capability loading and versioning lifecycle needs a first-class manifest/package design before independently distributed format packages are promised.
 - `ReleasePolicy<T>.Compile` still exposes builder callback choreography to media authors. Format defaults and media policy fragments must compose without making authors drive an internal compiler mechanism.
 - Movies still declares likely-standard workbenches, browse defaults, and title ordering. Audit them against Television, Music, and Books and derive any behaviour which is not a genuine media difference.
-- `IClosedCataloger` and `IClosedCurator` are public because an interface cannot inherit a less accessible
-  one. They are binding SPI an author never implements, and G06 owns moving or hiding that class of surface.
-  Deriving the pairing from the implemented contract needs one-time type inspection at registration; that is
-  erasure at the sanctioned boundary, not authoring vocabulary, and it is stated in their documentation
-  rather than hidden.
+- `IClosedCataloger` and `IClosedCurator` remain public CLR types because a public closed provider contract
+  cannot inherit a less accessible marker. They are `EditorBrowsable(Never)` binding SPI which authors never
+  implement directly. Deriving the pairing from the implemented contract still needs one-time type inspection
+  at registration; that is erasure at the sanctioned boundary, not authoring vocabulary.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
-- The generator rejects non-partial media declarations through compiler diagnostic `CS0260`; it does not yet emit a dedicated Arronix diagnostic explaining the authoring requirement.
-- The current one-command full-solution run (2026-08-25) reports 2,749 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,051 total cases across 12 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-25) reports 2,764 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,066 total cases across 12 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

@@ -1,6 +1,6 @@
 # Arronix.Abstractions API Stability Policy
 
-## Version: 0.8.0
+## Version: 0.9.0
 
 This document defines the stability guarantees and versioning policies for the `Arronix.Abstractions` contract layer.
 
@@ -61,7 +61,7 @@ Plugins declare their compatible `Arronix.Abstractions` version range using npm/
 ```json
 {
   "contracts": {
-    "arronix": ">=0.8 <0.9"
+    "arronix": ">=0.9 <0.10"
   }
 }
 ```
@@ -76,7 +76,7 @@ are the compatibility contract.
 
 A consumer chooses a range that reflects versions it has actually tested. The loader accepts a plugin when
 the installed `Arronix.Abstractions` version satisfies that declared range; it does not impose an additional
-range-width policy. First-party plugins use `>=0.8 <0.9` because they are built and tested against the 0.8
+range-width policy. First-party plugins use `>=0.9 <0.10` because they are built and tested against the 0.9
 line, not because types inside that line carry a second stability classification.
 
 At 1.0.0, the ordinary Semantic Versioning guarantees described above begin. If a finer-grained preview API
@@ -135,9 +135,30 @@ not a list of what to avoid.
 
 ## Version History
 
-### 0.8.0
+### 0.9.0
 
 **Released**: [Current]
+
+**The semantic authoring SDK is separated from generated and Host binding mechanics.**
+
+- Added `Arronix.Sdk`, the packaging-only package extension authors reference. It depends on
+  `Arronix.Abstractions`, embeds `Arronix.Generators` as an `analyzers/dotnet/cs` asset, and has no runtime
+  assembly. The generator is not independently packable.
+- `MediaType<TItem,TTarget,TRelease,TParser>` no longer publicly exposes `Capture`. The generator supplies
+  the public `CompiledShapes` override retained by the immutable G01 proof, but marks it non-authoring;
+  capture is an explicit hidden-interface operation,
+  and Host receives the exact generated catalog through the erased double-dispatch registration.
+- Generated catalogs, registration and binder interfaces, visitor interfaces, provider-family markers,
+  provider/language type registrations, erased `Type` carriers, and erased expression members are marked
+  non-authoring. Concrete semantic values implement visitor dispatch and type carriers explicitly, so
+  normal IntelliSense shows the typed values an author actually supplies.
+- Added compiler diagnostic `ARX1003` at the media declaration when it is not `partial`; the diagnostic
+  tells the author how to enable generation and explicitly says not to implement the Host projection.
+- The contract assembly and first-party manifests move together to `0.9.0` / `>=0.9 <0.10`.
+
+### 0.8.0
+
+**Released**: 0.8.0
 
 **Typed media ownership and format-owned representation replace the quality-axes experiment.**
 
@@ -571,7 +592,7 @@ residue is tracked and what removes an entry from it.
 ### Version Range Selection
 
 A plugin declares the versions it has actually tested. First-party plugins currently use
-`">=0.8 <0.9"`. The loader checks only that its installed contract version satisfies the declared range;
+`">=0.9 <0.10"`. The loader checks only that its installed contract version satisfies the declared range;
 it does not reject a wider range independently of that compatibility check.
 
 ### Handling a Contract Change

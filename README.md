@@ -78,7 +78,8 @@ Format capabilities own representation facts. `Arronix.Format.Video`, for exampl
 ## Projects
 
 ```text
-Arronix.Abstractions      public media-neutral contracts, version 0.8.0
+Arronix.Abstractions      public media-neutral contracts, version 0.9.0
+Arronix.Sdk               authoring metapackage: Abstractions plus generator/analyzer assets
 Arronix.Common            shared host-side implementations
 Arronix.Plugins           manifests, isolation, compatibility and capability admission
 Arronix.Host              DI composition and generic runtime engines
@@ -140,7 +141,7 @@ embedded bytes for the locked primary and support sources. An eight-column appen
 durable proof sentinels, while the compatibility ledger enforces exactly 302 current skips; four immutable Movie
 parser rows are isolated from the ordinary representative corpus. This is same-build provenance rather than a
 cryptographic or hermetic-build attestation claim. First-party plugins currently declare the tested contract
-range `">=0.8 <0.9"`.
+range `">=0.9 <0.10"`.
 
 ## License
 

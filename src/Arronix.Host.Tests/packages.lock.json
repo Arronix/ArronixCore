@@ -158,7 +158,7 @@
       "arronix.common": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )",
+          "Arronix.Abstractions": "[0.9.0, )",
           "Microsoft.Extensions.Http": "[11.0.0-preview.7.26381.103, )",
           "Microsoft.Extensions.Options.DataAnnotations": "[11.0.0-preview.7.26381.103, )",
           "System.IO.Hashing": "[11.0.0-preview.7.26381.103, )",
@@ -168,13 +168,13 @@
       "arronix.format.video": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       },
       "arronix.host": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )",
+          "Arronix.Abstractions": "[0.9.0, )",
           "Arronix.Common": "[0.1.0, )",
           "Arronix.Plugins": "[0.1.0, )",
           "Microsoft.Extensions.Caching.Memory": "[11.0.0-preview.7.26381.103, )",
@@ -187,25 +187,25 @@
       "arronix.language.reference": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       },
       "arronix.media.movies": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       },
       "arronix.plugin.books": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       },
       "arronix.plugin.movies": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )",
+          "Arronix.Abstractions": "[0.9.0, )",
           "Arronix.Format.Video": "[0.1.0, )",
           "Arronix.Media.Movies": "[0.1.0, )"
         }
@@ -213,20 +213,20 @@
       "arronix.plugin.music": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       },
       "arronix.plugin.tv": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )",
+          "Arronix.Abstractions": "[0.9.0, )",
           "Arronix.Format.Video": "[0.1.0, )"
         }
       },
       "arronix.plugins": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )",
+          "Arronix.Abstractions": "[0.9.0, )",
           "Arronix.Common": "[0.1.0, )",
           "Microsoft.Extensions.Configuration.Binder": "[11.0.0-preview.7.26381.103, )",
           "Microsoft.Extensions.Options.ConfigurationExtensions": "[11.0.0-preview.7.26381.103, )",

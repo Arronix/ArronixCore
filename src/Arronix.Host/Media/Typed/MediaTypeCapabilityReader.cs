@@ -52,10 +52,11 @@ public sealed class MediaTypeCapabilityReader : IMediaTypeCapabilityReader, IMed
 
     /// <inheritdoc />
     public IMediaTypeRuntime Bind<TItem, TTarget, TRelease, TParser>(
-        MediaType<TItem, TTarget, TRelease, TParser> definition)
+        MediaType<TItem, TTarget, TRelease, TParser> definition,
+        CompiledShapeCatalog compiledShapes)
         where TItem : class, IMediaItem
         where TTarget : class, IReleaseTarget
         where TRelease : class, IRelease
         where TParser : IReleaseParser<TRelease>
-        => MediaTypeModelFactory.Build<TItem, TTarget, TRelease, TParser>(definition);
+        => MediaTypeModelFactory.Build<TItem, TTarget, TRelease, TParser>(definition, compiledShapes);
 }

@@ -116,13 +116,13 @@
       "arronix.format.video": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )"
+          "Arronix.Abstractions": "[0.9.0, )"
         }
       },
       "arronix.format.video.contributions": {
         "type": "Project",
         "dependencies": {
-          "Arronix.Abstractions": "[0.8.0, )",
+          "Arronix.Abstractions": "[0.9.0, )",
           "Arronix.Format.Video": "[0.1.0, )"
         }
       }

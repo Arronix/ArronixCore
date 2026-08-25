@@ -68,13 +68,20 @@ The obvious implementation should be the ownership-correct implementation. A med
 accidentally become the home of catalog-vendor identifiers, format vocabulary, language rules, source
 protocol codes, or Client layout simply because those concepts appear while implementing that media kind.
 
+The ordinary package reference is `Arronix.Sdk`. It contributes the semantic contract as the extension's
+runtime dependency and the shape generator as an analyzer, but no SDK runtime assembly. The media definition
+is `partial` so the generator can supply its non-authoring Host-binding projection; a missing modifier is reported
+at the declaration by an Arronix diagnostic. Generated capture, visitors, erased registrations, expression
+carriers, and `System.Type` bridges are not author-facing concepts.
+
 ## Rules
 
 1. `MediaType` owns common slots. Required values are constructor arguments; an optional slot with zero
    values returns an empty collection and is not represented by an `IUses...` marker.
 2. A relationship with varying closed types is a typed value using double dispatch. It is not encoded as an
    interface implemented by the media type and discovered by reflection.
-3. Plugin registration names the media definition once: `registry.AddMediaType<Movies>()`.
+3. Plugin registration names the partial media definition once: `registry.AddMediaType<Movies>()`. The author
+   neither implements nor calls a generated shape or capture member.
 4. The parser type is passed once as generic arity and returns the exact release shape through the static
    `IReleaseParser<TRelease>` contract. It is not rebuilt as a `ParseDeclaration` object graph.
 5. `MediaItem` contains common item facts. Media-owned lifecycle and aggregate types remain ordinary public
@@ -150,6 +157,8 @@ must not become the SDK pattern.
   the provider implementation.
 - Generated projections and erased registration visitors are hidden binding SPI, not author obligations or
   concepts required to understand the SDK.
+- An ordinary external project restores `Arronix.Sdk` plus its chosen domain packages and receives the
+  generator and author-site diagnostics without a repository reference or direct generator dependency.
 - A manifest does not manually repeat derivable media shape, token, policy, or action declarations.
 - The solution builds with no warnings, all enabled tests pass, and architecture tests enforce the new
   authoring boundary.

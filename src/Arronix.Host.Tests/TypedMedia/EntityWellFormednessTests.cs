@@ -108,8 +108,23 @@ internal sealed class EntityWellFormednessTests
 
     [Test]
     public void AWellFormedEntityIsRead() =>
-        FluentActions.Invoking(() => ItemTypeReader.Read(new Works().CompiledShapes.Item))
+        FluentActions.Invoking(() => ItemTypeReader.Read(
+                ((IMediaTypeDefinition)new Works()).Capture().Bind(CompiledShapeBinder.Instance).Item))
             .Should().NotThrow();
+
+    private sealed class CompiledShapeBinder : IMediaTypeBinder<CompiledShapeCatalog>
+    {
+        internal static readonly CompiledShapeBinder Instance = new();
+
+        public CompiledShapeCatalog Bind<TItem, TTarget, TRelease, TParser>(
+            MediaType<TItem, TTarget, TRelease, TParser> definition,
+            CompiledShapeCatalog compiledShapes)
+            where TItem : class, IMediaItem
+            where TTarget : class, IReleaseTarget
+            where TRelease : class, IRelease
+            where TParser : Arronix.Abstractions.Parsing.IReleaseParser<TRelease>
+            => compiledShapes;
+    }
 
     private static TestCaseData Case<TEntity>(params CompiledField[] fields) =>
         new TestCaseData(new CompiledEntityShape { EntityType = typeof(TEntity), Fields = fields })

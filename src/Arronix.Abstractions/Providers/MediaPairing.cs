@@ -1,3 +1,5 @@
+using System.ComponentModel;
+
 namespace Arronix.Abstractions.Providers;
 
 /// <summary>Marks a provider contract that closes <see cref="ICataloger{TItem}"/> over a media item type.</summary>
@@ -18,10 +20,12 @@ namespace Arronix.Abstractions.Providers;
 /// cannot satisfy a cataloger registration, and a cataloger cannot satisfy a curator's.
 /// </para>
 /// </remarks>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IClosedCataloger : ICataloger;
 
 /// <summary>Marks a provider contract that closes <see cref="ICurator{TItem}"/> over a media item type.</summary>
 /// <remarks>
 /// The curator half of the same marker. See <see cref="IClosedCataloger"/> for why it carries nothing.
 /// </remarks>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IClosedCurator : IProvider;

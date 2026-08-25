@@ -66,6 +66,9 @@ internal static class RepositoryLayout
     /// <summary>The compile-time media-shape generator.</summary>
     public const string Generators = "Arronix.Generators";
 
+    /// <summary>The packaging-only extension-authoring SDK.</summary>
+    public const string Sdk = "Arronix.Sdk";
+
     /// <summary>The prefix every media extension project shares.</summary>
     public const string ExtensionPrefix = "Arronix.Plugin.";
 

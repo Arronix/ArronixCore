@@ -140,7 +140,7 @@ public sealed class PluginRegistry : IPluginRegistry
                     + "refused. This is a host wiring defect, not an extension defect.");
             }
 
-            var registration = new TType().Capture();
+            var registration = ((IMediaTypeDefinition)new TType()).Capture();
             var requirements = _mediaTypes.Requirements(registration);
 
             foreach (var requirement in requirements)

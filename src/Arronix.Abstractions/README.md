@@ -6,7 +6,10 @@ vendor vocabularies belong to the extensions that define them.
 
 ## Contract line
 
-The current version is `0.8.0`. First-party manifests declare `>=0.8 <0.9`.
+The current version is `0.9.0`. First-party manifests declare `>=0.9 <0.10`.
+
+Extension authors reference `Arronix.Sdk`, which brings this contract assembly together with the
+compile-time generator and diagnostics. It contributes no runtime assembly of its own.
 
 Arronix is pre-1.0. Any public contract may change or be deleted in a minor release. There is no separate
 per-type experimental tier; versioning and plugin manifest ranges express compatibility. See
@@ -51,10 +54,12 @@ availability, and file cardinality, plus ordinary virtual instance members for o
 media-specific declarations. Parsing is the deliberate static generic
 seam: `TParser` implements `IReleaseParser<TRelease>.Parse` directly in C# instead of returning a
 parse-declaration object graph.
-There is no public non-generic shadow media model. `IMediaTypeRegistration` carries the captured definition
-and closed type tuple through a kind-blind loader by double dispatch; Host creates its private runtime
-projection after admission. Wire descriptors are derived discovery and generic-presentation data, never a
-substitute for the typed schema.
+There is no public non-generic shadow media model. Hidden binding SPI carries the captured definition,
+closed type tuple, and generated readers through a kind-blind loader by double dispatch; Host creates its
+private runtime projection after admission. A concrete media type exposes no `Capture`; its generated
+`CompiledShapes` override is hidden from ordinary completion lists and never author-implemented. An author
+never implements a visitor. Wire descriptors are derived discovery and
+generic-presentation data, never a substitute for the typed schema.
 
 Relationships are declared through closed generic values such as `FormatUse<TRepresentation>`,
 `GroupDefinition<TItem,TGroup>`, typed selections, searches, matching rules, and release policy. Host

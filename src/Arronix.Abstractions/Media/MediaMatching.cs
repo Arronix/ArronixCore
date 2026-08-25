@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Linq.Expressions;
 
 namespace Arronix.Abstractions.Media;
@@ -41,10 +42,12 @@ public interface IMatchAgreement<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Dispatches the closed value type to a kind-blind compiler.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     void Accept(IMatchAgreementVisitor<TItem> visitor);
 }
 
 /// <summary>The host side of a typed match agreement.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IMatchAgreementVisitor<TItem>
     where TItem : class, IMediaItem
 {
@@ -63,7 +66,7 @@ public sealed record MatchAgreement<TItem, TValue>(
     where TValue : struct
 {
     /// <inheritdoc />
-    public void Accept(IMatchAgreementVisitor<TItem> visitor)
+    void IMatchAgreement<TItem>.Accept(IMatchAgreementVisitor<TItem> visitor)
     {
         ArgumentNullException.ThrowIfNull(visitor);
         visitor.Visit(this);

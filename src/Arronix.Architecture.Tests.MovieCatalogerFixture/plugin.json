@@ -3,7 +3,7 @@
   "id": "fixture.movies.provider",
   "name": "Independent movie provider",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.8 <0.9" },
+  "contracts": { "arronix": ">=0.9 <0.10" },
   "entryAssembly": "Arronix.Architecture.Tests.MovieCatalogerFixture.dll",
   "description": "A separately packaged provider that pairs with the movies media domain and takes nothing from the movies extension.",
   "dependencies": [

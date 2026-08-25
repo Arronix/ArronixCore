@@ -23,7 +23,7 @@ internal sealed class TestPluginContext(IHttpGateway gateway, TimeProvider clock
 
     public string PluginVersion => "0.1.0";
 
-    public string HostContractVersion => "0.8.0";
+    public string HostContractVersion => "0.9.0";
 
     public CapabilitySet Capabilities { get; } =
         CapabilitySet.Of(Capability.Metadata, Capability.Curation, Capability.Network);

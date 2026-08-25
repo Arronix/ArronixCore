@@ -3,7 +3,7 @@
   "id": "tmdb",
   "name": "TMDb",
   "version": "0.1.0",
-  "contracts": { "arronix": ">=0.8 <0.9" },
+  "contracts": { "arronix": ">=0.9 <0.10" },
   "entryAssembly": "Arronix.Provider.Tmdb.dll",
   "description": "A separately packaged TMDb provider, whose movies binding pairs with the movies media domain and takes nothing from the movies extension.",
   "dependencies": [

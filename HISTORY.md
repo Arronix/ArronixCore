@@ -1,5 +1,24 @@
 # Arronix History
 
+## 2026-08-25 — Separate the extension SDK from its generated Host-binding bridge
+
+- Added `Arronix.Sdk` as the packaging-only reference for extension authors. It depends on
+  `Arronix.Abstractions`, embeds `Arronix.Generators` as an analyzer asset, and contributes no runtime
+  assembly. The generator remains a non-packable implementation project rather than a second package an
+  author must coordinate.
+- Removed generated capture mechanics from concrete author-facing surfaces. `CompiledShapes` became a
+  generator-supplied override hidden from ordinary completion lists; its public CLR visibility remains only
+  because the published G01 executable-generator sentinel is immutable. Capture became an explicit hidden-interface operation, visitor dispatch and
+  erased `Type`/expression carriers became explicit implementations on concrete semantic values, and the
+  cross-assembly bridge types which must remain public are hidden from ordinary completion lists.
+- Added `ARX1003` at the media declaration when `partial` is missing, plus architecture gates which reject
+  Host/Client/runtime dependencies and binding vocabulary in typed media extensions. This keeps one typed
+  definition and one one-way erasure path rather than creating a simplified parallel SDK model.
+- Advanced the contract and first-party manifest line from `0.8` to `0.9`. Packing and inspecting the real
+  NuGet artifact proved that the SDK contains the analyzer but no runtime DLL, and an external project with
+  only package references compiled a typed media definition; removing `partial` produced `ARX1003` at the
+  author site.
+
 ## 2026-08-25 — Ship the first independent production provider package
 
 - Added `Arronix.Provider.Tmdb` as a separately versioned package depending on the Movies package while

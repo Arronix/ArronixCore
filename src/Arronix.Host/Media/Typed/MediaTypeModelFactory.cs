@@ -46,21 +46,37 @@ public static class MediaTypeModelFactory
         where TRelease : class, IRelease
         where TParser : IReleaseParser<TRelease>
         where TType : MediaType<TItem, TTarget, TRelease, TParser>, new()
-        => Build<TItem, TTarget, TRelease, TParser>(new TType());
+        => ((IMediaTypeDefinition)new TType()).Capture().Bind(FactoryBinder.Instance);
 
     /// <summary>Builds one media kind from an already captured definition instance.</summary>
     internal static IMediaTypeRuntime Build<TItem, TTarget, TRelease, TParser>(
-        MediaType<TItem, TTarget, TRelease, TParser> definition)
+        MediaType<TItem, TTarget, TRelease, TParser> definition,
+        CompiledShapeCatalog compiledShapes)
         where TItem : class, IMediaItem
         where TTarget : class, IReleaseTarget
         where TRelease : class, IRelease
         where TParser : IReleaseParser<TRelease>
     {
         ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(compiledShapes);
         var declaration = new TypedDeclaration();
-        MediaDefinitionCompiler.Apply<TItem, TTarget, TRelease, TParser>(declaration, definition);
+        MediaDefinitionCompiler.Apply<TItem, TTarget, TRelease, TParser>(declaration, definition, compiledShapes);
 
         return Build<TItem, TTarget, TRelease, TParser>(definition.Kind, declaration);
+    }
+
+    private sealed class FactoryBinder : IMediaTypeBinder<IMediaTypeRuntime>
+    {
+        internal static readonly FactoryBinder Instance = new();
+
+        public IMediaTypeRuntime Bind<TItem, TTarget, TRelease, TParser>(
+            MediaType<TItem, TTarget, TRelease, TParser> definition,
+            CompiledShapeCatalog compiledShapes)
+            where TItem : class, IMediaItem
+            where TTarget : class, IReleaseTarget
+            where TRelease : class, IRelease
+            where TParser : IReleaseParser<TRelease>
+            => Build<TItem, TTarget, TRelease, TParser>(definition, compiledShapes);
     }
 
     /// <summary>

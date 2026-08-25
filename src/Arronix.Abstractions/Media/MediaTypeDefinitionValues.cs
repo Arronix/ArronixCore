@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Linq.Expressions;
 using Arronix.Abstractions.Definition;
 using Arronix.Abstractions.Shape;
@@ -18,10 +19,12 @@ public enum FileBindingDefinition
 public interface IFormatUse
 {
     /// <summary>Dispatches the closed representation type to the host compiler.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     void Accept(IFormatUseVisitor visitor);
 }
 
 /// <summary>The host side of a format-use definition.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IFormatUseVisitor
 {
     /// <summary>Visits one closed format use.</summary>
@@ -40,7 +43,7 @@ public sealed record FormatUse<TRepresentation>(FormatFamilyDefinition<TRepresen
     public bool CoexistsWithOtherFamilies { get; init; }
 
     /// <inheritdoc />
-    public void Accept(IFormatUseVisitor visitor)
+    void IFormatUse.Accept(IFormatUseVisitor visitor)
     {
         ArgumentNullException.ThrowIfNull(visitor);
         visitor.Visit(this);
@@ -62,10 +65,12 @@ public interface IGroupDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Dispatches the closed group type to the host compiler.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     void Accept(IGroupDefinitionVisitor<TItem> visitor);
 }
 
 /// <summary>The host side of a typed group relationship.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IGroupDefinitionVisitor<TItem>
     where TItem : class, IMediaItem
 {
@@ -92,7 +97,7 @@ public sealed record GroupDefinition<TItem, TGroup>(
     public GroupLifetime Lifetime { get; init; } = GroupLifetime.RefCounted;
 
     /// <inheritdoc />
-    public void Accept(IGroupDefinitionVisitor<TItem> visitor)
+    void IGroupDefinition<TItem>.Accept(IGroupDefinitionVisitor<TItem> visitor)
     {
         ArgumentNullException.ThrowIfNull(visitor);
         visitor.Visit(this);
@@ -104,10 +109,12 @@ public interface ISelectionDefinition<TItem> : IDeclaredSelection
     where TItem : class, IMediaItem
 {
     /// <summary>Dispatches the closed selection value type to the host compiler.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     void Accept(ISelectionDefinitionVisitor<TItem> visitor);
 }
 
 /// <summary>The host side of a typed profile selection.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface ISelectionDefinitionVisitor<TItem>
     where TItem : class, IMediaItem
 {
@@ -139,7 +146,7 @@ public sealed record OrderedSelectionDefinition<TItem, TValue>(
     public FacetApplication Application { get; init; } = FacetApplication.Acquisition;
 
     /// <inheritdoc />
-    public void Accept(ISelectionDefinitionVisitor<TItem> visitor)
+    void ISelectionDefinition<TItem>.Accept(ISelectionDefinitionVisitor<TItem> visitor)
     {
         ArgumentNullException.ThrowIfNull(visitor);
         visitor.Visit(this);
@@ -159,7 +166,7 @@ public sealed record ThresholdSelectionDefinition<TItem>(
     public FacetApplication Application { get; init; } = FacetApplication.Acquisition;
 
     /// <inheritdoc />
-    public void Accept(ISelectionDefinitionVisitor<TItem> visitor)
+    void ISelectionDefinition<TItem>.Accept(ISelectionDefinitionVisitor<TItem> visitor)
     {
         ArgumentNullException.ThrowIfNull(visitor);
         visitor.Visit(this);
@@ -195,10 +202,12 @@ public interface IDerivationDefinition<TItem>
     where TItem : class, IMediaItem
 {
     /// <summary>Dispatches the property's closed value type to the host compiler.</summary>
+    [EditorBrowsable(EditorBrowsableState.Never)]
     void Accept(IDerivationDefinitionVisitor<TItem> visitor);
 }
 
 /// <summary>The host side of a typed derived-property definition.</summary>
+[EditorBrowsable(EditorBrowsableState.Never)]
 public interface IDerivationDefinitionVisitor<TItem>
     where TItem : class, IMediaItem
 {
@@ -213,7 +222,7 @@ public sealed record DerivationDefinition<TItem, TValue>(
     where TItem : class, IMediaItem
 {
     /// <inheritdoc />
-    public void Accept(IDerivationDefinitionVisitor<TItem> visitor)
+    void IDerivationDefinition<TItem>.Accept(IDerivationDefinitionVisitor<TItem> visitor)
     {
         ArgumentNullException.ThrowIfNull(visitor);
         visitor.Visit(this);

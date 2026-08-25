@@ -25,7 +25,8 @@ internal static class MediaDefinitionCompiler
 
     internal static void Apply<TItem, TTarget, TRelease, TParser>(
         TypedDeclaration declaration,
-        MediaType<TItem, TTarget, TRelease, TParser> definition)
+        MediaType<TItem, TTarget, TRelease, TParser> definition,
+        CompiledShapeCatalog compiledShapes)
         where TItem : class, IMediaItem
         where TTarget : class, IReleaseTarget
         where TRelease : class, IRelease
@@ -33,8 +34,9 @@ internal static class MediaDefinitionCompiler
     {
         ArgumentNullException.ThrowIfNull(declaration);
         ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(compiledShapes);
 
-        declaration.CompiledShapes = definition.CompiledShapes;
+        declaration.CompiledShapes = compiledShapes;
         declaration.Singular = definition.SingularName;
         declaration.Plural = definition.PluralName;
         declaration.FilesBindOnePerItem = definition.Files == FileBindingDefinition.OnePerItem;

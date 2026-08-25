@@ -52,7 +52,7 @@ internal sealed class ConfigureOnlyPluginContext : IPluginContext
 
     public string PluginVersion { get; }
 
-    public string HostContractVersion { get; } = "0.8.0";
+    public string HostContractVersion { get; } = "0.9.0";
 
     public CapabilitySet Capabilities { get; }
 

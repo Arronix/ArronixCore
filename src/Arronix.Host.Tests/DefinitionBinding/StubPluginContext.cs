@@ -46,7 +46,7 @@ internal sealed class StubPluginContext(PluginId plugin, IPluginRegistry registr
 
     public string PluginVersion => "0.1.0";
 
-    public string HostContractVersion => "0.6.0";
+    public string HostContractVersion => "0.9.0";
 
     public IHttpGateway RequireHttp() => throw Unused(nameof(RequireHttp));
 

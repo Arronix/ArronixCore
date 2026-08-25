@@ -294,11 +294,12 @@ public sealed class MediaTypeBinder
 
         /// <inheritdoc />
         public IMediaTypeRuntime Bind<TItem, TTarget, TRelease, TParser>(
-            MediaType<TItem, TTarget, TRelease, TParser> definition)
+            MediaType<TItem, TTarget, TRelease, TParser> definition,
+            CompiledShapeCatalog compiledShapes)
             where TItem : class, IMediaItem
             where TTarget : class, IReleaseTarget
             where TRelease : class, IRelease
             where TParser : Arronix.Abstractions.Parsing.IReleaseParser<TRelease>
-            => MediaTypeModelFactory.Build<TItem, TTarget, TRelease, TParser>(definition);
+            => MediaTypeModelFactory.Build<TItem, TTarget, TRelease, TParser>(definition, compiledShapes);
     }
 }

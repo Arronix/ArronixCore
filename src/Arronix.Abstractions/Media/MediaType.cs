@@ -32,7 +32,9 @@ public abstract class MediaType<TItem, TTarget, TRelease, TParser>(
     where TRelease : class, IRelease
     where TParser : IReleaseParser<TRelease>
 {
-    /// <summary>Gets the build-time-generated projection of the definition's item, groups, and rows.</summary>
+    /// <summary>Gets the build-time-generated projection used by the registration bridge.</summary>
+    /// <remarks>The source generator supplies this member. Media authors neither implement nor call it.</remarks>
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     public abstract CompiledShapeCatalog CompiledShapes { get; }
 
     /// <summary>Gets the media kind identifier. It must equal the manifest's declared kind.</summary>
@@ -91,7 +93,7 @@ public abstract class MediaType<TItem, TTarget, TRelease, TParser>(
     public virtual IReadOnlyList<IDerivationDefinition<TItem>> Derivations => [];
 
     /// <inheritdoc />
-    public IMediaTypeRegistration Capture() => MediaTypeRegistration.For(this);
+    IMediaTypeRegistration IMediaTypeDefinition.Capture() => MediaTypeRegistration.For(this, CompiledShapes);
 
     private static IReadOnlyList<IFormatUse> RequireFormats(IReadOnlyList<IFormatUse> value)
     {

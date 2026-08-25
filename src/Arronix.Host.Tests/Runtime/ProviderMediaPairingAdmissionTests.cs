@@ -445,7 +445,7 @@ internal sealed class ProviderMediaPairingAdmissionTests
             Id = Package.Value,
             Name = "Pairing fixture",
             Version = "0.1.0",
-            Contracts = new ContractRequirements { Arronix = ">=0.8 <0.9" },
+            Contracts = new ContractRequirements { Arronix = ">=0.9 <0.10" },
             EntryAssembly = "Arronix.Host.Tests.dll",
             Capabilities =
             [

@@ -170,7 +170,7 @@ needed. Host DI is never consulted and modules do not construct provider objects
 The loader:
 
 1. discovers and parses `plugin.json`;
-2. validates the `0.8` contract range and static assembly references;
+2. validates the `0.9` contract range and static assembly references;
 3. creates an isolated load context and capability-scoped context;
 4. invokes the single module's registration method;
 5. seals and verifies the registration ledger in both capability directions;
