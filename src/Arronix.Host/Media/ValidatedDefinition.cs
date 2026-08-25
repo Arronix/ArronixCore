@@ -68,14 +68,19 @@ public sealed class ValidatedDefinition
     /// host-owned values before it is retained: the engines read this model outside any invocation lease,
     /// so an extension-supplied collection here would run extension code with no ticket held.
     /// <para>
-    /// Two members are delegates by contract and cannot be copied, and they differ.
-    /// <see cref="MediaKindModel.Respace"/> is the media kind's own; the one path that reaches it is the
-    /// declarative release parser compiled from this model, which is an internal seam of
-    /// <c>RegisteredMediaKind</c> and is obtainable only from a leased handle — so invoking it holds the
-    /// contributing extension's ticket. Each template requirement's predicate is built by the host's
-    /// definition compiler rather than supplied by the extension, and no production path invokes one at
-    /// all today; when a consumer is written it has to sit behind the same media-kind lease. Being
-    /// published is not the proof for either — the lease on the path that reaches them is.
+    /// Two members are delegates by contract and cannot be copied. Both end in author-supplied code, and
+    /// their call paths differ.
+    /// </para>
+    /// <para>
+    /// <see cref="MediaKindModel.Respace"/> is the media kind's own, and the one path that reaches it is
+    /// the declarative release parser compiled from this model — an internal seam of
+    /// <c>RegisteredMediaKind</c>, obtainable only from a leased handle, so invoking it holds the
+    /// contributing extension's ticket.
+    /// </para>
+    /// <para>
+    /// A template requirement's predicate is a host adapter that closes over and calls the author's own
+    /// predicate. No production path invokes one today, so there is no lease claim to make about it; a
+    /// consumer written later has to sit behind the media-kind lifetime like every other executable seam.
     /// </para>
     /// </remarks>
     internal MediaKindModel Model { get; }
