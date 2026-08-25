@@ -26,13 +26,9 @@
 # not the artifact anybody deploys. Trimming is disabled in Arronix.Client.csproj, where the decision and
 # its evidence live; see docs/research/g07.
 #
-# What this proof can and cannot reach today is a property of the host, not of this script. A package with
-# an entry assembly cannot be activated by any production Arronix host yet, because no ICacheProvider,
-# ITelemetryEmitter, IEventPublisher, IHostRuntimeInfo or IOperatingSystemInfo implementation exists
-# outside the test projects. So the installation below publishes the contract-only video package and
-# quarantines movies, and the script asserts exactly that rather than papering over it. The equivalent
-# proof over a complete Movies-and-video installation lives in Arronix.Host.Tests, which supplies those
-# five services.
+# The installation is a complete one: the contract-only video package and the movies package, which has an
+# entry assembly and activates. Both are expected Active and both publish a client facet, in dependency
+# order.
 
 set -uo pipefail
 
@@ -164,16 +160,25 @@ eval "$summary"
 status_of() { curl -s -o /dev/null -w '%{http_code}' "$1"; }
 header_of() { curl -s -D - -o /dev/null "$1" | tr -d '\r' | awk -v key="$2" 'tolower($1)==key { $1=""; sub(/^ /, ""); print }'; }
 
+check "both installed packages are active" "$active" "arronix.format.video,movies"
+check "nothing is quarantined" "$not_active" ""
+check "the manifest publishes both facets, dependency first" "$package_order" "arronix.format.video,movies"
+check "the manifest refuses no facet" "$refused_packages" "0"
+check "video offers its contract assembly" "$video_file" "Arronix.Format.Video.dll"
+check "movies offers its contract assembly" "$movies_file" "Arronix.Media.Movies.dll"
+
 check "the video client contract is served at its content address" \
     "$(status_of "$address/api/v1/client-contracts/arronix.format.video/$video_hash/$video_file")" "200"
+check "the movies client contract is served at its content address" \
+    "$(status_of "$address/api/v1/client-contracts/movies/$movies_hash/$movies_file")" "200"
 
 # The facet rule, from the outside. Every file named below exists in a package folder this host read.
 check "a file the package does not offer is not served" \
     "$(status_of "$address/api/v1/client-contracts/arronix.format.video/$video_hash/Arronix.Abstractions.dll")" "404"
 check "an entry assembly is not offered to a client" \
     "$(status_of "$address/api/v1/client-contracts/movies/$video_hash/Arronix.Plugin.Movies.dll")" "404"
-check "an installed package that is not Active offers nothing" \
-    "$(status_of "$address/api/v1/client-contracts/movies/$video_hash/Arronix.Media.Movies.dll")" "404"
+check "one package's address does not serve another package's assembly" \
+    "$(status_of "$address/api/v1/client-contracts/movies/$video_hash/$video_file")" "404"
 check "a package this host never installed offers nothing" \
     "$(status_of "$address/api/v1/client-contracts/books/$video_hash/$video_file")" "404"
 
@@ -188,6 +193,10 @@ check "the served bytes hash to the published content hash" "$served_hash" "$vid
 
 staged_hash=$(shasum -a 256 "$package_root/arronix.format.video/$video_file" | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
 check "the served bytes are the staged package's bytes" "$staged_hash" "$video_hash"
+
+served_movies_hash=$(curl -fsS "$address/api/v1/client-contracts/movies/$movies_hash/$movies_file" \
+    | shasum -a 256 | cut -d' ' -f1 | tr '[:lower:]' '[:upper:]')
+check "the served movies bytes hash to the published content hash" "$served_movies_hash" "$movies_hash"
 
 check "the manifest is served uncacheable" \
     "$(header_of "$address/api/v1/client-contracts" "cache-control:")" \
@@ -217,7 +226,8 @@ check "the published client carries no media or format assembly" "$client_media_
     echo "installationHash=$installation_hash"
     echo "publishedPackages=$published_packages"
     echo "video=$video_file $video_hash $video_identity"
-    echo "quarantined=$quarantined"
+    echo "movies=$movies_file $movies_hash"
+    echo "active=$active"
 } > "$evidence_root/server-half.txt"
 
 echo

@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Api.Tests</RootNamespace>
+    <AssemblyName>Arronix.Api.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TestProject>true</TestProject>
+    <StaticWebAssetsEnabled>false</StaticWebAssetsEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Api\Arronix.Api.csproj" />
+
+    <!-- Build dependencies, not compile-time references: these packages are observed only through the
+         server's own discovery and loader. -->
+    <ProjectReference Include="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj"
+                      ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Movies and the video format it requires, staged as an operator installs them: published output in a
+       folder each, discovered at startup. -->
+  <Target Name="StageInstalledPackages" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)InstalledPlugins" />
+    <MSBuild
+      Projects="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)InstalledPlugins\movies\" />
+    <MSBuild
+      Projects="..\Arronix.Format.Video\Arronix.Format.Video.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)InstalledPlugins\arronix.format.video\" />
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+</Project>

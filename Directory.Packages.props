@@ -31,6 +31,7 @@
     <PackageVersion Include="System.IO.Hashing" Version="11.0.0-preview.7.26381.103" />
 
     <!-- Client packages and explicit transitive pins for one coherent .NET 11 preview train. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="11.0.0-preview.7.26381.103" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="11.0.0-preview.7.26381.103" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="11.0.0-preview.7.26381.103" />
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="11.0.0-preview.7.26381.103" />

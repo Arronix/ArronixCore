@@ -13,6 +13,21 @@ import shlex
 import sys
 
 
+def one_assembly(package: dict, package_id: str) -> dict:
+    """Returns the single client-safe assembly a package offers, or fails saying what it found."""
+    assemblies = package["assemblies"]
+
+    if len(assemblies) != 1:
+        names = ", ".join(assembly["fileName"] for assembly in assemblies) or "nothing"
+        print(
+            f"error: '{package_id}' offers {len(assemblies)} client assemblies ({names}); one was expected.",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+
+    return assemblies[0]
+
+
 def main(manifest_path: str, plugins_path: str) -> int:
     with open(manifest_path, encoding="utf-8") as handle:
         manifest = json.load(handle)
@@ -20,28 +35,30 @@ def main(manifest_path: str, plugins_path: str) -> int:
     with open(plugins_path, encoding="utf-8") as handle:
         plugins = json.load(handle)
 
+    order = [package["id"] for package in manifest["packages"]]
     packages = {package["id"]: package for package in manifest["packages"]}
 
-    if "arronix.format.video" not in packages:
-        print(
-            "error: the host published no client facet for 'arronix.format.video'.",
-            file=sys.stderr,
-        )
-        return 1
+    for required in ("arronix.format.video", "movies"):
+        if required not in packages:
+            print(f"error: the host published no client facet for '{required}'.", file=sys.stderr)
+            return 1
 
-    video = packages["arronix.format.video"]["assemblies"][0]
-    quarantined = sorted(
-        plugin["id"] for plugin in plugins if plugin["state"] != "Active"
-    )
+    video = one_assembly(packages["arronix.format.video"], "arronix.format.video")
+    movies = one_assembly(packages["movies"], "movies")
 
     values = {
+        "package_order": ",".join(order),
         "video_hash": video["contentHash"],
         "video_file": video["fileName"],
         "video_identity": video["identity"],
+        "movies_hash": movies["contentHash"],
+        "movies_file": movies["fileName"],
         "published_packages": str(len(manifest["packages"])),
+        "refused_packages": str(len(manifest["refused"])),
         "installation_hash": manifest["installationHash"],
         "contract_identity": manifest["contractIdentity"],
-        "quarantined": ",".join(quarantined),
+        "active": ",".join(sorted(plugin["id"] for plugin in plugins if plugin["state"] == "Active")),
+        "not_active": ",".join(sorted(plugin["id"] for plugin in plugins if plugin["state"] != "Active")),
     }
 
     for name, value in values.items():
