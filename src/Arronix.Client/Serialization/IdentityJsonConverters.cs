@@ -35,14 +35,38 @@ public sealed class MediaLevelIdJsonConverter : JsonConverter<MediaLevelId>
 public sealed class PluginIdJsonConverter : JsonConverter<PluginId>
 {
     /// <inheritdoc />
+    /// <exception cref="JsonException">
+    /// The token is not a string, or the text is not a well-formed identifier.
+    /// </exception>
+    /// <remarks>
+    /// Refused rather than defaulted. A default identifier compares equal to every other unreadable one, so
+    /// defaulting silently merges packages the writer never merged.
+    /// </remarks>
     public override PluginId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => PluginId.TryParse(reader.GetString(), out var id) ? id : default;
+    {
+        if (reader.TokenType != JsonTokenType.String)
+        {
+            throw new JsonException($"An extension identifier must be a JSON string, not {reader.TokenType}.");
+        }
+
+        return PluginId.TryParse(reader.GetString(), out var id)
+            ? id
+            : throw new JsonException(
+                "An extension identifier must be lower-case alphanumeric segments separated by dots, starting with a letter.");
+    }
 
     /// <inheritdoc />
+    /// <exception cref="JsonException">The value is the default, which names no extension.</exception>
     public override void Write(Utf8JsonWriter writer, PluginId value, JsonSerializerOptions options)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        writer.WriteStringValue(value.ToString());
+
+        if (value == default)
+        {
+            throw new JsonException("A default extension identifier names nothing and must not be written.");
+        }
+
+        writer.WriteStringValue(value.Value);
     }
 }
 

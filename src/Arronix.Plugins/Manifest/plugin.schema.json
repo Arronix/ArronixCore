@@ -58,6 +58,15 @@
         "pattern": "^[^\\\\/:]+\\.(dll|DLL)$"
       }
     },
+    "clientContracts": {
+      "description": "The subset of contractAssemblies a browser client may download and load. Zero or more, each of which must also appear in contractAssemblies: a client receives the same admitted CLR identity a dependant binds to, or nothing. Never the entry assembly, which cannot be a shared contract assembly in the first place. Declared rather than inferred, because whatever is named here leaves the host's process and is readable by anyone the client is served to.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[^\\\\/:]+\\.(dll|DLL)$"
+      }
+    },
     "dependencies": {
       "description": "The packages this one requires. One edge per required package: an exact identifier and one compatible version range. Requiring a package grants its shared contract assemblies and, when it carries executable behavior, requires that exact package to be admitted first. Direct edges only; the transitive closure is derived.",
       "type": "array",

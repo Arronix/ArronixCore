@@ -6,6 +6,7 @@ using FluentAssertions.Execution;
 using Arronix.Abstractions.Caching;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Hosting;
+using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Telemetry;
 using Arronix.Host.Composition;
 using Arronix.Host.Runtime;
@@ -37,6 +38,7 @@ internal sealed class PackagedClientContractTests
 {
     private const string MoviesPackage = "movies";
     private const string VideoPackage = "arronix.format.video";
+    private static readonly PluginId Movies = PluginId.FromString(MoviesPackage);
     private const string MoviesContract = "Arronix.Media.Movies.dll";
     private const string VideoContract = "Arronix.Format.Video.dll";
     private const string MoviesEntryAssembly = "Arronix.Plugin.Movies.dll";
@@ -74,24 +76,23 @@ internal sealed class PackagedClientContractTests
         await bootstrapper.StartAsync(CancellationToken.None);
 
         var manifest = services.GetRequiredService<IClientContractCatalog>().Manifest();
-        var withheld = services.GetRequiredService<IClientContractCatalog>().Withheld();
 
         await bootstrapper.StopAsync(CancellationToken.None);
 
         using var assertions = new AssertionScope();
 
-        withheld.Should().BeEmpty();
-        manifest.Packages.Select(package => package.Id).Should().Equal(VideoPackage, MoviesPackage);
+        manifest.Refused.Should().BeEmpty();
+        manifest.Packages.Select(package => package.Id.Value).Should().Equal(VideoPackage, MoviesPackage);
 
-        var movies = manifest.Packages.Single(package => package.Id == MoviesPackage);
-        movies.Closure.Should().Equal(
+        var movies = manifest.Packages.Single(package => package.Id.Value == MoviesPackage);
+        movies.Closure.Select(id => id.Value).Should().Equal(
             [VideoPackage, MoviesPackage],
             "a browser loads a dependency before anything that binds to it, and the host states that order "
             + "rather than leaving a client to infer it from reference tables");
         movies.Assemblies.Select(assembly => assembly.FileName).Should().Equal(MoviesContract);
 
-        var video = manifest.Packages.Single(package => package.Id == VideoPackage);
-        video.Closure.Should().Equal(VideoPackage);
+        var video = manifest.Packages.Single(package => package.Id.Value == VideoPackage);
+        video.Closure.Select(id => id.Value).Should().Equal(VideoPackage);
         video.Assemblies.Select(assembly => assembly.FileName).Should().Equal(VideoContract);
 
         manifest.ContractIdentity.Should().Be(
@@ -112,8 +113,8 @@ internal sealed class PackagedClientContractTests
 
         var catalog = services.GetRequiredService<IClientContractCatalog>();
         var published = catalog.Manifest().Packages
-            .Single(package => package.Id == MoviesPackage).Assemblies.Single();
-        var opened = catalog.Open(MoviesPackage, MoviesContract, published.ContentHash);
+            .Single(package => package.Id.Value == MoviesPackage).Assemblies.Single();
+        var opened = catalog.Open(Movies, MoviesContract, published.ContentHash);
 
         var staged = await File.ReadAllBytesAsync(Path.Combine(root, MoviesPackage, MoviesContract));
         var stagedHash = Convert.ToHexString(SHA256.HashData(staged));
@@ -153,12 +154,12 @@ internal sealed class PackagedClientContractTests
 
         var catalog = services.GetRequiredService<IClientContractCatalog>();
         var moviesHash = catalog.Manifest().Packages
-            .Single(package => package.Id == MoviesPackage).Assemblies.Single().ContentHash;
+            .Single(package => package.Id.Value == MoviesPackage).Assemblies.Single().ContentHash;
 
-        var entry = catalog.Open(MoviesPackage, MoviesEntryAssembly, moviesHash);
-        var foreign = catalog.Open(MoviesPackage, VideoContract, moviesHash);
-        var unknown = catalog.Open("books", MoviesContract, moviesHash);
-        var superseded = catalog.Open(MoviesPackage, MoviesContract, new string('0', 64));
+        var entry = catalog.Open(Movies, MoviesEntryAssembly, moviesHash);
+        var foreign = catalog.Open(Movies, VideoContract, moviesHash);
+        var unknown = catalog.Open(PluginId.FromString("books"), MoviesContract, moviesHash);
+        var superseded = catalog.Open(Movies, MoviesContract, new string('0', 64));
 
         await bootstrapper.StopAsync(CancellationToken.None);
 
@@ -197,13 +198,13 @@ internal sealed class PackagedClientContractTests
 
         using var assertions = new AssertionScope();
 
-        partial.Packages.Select(package => package.Id).Should().Equal(VideoPackage);
+        partial.Packages.Select(package => package.Id.Value).Should().Equal(VideoPackage);
         partial.InstallationHash.Should().NotBe(full.InstallationHash);
 
         // The video package's own closure did not change, so its closure hash must not have either: a hash
         // that moved with an unrelated package would make every client refetch everything.
         partial.Packages.Single().ClosureHash.Should().Be(
-            full.Packages.Single(package => package.Id == VideoPackage).ClosureHash);
+            full.Packages.Single(package => package.Id.Value == VideoPackage).ClosureHash);
     }
 
     /// <summary>

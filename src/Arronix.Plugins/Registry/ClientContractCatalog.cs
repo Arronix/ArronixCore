@@ -4,8 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
-using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Loading;
 
 namespace Arronix.Plugins.Registry;
@@ -13,19 +13,19 @@ namespace Arronix.Plugins.Registry;
 /// <summary>What became of a request for one client-safe assembly's bytes.</summary>
 public enum ClientContractOutcome
 {
-    /// <summary>The exact bytes this installation admitted are being served.</summary>
-    Served = 0,
-
     /// <summary>
-    /// No Active package offers a file by that name to a client. A browser asking for one is asking for
-    /// something this host has never published, which includes every entry assembly and every shared
-    /// contract outside the declared client facet.
+    /// No Active package offers a file by that name to a client: every entry assembly, every shared contract
+    /// outside a declared client facet, and every package whose facet is withheld. First so that a default
+    /// value refuses rather than serves.
     /// </summary>
-    NotOffered = 1,
+    NotOffered = 0,
+
+    /// <summary>The exact bytes this installation admitted are being served.</summary>
+    Served = 1,
 
     /// <summary>
-    /// The file is offered, but under a different content hash than the one asked for. The caller is
-    /// holding a description of an installation this host is no longer running.
+    /// The file is offered under a different content hash than the one asked for, so the caller is holding a
+    /// description of an installation this host is no longer running.
     /// </summary>
     Superseded = 2
 }
@@ -40,7 +40,7 @@ public readonly record struct ClientContractContent(
     string? Identity);
 
 /// <summary>
-/// What a browser client may load from this host.
+/// What a browser may load from this host.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -59,30 +59,19 @@ public readonly record struct ClientContractContent(
 public interface IClientContractCatalog
 {
     /// <summary>
-    /// Builds the current client loading manifest.
+    /// Builds the current client loading manifest, including the facets this host will not serve.
     /// </summary>
-    /// <returns>The contract identity, installation hash, and publishing packages.</returns>
+    /// <returns>The contract identity, installation hash, publishing packages, and refusals.</returns>
     ClientContractManifest Manifest();
 
     /// <summary>
     /// Reads the bytes of one client-safe assembly.
     /// </summary>
-    /// <param name="packageId">The publishing package.</param>
+    /// <param name="package">The publishing package.</param>
     /// <param name="fileName">The bare file name, exactly as the manifest states it.</param>
     /// <param name="contentHash">The content hash the caller believes those bytes have.</param>
     /// <returns>The bytes, or why they are not being served.</returns>
-    ClientContractContent Open(string packageId, string fileName, string contentHash);
-
-    /// <summary>
-    /// Gets the Active packages whose declared client facet cannot be served, and why.
-    /// </summary>
-    /// <remarks>
-    /// A package reaches this list after admission, so it cannot be quarantined for it. Withholding its
-    /// facet and saying so is the honest outcome: a browser handed part of a closure would fail to bind at
-    /// whichever type it touched first, which is a much harder failure to read than an absent package.
-    /// </remarks>
-    /// <returns>One sentence per withheld package, ordered by identifier.</returns>
-    IReadOnlyList<string> Withheld();
+    ClientContractContent Open(PluginId package, string fileName, string contentHash);
 }
 
 /// <summary>
@@ -96,16 +85,21 @@ public interface IClientContractCatalog
 public sealed class ClientContractCatalog : IClientContractCatalog
 {
     private readonly PluginRuntimeRegistry _registry;
+    private readonly PluginPublicationGate _publication;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientContractCatalog"/> class.
     /// </summary>
     /// <param name="registry">The registry whose Active packages are projected.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="registry"/> is <see langword="null"/>.</exception>
-    public ClientContractCatalog(PluginRuntimeRegistry registry)
+    /// <param name="publication">The boundary a package is published and withdrawn across.</param>
+    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    public ClientContractCatalog(PluginRuntimeRegistry registry, PluginPublicationGate publication)
     {
         ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(publication);
+
         _registry = registry;
+        _publication = publication;
     }
 
     /// <summary>
@@ -122,12 +116,16 @@ public sealed class ClientContractCatalog : IClientContractCatalog
     /// <inheritdoc />
     public ClientContractManifest Manifest()
     {
-        var index = Build();
-        var packages = new List<ClientContractPackage>(index.Offering.Count);
+        // Held for the whole projection. A package's lease owns its admitted contracts, and reading half an
+        // installation either side of a withdrawal would describe one that never existed.
+        using var read = _publication.EnterRead();
 
-        foreach (var entry in index.Offering.Values.OrderBy(entry => entry.Id, StringComparer.Ordinal))
+        var resolved = Resolve();
+        var packages = new List<ClientContractPackage>(resolved.Offering.Count);
+
+        foreach (var entry in resolved.InIdentifierOrder())
         {
-            var closure = index.ClosureOf(entry);
+            var closure = resolved.ClosureOf(entry);
             packages.Add(new ClientContractPackage(
                 entry.Id,
                 entry.Version,
@@ -140,24 +138,28 @@ public sealed class ClientContractCatalog : IClientContractCatalog
         return new ClientContractManifest(
             ContractIdentity,
             InstallationHash(packages),
-            packages.AsReadOnly());
+            packages.AsReadOnly(),
+            resolved.Refusals);
     }
 
     /// <inheritdoc />
-    public ClientContractContent Open(string packageId, string fileName, string contentHash)
+    public ClientContractContent Open(PluginId package, string fileName, string contentHash)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(packageId);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
 
-        var index = Build();
+        // Held across the projection AND the byte copy below. Releasing between them would hand out a view
+        // over bytes whose lease had already been released.
+        using var read = _publication.EnterRead();
 
-        if (!index.Offering.TryGetValue(packageId, out var package))
+        var resolved = Resolve();
+
+        if (!resolved.Offering.TryGetValue(package, out var offering))
         {
             return new ClientContractContent(ClientContractOutcome.NotOffered, default, null);
         }
 
-        var offered = package.Assemblies.FirstOrDefault(assembly =>
+        var offered = offering.Assemblies.FirstOrDefault(assembly =>
             string.Equals(assembly.View.FileName, fileName, StringComparison.OrdinalIgnoreCase));
 
         if (offered is null)
@@ -168,24 +170,27 @@ public sealed class ClientContractCatalog : IClientContractCatalog
         // Ordinal-ignore-case rather than ordinal: the hash is hexadecimal text, and a caller that echoed it
         // back in the other case is holding the right bytes.
         return string.Equals(offered.View.ContentHash, contentHash, StringComparison.OrdinalIgnoreCase)
-            ? new ClientContractContent(ClientContractOutcome.Served, offered.Content, offered.View.Identity)
+            ? new ClientContractContent(
+                ClientContractOutcome.Served,
+
+                // Copied under the gate. The caller writes these bytes to a socket long after this method
+                // returns, and by then the package may have been withdrawn.
+                offered.Content.ToArray(),
+                offered.View.Identity)
             : new ClientContractContent(ClientContractOutcome.Superseded, default, null);
     }
-
-    /// <inheritdoc />
-    public IReadOnlyList<string> Withheld() => Build().Withheld;
 
     /// <summary>
     /// Renders one package's closure canonically, so that two hosts running the same installation compute
     /// the same hash and any difference in what a client would load changes it.
     /// </summary>
-    private static string ClosureHash(IReadOnlyList<OfferingPackage> closure)
+    private static string ClosureHash(IReadOnlyList<ClientFacetCandidate> closure)
     {
         var canonical = new StringBuilder();
 
         foreach (var package in closure)
         {
-            canonical.Append("package\n").Append(package.Id).Append('\n')
+            canonical.Append("package\n").Append(package.Id.Value).Append('\n')
                 .Append(package.Version).Append('\n');
 
             foreach (var assembly in package.Assemblies)
@@ -204,7 +209,7 @@ public sealed class ClientContractCatalog : IClientContractCatalog
 
         foreach (var package in packages)
         {
-            canonical.Append(package.Id).Append('\n').Append(package.ClosureHash).Append('\n');
+            canonical.Append(package.Id.Value).Append('\n').Append(package.ClosureHash).Append('\n');
         }
 
         return Hash(canonical.ToString());
@@ -214,13 +219,26 @@ public sealed class ClientContractCatalog : IClientContractCatalog
         => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
 
     /// <summary>
-    /// Projects the Active packages once, deciding for each whether its declared client facet is complete.
+    /// Reads the Active set once and resolves what a browser may load from it.
     /// </summary>
-    private ClientContractIndex Build()
+    /// <remarks>
+    /// <para>
+    /// One snapshot, deliberately. The candidates and the admitted-contract names are two views of the same
+    /// installation, and taking them separately means a package can be Active in the first and gone in the
+    /// second — after which an assembly reference is "admitted but unreachable" because the package that
+    /// published it withdrew between two reads, and a working installation reports itself broken.
+    /// </para>
+    /// <para>
+    /// The admitted set is what an offered assembly's references are checked against. A reference to one of
+    /// these names that the referring package's client closure does not offer is a server-only facet leaking
+    /// into a browser; a reference to anything else is a framework assembly the browser already has.
+    /// </para>
+    /// </remarks>
+    private ResolvedClientFacets Resolve()
     {
         var active = _registry.Active;
-        var admittedNames = new HashSet<string>(StagedAssembly.NameComparer);
-        var candidates = new List<(InstalledPackage Package, string Name, IReadOnlyList<AdmittedContract> Published)>();
+        var admitted = new HashSet<string>(StagedAssembly.NameComparer);
+        var candidates = new List<ClientFacetCandidate>();
 
         foreach (var result in active)
         {
@@ -231,23 +249,30 @@ public sealed class ClientContractCatalog : IClientContractCatalog
 
             foreach (var contract in lease.Contracts.Published)
             {
-                admittedNames.Add(contract.Identity.Name);
+                admitted.Add(contract.Identity.Name);
             }
-
-            candidates.Add((lease.Receipt.Package, result.Manifest?.Name ?? lease.Receipt.Id.ToString(), lease.Contracts.Published));
         }
 
-        var offering = new Dictionary<string, OfferingPackage>(StringComparer.Ordinal);
-        var withheld = new List<string>();
-
-        foreach (var candidate in candidates.Where(entry => entry.Package.ClientContractAssemblies.Count > 0))
+        foreach (var result in active)
         {
-            var assemblies = new List<OfferedAssembly>(candidate.Package.ClientContractAssemblies.Count);
-            var missing = new List<string>();
-
-            foreach (var fileName in candidate.Package.ClientContractAssemblies)
+            if (result.PackageLease is not { } lease)
             {
-                var contract = candidate.Published.FirstOrDefault(published =>
+                continue;
+            }
+
+            var package = lease.Receipt.Package;
+
+            if (package.ClientContractAssemblies.Count == 0)
+            {
+                continue;
+            }
+
+            var assemblies = new List<OfferedAssembly>(package.ClientContractAssemblies.Count);
+            var unadmitted = new List<string>();
+
+            foreach (var fileName in package.ClientContractAssemblies)
+            {
+                var contract = lease.Contracts.Published.FirstOrDefault(published =>
                     string.Equals(
                         Path.GetFileName(published.SourcePath),
                         fileName,
@@ -255,7 +280,7 @@ public sealed class ClientContractCatalog : IClientContractCatalog
 
                 if (contract is null)
                 {
-                    missing.Add($"'{fileName}' is offered to clients but this installation admitted no such contract from it");
+                    unadmitted.Add(fileName);
                     continue;
                 }
 
@@ -268,114 +293,251 @@ public sealed class ClientContractCatalog : IClientContractCatalog
                         contract.ModuleVersionId,
                         contract.Content.Length),
                     contract.Content,
-                    contract.Assembly.GetReferencedAssemblies()));
+                    new ReadOnlyCollection<string>(
+                        [.. contract.Assembly.GetReferencedAssemblies()
+                            .Select(reference => reference.Name)
+                            .OfType<string>()])));
             }
 
-            if (missing.Count > 0)
-            {
-                withheld.Add($"Package '{candidate.Package.Id}' offers a client facet this host cannot serve: {string.Join("; ", missing)}.");
-                continue;
-            }
-
-            offering[candidate.Package.Id.ToString()] = new OfferingPackage(
-                candidate.Package.Id.ToString(),
-                candidate.Package.Version.ToString(),
-                candidate.Name,
-                candidate.Package.Requirements.Select(requirement => requirement.PackageId.ToString()).ToList().AsReadOnly(),
-                assemblies.OrderBy(assembly => assembly.View.AssemblyName, StringComparer.Ordinal).ToList().AsReadOnly());
+            candidates.Add(new ClientFacetCandidate(
+                package.Id,
+                package.Version.ToString(),
+                result.Manifest?.Name ?? package.Id.Value,
+                new ReadOnlyCollection<PluginId>(
+                    [.. package.Requirements.Select(requirement => requirement.PackageId)]),
+                new ReadOnlyCollection<OfferedAssembly>(
+                    [.. assemblies.OrderBy(assembly => assembly.View.AssemblyName, StringComparer.Ordinal)]),
+                new ReadOnlyCollection<string>([.. unadmitted.Order(StringComparer.Ordinal)])));
         }
 
-        var index = new ClientContractIndex(offering, withheld);
+        return ClientFacetResolver.Resolve(candidates, admitted);
+    }
+}
 
-        // A client facet is only meaningful if a browser can bind everything the offered assemblies name.
-        // Every Arronix contract an offered assembly references must itself be offered, by this package or
-        // by one in its closure; a reference to an admitted contract outside that set is a server-only
-        // facet leaking into the browser, and the package is withheld rather than half-served.
-        foreach (var package in offering.Values.OrderBy(entry => entry.Id, StringComparer.Ordinal).ToArray())
-        {
-            var reachable = new HashSet<string>(
-                index.ClosureOf(package).SelectMany(member => member.Assemblies.Select(assembly => assembly.View.AssemblyName)),
-                StagedAssembly.NameComparer);
+/// <summary>One offered assembly: what the manifest says about it, its bytes, and what it references.</summary>
+/// <param name="View">The published description.</param>
+/// <param name="Content">The exact admitted bytes.</param>
+/// <param name="References">The simple names of every assembly it references.</param>
+internal sealed record OfferedAssembly(
+    ClientContractAssembly View,
+    ReadOnlyMemory<byte> Content,
+    ReadOnlyCollection<string> References);
 
-            var unreachable = package.Assemblies
-                .SelectMany(assembly => assembly.References.Select(reference => reference.Name))
-                .OfType<string>()
-                .Where(name => admittedNames.Contains(name) && !reachable.Contains(name))
-                .Distinct(StagedAssembly.NameComparer)
-                .Order(StringComparer.Ordinal)
-                .ToArray();
+/// <summary>One Active package that declared a client facet, before any withholding rule is applied.</summary>
+/// <param name="Id">The package identifier.</param>
+/// <param name="Version">The installed version.</param>
+/// <param name="Name">The name an operator sees.</param>
+/// <param name="Requires">Its direct requirements, canonically ordered and deduplicated.</param>
+/// <param name="Assemblies">The assemblies it offers, ordered by simple name.</param>
+/// <param name="Unadmitted">
+/// File names it offers which this installation admitted no contract for. A non-empty list withholds the
+/// package before any closure rule runs.
+/// </param>
+internal sealed record ClientFacetCandidate(
+    PluginId Id,
+    string Version,
+    string Name,
+    ReadOnlyCollection<PluginId> Requires,
+    ReadOnlyCollection<OfferedAssembly> Assemblies,
+    ReadOnlyCollection<string> Unadmitted);
 
-            if (unreachable.Length == 0)
-            {
-                continue;
-            }
-
-            withheld.Add(string.Create(
-                CultureInfo.InvariantCulture,
-                $"Package '{package.Id}' offers a client facet that references {string.Join(", ", unreachable.Select(name => $"'{name}'"))}, which no package in its client closure offers. A browser would receive a closure it cannot bind."));
-
-            offering.Remove(package.Id);
-        }
-
-        withheld.Sort(StringComparer.Ordinal);
-        return index;
+/// <summary>The facets this host will serve, the ones it will not, and the closures over them.</summary>
+internal sealed class ResolvedClientFacets
+{
+    internal ResolvedClientFacets(
+        Dictionary<PluginId, ClientFacetCandidate> offering,
+        IReadOnlyList<ClientContractRefusal> refusals)
+    {
+        Offering = offering;
+        Refusals = refusals;
     }
 
-    /// <summary>One offered assembly: what the manifest says about it, its bytes, and what it references.</summary>
-    private sealed record OfferedAssembly(
-        ClientContractAssembly View,
-        ReadOnlyMemory<byte> Content,
-        System.Reflection.AssemblyName[] References);
+    /// <summary>Gets the packages whose facet this host will serve.</summary>
+    public Dictionary<PluginId, ClientFacetCandidate> Offering { get; }
 
-    /// <summary>One Active package with a complete client facet.</summary>
-    private sealed record OfferingPackage(
-        string Id,
-        string Version,
-        string Name,
-        ReadOnlyCollection<string> Requires,
-        ReadOnlyCollection<OfferedAssembly> Assemblies);
+    /// <summary>Gets the withheld facets, ordered by identifier.</summary>
+    public IReadOnlyList<ClientContractRefusal> Refusals { get; }
 
-    /// <summary>The offering packages and the closures over them.</summary>
-    private sealed class ClientContractIndex(
-        Dictionary<string, OfferingPackage> offering,
-        List<string> withheld)
+    /// <summary>Gets the offering packages in identifier order.</summary>
+    public IEnumerable<ClientFacetCandidate> InIdentifierOrder()
+        => Offering.Values.OrderBy(entry => entry.Id.Value, StringComparer.Ordinal);
+
+    /// <summary>
+    /// Walks one package's transitive client closure, dependency first.
+    /// </summary>
+    /// <remarks>
+    /// Post-order over canonically ordered requirements, restricted to offering packages, so the result is
+    /// the order a browser can load in: nothing appears before something it binds to. The graph is already
+    /// proved acyclic by resolution, and the visited set makes a diamond one entry rather than two.
+    /// </remarks>
+    public IReadOnlyList<ClientFacetCandidate> ClosureOf(ClientFacetCandidate package)
     {
-        public Dictionary<string, OfferingPackage> Offering { get; } = offering;
+        var ordered = new List<ClientFacetCandidate>();
+        var visited = new HashSet<PluginId>();
+        Walk(package, ordered, visited);
+        return ordered;
+    }
 
-        public IReadOnlyList<string> Withheld { get; } = withheld.AsReadOnly();
-
-        /// <summary>
-        /// Walks one package's transitive client closure, dependency first.
-        /// </summary>
-        /// <remarks>
-        /// Post-order over declared requirements, restricted to offering packages, so the result is the
-        /// order a browser can load in: nothing appears before something it binds to. The graph is already
-        /// proved acyclic by resolution, and the visited set makes a diamond one entry rather than two.
-        /// </remarks>
-        public IReadOnlyList<OfferingPackage> ClosureOf(OfferingPackage package)
+    private void Walk(ClientFacetCandidate package, List<ClientFacetCandidate> ordered, HashSet<PluginId> visited)
+    {
+        if (!visited.Add(package.Id))
         {
-            var ordered = new List<OfferingPackage>();
-            var visited = new HashSet<string>(StringComparer.Ordinal);
-            Walk(package, ordered, visited);
-            return ordered;
+            return;
         }
 
-        private void Walk(OfferingPackage package, List<OfferingPackage> ordered, HashSet<string> visited)
+        foreach (var requirement in package.Requires)
         {
-            if (!visited.Add(package.Id))
+            if (Offering.TryGetValue(requirement, out var dependency))
             {
-                return;
+                Walk(dependency, ordered, visited);
+            }
+        }
+
+        ordered.Add(package);
+    }
+}
+
+/// <summary>
+/// Decides which declared client facets this host will actually serve.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Pure, and separated from the registry so the rule can be tested directly rather than believed.
+/// </para>
+/// <para>
+/// A facet is servable only if a browser can bind everything its assemblies name — every admitted contract
+/// they reference must be offered by that package or one in its client closure — and only if every required
+/// facet it declares is itself being served. Withholding a package empties its assemblies out of every
+/// closure containing it, which can make a dependant unservable in turn, so the rule runs to a fixed point:
+/// a single pass lets the package examined first survive with a closure a later withdrawal already emptied.
+/// </para>
+/// </remarks>
+internal static class ClientFacetResolver
+{
+    /// <summary>
+    /// Resolves the servable facets and the refusals.
+    /// </summary>
+    /// <param name="candidates">Every Active package that declared a client facet.</param>
+    /// <param name="admittedNames">The simple names of every shared contract this installation admitted.</param>
+    /// <returns>The offering packages and the withheld ones.</returns>
+    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    internal static ResolvedClientFacets Resolve(
+        IReadOnlyList<ClientFacetCandidate> candidates,
+        IReadOnlyCollection<string> admittedNames)
+    {
+        ArgumentNullException.ThrowIfNull(candidates);
+        ArgumentNullException.ThrowIfNull(admittedNames);
+
+        var admitted = new HashSet<string>(admittedNames, StagedAssembly.NameComparer);
+        var offering = new Dictionary<PluginId, ClientFacetCandidate>();
+
+        // Canonical requirement order is established here rather than trusted from the caller, because it is
+        // this rule's own invariant: a closure is walked in requirement order, and a closure hash is
+        // computed from the walk. Two hosts running one installation must agree on that hash whatever order
+        // an author wrote the declaration in.
+        candidates = [.. candidates.Select(candidate => candidate with
+        {
+            Requires = new ReadOnlyCollection<PluginId>(
+                [.. candidate.Requires.Distinct().OrderBy(id => id.Value, StringComparer.Ordinal)]),
+        })];
+
+        var refusals = new List<ClientContractRefusal>();
+        var withheld = new HashSet<PluginId>();
+        var declared = candidates.Select(candidate => candidate.Id).ToHashSet();
+
+        // A facet naming a file this installation admitted no contract for is withheld before any closure
+        // rule runs: there is nothing to reason about its references with.
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Unadmitted.Count == 0)
+            {
+                offering[candidate.Id] = candidate;
+                continue;
             }
 
-            foreach (var requirement in package.Requires)
+            refusals.Add(new ClientContractRefusal(
+                candidate.Id,
+                $"Package '{candidate.Id}' offers a client facet this host cannot serve: this installation "
+                + "admitted no shared contract under "
+                + string.Join(", ", candidate.Unadmitted.Select(name => $"'{name}'")) + ".",
+                candidate.Unadmitted,
+                null));
+
+            withheld.Add(candidate.Id);
+        }
+
+        bool changed;
+        do
+        {
+            changed = false;
+            var view = new ResolvedClientFacets(offering, refusals);
+
+            foreach (var candidate in view.InIdentifierOrder().ToArray())
             {
-                if (Offering.TryGetValue(requirement, out var dependency))
+                // Two ways one facet can stop being servable, computed together so a refusal can say
+                // everything that is wrong with it rather than whichever check happened to run first.
+                //
+                // A required package that declared a client facet and lost it takes its dependants with it,
+                // whether or not this package's own assemblies happen to name anything of that package's. A
+                // client closure is what a browser is told to load; serving a dependant out of a closure this
+                // host has already refused would publish an installation the host does not stand behind, and
+                // "it does not bind that assembly today" is a property of the current build rather than of
+                // the dependency.
+                var lost = candidate.Requires
+                    .Where(requirement => declared.Contains(requirement) && withheld.Contains(requirement))
+                    .OrderBy(requirement => requirement.Value, StringComparer.Ordinal)
+                    .ToList();
+
+                // And an assembly this facet binds which nothing in its closure offers, which is a
+                // server-only contract leaking into a browser whether or not anything was withdrawn.
+                var reachable = new HashSet<string>(
+                    view.ClosureOf(candidate).SelectMany(member =>
+                        member.Assemblies.Select(assembly => assembly.View.AssemblyName)),
+                    StagedAssembly.NameComparer);
+
+                var unreachable = candidate.Assemblies
+                    .SelectMany(assembly => assembly.References)
+                    .Where(name => admitted.Contains(name) && !reachable.Contains(name))
+                    .Distinct(StagedAssembly.NameComparer)
+                    .Order(StringComparer.Ordinal)
+                    .ToList();
+
+                if (lost.Count == 0 && unreachable.Count == 0)
                 {
-                    Walk(dependency, ordered, visited);
+                    continue;
                 }
-            }
 
-            ordered.Add(package);
+                var reason = new StringBuilder();
+
+                if (lost.Count > 0)
+                {
+                    reason.Append(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"Package '{candidate.Id}' requires {string.Join(", ", lost.Select(id => $"'{id}'"))}, whose client facet this host withheld. A client closure this host will not serve in full is not served in part."));
+                }
+
+                if (unreachable.Count > 0)
+                {
+                    reason.Append(string.Create(
+                        CultureInfo.InvariantCulture,
+                        $"{(reason.Length > 0 ? " It also" : $"Package '{candidate.Id}'")} offers a client facet that references {string.Join(", ", unreachable.Select(name => $"'{name}'"))}, which no package in its client closure offers. A browser would receive a closure it cannot bind."));
+                }
+
+                refusals.Add(new ClientContractRefusal(
+                    candidate.Id,
+                    reason.ToString(),
+                    new ReadOnlyCollection<string>(unreachable),
+                    lost.Count > 0 ? lost[0] : null));
+
+                offering.Remove(candidate.Id);
+                withheld.Add(candidate.Id);
+                changed = true;
+            }
         }
+        while (changed);
+
+        return new ResolvedClientFacets(
+            offering,
+            refusals.OrderBy(refusal => refusal.Package.Value, StringComparer.Ordinal).ToList().AsReadOnly());
     }
 }

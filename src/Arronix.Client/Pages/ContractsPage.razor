@@ -6,21 +6,23 @@
 @inject MediaContractLoader Contracts
 @inject ContractStore Store
 @*
-    What this browser has actually loaded, and what the host said it should be.
+    What this browser verified, what it loaded, and what the host said each of them should be.
 
-    Every row states both sides. That is the whole purpose of the page: the failure this design exists to
-    prevent is a browser rendering something plausible out of a contract that is not the one the host
-    admitted, and the only way to see that has not happened is to be able to read what each side said and
-    compare them. Nothing here is a summary of a check performed elsewhere.
+    Every row states both sides rather than a verdict computed elsewhere: the failure this design prevents
+    is rendering something plausible out of a contract that is not the one the host admitted, and seeing
+    that requires reading what each side said.
 
-    This page names no media kind and no media assembly. It renders whatever the installation published.
+    The facets the host withheld are rendered here too, because a missing media kind is the same question
+    from the other end. This page names no media kind and no media assembly.
 *@
 
 <h1>Media contracts</h1>
 
 <p class="page-lead">
     The client compiles against the universal contract assembly and nothing else. Installed media contracts
-    arrive from this host at run time, are proved against what it published, and are loaded into this page.
+    arrive from this host at run time and are proved against what it published — length, content hash,
+    declared identity, declared build and declared contract reference — before the browser runtime is
+    allowed near them.
 </p>
 
 <div class="page-actions">
@@ -36,9 +38,9 @@
 else
 {
     @*
-        The same report, verbatim, for a browser driver to read. Rendered rather than exposed through
-        script interop so that what a proof harness reads is exactly what a person on this page is looking
-        at: a surface that could disagree with the rendered one would be proving itself.
+        The same report, verbatim, for a browser driver to read. Rendered rather than exposed through script
+        interop so that what a proof harness reads is exactly what a person on this page is looking at: a
+        surface that could disagree with the rendered one would be proving itself.
     *@
     <pre id="contract-proof" hidden>@ProofText</pre>
 
@@ -46,6 +48,7 @@ else
         <header class="panel-head">
             <h2>Installation</h2>
             <span class="chip" id="contract-compatibility">@_report.Compatibility</span>
+            <span class="chip chip-quiet" id="contract-can-project">@(_report.CanProject ? "projection permitted" : "projection withheld")</span>
         </header>
 
         <dl class="contract-facts">
@@ -68,6 +71,41 @@ else
         }
     </section>
 
+    @if (_report.Refused.Count > 0)
+    {
+        <section class="panel" id="contract-refusals">
+            <header class="panel-head">
+                <h2>Withheld by this host</h2>
+                <span class="chip">@_report.Refused.Count</span>
+            </header>
+
+            <ul class="plugin-list">
+                @foreach (var refusal in _report.Refused)
+                {
+                    <li class="plugin tone-problem contract-refusal" data-package="@refusal.Package.Value">
+                        <div class="plugin-head">
+                            <p class="plugin-name">@refusal.Package.Value</p>
+                            @if (refusal.CausedBy is { } cause)
+                            {
+                                <span class="chip">caused by @cause.Value</span>
+                            }
+                        </div>
+                        <p class="plugin-message">@refusal.Reason</p>
+                        @if (refusal.Assemblies.Count > 0)
+                        {
+                            <p class="plugin-capabilities">
+                                @foreach (var assembly in refusal.Assemblies)
+                                {
+                                    <span class="chip chip-quiet">@assembly</span>
+                                }
+                            </p>
+                        }
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+
     @if (_report.Packages.Count == 0)
     {
         <EmptyState Title="No media contracts"
@@ -76,16 +114,16 @@ else
 
     @foreach (var package in _report.Packages)
     {
-        <section class="panel contract-package" id="@($"contract-package-{package.Id}")">
+        <section class="panel contract-package" id="@($"contract-package-{package.Id.Value}")">
             <header class="panel-head">
                 <h2>@package.Name</h2>
-                <span class="chip">@package.Id</span>
+                <span class="chip">@package.Id.Value</span>
                 <span class="plugin-version">@package.Version</span>
             </header>
 
             <dl class="contract-facts">
                 <dt>Closure</dt>
-                <dd class="contract-closure">@string.Join(" → ", package.Closure)</dd>
+                <dd class="contract-closure">@string.Join(" → ", package.Closure.Select(member => member.Value))</dd>
 
                 <dt>Closure hash</dt>
                 <dd class="contract-closure-hash">@package.ClosureHash</dd>
@@ -94,11 +132,10 @@ else
             <ul class="plugin-list">
                 @foreach (var assembly in package.Assemblies)
                 {
-                    <li class="plugin contract-assembly @(IsProved(assembly) ? "tone-positive" : "tone-problem")"
+                    <li class="plugin contract-assembly @(IsResident(assembly) ? "tone-positive" : "tone-problem")"
                         data-assembly="@assembly.Published.AssemblyName"
                         data-outcome="@assembly.Outcome"
-                        data-source="@assembly.Source"
-                        data-binds="@assembly.BindsToClientContract.ToString().ToLowerInvariant()">
+                        data-source="@assembly.Source">
                         <div class="plugin-head">
                             <p class="plugin-name">@assembly.Published.FileName</p>
                             <span class="chip">@assembly.Outcome</span>
@@ -109,7 +146,7 @@ else
                             <dt>Published identity</dt>
                             <dd>@assembly.Published.Identity</dd>
 
-                            <dt>Loaded identity</dt>
+                            <dt>Declared identity</dt>
                             <dd>@(assembly.ObservedIdentity ?? "—")</dd>
 
                             <dt>Published content hash</dt>
@@ -121,14 +158,17 @@ else
                             <dt>Published module</dt>
                             <dd>@assembly.Published.ModuleVersionId</dd>
 
-                            <dt>Loaded module</dt>
+                            <dt>Declared module</dt>
                             <dd>@(assembly.ObservedModuleVersionId?.ToString() ?? "—")</dd>
 
-                            <dt>Bytes</dt>
+                            <dt>Published bytes</dt>
                             <dd>@assembly.Published.Length</dd>
 
-                            <dt>Binds to this client's contract</dt>
-                            <dd>@(assembly.BindsToClientContract ? "yes" : "no")</dd>
+                            <dt>Observed bytes</dt>
+                            <dd>@(assembly.ObservedLength?.ToString(System.Globalization.CultureInfo.CurrentCulture) ?? "—")</dd>
+
+                            <dt>Declared contract reference</dt>
+                            <dd>@(assembly.ObservedContractReference ?? "—")</dd>
                         </dl>
 
                         @if (assembly.Failure is { Length: > 0 } assemblyFailure)
@@ -162,9 +202,8 @@ else
         await ReloadAsync();
     }
 
-    private static bool IsProved(LoadedContractAssembly assembly)
-        => assembly.Outcome is ContractLoadOutcome.Loaded or ContractLoadOutcome.AlreadyLoaded
-            && assembly.BindsToClientContract;
+    private static bool IsResident(LoadedContractAssembly assembly)
+        => assembly.Outcome is ContractLoadOutcome.Loaded or ContractLoadOutcome.AlreadyLoaded;
 
     private async Task ReloadAsync()
     {

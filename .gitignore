@@ -165,6 +165,3 @@ src/.idea/
 
 # Ignore Jetbrains IntelliJ Workspace Directories
 .idea/
-
-# Written by eng/proofs/g07-client-contracts.sh while a proof run is in flight.
-src/Arronix.Client/wwwroot/appsettings.Development.json

@@ -1,5 +1,64 @@
 # Arronix History
 
+## 2026-08-25 — Prove a contract before the browser runtime can ever see it
+
+The first pass of this loader verified after loading. It called `LoadFromStream`, then compared the loaded
+assembly's identity and module identifier against what the host published — which in a browser is one
+irreversible step too late, because the default load context cannot unload. A payload whose content hash was
+right and whose declared identity was a lie would have been resident for the life of the page, with a warning
+printed beside it.
+
+- **Verification moved in front of the runtime.** `ContractMetadataReader` reads the declared CLR identity,
+  the module version identifier and the universal-contract reference straight out of the PE metadata of the
+  exact bytes, alongside their length and SHA-256. Nothing resolves a type or runs a class constructor.
+- **The whole closure is verified before the first load.** A closure is not a list of independent downloads:
+  admitting a dependency and then finding its dependant wrong leaves a page holding half an installation it
+  can never complete. Only if every required member passes does anything load.
+- **Verified is not loaded.** An entry that passed and was deliberately not loaded reports `Verified`.
+  Reporting it as loaded because it could have been is the one lie a report like this must not tell, and it
+  matters most in the two cases where it would be told: an all-or-nothing refusal, and a commit that stopped
+  part-way.
+- **There is still a post-load proof, and it is a different question.** Preflight establishes what the bytes
+  declare; only the runtime can say what it did with them. After the load, the assembly's `FullName` and
+  module identifier are compared with the published ones and its contract reference is resolved through the
+  default context and required to be `ReferenceEquals` to this client's own. Only then does the entry become
+  `Loaded`.
+- **Compatibility became all or nothing.** `CanProject` is true only when every required assembly is
+  resident, and `Find` answers nothing otherwise. Diagnostics stay visible; "compatible" now means safe to
+  project and nothing else.
+- **The manifest is treated as untrusted input.** It is validated whole before any field is acted on —
+  including before the contract-identity refusal, which renders the packages. Duplicate package identifiers,
+  duplicate assembly simple names, a closure that omits or misorders its own package, a member the host did
+  not publish, unsafe file names, non-SHA-256 hashes, an identity whose simple name disagrees with the
+  assembly name, and self-blaming or dangling refusal causes are each one whole-installation refusal.
+  `PluginId` now travels through the wire and report models, and the client's converter refuses unreadable
+  identifier text rather than defaulting it to a value that compares equal to every other unreadable one.
+- **Withholding is a fixed point, not a pass.** A single pass let the package examined first survive with a
+  closure a later withdrawal had already emptied. The rule now runs until nothing changes, orders
+  requirements canonically so a closure hash describes the graph rather than a declaration order, and
+  withholds a dependant of a withheld facet even when its own assemblies bind nothing from it — "it does not
+  bind that today" is a property of the build, not of the dependency.
+- **Withheld facets stopped being a silent side channel.** They are published on the manifest, rendered on
+  the contracts page, and reported by a health contributor, each naming the package whose withdrawal caused
+  it. A withheld facet is invisible from a browser by construction, so the host has to say it.
+- **The catalog reads one Active snapshot under the publication gate** and copies bytes before releasing it,
+  so a lease cannot be disposed between deciding what to serve and serving it.
+
+The published client's own failure was attributed properly rather than assumed. Exporting the pristine base
+commit and publishing it under the same SDK shows it fails trimmed and starts untrimmed, on a fresh origin
+with no service worker; a default template application publishes and starts trimmed. So trimming is the
+variable and the defect predates this work. `Arronix.Client.csproj` now sets `PublishTrimmed=false`, because
+a property that lives only in a proof script leaves the artifact somebody deploys different from the one
+anybody tested — and G07.1 is recorded as in progress, not complete, while that debt stands.
+
+Proved in a real Chromium against the ordinary published client the API serves from one origin: a clean
+store loads over the network with length, hash, identity and build all agreeing; a warm store reuses the
+bytes with no byte request at all; and a foreign contract line, one flipped byte, a falsified identity, a
+falsified build and a malformed manifest are each refused with nothing loaded and nothing projected.
+
+Full rail: 2,868 passed, 302 registered skips, zero failed and zero inconclusive from 3,170 cases across 13
+projects.
+
 ## 2026-08-25 — Give a browser the exact contract assembly the host admitted
 
 G07 asked for typed media loading in Blazor as one gate: identity and cache protocol, real serving, real

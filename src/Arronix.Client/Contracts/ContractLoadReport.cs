@@ -1,3 +1,4 @@
+using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
 
 namespace Arronix.Client.Contracts;
@@ -5,56 +6,110 @@ namespace Arronix.Client.Contracts;
 /// <summary>Where one assembly's bytes came from.</summary>
 public enum ContractByteSource
 {
+    /// <summary>Nothing was fetched and nothing is held. First so that a default value claims nothing.</summary>
+    None = 0,
+
     /// <summary>Fetched over the network from the host.</summary>
-    Network = 0,
+    Network = 1,
 
     /// <summary>Read from this browser's contract store, which is what a warm start looks like.</summary>
-    Store = 1
+    Store = 2,
+
+    /// <summary>
+    /// Nothing was fetched because this page already holds the assembly, verified on an earlier pass.
+    /// Distinct from <see cref="None"/>, which means nothing was fetched and nothing is held.
+    /// </summary>
+    Resident = 3
 }
 
 /// <summary>What became of one client-safe assembly in this browser.</summary>
+/// <remarks>
+/// Only <see cref="Loaded"/> and <see cref="AlreadyLoaded"/> mean the runtime holds the assembly. Every
+/// other value — <see cref="Verified"/> included — means it does not. The distinction matters more than
+/// usual here: the browser's default load context cannot unload, so what is resident and what merely could
+/// have been are permanently different facts.
+/// </remarks>
 public enum ContractLoadOutcome
 {
-    /// <summary>Loaded, and every published fact about it was proved against what loaded.</summary>
-    Loaded = 0,
+    /// <summary>
+    /// Nothing was attempted for this assembly. First so that a default value claims nothing.
+    /// </summary>
+    NotAttempted = 0,
 
-    /// <summary>Loaded on an earlier pass of this page and reused, because a browser cannot unload one.</summary>
-    AlreadyLoaded = 1,
+    /// <summary>
+    /// Verified against every published fact and deliberately not loaded, because another member of the
+    /// required set failed or the commit stopped earlier. The runtime never saw these bytes.
+    /// </summary>
+    Verified = 1,
 
-    /// <summary>The bytes received did not hash to the content hash the host published. Nothing was loaded.</summary>
-    ContentHashMismatch = 2,
+    /// <summary>Verified before loading, then loaded, and proved again against what the runtime produced.</summary>
+    Loaded = 2,
 
-    /// <summary>The bytes loaded, but as a different CLR identity or a different build than was published.</summary>
-    IdentityMismatch = 3,
+    /// <summary>
+    /// Found already resident from an earlier pass of this page, with the same content hash, identity and
+    /// module version identifier. Reused rather than loaded again.
+    /// </summary>
+    AlreadyLoaded = 3,
 
-    /// <summary>The bytes could not be fetched, or the runtime refused them.</summary>
-    Failed = 4
+    /// <summary>The bytes received did not have the published length.</summary>
+    LengthMismatch = 4,
+
+    /// <summary>The bytes received did not hash to the published content hash.</summary>
+    ContentHashMismatch = 5,
+
+    /// <summary>The bytes declare a different CLR identity than the host published.</summary>
+    IdentityMismatch = 6,
+
+    /// <summary>The bytes declare a different build than the host published.</summary>
+    ModuleVersionMismatch = 7,
+
+    /// <summary>The bytes do not declare exactly the universal contract reference this client carries.</summary>
+    ContractReferenceMismatch = 8,
+
+    /// <summary>
+    /// This page already holds an assembly of that simple name which is not the one published. A browser
+    /// cannot unload it, so the page can never satisfy this installation.
+    /// </summary>
+    NameAlreadyResident = 9,
+
+    /// <summary>The bytes could not be fetched, or could not be read as an assembly.</summary>
+    Unavailable = 10,
+
+    /// <summary>
+    /// Verification passed and the runtime refused the bytes, or produced something other than what was
+    /// published. Earlier members may already be resident, so the page is terminal.
+    /// </summary>
+    RuntimeRefused = 11
 }
 
-/// <summary>One client-safe assembly, as published and as actually loaded.</summary>
+/// <summary>One client-safe assembly, as published and as verified.</summary>
 /// <param name="Published">Exactly what the host said this file is.</param>
 /// <param name="Outcome">What became of it here.</param>
 /// <param name="Source">Where its bytes came from on this pass.</param>
+/// <param name="ObservedLength">The number of bytes this browser received.</param>
 /// <param name="ObservedContentHash">The SHA-256 this browser computed over the bytes it received.</param>
-/// <param name="ObservedIdentity">The CLR identity the runtime bound the bytes as.</param>
-/// <param name="ObservedModuleVersionId">The module identifier of the build that actually loaded.</param>
-/// <param name="BindsToClientContract">
-/// Whether the loaded assembly's reference to the universal contract resolved to this client's own
-/// compiled contract assembly, by object identity. This is the whole point of the exercise: a media
-/// contract is only shared if both sides are looking at the same <see cref="System.Reflection.Assembly"/>.
+/// <param name="ObservedIdentity">The CLR identity the bytes declare, read from their metadata.</param>
+/// <param name="ObservedModuleVersionId">The module identifier the bytes declare, read from their metadata.</param>
+/// <param name="ObservedContractReference">
+/// The universal contract reference the bytes declare, read from their metadata.
 /// </param>
-/// <param name="Failure">Why it did not load, when it did not.</param>
+/// <param name="Failure">Why it was refused, when it was.</param>
+/// <remarks>
+/// Every observed value is read from the bytes themselves before the runtime is involved, so a refusal can
+/// state what the bytes actually were rather than what a loaded assembly reports about itself.
+/// </remarks>
 public sealed record LoadedContractAssembly(
     ClientContractAssembly Published,
     ContractLoadOutcome Outcome,
     ContractByteSource Source,
+    int? ObservedLength,
     string? ObservedContentHash,
     string? ObservedIdentity,
     Guid? ObservedModuleVersionId,
-    bool BindsToClientContract,
+    string? ObservedContractReference,
     string? Failure);
 
-/// <summary>One installed package's client facet, as loaded.</summary>
+/// <summary>One installed package's client facet, as verified.</summary>
 /// <param name="Id">The package identifier.</param>
 /// <param name="Version">The installed version.</param>
 /// <param name="Name">The name an operator sees.</param>
@@ -62,38 +117,71 @@ public sealed record LoadedContractAssembly(
 /// <param name="Closure">The package identifiers a client must load for it, dependency first.</param>
 /// <param name="Assemblies">Its own client-safe assemblies.</param>
 public sealed record LoadedContractPackage(
-    string Id,
+    PluginId Id,
     string Version,
     string Name,
     string ClosureHash,
-    IReadOnlyList<string> Closure,
+    IReadOnlyList<PluginId> Closure,
     IReadOnlyList<LoadedContractAssembly> Assemblies);
 
-/// <summary>Why a whole installation was refused before anything was loaded.</summary>
+/// <summary>Whether this browser may project anything from what the host published.</summary>
 public enum ContractCompatibility
 {
-    /// <summary>The host and this client carry the same universal contract identity.</summary>
-    Compatible = 0,
+    /// <summary>
+    /// Nothing has been attempted. First so that a default value never permits a projection.
+    /// </summary>
+    Unknown = 0,
+
+    /// <summary>
+    /// Every required assembly was verified and is resident. The only value under which a typed projection
+    /// is permitted.
+    /// </summary>
+    Compatible = 1,
 
     /// <summary>The host publishes a contract identity this client cannot bind. Nothing was loaded.</summary>
-    ContractIdentityMismatch = 1,
+    ContractIdentityMismatch = 2,
 
     /// <summary>The host could not be reached, or answered with something this client cannot read.</summary>
-    Unreachable = 2
+    Unreachable = 3,
+
+    /// <summary>
+    /// The host answered with a document that does not describe an installation. Nothing was fetched: a
+    /// description this client cannot trust to be self-consistent is not one it may act on part of.
+    /// </summary>
+    ManifestInvalid = 4,
+
+    /// <summary>
+    /// At least one required assembly failed verification, so nothing was loaded. Recoverable: a corrected
+    /// installation loads on the next pass.
+    /// </summary>
+    Refused = 5,
+
+    /// <summary>
+    /// This page can never satisfy the installation the host is running, because an assembly it cannot
+    /// unload is resident or a verified load was refused part-way through. Only a reload clears it.
+    /// </summary>
+    Terminal = 6
 }
 
 /// <summary>Everything this browser knows about the contracts the host published.</summary>
-/// <param name="Compatibility">Whether anything was loadable at all.</param>
+/// <param name="Compatibility">Whether anything may be projected.</param>
 /// <param name="PublishedContractIdentity">The universal contract identity the host published.</param>
 /// <param name="ClientContractIdentity">The universal contract identity this client was compiled against.</param>
 /// <param name="InstallationHash">The host's one hash over everything a client would load.</param>
 /// <param name="Packages">The publishing packages and what became of each of their assemblies.</param>
+/// <param name="Refused">The client facets the host itself withheld, and why.</param>
 /// <param name="StoreAvailable">Whether this browser gave the client a persistent contract store.</param>
-/// <param name="Failure">The sentence to show when nothing could be loaded.</param>
+/// <param name="Failure">The sentence to show when nothing may be projected.</param>
 /// <remarks>
+/// <para>
 /// Deliberately a complete record of both sides rather than a boolean. The failure this design exists to
 /// prevent is a browser rendering something plausible out of a contract that is not the one the host
 /// admitted, and the only way to see that has not happened is to be able to read what each side said.
+/// </para>
+/// <para>
+/// <see cref="CanProject"/> is the one question a caller should ask before using anything that was loaded.
+/// Diagnostics are visible whatever the outcome; "compatible" means safe to project, and nothing else.
+/// </para>
 /// </remarks>
 public sealed record ContractLoadReport(
     ContractCompatibility Compatibility,
@@ -101,5 +189,16 @@ public sealed record ContractLoadReport(
     string ClientContractIdentity,
     string? InstallationHash,
     IReadOnlyList<LoadedContractPackage> Packages,
+    IReadOnlyList<ClientContractRefusal> Refused,
     bool StoreAvailable,
-    string? Failure);
+    string? Failure)
+{
+    /// <summary>
+    /// Gets whether a typed projection may be built from what this page holds.
+    /// </summary>
+    /// <remarks>
+    /// All or nothing. A partially verified installation is not a smaller installation: a media kind whose
+    /// dependency was refused would deserialize into types whose meaning nothing has agreed on.
+    /// </remarks>
+    public bool CanProject => Compatibility == ContractCompatibility.Compatible;
+}

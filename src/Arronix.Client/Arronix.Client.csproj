@@ -63,20 +63,45 @@
   </ItemGroup>
 
   <!--
-       LOAD-BEARING, AND NOT AN OPTIMIZATION OPT-OUT.
+       TRIMMING IS OFF. RECORDED DEBT, NOT A PREFERENCE.
+
+       A trimmed publish of this client cannot start on .NET 11 preview 7: InvalidCastException from
+       MemberAssignment.GetPropertiesIncludingInherited, reached from PersistentServicesRegistry during
+       WebAssemblyHost.RunAsyncCore, before any Arronix code runs. The same commit published untrimmed
+       starts, and a default Blazor WebAssembly template publishes and starts trimmed on the same SDK.
+       docs/research/g07/client-contract-loading.md has the A/B evidence.
+
+       Set here rather than passed to one publish command: while it lives in a proof script, an ordinary
+       `dotnet publish` still emits an application that cannot start, and the artifact somebody deploys is
+       not the artifact anybody tested. The cost is a much larger download, visible where the decision is.
+       Restoring trimming requires diagnosing the framework failure first.
+  -->
+  <PropertyGroup>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+
+  <!--
+       Inert while the property above is false, and kept because it is the thing that must already be true
+       the day trimming comes back.
 
        Media contract assemblies are downloaded and loaded at run time, so the trimmer never sees them and
        cannot know which members of the contract assembly they bind to. A trimmed contract assembly is one
        whose surviving surface is whatever THIS project happened to call, and a media contract compiled
        against the full surface then fails at whichever member it touches first - at run time, in a browser,
-       with a MissingMethodException naming a member that was present when the extension was built.
-
-       Rooting the contract assembly is the only correct answer: it is a published contract, its whole
-       surface is its point, and its size is the price of being one. Nothing else is rooted, so every other
-       assembly in this application is still trimmed to what it uses.
+       with a MissingMethodException naming a member that was present when the extension was built. Rooting
+       the contract assembly is the only correct answer: it is a published contract, its whole surface is its
+       point, and its size is the price of being one.
   -->
   <ItemGroup>
     <TrimmerRootAssembly Include="Arronix.Abstractions" />
+  </ItemGroup>
+
+  <!--
+       The contract loader's verification rules run before any browser is involved, so they are checked in
+       an ordinary test process. Nothing else reaches into this project.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="Arronix.Client.Tests" />
   </ItemGroup>
 
   <ItemGroup>

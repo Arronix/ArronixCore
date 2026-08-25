@@ -80,7 +80,9 @@ public static class ArronixPluginsServiceCollectionExtensions
 
         // What a browser may load. A projection of the Active registry rather than a second registry, so a
         // package's client facet appears and disappears with the package itself.
-        services.TryAddSingleton<ClientContractCatalog>();
+        services.TryAddSingleton(provider => new ClientContractCatalog(
+            provider.GetRequiredService<PluginRuntimeRegistry>(),
+            provider.GetRequiredService<PluginPublicationGate>()));
         services.TryAddSingleton<IClientContractCatalog>(
             provider => provider.GetRequiredService<ClientContractCatalog>());
 

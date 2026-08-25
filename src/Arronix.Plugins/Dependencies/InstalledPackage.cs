@@ -101,6 +101,7 @@ internal sealed class InstalledPackage
         }
 
         var offered = new List<string>(clientContractAssemblies?.Count ?? 0);
+        var offeredNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var assembly in clientContractAssemblies ?? [])
         {
@@ -113,6 +114,17 @@ internal sealed class InstalledPackage
             {
                 throw new ArgumentException(
                     $"'{name}' is offered to clients but is not one of this package's shared contract assemblies.",
+                    nameof(clientContractAssemblies));
+            }
+
+            // Held here as well as in the manifest validator, because this type is the installation's
+            // canonical snapshot and nothing downstream re-reads the declaration. A duplicate would put one
+            // file in a client's closure twice and hash it twice, which is a different closure hash for the
+            // same installation.
+            if (!offeredNames.Add(name))
+            {
+                throw new ArgumentException(
+                    $"'{name}' is offered to clients more than once.",
                     nameof(clientContractAssemblies));
             }
 

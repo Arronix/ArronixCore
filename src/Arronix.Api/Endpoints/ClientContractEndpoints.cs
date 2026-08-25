@@ -1,3 +1,4 @@
+using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
 using Arronix.Plugins.Registry;
 using Microsoft.AspNetCore.Builder;
@@ -14,25 +15,21 @@ namespace Arronix.Api.Endpoints;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <strong>This is the second thing that crosses the client/server split, and it is the opposite of the
-/// first.</strong> A media-kind descriptor is inert declared data that describes a shape; these routes
-/// serve the actual CLR assembly that <i>is</i> the shape. Both are needed and neither replaces the other:
-/// the descriptor is how a generic surface presents an installed kind without knowing it, and the contract
-/// assembly is how a client deserializes and reasons about the kind's own typed values without a compiled
-/// dependency on them.
+/// The second thing that crosses the client/server split, and the opposite of the first: a media-kind
+/// descriptor is inert data describing a shape, and these routes serve the CLR assembly that <i>is</i> the
+/// shape. Both are needed. The descriptor lets a generic surface present an installed kind; the contract
+/// assembly lets a client reason about that kind's typed values without a compiled dependency on it.
 /// </para>
 /// <para>
-/// What keeps that safe is the facet rule rather than a filter written here. A package declares which of
-/// its published shared contract assemblies a client may have; a shared contract assembly is by
-/// construction the half with no module, no parser, no provider implementation and no I/O; and the catalog
-/// serves the bytes this host admitted, by content hash, or refuses. There is no route by which an entry
-/// assembly, a server-only contract or a file this installation never admitted can be requested.
+/// Safety comes from the facet rule rather than a filter here. A package declares which of its published
+/// shared contract assemblies a client may have; a shared contract assembly carries no module, parser,
+/// provider implementation or I/O by construction; and the catalog serves admitted bytes by content hash or
+/// refuses. No route can request an entry assembly, a server-only contract or a file never admitted.
 /// </para>
 /// <para>
-/// The byte route is content-addressed, and that is what makes the cache protocol work with no
-/// invalidation message anywhere: an address names bytes, so it can be cached forever, and an installation
-/// that changes mints new addresses rather than changing what an old one means. A client holding a stale
-/// address is told its address is superseded instead of being handed different bytes under it.
+/// The byte route is content-addressed, which is why the cache protocol needs no invalidation message: an
+/// address names bytes and can be held forever, and an installation that changes mints new addresses rather
+/// than changing what an old one means.
 /// </para>
 /// </remarks>
 internal static class ClientContractEndpoints
@@ -93,7 +90,14 @@ internal static class ClientContractEndpoints
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(context);
 
-        var found = catalog.Open(package, fileName, contentHash);
+        // The route segment is text; everything past this point is a proved identifier. A malformed one is
+        // not a package this host has, so it is the same answer as an unknown one.
+        if (!PluginId.TryParse(package, out var packageId))
+        {
+            return TypedResults.NotFound($"'{package}' is not a well-formed package identifier.");
+        }
+
+        var found = catalog.Open(packageId, fileName, contentHash);
 
         switch (found.Outcome)
         {

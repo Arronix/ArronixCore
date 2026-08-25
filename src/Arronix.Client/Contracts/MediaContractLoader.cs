@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using Arronix.Abstractions.Media;
+using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
 using Arronix.Client.Serialization;
 
@@ -16,36 +17,19 @@ namespace Arronix.Client.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <strong>This is the only place in the client where an installed media kind stops being data and starts
-/// being types.</strong> The client compiles against the universal contract assembly and against nothing
-/// else — no Movies, no Video, no media package of any kind — and it acquires the rest at run time from
-/// whichever host it was served by. That is what makes one client able to render an installation whose
-/// media kinds it has never heard of without reducing them to a bag of strings.
+/// The client compiles against the universal contract assembly and nothing else, and acquires installed
+/// media contracts at run time from the host that served it.
 /// </para>
 /// <para>
-/// Three things are proved before the runtime is allowed near any bytes, and the order matters:
-/// </para>
-/// <list type="number">
-///   <item><description>The host's universal contract identity is exactly this client's. A media contract
-///   compiled against a different contract line cannot bind here, so an installation carrying one is
-///   refused whole rather than in the parts that happen to resolve.</description></item>
-///   <item><description>The bytes received hash to the content hash the host published, wherever they came
-///   from. A store hit is treated with exactly the same suspicion as a network response.</description></item>
-///   <item><description>What the runtime loaded is what was published: the same CLR identity, the same
-///   module version identifier, and a reference to the universal contract that resolves — by object
-///   identity — to this client's own compiled contract assembly.</description></item>
-/// </list>
-/// <para>
-/// Nothing here enumerates a loaded assembly's types or reads its properties. Discovery of what a media
-/// contract <i>contains</i> belongs to the generated metadata a later gate adds; this gate is the identity
-/// and the transport, and it stays inside the small, annotated reflection surface a trimmed client can
-/// keep.
+/// The browser's default load context cannot unload, which decides the shape of this class. Every question
+/// about a payload — length, SHA-256, declared CLR identity, declared module version identifier, declared
+/// universal-contract reference — is answered while it is still a byte array, and the whole required closure
+/// is answered for before the first load. Verifying one payload at a time would admit the good half of a
+/// closure and only then discover the bad half.
 /// </para>
 /// <para>
-/// A browser cannot unload an assembly. That is stated here because it shapes the design rather than
-/// because it is an incidental limitation: contracts are loaded into the default context once per page, a
-/// second pass reuses what a first pass loaded, and an installation that changes underneath a live tab is a
-/// condition to report rather than to reconcile.
+/// <see cref="ContractLoadReport.CanProject"/> is true only when every required assembly is verified and
+/// resident. Diagnostics stay visible either way.
 /// </para>
 /// </remarks>
 public sealed class MediaContractLoader
@@ -54,8 +38,9 @@ public sealed class MediaContractLoader
 
     private readonly HttpClient _http;
     private readonly ContractStore _store;
-    private readonly Dictionary<string, Assembly> _loaded = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ResidentContract> _resident = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private string? _terminal;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="MediaContractLoader"/> class.
@@ -76,33 +61,43 @@ public sealed class MediaContractLoader
     /// Gets the universal contract identity this client was compiled against.
     /// </summary>
     /// <remarks>
-    /// Read from a type the client genuinely uses, so that the identity reported is the identity of the
-    /// assembly actually in this application rather than of a name written down twice.
+    /// Read from a type the client genuinely uses, so the identity reported is the identity of the assembly
+    /// actually in this application rather than of a name written down twice.
     /// </remarks>
     public static string ClientContractIdentity { get; } =
         typeof(IMediaEntity).Assembly.GetName().FullName;
 
+    /// <summary>Gets the simple name of the universal contract assembly.</summary>
+    public static string ContractAssemblyName { get; } =
+        typeof(IMediaEntity).Assembly.GetName().Name ?? "Arronix.Abstractions";
+
     /// <summary>Gets the result of the last load, or <see langword="null"/> before the first.</summary>
     public ContractLoadReport? Report { get; private set; }
 
-    /// <summary>
-    /// Occurs when a load has completed and <see cref="Report"/> has been replaced.
-    /// </summary>
+    /// <summary>Occurs when a load has completed and <see cref="Report"/> has been replaced.</summary>
     public event EventHandler? Loaded;
 
     /// <summary>
-    /// Gets the assembly loaded for a simple name, or <see langword="null"/> when this page has not loaded it.
+    /// Gets the assembly verified and loaded for a simple name, or <see langword="null"/>.
     /// </summary>
     /// <param name="assemblyName">The simple assembly name.</param>
-    /// <returns>The loaded assembly.</returns>
+    /// <returns>The loaded assembly, when this page holds a complete verified installation.</returns>
+    /// <remarks>
+    /// Answers nothing unless the last load proved the entire required set. A caller reaching for one
+    /// verified assembly out of an installation that failed elsewhere is exactly the partial projection this
+    /// design refuses.
+    /// </remarks>
     public Assembly? Find(string assemblyName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
-        return _loaded.GetValueOrDefault(assemblyName);
+
+        return Report?.CanProject == true && _resident.TryGetValue(assemblyName, out var resident)
+            ? resident.Assembly
+            : null;
     }
 
     /// <summary>
-    /// Reads what the host publishes and loads everything this client is entitled to.
+    /// Reads what the host publishes, verifies everything this client would need, and loads it.
     /// </summary>
     /// <param name="cancellationToken">Abandons the load.</param>
     /// <returns>What was published and what became of it.</returns>
@@ -133,9 +128,15 @@ public sealed class MediaContractLoader
                 .GetFromJsonAsync<ClientContractManifest>(ManifestPath, ApiJsonOptions.Default, cancellationToken)
                 .ConfigureAwait(false);
         }
+        catch (OperationCanceledException)
+        {
+            // The caller abandoned the load. That is not a statement about the host, and turning it into
+            // one would report an installation as unreachable because a page navigated away.
+            throw;
+        }
         catch (Exception failure)
         {
-            return Refused(ContractCompatibility.Unreachable, null, null, failure.Message);
+            return Refused(ContractCompatibility.Unreachable, null, null, [], [], failure.Message);
         }
 
         if (manifest is null)
@@ -144,7 +145,26 @@ public sealed class MediaContractLoader
                 ContractCompatibility.Unreachable,
                 null,
                 null,
+                [],
+                [],
                 "The host answered the contract manifest with an empty body.");
+        }
+
+        // The document is untrusted input, and this is the first thing done with it. Everything below reads
+        // it as a description of an installation - it renders it, indexes it by identifier, walks closures,
+        // keys assemblies by simple name - and every one of those steps has a quietly wrong answer for a
+        // document that is merely well-formed JSON. Even the contract-identity refusal below renders the
+        // packages, so validation cannot come after it.
+        if (ContractManifestValidator.Describe(manifest) is { } malformed)
+        {
+            return Refused(
+                ContractCompatibility.ManifestInvalid,
+                manifest.ContractIdentity,
+                null,
+                [],
+                [],
+                "This host's contract manifest does not describe an installation, so nothing was fetched and "
+                + "nothing was loaded: " + malformed);
         }
 
         // Case-insensitive because the two sides render a public key token in different cases and mean the
@@ -155,48 +175,129 @@ public sealed class MediaContractLoader
                 ContractCompatibility.ContractIdentityMismatch,
                 manifest.ContractIdentity,
                 manifest.InstallationHash,
+                Untouched(manifest),
+                manifest.Refused,
                 $"This host publishes media contracts against '{manifest.ContractIdentity}', and this client was "
                 + $"compiled against '{ClientContractIdentity}'. Nothing was loaded: a contract assembly built "
                 + "against a different contract line cannot bind here, and loading the part of an installation "
                 + "that happens to resolve would render values whose meaning nothing has agreed on.");
         }
 
-        var packages = manifest.Packages.ToDictionary(package => package.Id, StringComparer.Ordinal);
-        var loadedPackages = new List<LoadedContractPackage>(manifest.Packages.Count);
-        var results = new Dictionary<string, List<LoadedContractAssembly>>(StringComparer.Ordinal);
-
-        // Closure order, so a dependency is loaded before anything that binds to it. The host states the
-        // order; this client does not recompute it from reference tables, which describe what an assembly
-        // names rather than what a package is entitled to.
-        foreach (var package in manifest.Packages)
+        if (_terminal is { } held)
         {
-            foreach (var member in package.Closure)
-            {
-                if (results.ContainsKey(member) || !packages.TryGetValue(member, out var source))
-                {
-                    continue;
-                }
-
-                var assemblies = new List<LoadedContractAssembly>(source.Assemblies.Count);
-
-                foreach (var assembly in source.Assemblies)
-                {
-                    assemblies.Add(await LoadAssemblyAsync(source.Id, assembly, cancellationToken).ConfigureAwait(false));
-                }
-
-                results[member] = assemblies;
-            }
+            return Refused(
+                ContractCompatibility.Terminal,
+                manifest.ContractIdentity,
+                manifest.InstallationHash,
+                Untouched(manifest),
+                manifest.Refused,
+                held);
         }
 
-        foreach (var package in manifest.Packages)
+        // Pass one: verify everything, load nothing. The required set is the union of every published
+        // package's closure, in the load order the host stated, with each package taken once.
+        var required = RequiredAssemblies(manifest);
+        var verified = new Dictionary<string, Preflight>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (packageId, published) in required)
         {
-            loadedPackages.Add(new LoadedContractPackage(
-                package.Id,
-                package.Version,
-                package.Name,
-                package.ClosureHash,
-                package.Closure,
-                results.TryGetValue(package.Id, out var assemblies) ? assemblies : []));
+            verified[published.AssemblyName] =
+                await PreflightAsync(packageId, published, cancellationToken).ConfigureAwait(false);
+        }
+
+        var blocked = verified.Values.Where(entry => !entry.IsVerified).ToArray();
+
+        if (blocked.Length > 0)
+        {
+            var terminal = blocked.Any(entry => entry.Outcome == ContractLoadOutcome.NameAlreadyResident);
+
+            if (terminal)
+            {
+                _terminal = "This page already holds a contract assembly the host no longer publishes, and a "
+                    + "browser cannot unload one. Reload the page to load the installation this host is "
+                    + "running now.";
+            }
+
+            return Refused(
+                terminal ? ContractCompatibility.Terminal : ContractCompatibility.Refused,
+                manifest.ContractIdentity,
+                manifest.InstallationHash,
+                Project(manifest, verified),
+                manifest.Refused,
+                terminal
+                    ? _terminal
+                    : $"{blocked.Length} of {verified.Count} required contract assemblies failed verification, "
+                        + "so none was loaded and nothing may be projected. Each failure is listed against the "
+                        + "assembly it belongs to.");
+        }
+
+        // Pass two: commit. Everything below this line is irreversible in a browser, which is why nothing
+        // above it touched the runtime.
+        foreach (var (_, published) in required)
+        {
+            var entry = verified[published.AssemblyName];
+
+            if (entry.Outcome == ContractLoadOutcome.AlreadyLoaded)
+            {
+                continue;
+            }
+
+            Assembly assembly;
+
+            try
+            {
+                assembly = AssemblyLoadContext.Default.LoadFromStream(
+                    new MemoryStream(entry.Content!, writable: false));
+            }
+            catch (Exception failure)
+            {
+                _terminal = $"'{published.FileName}' passed every check and the runtime still refused it: "
+                    + failure.Message
+                    + " Contract assemblies loaded before it cannot be unloaded, so this page can no longer "
+                    + "match the installation. Reload the page.";
+
+                verified[published.AssemblyName] = entry.RuntimeRefused(failure.Message);
+
+                return Refused(
+                    ContractCompatibility.Terminal,
+                    manifest.ContractIdentity,
+                    manifest.InstallationHash,
+                    Project(manifest, verified),
+                    manifest.Refused,
+                    _terminal);
+            }
+
+            var content = entry.Content!;
+
+            // Preflight proved what the bytes declare; this proves what the runtime did with them. A load
+            // context may return an occupant rather than the bytes it was handed.
+            if (RuntimeDisagreement(assembly, published) is { } disagreement)
+            {
+                _terminal = $"'{published.FileName}' was verified and the runtime produced something else: "
+                    + disagreement
+                    + " Contract assemblies loaded before it cannot be unloaded, so this page can no longer "
+                    + "match the installation. Reload the page.";
+
+                verified[published.AssemblyName] = entry.RuntimeRefused(disagreement);
+
+                return Refused(
+                    ContractCompatibility.Terminal,
+                    manifest.ContractIdentity,
+                    manifest.InstallationHash,
+                    Project(manifest, verified),
+                    manifest.Refused,
+                    _terminal);
+            }
+
+            _resident[published.AssemblyName] = new ResidentContract(assembly, published);
+
+            // Loaded, and only now. Until this line the report said Verified, which is what was true.
+            verified[published.AssemblyName] = entry.Committed();
+
+            if (entry.Source == ContractByteSource.Network)
+            {
+                await _store.WriteAsync(published.ContentHash, content).ConfigureAwait(false);
+            }
         }
 
         return new ContractLoadReport(
@@ -204,161 +305,430 @@ public sealed class MediaContractLoader
             manifest.ContractIdentity,
             ClientContractIdentity,
             manifest.InstallationHash,
-            loadedPackages,
+            Project(manifest, verified),
+            manifest.Refused,
             _store.IsAvailable,
             null);
     }
 
-    private async Task<LoadedContractAssembly> LoadAssemblyAsync(
-        string packageId,
+    /// <summary>
+    /// Verifies one published assembly without letting the runtime near it.
+    /// </summary>
+    private async Task<Preflight> PreflightAsync(
+        PluginId packageId,
         ClientContractAssembly published,
         CancellationToken cancellationToken)
     {
-        if (_loaded.TryGetValue(published.AssemblyName, out var already))
+        // Already resident from an earlier pass of this page. A browser cannot unload it, so the only two
+        // answers are "the same one the host is publishing" and "this page can never satisfy this host".
+        if (_resident.TryGetValue(published.AssemblyName, out var resident))
         {
-            return Describe(published, ContractLoadOutcome.AlreadyLoaded, ContractByteSource.Store, published.ContentHash, already);
+            return Matches(resident.Verified, published)
+                ? Preflight.Reused(published)
+                : Preflight.Failed(
+                    ContractLoadOutcome.NameAlreadyResident,
+                    ContractByteSource.None,
+                    $"'{published.AssemblyName}' is already loaded in this page as "
+                    + $"{resident.Verified.Identity} (module {resident.Verified.ModuleVersionId}, content "
+                    + $"{resident.Verified.ContentHash}); the host now publishes {published.Identity} (module "
+                    + $"{published.ModuleVersionId}, content {published.ContentHash}).");
         }
 
-        byte[]? content = null;
+        if (AssemblyLoadContext.Default.Assemblies.Any(loaded =>
+                string.Equals(loaded.GetName().Name, published.AssemblyName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return Preflight.Failed(
+                ContractLoadOutcome.NameAlreadyResident,
+                ContractByteSource.None,
+                $"This page already holds an assembly named '{published.AssemblyName}' which this client did "
+                + "not load and cannot unload.");
+        }
+
+        byte[] content;
         var source = ContractByteSource.Store;
 
         try
         {
-            content = await _store.ReadAsync(published.ContentHash).ConfigureAwait(false);
+            var held = await _store.ReadAsync(published.ContentHash).ConfigureAwait(false);
 
-            if (content is null)
+            if (held is null)
             {
                 source = ContractByteSource.Network;
                 content = await _http
                     .GetByteArrayAsync(AddressOf(packageId, published), cancellationToken)
                     .ConfigureAwait(false);
             }
+            else
+            {
+                content = held;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception failure)
         {
-            return new LoadedContractAssembly(
-                published,
-                ContractLoadOutcome.Failed,
+            return Preflight.Failed(ContractLoadOutcome.Unavailable, source, failure.Message);
+        }
+
+        if (content.Length != published.Length)
+        {
+            await DiscardIfStoredAsync(source, published).ConfigureAwait(false);
+
+            return Preflight.Failed(
+                ContractLoadOutcome.LengthMismatch,
                 source,
-                null,
-                null,
-                null,
-                false,
-                failure.Message);
+                $"'{published.FileName}' arrived as {content.Length} bytes; the host published "
+                + $"{published.Length}. Nothing was loaded.",
+                observedLength: content.Length);
         }
 
         // Hashed wherever it came from. A store this client wrote is still a store a browser extension, a
         // shared machine or a bug could have written to, and the content hash is the only thing that makes
         // "these are the bytes the host admitted" a checkable statement rather than a hopeful one.
-        var observed = Convert.ToHexString(SHA256.HashData(content));
+        var observedHash = Convert.ToHexString(SHA256.HashData(content));
 
-        if (!string.Equals(observed, published.ContentHash, StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(observedHash, published.ContentHash, StringComparison.OrdinalIgnoreCase))
         {
-            if (source == ContractByteSource.Store)
-            {
-                await _store.RemoveAsync(published.ContentHash).ConfigureAwait(false);
-            }
+            await DiscardIfStoredAsync(source, published).ConfigureAwait(false);
 
-            return new LoadedContractAssembly(
-                published,
+            return Preflight.Failed(
                 ContractLoadOutcome.ContentHashMismatch,
                 source,
-                observed,
-                null,
-                null,
-                false,
-                $"'{published.FileName}' hashed to {observed}; the host published {published.ContentHash}. Nothing was loaded.");
+                $"'{published.FileName}' hashed to {observedHash}; the host published {published.ContentHash}. "
+                + "Nothing was loaded.",
+                observedLength: content.Length,
+                observedContentHash: observedHash);
         }
 
-        Assembly assembly;
+        if (!ContractMetadataReader.TryRead(content, ContractAssemblyName, out var metadata, out var unreadable))
+        {
+            await DiscardIfStoredAsync(source, published).ConfigureAwait(false);
 
-        try
-        {
-            assembly = AssemblyLoadContext.Default.LoadFromStream(new MemoryStream(content, writable: false));
-        }
-        catch (Exception failure)
-        {
-            return new LoadedContractAssembly(
-                published,
-                ContractLoadOutcome.Failed,
+            return Preflight.Failed(
+                ContractLoadOutcome.Unavailable,
                 source,
-                observed,
-                null,
-                null,
-                false,
-                failure.Message);
+                $"'{published.FileName}' could not be described without loading it: {unreadable}",
+                observedLength: content.Length,
+                observedContentHash: observedHash);
         }
 
-        if (source == ContractByteSource.Network)
+        if (!string.Equals(metadata!.Identity, published.Identity, StringComparison.OrdinalIgnoreCase))
         {
-            await _store.WriteAsync(published.ContentHash, content).ConfigureAwait(false);
+            return Preflight.Failed(
+                ContractLoadOutcome.IdentityMismatch,
+                source,
+                $"'{published.FileName}' declares the identity '{metadata.Identity}'; the host published "
+                + $"'{published.Identity}'. Nothing was loaded.",
+                observedLength: content.Length,
+                observedContentHash: observedHash,
+                observedIdentity: metadata.Identity,
+                observedModuleVersionId: metadata.ModuleVersionId,
+                observedContractReference: metadata.ContractReference);
         }
 
-        _loaded[published.AssemblyName] = assembly;
-        return Describe(published, ContractLoadOutcome.Loaded, source, observed, assembly);
+        if (metadata.ModuleVersionId != published.ModuleVersionId)
+        {
+            return Preflight.Failed(
+                ContractLoadOutcome.ModuleVersionMismatch,
+                source,
+                $"'{published.FileName}' declares module {metadata.ModuleVersionId}; the host published "
+                + $"module {published.ModuleVersionId}. The bytes hash correctly and are a different build. "
+                + "Nothing was loaded.",
+                observedLength: content.Length,
+                observedContentHash: observedHash,
+                observedIdentity: metadata.Identity,
+                observedModuleVersionId: metadata.ModuleVersionId,
+                observedContractReference: metadata.ContractReference);
+        }
+
+        if (!string.Equals(metadata.ContractReference, ClientContractIdentity, StringComparison.OrdinalIgnoreCase))
+        {
+            return Preflight.Failed(
+                ContractLoadOutcome.ContractReferenceMismatch,
+                source,
+                $"'{published.FileName}' declares "
+                + (metadata.ContractReference is null
+                    ? $"no single reference to '{ContractAssemblyName}'"
+                    : $"a reference to '{metadata.ContractReference}'")
+                + $", and this client carries '{ClientContractIdentity}'. Binding it would give this page two "
+                + "meanings for one contract. Nothing was loaded.",
+                observedLength: content.Length,
+                observedContentHash: observedHash,
+                observedIdentity: metadata.Identity,
+                observedModuleVersionId: metadata.ModuleVersionId,
+                observedContractReference: metadata.ContractReference);
+        }
+
+        return Preflight.Verified(published, source, content, metadata);
     }
 
     /// <summary>
-    /// Compares what loaded against what was published, and asks the decisive question: does its reference
-    /// to the universal contract resolve to this client's own copy?
+    /// Drops a stored entry that did not survive verification, so a poisoned store repairs itself.
     /// </summary>
-    private static LoadedContractAssembly Describe(
-        ClientContractAssembly published,
-        ContractLoadOutcome outcome,
-        ContractByteSource source,
-        string? observedContentHash,
-        Assembly assembly)
+    /// <remarks>
+    /// Not a commit of loader state: it removes an entry rather than adding one, and the next pass refetches
+    /// over the network and verifies again.
+    /// </remarks>
+    private async Task DiscardIfStoredAsync(ContractByteSource source, ClientContractAssembly published)
     {
-        var identity = assembly.GetName().FullName;
-        var module = assembly.ManifestModule.ModuleVersionId;
+        if (source == ContractByteSource.Store)
+        {
+            await _store.RemoveAsync(published.ContentHash).ConfigureAwait(false);
+        }
+    }
 
-        var identityAgrees = string.Equals(identity, published.Identity, StringComparison.OrdinalIgnoreCase)
-            && module == published.ModuleVersionId;
+    /// <summary>
+    /// Lists every assembly this client must hold, in the order the host says it may be loaded.
+    /// </summary>
+    /// <remarks>
+    /// The union of every published package's closure, each package taken once. The host states the order;
+    /// this client does not recompute it from reference tables, which describe what an assembly names rather
+    /// than what a package is entitled to.
+    /// </remarks>
+    private static List<(PluginId PackageId, ClientContractAssembly Published)> RequiredAssemblies(
+        ClientContractManifest manifest)
+    {
+        var byId = manifest.Packages.ToDictionary(package => package.Id);
+        var seen = new HashSet<PluginId>();
+        var required = new List<(PluginId, ClientContractAssembly)>();
+
+        foreach (var package in manifest.Packages)
+        {
+            foreach (var member in package.Closure)
+            {
+                if (!seen.Add(member))
+                {
+                    continue;
+                }
+
+                // Every closure member is a published package: the validator proved it before this ran, so
+                // there is no "unknown member" branch here to skip one silently.
+                var source = byId[member];
+
+                foreach (var assembly in source.Assemblies)
+                {
+                    required.Add((source.Id, assembly));
+                }
+            }
+        }
+
+        return required;
+    }
+
+    /// <summary>Renders the per-package view from the verification results.</summary>
+    private static IReadOnlyList<LoadedContractPackage> Project(
+        ClientContractManifest manifest,
+        IReadOnlyDictionary<string, Preflight> verified)
+        => manifest.Packages
+            .Select(package => new LoadedContractPackage(
+                package.Id,
+                package.Version,
+                package.Name,
+                package.ClosureHash,
+                package.Closure,
+                package.Assemblies
+                    .Select(assembly => verified.TryGetValue(assembly.AssemblyName, out var entry)
+                        ? entry.ToView(assembly)
+                        : Preflight.NotAttempted(assembly))
+                    .ToList()
+                    .AsReadOnly()))
+            .ToList()
+            .AsReadOnly();
+
+    /// <summary>Renders the per-package view for an installation nothing was attempted against.</summary>
+    private static IReadOnlyList<LoadedContractPackage> Untouched(ClientContractManifest manifest)
+        => manifest.Packages
+            .Select(package => new LoadedContractPackage(
+                package.Id,
+                package.Version,
+                package.Name,
+                package.ClosureHash,
+                package.Closure,
+                package.Assemblies.Select(Preflight.NotAttempted).ToList().AsReadOnly()))
+            .ToList()
+            .AsReadOnly();
+
+    /// <summary>
+    /// Describes how a loaded assembly differs from what was published, or nothing when it does not.
+    /// </summary>
+    /// <remarks>
+    /// Three questions, and the third is the one no byte inspection can answer. What identity did the
+    /// runtime bind these bytes as; which build is the module it produced; and does the reference this
+    /// assembly makes to the universal contract resolve, in this load context, to the very
+    /// <see cref="Assembly"/> object this client compiled against? Object identity, not name equality: two
+    /// assemblies with one name is exactly the failure a shared contract exists to prevent, and only the
+    /// loader can say whether a particular load avoided it.
+    /// </remarks>
+    private static string? RuntimeDisagreement(Assembly assembly, ClientContractAssembly published)
+    {
+        var loaded = assembly.GetName();
+
+        if (!string.Equals(loaded.FullName, published.Identity, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"it loaded as '{loaded.FullName}' rather than '{published.Identity}'.";
+        }
+
+        if (assembly.ManifestModule.ModuleVersionId != published.ModuleVersionId)
+        {
+            return $"its loaded module is {assembly.ManifestModule.ModuleVersionId} rather than "
+                + $"{published.ModuleVersionId}.";
+        }
 
         var contract = typeof(IMediaEntity).Assembly;
-        var binds = false;
-        string? failure = null;
 
         try
         {
             var reference = assembly.GetReferencedAssemblies()
-                .FirstOrDefault(name => string.Equals(name.Name, contract.GetName().Name, StringComparison.OrdinalIgnoreCase));
+                .FirstOrDefault(name => string.Equals(
+                    name.Name, ContractAssemblyName, StringComparison.OrdinalIgnoreCase));
 
-            // Object identity, not name equality. Two assemblies with one name are exactly the failure a
-            // shared contract exists to prevent, and only the loader can say whether this one avoided it.
-            binds = reference is not null
-                && ReferenceEquals(AssemblyLoadContext.Default.LoadFromAssemblyName(reference), contract);
+            if (reference is null)
+            {
+                return $"it references no '{ContractAssemblyName}' once loaded.";
+            }
+
+            if (!ReferenceEquals(AssemblyLoadContext.Default.LoadFromAssemblyName(reference), contract))
+            {
+                return $"its reference to '{ContractAssemblyName}' resolves to a different assembly object "
+                    + "than this client's own contract.";
+            }
         }
         catch (Exception resolution)
         {
-            failure = resolution.Message;
+            return $"its reference to '{ContractAssemblyName}' could not be resolved: {resolution.Message}";
         }
 
-        if (identityAgrees && binds)
-        {
-            return new LoadedContractAssembly(published, outcome, source, observedContentHash, identity, module, true, null);
-        }
-
-        return new LoadedContractAssembly(
-            published,
-            ContractLoadOutcome.IdentityMismatch,
-            source,
-            observedContentHash,
-            identity,
-            module,
-            binds,
-            failure ?? (identityAgrees
-                ? $"'{published.FileName}' loaded, but its reference to '{contract.GetName().Name}' does not resolve to this client's own contract assembly."
-                : $"'{published.FileName}' loaded as '{identity}' (module {module}); the host published '{published.Identity}' (module {published.ModuleVersionId})."));
+        return null;
     }
 
-    private static string AddressOf(string packageId, ClientContractAssembly published)
-        => $"{ManifestPath}/{Uri.EscapeDataString(packageId)}/{Uri.EscapeDataString(published.ContentHash)}/{Uri.EscapeDataString(published.FileName)}";
+    private static bool Matches(ClientContractAssembly resident, ClientContractAssembly published)
+        => string.Equals(resident.ContentHash, published.ContentHash, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(resident.Identity, published.Identity, StringComparison.OrdinalIgnoreCase)
+            && resident.ModuleVersionId == published.ModuleVersionId
+            && resident.Length == published.Length;
+
+    private static string AddressOf(PluginId packageId, ClientContractAssembly published)
+        => $"{ManifestPath}/{Uri.EscapeDataString(packageId.Value)}/{Uri.EscapeDataString(published.ContentHash)}/{Uri.EscapeDataString(published.FileName)}";
 
     private ContractLoadReport Refused(
         ContractCompatibility compatibility,
         string? publishedIdentity,
         string? installationHash,
-        string failure)
-        => new(compatibility, publishedIdentity, ClientContractIdentity, installationHash, [], _store.IsAvailable, failure);
+        IReadOnlyList<LoadedContractPackage> packages,
+        IReadOnlyList<ClientContractRefusal> refused,
+        string? failure)
+        => new(
+            compatibility,
+            publishedIdentity,
+            ClientContractIdentity,
+            installationHash,
+            packages,
+            refused,
+            _store.IsAvailable,
+            failure);
+
+    /// <summary>One contract this page has loaded, and the exact description it was verified against.</summary>
+    /// <remarks>
+    /// The description is retained rather than recomputed. A browser cannot unload an assembly, so the only
+    /// way to tell a reusable resident contract from a stale one is to remember what was proved about it
+    /// when it was admitted.
+    /// </remarks>
+    private sealed record ResidentContract(Assembly Assembly, ClientContractAssembly Verified);
+
+    /// <summary>What verification decided about one published assembly, before anything was loaded.</summary>
+    private sealed record Preflight(
+        ContractLoadOutcome Outcome,
+        ContractByteSource Source,
+        byte[]? Content,
+        int? ObservedLength,
+        string? ObservedContentHash,
+        string? ObservedIdentity,
+        Guid? ObservedModuleVersionId,
+        string? ObservedContractReference,
+        string? Failure)
+    {
+        /// <summary>Gets whether this assembly may be handed to the runtime.</summary>
+        public bool IsVerified =>
+            Outcome is ContractLoadOutcome.Verified or ContractLoadOutcome.AlreadyLoaded;
+
+        /// <summary>Records that the runtime accepted these bytes.</summary>
+        public Preflight Committed() => this with { Outcome = ContractLoadOutcome.Loaded, Content = null };
+
+        public static Preflight Verified(
+            ClientContractAssembly published,
+            ContractByteSource source,
+            byte[] content,
+            ContractMetadata metadata)
+            => new(
+                ContractLoadOutcome.Verified,
+                source,
+                content,
+                content.Length,
+                published.ContentHash,
+                metadata.Identity,
+                metadata.ModuleVersionId,
+                metadata.ContractReference,
+                null);
+
+        public static Preflight Reused(ClientContractAssembly published)
+            => new(
+                ContractLoadOutcome.AlreadyLoaded,
+                ContractByteSource.Resident,
+                null,
+                published.Length,
+                published.ContentHash,
+                published.Identity,
+                published.ModuleVersionId,
+                ClientContractIdentity,
+                null);
+
+        public static Preflight Failed(
+            ContractLoadOutcome outcome,
+            ContractByteSource source,
+            string failure,
+            int? observedLength = null,
+            string? observedContentHash = null,
+            string? observedIdentity = null,
+            Guid? observedModuleVersionId = null,
+            string? observedContractReference = null)
+            => new(
+                outcome,
+                source,
+                null,
+                observedLength,
+                observedContentHash,
+                observedIdentity,
+                observedModuleVersionId,
+                observedContractReference,
+                failure);
+
+        public static LoadedContractAssembly NotAttempted(ClientContractAssembly published)
+            => new(
+                published,
+                ContractLoadOutcome.NotAttempted,
+                ContractByteSource.None,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null);
+
+        public Preflight RuntimeRefused(string failure)
+            => this with { Outcome = ContractLoadOutcome.RuntimeRefused, Content = null, Failure = failure };
+
+        public LoadedContractAssembly ToView(ClientContractAssembly published)
+            => new(
+                published,
+                Outcome,
+                Source,
+                ObservedLength,
+                ObservedContentHash,
+                ObservedIdentity,
+                ObservedModuleVersionId,
+                ObservedContractReference,
+                Failure);
+    }
 }

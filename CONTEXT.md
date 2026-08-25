@@ -184,13 +184,21 @@ coverage.
   and each package's transitive client closure in load order with one hash over it. The bytes served are the
   bytes admitted, retained from admission rather than re-read. `GET /api/v1/client-contracts` publishes the
   manifest uncacheable; `GET /api/v1/client-contracts/{package}/{contentHash}/{fileName}` serves one assembly
-  immutable, and a superseded address is `410 Gone` rather than `404`.
-- The Client verifies before it loads. The host's universal contract identity must be exactly the client's or
-  nothing is loaded; every payload is hashed wherever it came from; and the loaded assembly's identity, module
-  version identifier and object-identity binding to the client's own `Arronix.Abstractions` are all proved.
-  The client keeps bytes in a content-hash-keyed browser store and discovers nothing by enumerating a loaded
-  assembly — an architecture rule rejects type, property, field, method and member enumeration and
-  `Activator.CreateInstance` anywhere in its source.
+  immutable, and a superseded address is `410 Gone` rather than `404`. A facet is servable only if a browser
+  can bind everything its assemblies name and every required facet it declares is itself served; withholding
+  cascades to a fixed point, and the facets a host withholds are published in the same document and reported
+  by a health contributor.
+- The Client verifies in two passes, and the first never touches the runtime. It validates the untrusted
+  manifest whole, then for every assembly in the required closure checks length, SHA-256, and — by reading
+  the PE metadata of those exact bytes — the declared CLR identity, the declared module version identifier
+  and the declared reference to its own universal contract. Only if the entire closure passes does anything
+  load; a browser cannot unload, so half an installation is not a smaller installation. After each load a
+  second proof compares what the runtime produced with what was published and requires the loaded assembly's
+  contract reference to resolve, by object identity, to the client's own `Arronix.Abstractions`. An entry
+  that verified and was not loaded reports `Verified`, never `Loaded`, and `CanProject` is true only when
+  every required assembly is resident. The client keeps bytes in a content-hash-keyed browser store and
+  discovers nothing by enumerating a loaded assembly — an architecture rule rejects type, property, field,
+  method and member enumeration and `Activator.CreateInstance` anywhere in its source.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -251,11 +259,13 @@ work does not substitute for closing an earlier dependency.
   declaration. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
   repository project reference, and the packed SDK contains only its readme, metapackage marker, and analyzer.
 
-- G07 is split into three numbered sub-gates. G07.1 is complete: a package declares a client facet, the
-  running installation publishes each offered assembly's exact bytes, identity, module and closure, the
-  hosted server serves them content-addressed, and a real browser loads them from a clean store, proves all
-  three facts, reuses a warm store without refetching, refuses an incompatible contract line whole, and
-  refuses one corrupted byte before the runtime sees it. See
+- G07 is split into three numbered sub-gates. G07.1 is **in progress**: the protocol and the loader are built
+  and proved — a package declares a client facet, the running installation publishes each offered assembly's
+  exact bytes, identity, module and closure, the hosted server serves them content-addressed, and a real
+  browser serving the ordinary published client loads them from a clean store, reuses a warm store without
+  refetching, and refuses an incompatible contract line, a corrupted byte, a falsified identity, a falsified
+  build and a malformed manifest, in every case before the runtime sees the payload. It is not closed,
+  because the client only starts when it publishes untrimmed. See
   `docs/research/g07/client-contract-loading.md`. It does not claim typed deserialization or rendering
   (G07.2) or cache update, removal and stale-tab behaviour (G07.3).
 
@@ -283,18 +293,20 @@ duplicated checklist drifting from current state.
   none of the five has an implementation outside the test projects, so a real server quarantines Movies before
   it can contribute anything. Every packaged Movies proof therefore runs in `Arronix.Host.Tests`, which
   supplies stubs for them. This blocks G07.2, whose subject is the Movies item graph.
-- The published browser client cannot start on .NET 11 preview 7. A `dotnet publish` output of
-  `Arronix.Client` fails during `WebAssemblyHost.RunAsyncCore` with an `InvalidCastException` from
-  `PersistentServicesRegistry`, trimmed or not, self-contained or not, served by the API or by a plain static
-  server. The same build served by the WebAssembly development host starts normally and a default template
-  application publishes and starts normally, and it reproduces with every Arronix service registration
-  removed. Until it is fixed the client cannot ship. The exact stack and the eliminated causes are in
-  `docs/research/g07/client-contract-loading.md`.
+- A **trimmed** publish of `Arronix.Client` cannot start on .NET 11 preview 7: it fails during
+  `WebAssemblyHost.RunAsyncCore` with an `InvalidCastException` from `PersistentServicesRegistry`, before any
+  Arronix code runs. It was attributed by A/B against the pristine base commit `f943b8a0f`, which fails
+  trimmed and starts untrimmed under the same SDK on a fresh origin, so the defect predates G07 and trimming
+  is the variable; a default template application publishes and starts trimmed. `Arronix.Client.csproj`
+  therefore sets `PublishTrimmed=false`, so an ordinary `dotnet publish` produces an application that starts,
+  at the cost of a much larger download. `TrimmerRootAssembly` for `Arronix.Abstractions` remains, inert,
+  because a dynamically loaded contract binds to members the trimmer never saw. Restoring trimming needs the
+  framework failure diagnosed first, and until then G07.1 stays open.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-25) reports 2,787 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,089 total cases across 12 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-25) reports 2,868 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,170 total cases across 13 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

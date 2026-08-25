@@ -6,25 +6,25 @@
 # admission pipeline and no test composition anywhere in it; and the real browser client, published for
 # WebAssembly. Nothing here is a fixture host, a synthetic package folder or a test-only route.
 #
-# It proves the server half over HTTP, then leaves both halves running for the browser half. The browser
+# It proves the server half over HTTP, then leaves the server running for the browser half. The browser
 # half is operator-run because this repository's hermetic test rail carries no browser toolchain: point a
-# browser at the printed client address and read the text of '#contract-proof', which holds the client's
-# complete load report verbatim - the same report the page itself renders.
+# browser at the printed address and read the text of '#contract-proof', which holds the client's complete
+# load report verbatim - the same report the page itself renders.
 #
 #   DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/proofs/g07-client-contracts.sh --serve
 #
 # Options:
-#   --serve      leave both halves running until interrupted, for the browser half.
-#   --port N     listen on N instead of 5223. The client is served on N+1.
+#   --serve      leave the server running until interrupted, for the browser half.
+#   --port N     listen on N instead of 5223.
 #
-# The client is served on its own origin by the WebAssembly development host, and the API is told to admit
-# that origin. That is a configuration this server already supports on purpose - a client behind a content
-# delivery network or inside a native shell is the same shape - and it is used here because the PUBLISHED
-# client cannot currently start at all on this SDK: .NET 11 preview 7 throws an InvalidCastException from
-# Microsoft.AspNetCore.Components.Infrastructure.PersistentServicesRegistry during
-# WebAssemblyHost.RunAsyncCore, before any Arronix code runs. That failure predates this work, reproduces
-# with every Arronix service registration removed, and is recorded in docs/research/g07. The routes under
-# proof are served by the real API either way.
+# Everything this script generates lives under artifacts/g07. It writes nothing into src, and the client it
+# serves is the client the API serves in a real deployment: one origin, no cross-origin allowance, no
+# development host.
+#
+# The client published here is the client an ordinary `dotnet publish` produces. This script passes no
+# publish property of its own, deliberately: an artifact that only starts when a proof script builds it is
+# not the artifact anybody deploys. Trimming is disabled in Arronix.Client.csproj, where the decision and
+# its evidence live; see docs/research/g07.
 #
 # What this proof can and cannot reach today is a property of the host, not of this script. A package with
 # an entry assembly cannot be activated by any production Arronix host yet, because no ICacheProvider,
@@ -74,18 +74,10 @@ rm -rf "$proof_root"
 mkdir -p "$package_root" "$evidence_root"
 
 server_pid=""
-client_pid=""
-client_override=""
 cleanup() {
-    for pid in "$client_pid" "$server_pid"; do
-        if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-            kill "$pid" 2>/dev/null
-            wait "$pid" 2>/dev/null
-        fi
-    done
-
-    if [[ -n "$client_override" && -f "$client_override" ]]; then
-        rm -f "$client_override"
+    if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
+        kill "$server_pid" 2>/dev/null
+        wait "$server_pid" 2>/dev/null
     fi
 }
 trap cleanup EXIT
@@ -124,30 +116,17 @@ for package in "movies:src/Arronix.Plugin.Movies/Arronix.Plugin.Movies.csproj" \
     fi
 done
 
+# Published from a clean intermediate directory. Blazor's static web asset and trimming state is cached in
+# obj/, and a directory that has seen several publishes with different properties produces an output that
+# matches none of them - which is exactly how a trimming failure once looked like a code failure.
 echo "== publishing the browser client =="
+rm -rf "$repository_root/src/Arronix.Client/obj" "$repository_root/src/Arronix.Client/bin"
 if ! "$dotnet_command" publish "$repository_root/src/Arronix.Client/Arronix.Client.csproj" \
     --configuration Release --output "$client_root"; then
     exit 1
 fi
 
-client_port=$((port + 1))
-client_address="http://127.0.0.1:$client_port"
-
-# The one thing a browser cannot be told any other way: which host to talk to. Written beside the client's
-# own settings, removed on exit, and ignored by Git, so a proof run leaves the tree as it found it.
-client_override="$repository_root/src/Arronix.Client/wwwroot/appsettings.Development.json"
-cat > "$client_override" <<JSON
-{
-  "Arronix": {
-    "Client": {
-      "ServerAddress": "http://127.0.0.1:$port/"
-    }
-  }
-}
-JSON
-
 echo "== starting the server =="
-export Arronix__Api__AllowedOrigins__0="$client_address"
 export ASPNETCORE_URLS="http://127.0.0.1:$port"
 export ASPNETCORE_ENVIRONMENT=Production
 export Arronix__Plugins__RootFolder="$package_root"
@@ -220,6 +199,12 @@ check "a content address states the identity it will bind as" \
     "$(header_of "$address/api/v1/client-contracts/arronix.format.video/$video_hash/$video_file" "arronix-assembly-identity:")" \
     "$video_identity"
 
+# The publish posture is the project's, not this script's. Read from MSBuild rather than from the text of
+# the file, so a property set in an import or overridden elsewhere is still what this asserts.
+declared_trimming=$("$dotnet_command" msbuild "$repository_root/src/Arronix.Client/Arronix.Client.csproj" \
+    -getProperty:PublishTrimmed -p:Configuration=Release -p:RuntimeIdentifier=browser-wasm 2>/dev/null | tr -d '[:space:]')
+check "the client project declares its own publish posture" "$declared_trimming" "false"
+
 # What a browser downloads is the published output, so the rule is read from the output rather than from
 # the project file.
 client_media_assemblies=$(find "$client_root/wwwroot/_framework" \
@@ -247,27 +232,7 @@ fi
 
 if [[ $serve -eq 1 ]]; then
     echo
-    echo "== starting the client =="
-    "$dotnet_command" run \
-        --project "$repository_root/src/Arronix.Client/Arronix.Client.csproj" \
-        --configuration Debug --urls "$client_address" \
-        > "$evidence_root/client.log" 2>&1 &
-    client_pid=$!
-
-    for _ in $(seq 1 90); do
-        if curl -fsS -o /dev/null "$client_address/" 2>/dev/null; then
-            break
-        fi
-        sleep 1
-    done
-
-    if ! curl -fsS -o /dev/null "$client_address/" 2>/dev/null; then
-        echo "error: the client did not come up. See $evidence_root/client.log." >&2
-        exit 1
-    fi
-
-    echo
-    echo "Browser half: open $client_address/contracts and read the text of '#contract-proof'."
-    echo "Press Ctrl+C to stop both."
-    wait "$client_pid"
+    echo "Browser half: open $address/contracts and read the text of '#contract-proof'."
+    echo "Press Ctrl+C to stop the server."
+    wait "$server_pid"
 fi

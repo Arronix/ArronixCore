@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Client.Tests</RootNamespace>
+    <AssemblyName>Arronix.Client.Tests</AssemblyName>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+       The client builds for browser-wasm; this project runs on the machine. That is deliberate and it is
+       the only way these rules can be checked at all: what is under test is what the client decides BEFORE
+       it hands bytes to a runtime, and that decision is ordinary managed code over a byte array. The
+       browser proves the other half - that a verified assembly actually loads and binds - because only a
+       browser can.
+
+       Nothing here starts a WebAssembly host or touches JavaScript interop. The one client service that
+       needs a browser is given a script host that refuses, which is exactly the "no persistent store"
+       configuration the client already has to work in.
+  -->
+  <PropertyGroup>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <RuntimeIdentifiers></RuntimeIdentifiers>
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Client\Arronix.Client.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FluentAssertions" />
+  </ItemGroup>
+
+  <!--
+       A real contract assembly to verify against, staged beside the test binary rather than referenced.
+       Referencing it would load it into this test process, and half of what these rules assert is that a
+       refused payload is NOT loaded - which cannot be observed about an assembly the test host already
+       holds. Staging the file keeps it bytes until a test decides otherwise.
+  -->
+  <Target Name="StageClientContractFixture" AfterTargets="Build">
+    <MSBuild Projects="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj;..\Arronix.Format.Video\Arronix.Format.Video.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)">
+      <Output TaskParameter="TargetOutputs" ItemName="_ClientContractFixture" />
+    </MSBuild>
+    <!--
+         And one assembly that is deliberately NOT built against the Arronix contract line: the generator,
+         which targets netstandard2.0 and references only Roslyn. It is the honest example of a payload that
+         is exactly what it says it is and still must not be bound as a media contract. Copied as a file,
+         never referenced, so this test process does not hold it.
+    -->
+    <MSBuild Projects="..\Arronix.Generators\Arronix.Generators.csproj" Targets="Build"
+             Properties="Configuration=$(Configuration)">
+      <Output TaskParameter="TargetOutputs" ItemName="_ClientContractFixture" />
+    </MSBuild>
+    <Copy SourceFiles="@(_ClientContractFixture)" DestinationFolder="$(OutDir)ClientContractFixtures" />
+  </Target>
+</Project>

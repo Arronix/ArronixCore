@@ -1,8 +1,10 @@
 # G07.1 — publishing, caching, and loading the exact client-safe contract package
 
-**Status:** implemented. G07 was split into three numbered sub-gates before implementation; this records
-G07.1 and nothing else. G07.2 (generated metadata, typed deserialization and rendering) and G07.3 (update,
-removal, stale cache and stale tab) are open, and none of their work is claimed here.
+**Status:** in progress. G07 was split into three numbered sub-gates before implementation; this records
+G07.1 only. It is **not** closed: the shipping client publishes with trimming disabled to start at all, and
+that debt is stated below rather than written around. G07.2 (generated metadata, typed deserialization and
+rendering) and G07.3 (update, removal, stale cache and stale tab) are open, and none of their work is
+claimed here.
 
 This is a record of a change, not a proposal. Every rule below is asserted by a named fixture or by a
 command whose exact output is quoted.
@@ -10,70 +12,142 @@ command whose exact output is quoted.
 ## 1. What was built
 
 A browser client acquires an installed media kind's typed CLR contract from whichever host served it,
-proves it against what that host published, and loads it — with no compiled dependency on any media or
-format package anywhere in the client build.
+proves it against what that host published **before the runtime sees a byte**, and loads it — with no
+compiled dependency on any media or format package anywhere in the client build.
 
-The whole protocol is four things:
+Five parts:
 
 1. **A declared client facet.** `plugin.json` gains `clientContracts`: zero or more of the package's own
-   published shared contract assemblies, which a browser may download. It is validated as a subset of
+   published shared contract assemblies, which a browser may download. Validated as a subset of
    `contractAssemblies`, so an entry assembly can never appear in it — that is refused one rule earlier —
-   and neither can a file the package does not publish. Declared, never inferred, for the same reason the
-   shared list is: what is named here leaves the host's process.
+   and neither can a file the package does not publish, nor a duplicate. Declared, never inferred, for the
+   same reason the shared list is: what is named here leaves the host's process.
 2. **A projection of the running installation.** `IClientContractCatalog` reads the Active plugin registry
-   and, for each package that declared a facet, publishes each offered assembly's SHA-256 content hash, its
-   complete CLR identity, its module version identifier and its length; and per package, its transitive
-   client dependency closure in load order plus one hash over that closure. One further hash covers the
-   whole installation.
+   under the publication read gate and publishes, per client-safe assembly, its SHA-256 content hash, its
+   assembly/version/culture/public-key identity, its module version identifier and its length; and per
+   package, its transitive client dependency closure in load order plus one hash over it. One further hash
+   covers the whole installation. Facets it will not serve appear in the same document, with reasons.
 3. **Content-addressed serving.** `GET /api/v1/client-contracts` returns that manifest, uncacheable.
    `GET /api/v1/client-contracts/{package}/{contentHash}/{fileName}` returns the exact admitted bytes,
    `immutable`. An address names bytes, so it can be held forever; an installation that changes mints new
    addresses instead of changing what an old one means.
-4. **A verifying browser loader.** `MediaContractLoader` compares the host's universal contract identity
-   with its own before anything else, keeps bytes in a content-hash-keyed Cache Storage store, hashes
-   whatever it receives from wherever it received it, loads through
-   `AssemblyLoadContext.Default.LoadFromStream`, and then proves the loaded assembly's identity, its module
-   version identifier, and that its reference to the universal contract resolves — by object identity — to
-   the client's own compiled contract assembly.
+4. **A verifying browser loader.** Two passes. The first fetches nothing into the runtime: it validates the
+   manifest structurally, then for every assembly in the required closure checks length, SHA-256, and — by
+   reading the PE metadata of the exact bytes — the declared CLR identity, the declared module version
+   identifier, and the declared reference to this client's universal contract. The second pass loads, and
+   only entries the runtime actually accepted are reported as loaded.
+5. **All or nothing.** `ContractLoadReport.CanProject` is true only when every required assembly is verified
+   and resident. Diagnostics stay visible either way; "compatible" means safe to project and nothing else.
 
 ## 2. Decisions worth stating
 
-**The bytes served are the bytes admitted.** `AdmittedContract` retains the staged bytes rather than the
-catalog re-reading `SourcePath`. The loader's own rule is that a file a package owns is read once, because
-a second read is a race in which the file inspected and the file handed on need not be the same file; here
-that race ends with a browser holding an assembly the host never proved. The retained set is bounded by an
-installation's shared contract assemblies, which are domain contracts.
+**Nothing is loaded to find out whether it should have been.** A browser's default load context cannot
+unload, so a payload whose content hash was right and whose declared identity was a lie would be resident
+for the life of the page. Every question is therefore answered while the payload is still a byte array, with
+`PEReader`/`MetadataReader` over those exact bytes — a structured reader, no type resolution, no static
+constructors, nothing handed to the runtime.
+
+**The whole closure is verified before the first irreversible load.** A closure is not a list of
+independent downloads: admitting a dependency and then discovering its dependant is wrong leaves the page
+holding half an installation it can never complete.
+
+**Verified is not loaded.** An entry that passed every check and was not loaded — because another member of
+the required set failed, or the commit stopped earlier — reports `Verified`. Saying `Loaded` because it
+could have been is the one lie this report must not tell.
+
+**There is still a post-load proof.** Preflight establishes what the bytes declare; it cannot establish what
+the runtime did with them. After `LoadFromStream` returns, the loaded assembly's `FullName` and module
+version identifier are compared with the published ones, and its reference to `Arronix.Abstractions` is
+resolved through the default context and required to be `ReferenceEquals` to `typeof(IMediaEntity).Assembly`.
+Object identity, not name equality: two assemblies with one name is exactly the failure a shared contract
+exists to prevent. Only after that does the entry become `Loaded`.
+
+**The manifest is untrusted input.** It is validated whole before any field is acted on — before even the
+contract-identity refusal, which renders the packages. Null collections, duplicate package identifiers,
+duplicate assembly simple names, a closure that omits or misorders its own package, a closure member the
+host did not publish, unsafe file names, non-SHA-256 hashes, empty module identifiers, an identity whose
+simple name disagrees with the assembly name, and self-blaming or dangling refusal causes are each one
+visible whole-installation refusal. No missing closure member is silently skipped and no duplicate assembly
+can overwrite another's verification result.
+
+**Identifiers are identifiers.** `PluginId` travels through the wire and report models rather than text, and
+the client's converter throws `JsonException` on unreadable identifier text rather than defaulting — a
+default identifier compares equal to every other unreadable one, which silently merges packages the host
+never merged.
 
 **A superseded address is `410 Gone`, not `404`.** The file is still published, at a different address, so
-re-reading the manifest is the recovery. A client told "not found" would give up instead.
+re-reading the manifest is the recovery.
 
-**Object identity, not name equality.** `bindsToClientContract` is
-`ReferenceEquals(AssemblyLoadContext.Default.LoadFromAssemblyName(reference), typeof(IMediaEntity).Assembly)`.
-Two assemblies with one name is exactly the failure a shared contract exists to prevent, and only the loader
-can say whether a particular load avoided it.
+**Withholding cascades to a fixed point.** A facet is servable only if a browser can bind everything its
+assemblies name and every required facet it declares is itself being served. Withholding one package removes
+its assemblies from every closure that contained it, which can make a dependant unservable in turn, so the
+rule runs until nothing changes. A single pass lets the package examined first survive with a closure a
+later withdrawal already emptied. Direct requirements are canonically ordered inside the rule, so a closure
+and its hash describe the graph rather than the order an author wrote the declaration in.
 
-**An incompatible installation is refused whole.** If the host's `Arronix.Abstractions` identity is not the
-client's, nothing is loaded and the page says why. Loading the part of an installation that happens to
-resolve would render values whose meaning nothing has agreed on.
+**A dependant of a withheld facet is withheld even if it binds nothing from it.** "It does not bind that
+assembly today" is a property of the current build, not of the dependency; the closure a browser is told to
+load contains it either way. The conservative answer costs one media kind in a browser; the permissive
+answer costs the meaning of the closure.
 
-**The client enumerates nothing.** The loader reads an assembly's identity, its manifest module and its
-reference table, and no more. `ClientTopologyTests.ClientDiscoversNothingByEnumeratingALoadedAssembly`
+**The client enumerates nothing.** `ClientTopologyTests.ClientDiscoversNothingByEnumeratingALoadedAssembly`
 rejects `GetTypes`, `GetExportedTypes`, `GetProperties`, `GetFields`, `GetMethods`, `GetMembers` and
 `Activator.CreateInstance` anywhere in the client's source. Discovery of what a contract *contains* is
-G07.2's generated metadata; enumerating it here would make the client untrimmable and would make property
-reflection a second media schema beside the typed contracts.
+G07.2's generated metadata.
 
-**`Arronix.Abstractions` is a trimmer root in the client.** A dynamically loaded contract binds to members
-the trimmer never saw, so a trimmed contract assembly is one whose surviving surface is whatever the client
-happened to call. Nothing else is rooted.
+## 3. The trimming debt, and how it was attributed
 
-## 3. Evidence
+**A trimmed publish of `Arronix.Client` cannot start.** On .NET 11 preview 7 it fails during
+`WebAssemblyHost.RunAsyncCore` with:
 
-### 3.1 Server half — the real hosted path
+```text
+System.InvalidCastException: Arg_InvalidCastException
+   at Microsoft.AspNetCore.Components.Reflection.MemberAssignment.GetPropertiesIncludingInherited(Type, BindingFlags)+MoveNext()
+   at Microsoft.AspNetCore.Components.Infrastructure.PersistentServicesRegistry.PropertiesAccessor..ctor(Type targetType, Type keyType)
+   at Microsoft.AspNetCore.Components.Infrastructure.PersistentServicesRegistry.RestoreInstanceState(Object, Type, PersistentComponentState)
+   at Microsoft.AspNetCore.Components.Infrastructure.PersistentServicesRegistry.RegisterForPersistence(PersistentComponentState)
+   at Microsoft.AspNetCore.Components.Infrastructure.ComponentStatePersistenceManager.RestoreStateAsync(IPersistentComponentStateStore, RestoreContext)
+   at Microsoft.AspNetCore.Components.WebAssembly.Hosting.WebAssemblyHost.RunAsyncCore(CancellationToken, WebAssemblyCultureProvider)
+   at Arronix.Client.Program.Main(String[])
+```
 
-`DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/proofs/g07-client-contracts.sh` builds the solution,
-stages both packages by the real publish, publishes the browser client, starts `Arronix.Api` with no test
-composition anywhere in it, and asserts over HTTP:
+The first record of this claimed it was pre-existing on the strength of a default template application and
+of removing selected G07 registrations. That was not proof, and the review was right to reject it. It was
+then attributed properly, by A/B against the pristine base commit:
+
+| Tree | Publish | Result |
+| --- | --- | --- |
+| `f943b8a0f`, exported with `git archive`, untouched | `-c Release` (trimming on) | **fails** |
+| `f943b8a0f`, untouched | `-c Debug -p:PublishTrimmed=false` | starts, renders |
+| this branch | `-c Debug -p:PublishTrimmed=false` | starts, renders |
+| this branch | `-c Release` (trimming on) | **fails** |
+| default `blazorwasm` template, same SDK | `-c Release` (trimming on) | starts, renders |
+
+Each was served by a plain static server on a port never visited before, in a fresh browser page, so no
+service worker and no cache from an earlier run could be involved. Trimming is the variable and the base
+commit already had it; rooting `Microsoft.AspNetCore.Components` does not help.
+
+One earlier observation in this work — "untrimmed also fails" — was an artifact of a working copy whose
+`obj/` had absorbed a dozen publishes with conflicting properties. Clean-building it made the untrimmed
+publish start. The proof script now removes `obj/` and `bin/` before publishing for exactly that reason.
+
+**The response is a property, not a flag on one command.** `Arronix.Client.csproj` sets
+`<PublishTrimmed>false</PublishTrimmed>`, so an ordinary `dotnet publish` produces an application that
+starts. A proof-only `-p:PublishTrimmed=false` would leave the artifact somebody deploys different from the
+artifact anybody tested. The cost is a much larger download and it is visible in the project file where the
+decision is. `TrimmerRootAssembly Include="Arronix.Abstractions"` stays and is inert: a dynamically loaded
+contract binds to members the trimmer never saw, so it is what must already be true the day trimming returns.
+
+This is why **G07.1 is in progress rather than complete**. The protocol and the loader are proved; the client
+they run in cannot yet ship in its optimized form.
+
+## 4. Evidence
+
+### 4.1 Server half — the real hosted path, ordinary publish
+
+`DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/proofs/g07-client-contracts.sh` — exit 0. It builds
+the solution, stages both packages by the real publish, publishes the browser client with no property of its
+own, starts `Arronix.Api` with no test composition anywhere in it, and asserts over HTTP:
 
 ```text
 ok    the video client contract is served at its content address
@@ -87,218 +161,154 @@ ok    the served bytes are the staged package's bytes
 ok    the manifest is served uncacheable
 ok    a content address is served immutable
 ok    a content address states the identity it will bind as
+ok    the client project declares its own publish posture
 ok    the published client carries no media or format assembly
 
 address=http://127.0.0.1:5223
 contractIdentity=Arronix.Abstractions, Version=0.9.0.0, Culture=neutral, PublicKeyToken=null
-installationHash=B82F8262F663FF53CA92934D6F84B80749570A6A8CDAB1D1A4BC1B27B9B288DA
 publishedPackages=1
-video=Arronix.Format.Video.dll C453292985EA78735B81C899A011769BAD2C6A86FA406A2F135577B00E6701FC Arronix.Format.Video, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null
 quarantined=movies
 ```
+
+The client is served by the API from that same origin. There is no development host and no cross-origin
+allowance, and the script writes nothing outside `artifacts/g07`.
 
 `publishedPackages=1` and `quarantined=movies` are the honest state of a production Arronix host today; see
 [residual gaps](#5-residual-gaps).
 
-### 3.2 Browser half — a real Chromium against that server
+### 4.2 Browser half — a real Chromium against that server
 
-Driven with Playwright against the running proof. The client is served on its own origin by the WebAssembly
-development host and the API admits that origin, because the *published* client cannot start on this SDK at
-all; see [residual gaps](#5-residual-gaps). The routes under proof are served by the real API either way.
+Driven with Playwright against the running proof, on the published client the API serves. Service workers
+are blocked in the cases that rewrite a response, because the published client registers a caching worker
+whose fetches a page-level route never sees; the first two cases run with it in place.
 
-**Clean store.** After `caches.delete('arronix-client-contracts-v1')` and a reload, the page's
-`#contract-proof` element held:
+| # | Case | Result |
+| --- | --- | --- |
+| 1 | Clean store | `Compatible`, projection permitted, outcome `Loaded`, source `Network`, one byte request; length, content hash, declared identity and declared module all agree, declared contract reference is this client's |
+| 2 | Warm store | `Compatible`, outcome `Loaded`, source `Store`, **zero** byte requests |
+| 3 | Manifest declares `Arronix.Abstractions 0.10.0.0` | `ContractIdentityMismatch`, projection withheld, every assembly `NotAttempted` |
+| 4 | One byte of the payload flipped | `Refused`, `ContentHashMismatch`, failure names both hashes, nothing loaded |
+| 5 | Manifest declares identity `Version=9.9.9.9` | `Refused`, `IdentityMismatch`, report states the identity the bytes actually declare |
+| 6 | Manifest declares a different module identifier | `Refused`, `ModuleVersionMismatch`; the bytes hash correctly and are a different build |
+| 7 | Manifest with an empty closure | `ManifestInvalid`, nothing fetched, refusal names the defect |
 
-```json
-{
-  "compatibility": 0,
-  "publishedContractIdentity": "Arronix.Abstractions, Version=0.9.0.0, Culture=neutral, PublicKeyToken=null",
-  "clientContractIdentity": "Arronix.Abstractions, Version=0.9.0.0, Culture=neutral, PublicKeyToken=null",
-  "installationHash": "B82F8262F663FF53CA92934D6F84B80749570A6A8CDAB1D1A4BC1B27B9B288DA",
-  "packages": [{
-    "id": "arronix.format.video", "version": "0.1.0", "name": "Video Format",
-    "closureHash": "DC7E3DFA31AB02FB3DF5DBBF41DD0C76423FCD29BE7D6FBB1F795008756F8C38",
-    "closure": ["arronix.format.video"],
-    "assemblies": [{
-      "published": {
-        "assemblyName": "Arronix.Format.Video",
-        "fileName": "Arronix.Format.Video.dll",
-        "identity": "Arronix.Format.Video, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
-        "contentHash": "C453292985EA78735B81C899A011769BAD2C6A86FA406A2F135577B00E6701FC",
-        "moduleVersionId": "5f55ed2c-00c0-4d53-b2a6-c1b154c41da7",
-        "length": 28160
-      },
-      "outcome": 0,
-      "source": 0,
-      "observedContentHash": "C453292985EA78735B81C899A011769BAD2C6A86FA406A2F135577B00E6701FC",
-      "observedIdentity": "Arronix.Format.Video, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
-      "observedModuleVersionId": "5f55ed2c-00c0-4d53-b2a6-c1b154c41da7",
-      "bindsToClientContract": true
-    }]
-  }],
-  "storeAvailable": true
-}
-```
+Cases 3–7 all report **projection withheld**, and in every one the runtime was never handed the bytes. The
+outcomes are read as names from the rendered page as well as from `#contract-proof`, because the report
+serializes enumerations numerically and a number in a document is a number that goes stale.
 
-`outcome: 0` is Loaded and `source: 0` is Network. The browser's own resource timeline recorded exactly two
-requests to the host for this: the manifest, and the one content address.
+### 4.3 Hermetic tests
 
-**Warm store.** Reloading the same page:
-
-```text
-outcome=0 (Loaded)   source=1 (Store)   bindsToClientContract=true   storedKeys=1
-requests: /api/v1/client-contracts
-```
-
-The bytes were not refetched; only the manifest was read.
-
-**Incompatible client.** With `window.fetch` patched to answer the manifest with
-`Version=0.10.0.0` and "Reload contracts" clicked:
-
-```text
-compatibility = 1 (ContractIdentityMismatch)
-packages      = 0
-chip          = "ContractIdentityMismatch"
-visible text  = "This host publishes media contracts against 'Arronix.Abstractions, Version=0.10.0.0, ...',
-                 and this client was compiled against 'Arronix.Abstractions, Version=0.9.0.0, ...'.
-                 Nothing was loaded: ..."
-```
-
-Nothing was projected, and the failure is on the page rather than in a log.
-
-**Corrupted bytes.** With the store cleared and one byte of the byte route flipped by a Playwright route
-handler, on a page that had loaded nothing:
-
-```text
-outcome  = 2 (ContentHashMismatch)
-published = C453292985EA78735B81C899A011769BAD2C6A86FA406A2F135577B00E6701FC
-observed  = B035F7C503F16A4401A54E4DE4AC3BC4DE78AC3AB5C59FE3B8F71B2005744A20
-observedIdentity = null
-failure  = "'Arronix.Format.Video.dll' hashed to B035F7...; the host published C45329.... Nothing was loaded."
-```
-
-The runtime never saw the bytes.
-
-### 3.3 The complete Movies-and-video installation
-
-The production server cannot activate a package with an entry assembly yet, so the two-package proof lives
-in `Arronix.Host.Tests`, which installs the same real staged package folders and supplies the five platform
-services no production host implements. `PackagedClientContractTests` (5 cases, all passing):
+`Arronix.Client.Tests` is new. It runs on the machine rather than in a browser because what it tests is what
+the client decides *before* a runtime is involved, and because the question "was this payload loaded?" can
+only be asked about an assembly the test host does not already hold. Its fixture assemblies are staged as
+files, never referenced.
 
 | Claim | Fixture |
 | --- | --- |
-| Both packages publish a facet; Movies' client closure is `arronix.format.video` then `movies` | `.EachPackageStatesItsClientClosureDependencyFirst` |
-| The published hash, identity, module and length match the staged file, and `Open` returns those exact bytes | `.AClientFacetCarriesTheExactAdmittedBytesIdentityAndModule` |
-| The entry assembly, another package's contract, an uninstalled package and a stale hash are each refused, the last as superseded | `.NothingOutsideTheDeclaredFacetIsOffered` |
-| An installation offering less hashes differently, while an unchanged package's closure hash does not move | `.AnInstallationThatOffersLessHashesDifferently` |
-| A stopped installation offers a browser nothing | `.AStoppedInstallationOffersNothing` |
+| The metadata reader describes a real contract assembly, agreeing with `AssemblyName.GetAssemblyName`, without loading it | `MediaContractLoaderTests.TheReaderDescribesARealContractAssemblyWithoutLoadingIt` |
+| An unreadable manifest, and a contract line this client does not carry, load nothing | `.AManifestThisClientCannotReadLoadsNothing`, `.AContractLineThisClientDoesNotCarryLoadsNothing` |
+| Length, content hash, declared identity and declared module are each falsified alone and each refused before the runtime sees the bytes | `.AFalsifiedFactIsRefusedBeforeTheRuntimeSeesTheBytes` (4 cases) |
+| A payload that is exactly what it says it is and is not built against this contract line is refused | `.APayloadThatDoesNotReferenceThisContractLineIsRefused` |
+| A failed prerequisite stops a verified dependant from loading, and that dependant reports `Verified` | `.AFailedPrerequisiteStopsItsDependantFromLoading` |
+| Nothing verified may be reached while the installation is refused | `.NothingMayBeProjectedFromARefusedInstallation` |
+| A verified installation loads, is reused as `Resident` on a second pass, and becomes terminal when the host publishes a different build | `ContractCommitTests.AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn` |
+| Nineteen malformed manifests are each named, and unreadable identifier text makes the whole document unreadable | `ContractManifestValidatorTests` (24 cases) |
 
-`ManifestValidatorTests` adds cases for the facet declaration: the subset rule, the ordinary offers-nothing
-package, a file the package does not publish, a name that could leave the package folder, and a duplicate
-entry. `ManifestOwnershipTests` pins Movies' own facet to its media domain and admits `clientContracts` to
-the manifest-owned list for the reason `capabilities` is on it — a decision about what leaves the host's
-process cannot be derived from the code it governs.
+`ClientFacetResolverTests` proves the withholding rule directly, because a fixed point is the kind of thing
+that is either tested or believed: a direct binding outside the closure, a chain that only a fixed point
+catches, a dependant withheld with its required facet, a requirement that offers a client nothing being no
+cause at all, a refusal carrying every reason that applies, and the same graph in all six presentation
+orders.
 
-### 3.4 Mutation evidence
+`PackagedClientContractTests` proves the same catalog over the real staged Movies-and-video installation:
+both facets published, Movies' closure `arronix.format.video` then `movies`, published facts equal to the
+staged file, the entry assembly and a stale hash refused, an installation that offers less hashing
+differently, and a stopped installation offering nothing.
 
-Each guard was locally inverted, the suite run, and the guard restored. The working tree carries none of
-them.
+`ManifestSchemaTests` keeps `plugin.schema.json` — which sets `additionalProperties: false` — in step with
+the reader and with every first-party manifest. That file had silently gone stale, which is how a valid
+manifest ends up underlined in an editor.
+
+### 4.4 Mutation evidence
+
+Each guard was inverted with a mutation that compiles, the suite rebuilt, and the guard restored. A mutation
+that fails to build proves nothing, because `--no-build` then runs the previous binary; two earlier runs in
+this work were invalid for exactly that reason and were redone.
 
 | Mutation | Result |
 | --- | --- |
-| `ClientContractCatalog.Open` serves whatever the package offers, ignoring the content address | `NothingOutsideTheDeclaredFacetIsOffered` fails |
-| The client facet is validated against its own declaration rather than the published contracts | Both `AClientFacetNamingAFileThePackageDoesNotPublishIsRefused` cases fail |
-| A `GetTypes()` call is added to the client's source | `ClientDiscoversNothingByEnumeratingALoadedAssembly` fails, naming the file and line |
+| The loader loads whatever verified instead of all-or-nothing | 9 of 10 client cases fail |
+| The length check is skipped | 4 fail |
+| The identity check is skipped | 2 fail |
+| The module version check is skipped | 1 fails |
+| The contract reference check is skipped | 1 fails |
+| The post-load identity proof always disagrees | `ContractCommitTests` fails, proving that proof runs on every successful load |
+| The resolver stops cascading to dependants of withheld facets | 3 resolver cases fail |
+| `ClientContractCatalog.Open` ignores the content address | `NothingOutsideTheDeclaredFacetIsOffered` fails |
+| The client facet is validated against its own declaration rather than the published contracts | both manifest cases fail |
+| A `GetTypes()` call is added to the client's source | `ClientDiscoversNothingByEnumeratingALoadedAssembly` fails, naming file and line |
 
-### 3.5 Full rail
+### 4.5 Full rail
 
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=12 total=3089 enabled=2787 passed=2787 failed=0 skipped=302 inconclusive=0
+projects=13 total=3170 enabled=2868 passed=2868 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
-compileLogs=1 compileProjects=12 compileItems=289 boundSources=15
+compileLogs=1 compileProjects=13 compileItems=298 boundSources=15
 ```
 
-Against the G06 close (2,771 enabled) this is +16 cases: five in `Arronix.Host.Tests`, ten in
-`Arronix.Plugins.Tests`, and one in `Arronix.Architecture.Tests`. The registered skip count is unchanged at
-302 — 301 Movies cases and one architecture case — and both ratchets pass. Per project:
+The registered skip count is unchanged at 302 — 301 Movies cases and one architecture case — and both
+ratchets pass. Per project:
 
 | Project | Passed | Skipped |
 | --- | --- | --- |
 | `Arronix.Host.Tests` | 576 | 0 |
-| `Arronix.Plugins.Tests` | 519 | 0 |
+| `Arronix.Plugins.Tests` | 544 | 0 |
 | `Arronix.Common.Tests` | 427 | 0 |
-| `Arronix.Architecture.Tests` | 370 | 1 |
+| `Arronix.Architecture.Tests` | 374 | 1 |
 | `Arronix.Plugin.Movies.Tests` | 370 | 301 |
 | `Arronix.Provider.Tmdb.Tests` | 132 | 0 |
 | `Arronix.Abstractions.Tests` | 119 | 0 |
 | `Arronix.Compatibility.Ratchet.Tests` | 103 | 0 |
 | `Arronix.Plugin.Tv.Tests` | 87 | 0 |
 | `Arronix.Plugin.Music.Tests` | 66 | 0 |
+| `Arronix.Client.Tests` | 52 | 0 |
 | `Arronix.Format.Video.Tests` | 10 | 0 |
 | `Arronix.Generators.Tests` | 8 | 0 |
 
-## 4. What this does not claim
-
-- No typed `Movie` graph was deserialized or rendered. That is G07.2, and it needs generated metadata that
-  does not exist yet; the loader deliberately performs no type discovery.
-- No update, removal, stale-cache or stale-tab behavior was exercised. That is G07.3. The store is keyed by
-  content hash, so it cannot hold the wrong bytes under the right name, but nothing yet evicts an entry the
-  installation stopped naming.
-- Nothing here verifies provenance. Content hashes say which bytes; no signature says who vouched for them.
-  Package signing remains unbuilt, as recorded for G03.
-- Trimming was not exercised end to end. The `wasm-tools` workload is not installed in this environment, so
-  the published client is built without ahead-of-time compilation, and the trimmer root was added on the
-  reasoning above rather than on an observed failure it prevents.
-
 ## 5. Residual gaps
 
-1. **No production host can activate a package with an entry assembly.** `PluginPlatformServices` requires
+1. **The shipping client publishes untrimmed.** Section 3. Until the framework failure is diagnosed or
+   worked around, the deployed application is much larger than it should be, and G07.1 is not closed.
+
+2. **No production host can activate a package with an entry assembly.** `PluginPlatformServices` requires
    `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`,
-   and no implementation of any of them exists outside the test projects. A real server therefore
-   quarantines Movies with `PluginActivationRefused` before it can publish a client facet, and only the
-   contract-only video package reaches a browser. This predates G07 and blocks G07.2, whose whole subject is
-   the Movies item graph. It is host work, not client work, and inventing five platform services here would
-   have been exactly the scope creep the roadmap forbids.
+   and none of the five has an implementation outside the test projects. A real server therefore quarantines
+   Movies before it can publish a client facet, and only the contract-only video package reaches a browser.
+   This predates G07 and blocks G07.2, whose whole subject is the Movies item graph. It is host work, and
+   inventing five platform services here would have been the scope creep the roadmap forbids.
 
-2. **The published browser client cannot start on .NET 11 preview 7.** Serving a `dotnet publish` output of
-   `Arronix.Client` — trimmed or untrimmed, self-contained or not, from the API or from a plain static
-   server — fails during startup with:
+3. **The post-load runtime proof cannot be reached from outside.** Once a manifest is valid, every way of
+   describing one assembly as another is refused before the bytes are fetched, so that branch is proved by
+   mutation rather than by a case. That is a good sign and it is still a gap in coverage.
 
-   ```text
-   System.InvalidCastException: Arg_InvalidCastException
-      at Microsoft.AspNetCore.Components.Reflection.MemberAssignment.GetPropertiesIncludingInherited(Type, BindingFlags)+MoveNext()
-      at Microsoft.AspNetCore.Components.Infrastructure.PersistentServicesRegistry.PropertiesAccessor..ctor(Type targetType, Type keyType)
-      at Microsoft.AspNetCore.Components.Infrastructure.PersistentServicesRegistry.RestoreInstanceState(Object, Type, PersistentComponentState)
-      at Microsoft.AspNetCore.Components.Infrastructure.PersistentServicesRegistry.RegisterForPersistence(PersistentComponentState)
-      at Microsoft.AspNetCore.Components.Infrastructure.ComponentStatePersistenceManager.RestoreStateAsync(IPersistentComponentStateStore, RestoreContext)
-      at Microsoft.AspNetCore.Components.WebAssembly.Hosting.WebAssemblyHost.RunAsyncCore(CancellationToken, WebAssemblyCultureProvider)
-      at Arronix.Client.Program.Main(String[])
-   ```
-
-   The same build served by the WebAssembly development host starts normally, and a default Blazor
-   WebAssembly template application publishes and starts normally with the same SDK. It reproduces with
-   every Arronix service registration removed, with the client's JSON converters removed, with
-   `PublishTrimmed=false`, with `SelfContained=true`, and with the RID properties matching the template, so
-   it is neither a service registration nor a trimming casualty. It was not diagnosed further: it is a
-   startup defect in the client's own shipping path with no bearing on the contract protocol, and it belongs
-   to whoever next owns the client's packaging. **Until it is fixed the client cannot ship at all**, which is
-   a larger problem than G07.
-
-3. **The browser half is not on the hermetic test rail.** `eng/ci/run-tests.sh` carries no browser
+4. **The browser half is not on the hermetic test rail.** `eng/ci/run-tests.sh` carries no browser
    toolchain, and adding one would put a browser download in the clean-repository proof. The harness stands
    the real thing up and proves the server half; the browser half is operator-run and its exact output is
    quoted above. `#contract-proof` exists so any browser driver can read the client's complete report.
 
-4. **One store, one page, no unload.** A browser cannot unload an assembly, so a second load pass reuses
-   what a first pass loaded and reports `AlreadyLoaded`. An installation that changes underneath a live tab
-   is a condition to report rather than to reconcile, and reporting it is G07.3.
+5. **No provenance.** Content hashes say which bytes; no signature says who vouched for them. Package
+   signing remains unbuilt, as recorded for G03.
 
-5. **`Cache Storage` is not universally available.** Outside a secure context the store is absent and the
-   loader refetches. That is slower and exactly as correct, and the page says which mode it is in.
+6. **One store, one page, no unload.** A browser cannot unload an assembly, so a second pass reuses what a
+   first pass loaded and a page holding a contract the host has stopped publishing is terminal until
+   reloaded. Update, removal and stale-cache handling are G07.3.
 
-6. **The API had never been started.** `src/Arronix.Api/appsettings.json` declared no
+7. **`Cache Storage` is not universally available.** Outside a secure context the store is absent and the
+   loader refetches — slower and exactly as correct — and the page says which mode it is in.
+
+8. **The API had never been started.** `src/Arronix.Api/appsettings.json` declared no
    `Arronix:Identity:ApplicationName`, which `HostIdentityOptions` requires, so `dotnet run` on the server
-   failed validation at startup before any of this work could be proved. One line was added. Nothing else in
-   the API's configuration has been exercised against a running process.
+   failed options validation at startup. One line was added. Nothing else in the API's shipped configuration
+   has been exercised against a running process.

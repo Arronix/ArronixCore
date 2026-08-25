@@ -42,7 +42,7 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `ILanguageDefinition` owns one language's title comparison, provider-query, file-name spelling, and sort transformations.
 - `StandardMediaAction` names platform operations independently of their string wire identifiers. Host derives their `ActionDescriptor` values from a media type's compiled shape.
 - `ActionRequest` carries typed item references plus descriptor-defined textual parameter values across Client and API.
-- `ClientContractManifest`, `ClientContractPackage`, and `ClientContractAssembly` state what a browser may load from a running installation: the universal contract identity it must already carry, one hash over the whole installation, and per package its client-safe assemblies with their exact content hash, CLR identity, module version identifier and length, plus its transitive client dependency closure in load order and one hash over it.
+- `ClientContractManifest`, `ClientContractPackage`, `ClientContractAssembly`, and `ClientContractRefusal` state what a browser may load from a running installation and what it may not: the universal contract identity it must already carry, one hash over the whole installation, per package its client-safe assemblies with their exact content hash, CLR identity, module version identifier and length plus its transitive client dependency closure in load order and one hash over it, and per withheld facet the reason and the package whose withdrawal caused it. Package identifiers are `PluginId`, not text.
 
 ## 4. Public interfaces
 
@@ -140,21 +140,28 @@ and is never reported as accepted.
 
 A package declares which of its published shared contract assemblies a browser may download, as
 `clientContracts` in its manifest. The list is validated as a subset of `contractAssemblies`, so an entry
-assembly can never appear in it and neither can a file the package does not publish; a package that offers a
-client nothing is ordinary. `IClientContractCatalog` projects the Active plugin registry into
-`ClientContractManifest` and serves the exact admitted bytes of one offered assembly, or refuses with
-`NotOffered` or `Superseded`. Two routes publish it: `GET /api/v1/client-contracts`, uncacheable, and
+assembly can never appear in it and neither can a file the package does not publish or a duplicate; a package
+that offers a client nothing is ordinary. `IClientContractCatalog` projects the Active plugin registry — one
+snapshot, under the publication read gate — into `ClientContractManifest`, and serves the exact admitted
+bytes of one offered assembly, or refuses with `NotOffered` or `Superseded`. A facet is servable only when a
+browser can bind everything its assemblies name and every required facet it declares is itself served;
+withholding cascades to a fixed point, and withheld facets are published on the same manifest and reported by
+a health contributor rather than left to be inferred from an absence. Two routes publish it: `GET /api/v1/client-contracts`, uncacheable, and
 `GET /api/v1/client-contracts/{package}/{contentHash}/{fileName}`, immutable. The byte route is content
 addressed, so an address names bytes and an installation that changes mints new addresses rather than
 changing what an old one means; a stale address is `410 Gone`, because the file is still published elsewhere
 and re-reading the manifest is the recovery.
 
-The Client loads those assemblies into its own default load context at run time. It compares the host's
-universal contract identity with its own before anything else and refuses a whole installation that does not
-match; it hashes every payload wherever it came from; and it proves the loaded assembly's CLR identity, its
-module version identifier, and that its reference to the universal contract resolves by object identity to
-the client's own compiled contract assembly. It reads an assembly's identity, manifest module and reference
-table and nothing more: what a media contract *contains* is not discovered by enumeration.
+The Client loads those assemblies into its own default load context at run time, in two passes. The first
+touches no runtime: it validates the manifest as untrusted input, then for every assembly in the required
+closure checks length, SHA-256, and — read from the PE metadata of those exact bytes — the declared CLR
+identity, the declared module version identifier, and the declared reference to the client's own universal
+contract. Nothing loads unless the entire closure passes, because a browser cannot unload and half an
+installation is not a smaller one. The second pass loads, and after each load proves what the runtime
+produced against what was published, including that the loaded assembly's contract reference resolves by
+object identity to the client's own compiled contract assembly. An entry that verified and was not loaded is
+reported as verified, never as loaded, and a typed projection is permitted only when every required assembly
+is resident. What a media contract *contains* is not discovered by enumeration.
 
 ## 5. Invariants
 

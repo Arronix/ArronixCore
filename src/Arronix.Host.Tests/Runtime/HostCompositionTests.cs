@@ -185,7 +185,7 @@ internal sealed class HostCompositionTests
         using var provider = Build();
 
         provider.GetServices<IHealthContributor>().Select(contributor => contributor.ContributorId)
-            .Should().BeEquivalentTo("extensions", "scheduler", "providers");
+            .Should().BeEquivalentTo("extensions", "scheduler", "providers", "client-contracts");
     }
 
     [Test]

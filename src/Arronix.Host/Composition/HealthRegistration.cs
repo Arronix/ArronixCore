@@ -35,6 +35,11 @@ internal static class HealthRegistration
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHealthContributor, SchedulerHealthContributor>());
         services.TryAddEnumerable(ServiceDescriptor.Singleton<IHealthContributor, ProviderHealthContributor>());
 
+        // A client facet this host withholds is invisible from a browser, which simply never offers the
+        // media kind. It is reported here so an operator finds it beside every other reason a running
+        // installation might not be doing what they expect.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IHealthContributor, ClientContractHealthContributor>());
+
         return services;
     }
 }

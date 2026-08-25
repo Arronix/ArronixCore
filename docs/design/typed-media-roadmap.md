@@ -454,18 +454,23 @@ are closed; G07A and G07B remain later gates and none of their work is folded in
 
 #### G07.1 — Publish, cache, and load the exact client-safe contract package
 
-**Status:** complete, with two host limits stated rather than worked around. The real hosted server publishes
-and serves the facet, and a real browser loads it, proves content hash, CLR identity and module version
-identifier, reuses a warm store without refetching, refuses another contract line whole, and refuses one
-corrupted byte. Two things the browser half could not reach are properties of the host: no production
-Arronix host can activate a package with an entry assembly yet, so the browser proof runs against the
-contract-only video package and the complete two-package Movies closure is proved in `Arronix.Host.Tests`
-over the same real staged packages; and the published client cannot start at all on .NET 11 preview 7, so
-the client was served by the WebAssembly development host on an admitted origin. Both are recorded in
-`docs/research/g07/client-contract-loading.md`, and the first blocks G07.2.
+**Status:** in progress. The protocol and the loader are built and proved: the real hosted server publishes
+and serves the facet content-addressed, and a real browser running the ordinary published client loads it
+from a clean store, reuses a warm store without refetching a byte, and refuses a foreign contract line, one
+flipped byte, a falsified identity, a falsified build and a malformed manifest — in every case before the
+runtime is handed the payload, with nothing projected.
 
-**Outcome:** the browser holds the exact bytes, CLR identity, and dependency closure the running host
-admitted, and refuses anything else.
+It is **not** closed, for one reason that is the client's own and one that is the host's:
+
+- a trimmed publish of `Arronix.Client` cannot start on .NET 11 preview 7, so the project publishes
+  untrimmed to ship at all. The defect predates this gate — the pristine base commit fails trimmed and
+  starts untrimmed under the same SDK — and closing G07.1 means diagnosing it, not routing around it;
+- no production Arronix host can activate a package with an entry assembly, because five platform services
+  have no implementation outside the test projects, so the browser proof reaches the contract-only video
+  package and the complete Movies-and-video closure is proved in `Arronix.Host.Tests` over the same real
+  staged packages. That gap blocks G07.2.
+
+Both are recorded in `docs/research/g07/client-contract-loading.md`.
 
 Implement:
 
@@ -489,7 +494,10 @@ Exit gate:
   second navigation is served from that cache without refetching the bytes;
 - content hash, assembly identity, and module version identifier agree between server and browser;
 - the Client build declares no static Movies or Video dependency;
-- an incompatible contract identity fails visibly with nothing projected.
+- an incompatible contract identity fails visibly with nothing projected;
+- nothing reaches the browser runtime until the whole required closure has been verified from its own bytes,
+  and an entry that verified without being loaded says so;
+- the shipping publish of the client starts.
 
 #### G07.2 — Generated client metadata, typed deserialization, and typed rendering
 
@@ -1324,7 +1332,11 @@ replacement.
 
 ## Current next task
 
-Take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The client-safe
+Finish **G07.1**, then take G07.2. G07.1's remaining work is the client's shipping publish: a trimmed
+`Arronix.Client` cannot start on .NET 11 preview 7, the project publishes untrimmed to compensate, and the
+gate does not close while that stands. G07.2 additionally needs the host gap below.
+
+When G07.1 closes, take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The client-safe
 contract package now arrives in a real browser with its exact bytes, CLR identity and module version proved
 (G07.1), and the client deliberately discovers nothing by enumerating it. G07.2 gives a contract a generated,
 trimming/AOT-safe way to say what it holds, agrees a generated-metadata hash and a projection-schema hash
