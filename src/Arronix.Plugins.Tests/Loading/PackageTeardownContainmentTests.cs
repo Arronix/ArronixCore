@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
+using Arronix.Plugins.Registration;
 using FluentAssertions.Execution;
 
 namespace Arronix.Plugins.Tests.Loading;
@@ -131,6 +132,75 @@ internal sealed class PackageTeardownContainmentTests
             .GetResult();
     }
 
+    /// <remarks>
+    /// The order is the safety property. A provider or language the host built is what the platform was
+    /// dispatching to, so it is closed before the registration it was built from, and each object is
+    /// disposed once whichever list names it.
+    /// </remarks>
+    [Test]
+    public async Task HostActivatedObjectsAreDisposedFirstInReverseActivationOrderAndOnlyOnce()
+    {
+        var order = new List<string>();
+        var ledger = new PluginRegistrationLedger(Package);
+        var first = new Recording("host-first", order);
+        var second = new Recording("host-second", order);
+        var registered = new Recording("registered", order);
+
+        ledger.RecordHostActivation(first);
+        ledger.RecordHostActivation(second);
+        ledger.Record(typeof(IDisposable), registered);
+
+        // The same object on both lists: the host activated it and the extension registered it.
+        var shared = new Recording("shared", order);
+        ledger.RecordHostActivation(shared);
+        ledger.Record(typeof(IAsyncDisposable), shared);
+
+        var lease = new PluginRuntimeLease(Context(), ledger, module: null);
+
+        (await lease.DisposeAsync()).Should().BeEmpty();
+
+        using var assertions = new AssertionScope();
+        order.Should().Equal("shared", "host-second", "host-first", "registered");
+        new[] { first, second, registered, shared }.Should().OnlyContain(one => one.DisposeCount == 1);
+    }
+
+    /// <remarks>
+    /// A host-activated object is the extension's own code, so its disposer is contained exactly like a
+    /// registered value's — and it retains the context for the same reason.
+    /// </remarks>
+    [Test]
+    public async Task AHostActivatedDisposerFailureIsRecordedAndRetainsTheContextToo()
+    {
+        var ledger = new PluginRegistrationLedger(Package);
+        var provider = new ThrowingProvider(new TeardownFixtureException("the provider objected"));
+        ledger.RecordHostActivation(provider);
+
+        var lease = new PluginRuntimeLease(Context(), ledger, module: null);
+
+        var failures = await lease.DisposeAsync();
+
+        using var assertions = new AssertionScope();
+        failures.Should().HaveCount(2);
+        failures[0].Should().Contain(nameof(ThrowingProvider)).And.Contain("the provider objected");
+        failures[1].Should().Contain("load context").And.Contain("retained");
+        provider.DisposeCount.Should().Be(1);
+        lease.LoadContext.Should().NotBeNull("an object the host built for this extension may still be live");
+    }
+
+    /// <remarks>The containment boundary is the same one: a process-fatal condition is not a cleanup note.</remarks>
+    [Test]
+    public void AProcessFatalHostActivatedDisposerFailurePropagates()
+    {
+        var ledger = new PluginRegistrationLedger(Package);
+        ledger.RecordHostActivation(new ThrowingProvider(new OutOfMemoryException("the process is out of memory")));
+
+        var lease = new PluginRuntimeLease(Context(), ledger, module: null);
+
+        var dispose = async () => await lease.DisposeAsync();
+
+        dispose.Should().ThrowAsync<OutOfMemoryException>().GetAwaiter().GetResult();
+    }
+
     private PluginLoadContext Context()
     {
         var entry = Path.Combine(_root, "Teardown.Entry.dll");
@@ -147,6 +217,30 @@ internal sealed class PackageTeardownContainmentTests
     {
         yield return new OutOfMemoryException("the process is out of memory");
         yield return new OperationCanceledException("teardown was canceled");
+    }
+
+    /// <summary>An object that records when it was disposed, and how often.</summary>
+    private sealed class Recording(string name, List<string> order) : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose()
+        {
+            DisposeCount++;
+            order.Add(name);
+        }
+    }
+
+    /// <summary>Something the host built for the extension, whose disposer raises what the fixture chose.</summary>
+    private sealed class ThrowingProvider(Exception failure) : IDisposable
+    {
+        public int DisposeCount { get; private set; }
+
+        public void Dispose()
+        {
+            DisposeCount++;
+            throw failure;
+        }
     }
 
     /// <summary>A failure type no policy in the platform names.</summary>

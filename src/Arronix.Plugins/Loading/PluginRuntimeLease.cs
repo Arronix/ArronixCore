@@ -11,10 +11,17 @@ namespace Arronix.Plugins.Loading;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Release is ordered, and the order is the safety property. Outstanding invocations drain first; registered
-/// values are then disposed once each, by reference identity, in reverse registration order, with the module
-/// last; the extension's cache namespace is taken back after that, because a disposer may legitimately still
-/// read a cache; and the load context is unloaded last.
+/// Release is ordered, and the order is the safety property. Outstanding invocations drain first; the
+/// objects the host activated from this extension's registrations are disposed next, in reverse activation
+/// order, because they are what the platform was calling; the extension's own registered values follow,
+/// once each by reference identity and in reverse registration order, with the module last; the extension's
+/// cache namespace is taken back after that, because a disposer may legitimately still read a cache; and
+/// the load context is unloaded last.
+/// </para>
+/// <para>
+/// One lifetime owns all of it. A preparation that was refused half-way, a final publication that failed
+/// and an ordinary withdrawal all leave the same kind of live objects behind, so all three release them
+/// here rather than each catch disposing what it happens to know about.
 /// </para>
 /// <para>
 /// A context is unloaded only when nothing failed. Unloading one whose objects could not be disposed would
@@ -45,6 +52,22 @@ internal sealed class PluginRuntimeLease
 
         var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
         var instances = new List<object>();
+
+        // Host activation finishes before this lease is built, on both the committed and the refused path,
+        // so what it activated is a fixed set by now. Reverse activation order: an object the platform was
+        // dispatching to is closer to the surface than the registration it was built from.
+        if (ledger is not null)
+        {
+            var activated = ledger.HostActivated;
+
+            for (var index = activated.Count - 1; index >= 0; index--)
+            {
+                if (seen.Add(activated[index]))
+                {
+                    instances.Add(activated[index]);
+                }
+            }
+        }
 
         if (ledger is not null)
         {

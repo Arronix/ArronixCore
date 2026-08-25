@@ -1,5 +1,6 @@
 using System.Reflection;
 using Arronix.Abstractions.Plugins;
+using Arronix.Plugins.Registration;
 
 
 namespace Arronix.Host.Runtime;
@@ -13,11 +14,21 @@ namespace Arronix.Host.Runtime;
 /// used. The context is the capability boundary and locator the contract already defines; duplicating its
 /// members as injectable constructor services would create a second, drifting privilege surface.
 /// </remarks>
-internal sealed class PluginActivationScope(IPluginContext context)
+internal sealed class PluginActivationScope(IPluginContext context, PluginRegistrationLedger ledger)
 {
     private readonly IPluginContext _context = context ?? throw new ArgumentNullException(nameof(context));
 
+    private readonly PluginRegistrationLedger _ledger = ledger ?? throw new ArgumentNullException(nameof(ledger));
+
     /// <summary>Constructs one implementation without consulting Host dependency injection.</summary>
+    /// <param name="implementationType">The type to construct.</param>
+    /// <returns>The constructed object, already owned by this extension's lifetime.</returns>
+    /// <remarks>
+    /// The object is recorded as owned before it is handed back, so there is no instant in which a
+    /// successfully constructed extension object exists and nothing is responsible for disposing it. A cast
+    /// that fails, a property getter that throws, a validation that refuses — all of them happen to an
+    /// object something already owns.
+    /// </remarks>
     internal object CreateInstance(Type implementationType)
     {
         ArgumentNullException.ThrowIfNull(implementationType);
@@ -45,9 +56,11 @@ internal sealed class PluginActivationScope(IPluginContext context)
                 + "parameterless constructor; the Host service provider and its services are never exposed.");
         }
 
+        object constructed;
+
         try
         {
-            return constructor.Invoke(arguments);
+            constructed = constructor.Invoke(arguments);
         }
         catch (TargetInvocationException failure) when (failure.InnerException is not null)
         {
@@ -56,5 +69,8 @@ internal sealed class PluginActivationScope(IPluginContext context)
                 + failure.InnerException.Message,
                 failure.InnerException);
         }
+
+        _ledger.RecordHostActivation(constructed);
+        return constructed;
     }
 }

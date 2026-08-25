@@ -1017,8 +1017,13 @@ public sealed class PluginLoader
                 else
                 {
                     // Explicitly retained rather than left as a pending preparation: its code may still be
-                    // resident, so its identifier stays occupied and its dependencies stay pinned.
-                    _dependencies.RetainFailedAttempt(receipt);
+                    // resident, so its identifier stays occupied and its dependencies stay pinned. Only the
+                    // lease's own disposal can report a failure, so there is one here by construction.
+                    _dependencies.RetainFailedAttempt(
+                        receipt,
+                        lease ?? throw new InvalidOperationException(
+                            $"Extension '{package.Id}' reported an incomplete release without a package "
+                            + "lifetime to retain, which would leave its code unowned."));
                     PluginLoaderLog.CleanupFailed(
                         _logger,
                         package.Id.ToString(),

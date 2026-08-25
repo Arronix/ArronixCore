@@ -203,11 +203,13 @@ internal sealed class PackageDependencyPipelineTests
         Install("core", "core");
 
         var loader = CreateLoader();
-        (await loader.LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle();
+        var loaded = (await loader.LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
 
         _dependencies.TryGetRooted(PluginId.FromString("core"), out var incumbent).Should().BeTrue();
         _dependencies.BeginWithdrawal(incumbent!, out _).Should().BeTrue();
-        _dependencies.RetainFailedAttempt(incumbent!);
+
+        // The exact lifetime that loaded it, which is what a real failed release would hand over.
+        _dependencies.RetainFailedAttempt(incumbent!, loaded.PackageLease!);
 
         var counted = new CountingAdmission();
         var results = await CreateLoader(admissionCheck: counted).LoadAllAsync(counted);

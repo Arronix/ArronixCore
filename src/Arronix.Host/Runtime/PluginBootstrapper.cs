@@ -15,6 +15,7 @@ using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 using Arronix.Common.Contributions;
+using Arronix.Common.Lifetimes;
 using Arronix.Host.Health;
 using Arronix.Host.Languages;
 using Arronix.Host.Media;
@@ -540,12 +541,9 @@ public sealed partial class PluginBootstrapper : IHostedService
                 await packageLease.DrainInvocationsAsync().ConfigureAwait(false);
             }
 
+            // The package lifetime disposes what Host activated, in reverse activation order and before
+            // the extension's own registered values, so there is one order and one owner for all of it.
             var released = true;
-
-            if (attempt is not null)
-            {
-                released = await attempt.DisposeOwnedAsync().ConfigureAwait(false);
-            }
 
             // The package lease disposes the executable half and then gives up this package's hold on the
             // installation contract context - deliberately before anything is unpinned, because a package's
@@ -577,6 +575,16 @@ public sealed partial class PluginBootstrapper : IHostedService
                 // and reachable. Its dependencies stay pinned rather than being released on the assumption
                 // that the failure was harmless. Retrying would not learn anything new, so this state is
                 // deliberately terminal for the process, and the loop continues with the next package.
+                // Rooted, not merely reported: the platform has just said this package's objects may
+                // still be resident, and the lifetime holding them is a local that would otherwise fall
+                // out of scope the moment this loop moved on. It is the exact lifetime the runtime
+                // registry handed over when it withdrew the published result — cleanup can only have
+                // failed through it.
+                _dependencies.RetainFailedAttempt(
+                    receipt,
+                    lifetime ?? throw new InvalidOperationException(
+                        $"Extension '{plugin}' reported an incomplete release without a package lifetime to "
+                        + "retain, which would leave its code unowned."));
                 ExtensionWithdrawalIncomplete(_log, plugin.ToString());
                 incomplete.Add(plugin);
                 continue;
@@ -725,8 +733,10 @@ public sealed partial class PluginBootstrapper : IHostedService
             }
 
             var inventory = new AdmittedInventory(mediaKinds.Select(Inventory).ToArray());
+            // The ledger goes in with it: every object this scope constructs is owned from the instant it
+            // exists, whatever happens to it afterwards.
             var activation = ledger.ActivationContext is { } context
-                ? new PluginActivationScope(context)
+                ? new PluginActivationScope(context, ledger)
                 : null;
 
             if (!TryPrepareLanguages(manifest, ledger, activation, out languages, out defects))
@@ -736,15 +746,11 @@ public sealed partial class PluginBootstrapper : IHostedService
 
             if (!TryPrepareJobs(manifest, inventory, ledger, out var jobs, out defects))
             {
-                DisposeActivated(languages);
-                languages = [];
                 return PluginAdmissionResult.Refused(CoreErrorCode.JobSchedulingFailed, defects);
             }
 
             if (!TryPrepareProviders(manifest, mediaKinds, ledger, activation, out providers, out defects, out var providerCode))
             {
-                DisposeActivated(languages);
-                languages = [];
                 return PluginAdmissionResult.Refused(providerCode, defects);
             }
 
@@ -767,13 +773,12 @@ public sealed partial class PluginBootstrapper : IHostedService
             return PluginAdmissionResult.Prepared(attempt);
         }
 // Every value read here ultimately comes from extension code. A throwing getter or malformed custom
-// implementation quarantines this extension and releases any Host-activated values already prepared.
+// implementation quarantines this extension. Nothing is disposed here: a refusal returns no attempt, so the
+// objects activated so far are owned by this package's lifetime and released with it.
 #pragma warning disable CA1031
-        catch (Exception failure)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
 #pragma warning restore CA1031
         {
-            DisposeActivated(providers);
-            DisposeActivated(languages);
             return PluginAdmissionResult.Refused(
                 CoreErrorCode.PluginLoadFailure,
                 [$"Host preparation failed: {failure.Message}"]);
@@ -1089,7 +1094,6 @@ public sealed partial class PluginBootstrapper : IHostedService
                 if (!_languages.TryPrepare(manifest.Id, language, out var candidate, out var error, ledger.Invocation))
                 {
                     found.Add($"language[{registration.ImplementationType.Name}]: {error}");
-                    DisposeActivated(language);
                     continue;
                 }
 
@@ -1099,7 +1103,6 @@ public sealed partial class PluginBootstrapper : IHostedService
                         StringComparison.OrdinalIgnoreCase)))
                 {
                     found.Add($"language[{candidate!.Code}]: the extension registers this language more than once.");
-                    DisposeActivated(language);
                     continue;
                 }
 
@@ -1112,16 +1115,11 @@ public sealed partial class PluginBootstrapper : IHostedService
 #pragma warning restore CA1031
             {
                 found.Add($"language[{registration.ImplementationType.Name}]: {failure.Message}");
-                if (language is not null)
-                {
-                    DisposeActivated(language);
-                }
             }
         }
 
         if (found.Count > 0)
         {
-            DisposeActivated(languages);
             languages.Clear();
         }
 
@@ -1188,7 +1186,6 @@ public sealed partial class PluginBootstrapper : IHostedService
                         $"provider[{registration.Descriptor.LocalId}]: activated type "
                         + $"'{registration.ImplementationType.Name}' does not implement "
                         + $"'{registration.ContractType.Name}'.");
-                    DisposeActivated(provider);
                     continue;
                 }
 
@@ -1203,7 +1200,6 @@ public sealed partial class PluginBootstrapper : IHostedService
                     ledger.Invocation))
                 {
                     found.Add($"provider[{registration.Descriptor.LocalId}]: {error}");
-                    DisposeActivated(provider);
                     continue;
                 }
 
@@ -1217,14 +1213,12 @@ public sealed partial class PluginBootstrapper : IHostedService
                         $"provider[{registration.Descriptor.LocalId}]: a cataloger declares the external "
                         + "identifier scheme it is the authority for, lower-case and without white space; "
                         + $"'{candidate.CatalogScheme}' is not one.");
-                    DisposeActivated(provider);
                     continue;
                 }
 
                 if (providers.Any(entry => entry.Id == candidate.Id))
                 {
                     found.Add($"provider[{registration.Descriptor.LocalId}]: the extension registers this provider more than once.");
-                    DisposeActivated(provider);
                     continue;
                 }
 
@@ -1236,16 +1230,11 @@ public sealed partial class PluginBootstrapper : IHostedService
 #pragma warning restore CA1031
             {
                 found.Add($"provider[{registration.Descriptor.LocalId}]: {failure.Message}");
-                if (provider is not null)
-                {
-                    DisposeActivated(provider);
-                }
             }
         }
 
         if (found.Count > 0)
         {
-            DisposeActivated(providers);
             providers.Clear();
         }
 
@@ -1433,47 +1422,6 @@ public sealed partial class PluginBootstrapper : IHostedService
         return registered.Count == 0 ? null : registered[0];
     }
 
-    private void DisposeActivated(
-        IEnumerable<LanguageDefinitionRegistry.RegisteredLanguage> languages)
-    {
-        foreach (var language in languages.Reverse())
-        {
-            DisposeActivated(language.Definition);
-        }
-    }
-
-    private void DisposeActivated(IEnumerable<RegisteredProvider> providers)
-    {
-        foreach (var provider in providers.Reverse())
-        {
-            DisposeActivated(provider.Provider);
-        }
-    }
-
-    private void DisposeActivated(object instance)
-    {
-        try
-        {
-            switch (instance)
-            {
-                case IAsyncDisposable asyncDisposable:
-                    asyncDisposable.DisposeAsync().AsTask().GetAwaiter().GetResult();
-                    break;
-                case IDisposable disposable:
-                    disposable.Dispose();
-                    break;
-            }
-        }
-// Third-party teardown is the same containment boundary as activation: one faulty disposer is reported and
-// the remaining attempt-owned objects are still released.
-#pragma warning disable CA1031
-        catch (Exception failure)
-#pragma warning restore CA1031
-        {
-            ExtensionCleanupFailed(_log, instance.GetType().FullName ?? instance.GetType().Name, failure.Message);
-        }
-    }
-
     /// <summary>
     /// One attempt-local Host transaction. Every candidate is fully built before this object exists; commit
     /// only performs collision rechecks and dictionary publication under the shared publication gate.
@@ -1487,7 +1435,6 @@ public sealed partial class PluginBootstrapper : IHostedService
         private readonly IReadOnlyList<RegisteredJob> _jobs;
         private readonly PluginHealthContributor.RegisteredHealthContribution _health;
         private int _state;
-        private bool _disposed;
 
         internal HostAdmissionAttempt(
             PluginBootstrapper owner,
@@ -1653,11 +1600,13 @@ public sealed partial class PluginBootstrapper : IHostedService
             }
         }
 
-        public void Rollback()
-        {
-            Unpublish();
-            DisposeOwned();
-        }
+        /// <inheritdoc />
+        /// <remarks>
+        /// Publication only. A rollback runs while the caller holds the publication write gate, and running
+        /// an extension's disposer there would hold a thread-affine gate across third-party code; the
+        /// package lifetime disposes what this attempt activated, outside it.
+        /// </remarks>
+        public void Rollback() => Unpublish();
 
         internal void Unpublish()
         {
@@ -1680,70 +1629,6 @@ public sealed partial class PluginBootstrapper : IHostedService
 
                 _state = 2;
             }
-        }
-
-        internal void DisposeOwned()
-        {
-            lock (this)
-            {
-                if (_disposed)
-                {
-                    return;
-                }
-
-                _disposed = true;
-            }
-
-            _owner.DisposeActivated(_providers);
-            _owner.DisposeActivated(_languages);
-        }
-
-        /// <summary>Disposes every value this attempt activated.</summary>
-        /// <returns><see langword="false"/> when a disposer threw and its object may still be live.</returns>
-        internal async ValueTask<bool> DisposeOwnedAsync()
-        {
-            lock (this)
-            {
-                if (_disposed)
-                {
-                    return true;
-                }
-
-                _disposed = true;
-            }
-
-            var released = true;
-
-            foreach (var instance in _providers
-                         .Reverse()
-                         .Select(provider => provider.Provider)
-                         .Concat(_languages.Reverse().Select(language => (object)language.Definition)))
-            {
-                try
-                {
-                    if (instance is IAsyncDisposable asyncDisposable)
-                    {
-                        await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-                    }
-                    else if (instance is IDisposable disposable)
-                    {
-                        disposable.Dispose();
-                    }
-                }
-// Third-party teardown remains isolated during the awaited shutdown path too.
-#pragma warning disable CA1031
-                catch (Exception failure)
-#pragma warning restore CA1031
-                {
-                    released = false;
-                    ExtensionCleanupFailed(
-                        _owner._log,
-                        instance.GetType().FullName ?? instance.GetType().Name,
-                        failure.Message);
-                }
-            }
-
-            return released;
         }
 
         private void RollbackPublished(

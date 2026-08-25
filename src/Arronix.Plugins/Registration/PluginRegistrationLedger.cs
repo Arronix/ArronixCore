@@ -61,6 +61,15 @@ public sealed class PluginRegistrationLedger
     private readonly List<LedgerEntry> _entries = [];
     private readonly List<ScheduledJobRegistration> _jobs = [];
     private readonly List<EventHandlerRegistration> _handlers = [];
+
+    /// <summary>
+    /// Every object the host constructed from this extension's registrations, in the order it constructed
+    /// them. The registrations name types; these are the live objects made from them, and something has to
+    /// own them from the instant they exist.
+    /// </summary>
+    private readonly List<object> _hostActivated = [];
+
+    private readonly Lock _activationGate = new();
     private CapabilitySet _satisfied = CapabilitySet.None;
     private IReadOnlyList<LedgerEntry>? _frozenEntries;
     private IReadOnlyList<ScheduledJobRegistration>? _frozenJobs;
@@ -174,6 +183,38 @@ public sealed class PluginRegistrationLedger
 
         unsatisfied = missing;
         return missing.Count == 0;
+    }
+
+    /// <summary>
+    /// Records an object the host activated from this extension's registrations, as it is activated.
+    /// </summary>
+    /// <param name="instance">The live object.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="instance"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// Ownership begins here rather than at the end of a successful preparation. A refusal half-way through
+    /// leaves live objects behind exactly as a successful activation does, and both are then released by
+    /// the one lifetime that owns this attempt.
+    /// </remarks>
+    internal void RecordHostActivation(object instance)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+
+        lock (_activationGate)
+        {
+            _hostActivated.Add(instance);
+        }
+    }
+
+    /// <summary>The objects the host activated, in activation order.</summary>
+    internal IReadOnlyList<object> HostActivated
+    {
+        get
+        {
+            lock (_activationGate)
+            {
+                return [.. _hostActivated];
+            }
+        }
     }
 
     internal void Record(Type contract, object instance)

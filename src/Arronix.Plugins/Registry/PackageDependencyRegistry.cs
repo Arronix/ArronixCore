@@ -36,7 +36,7 @@ internal sealed class PackageDependencyRegistry
     private readonly Dictionary<PluginId, RootedPackage> _rooted = [];
     private readonly List<PackageDependencyEdge> _edges = [];
     private readonly Dictionary<PackageAdmissionReceipt, IReadOnlyList<PackageDependencyEdge>> _preparing = [];
-    private readonly Dictionary<PluginId, PackageAdmissionReceipt> _retained = [];
+    private readonly Dictionary<PluginId, RetainedAttempt> _retained = [];
     private long _sequence;
 
     /// <summary>
@@ -186,8 +186,8 @@ internal sealed class PackageDependencyRegistry
             defects =
             [
                 $"Package '{receipt.Id}' is retained by an installation attempt at version "
-                + $"{retained.Version} whose code could not be released. The identifier stays occupied for "
-                + "the life of the process.",
+                + $"{retained.Receipt.Version} whose code could not be released. The identifier stays "
+                + "occupied for the life of the process.",
             ];
             return false;
         }
@@ -279,12 +279,12 @@ internal sealed class PackageDependencyRegistry
         // A retained attempt's code may still be resident, so its identifier is occupied for the life of
         // the process. Refusing here rather than at publication is what stops a replacement running a
         // single line against types the incumbent may still hold.
-        if (_retained.TryGetValue(dependant.Id, out var retained) && !ReferenceEquals(retained, dependant))
+        if (_retained.TryGetValue(dependant.Id, out var retained) && !ReferenceEquals(retained.Receipt, dependant))
         {
             defects =
             [
                 $"Package '{dependant.Id}' is retained by an installation attempt at version "
-                + $"{retained.Version} whose instances, load context or contract hold could not be "
+                + $"{retained.Receipt.Version} whose instances, load context or contract hold could not be "
                 + "released. Its identifier stays occupied for the life of the process.",
             ];
             return false;
@@ -415,18 +415,26 @@ internal sealed class PackageDependencyRegistry
     /// </summary>
     /// <param name="receipt">The attempt that could not be released.</param>
     /// <exception cref="ArgumentNullException"><paramref name="receipt"/> is <see langword="null"/>.</exception>
+    /// <param name="lifetime">
+    /// The exact package lifetime that owns the code which could not be released. It is rooted here, not
+    /// merely named: the receipt describes the attempt, and it is the lifetime that holds the load context,
+    /// the instances and the contract hold. Rooting the description alone would leave every one of them
+    /// collectible while the platform reported them retained, which is the same false claim in a different
+    /// record — so there is no overload without one.
+    /// </param>
     /// <remarks>
     /// An attempt that failed to publish and then failed to release is not merely a pending preparation. Its
     /// instances, load context or contract hold may still be resident, so a replacement must not take the
     /// identifier and the dependencies it pinned must stay pinned. This is terminal for the process:
     /// retrying would decide the same way from the same evidence.
     /// </remarks>
-    internal void RetainFailedAttempt(PackageAdmissionReceipt receipt)
+    internal void RetainFailedAttempt(PackageAdmissionReceipt receipt, PackageAdmissionLease lifetime)
     {
         ArgumentNullException.ThrowIfNull(receipt);
+        ArgumentNullException.ThrowIfNull(lifetime);
 
         using var publication = _publication.EnterWrite();
-        _retained.TryAdd(receipt.Id, receipt);
+        _retained.TryAdd(receipt.Id, new RetainedAttempt(receipt, lifetime));
     }
 
     /// <summary>
@@ -506,4 +514,15 @@ internal sealed class PackageDependencyRegistry
         PackageAdmissionReceipt Receipt,
         long Sequence,
         bool IsWithdrawing = false);
+
+    /// <summary>
+    /// One attempt whose code could not be released: what it was, and the lifetime that still owns it.
+    /// </summary>
+    /// <param name="Receipt">The attempt, which is all any diagnostic is shown.</param>
+    /// <param name="Lifetime">
+    /// The package lifetime holding its load context, its instances and its contract hold. Rooted for the
+    /// life of the process, which is the whole point: the platform has said these objects may still be
+    /// resident, and something has to make that true.
+    /// </param>
+    private sealed record RetainedAttempt(PackageAdmissionReceipt Receipt, PackageAdmissionLease Lifetime);
 }
