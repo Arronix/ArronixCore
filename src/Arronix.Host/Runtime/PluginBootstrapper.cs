@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.ExceptionServices;
+using Arronix.Abstractions.Diagnostics;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Import;
@@ -16,6 +17,7 @@ using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 using Arronix.Common.Contributions;
 using Arronix.Common.Lifetimes;
+using Arronix.Common.Telemetry;
 using Arronix.Host.Health;
 using Arronix.Host.Languages;
 using Arronix.Host.Media;
@@ -67,6 +69,24 @@ public sealed partial class PluginBootstrapper : IHostedService
     private readonly PluginHealthContributor _pluginHealth;
     private readonly IHealthAggregator _health;
     private readonly JobScheduler _scheduler;
+
+    /// <summary>
+    /// The telemetry pipeline's shutdown handshake. Contributed sinks are only findable while the
+    /// extensions that contributed them are published, so delivery to them is closed here, before anything
+    /// is withdrawn. Absent when a host composed a different emitter.
+    /// </summary>
+    private readonly ITelemetryShutdown? _telemetry;
+
+    /// <summary>
+    /// Where an extension's redaction rules are compiled, and applied only if its attempt publishes.
+    /// </summary>
+    private readonly IRedactionAdmission? _redaction;
+
+    /// <summary>
+    /// Completed when extension teardown has finished, whatever the outcome. The telemetry pump waits on
+    /// this rather than on stop ordering, because the generic host may stop hosted services concurrently.
+    /// </summary>
+    private readonly TaskCompletionSource _tornDown = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TimeProvider _clock;
     private readonly ILogger<PluginBootstrapper> _log;
     private readonly PluginPublicationGate _publication;
@@ -105,6 +125,12 @@ public sealed partial class PluginBootstrapper : IHostedService
     /// <param name="clock">The clock state changes are stamped with.</param>
     /// <param name="log">Where the lifecycle reports what it did.</param>
     /// <param name="publication">The shared extension-publication boundary.</param>
+    /// <param name="telemetry">
+    /// The telemetry pipeline's shutdown handshake, when the host composed the platform's own pipeline.
+    /// </param>
+    /// <param name="redaction">
+    /// Where an extension's redaction rules are compiled and, if its attempt publishes, applied.
+    /// </param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     /// <remarks>
     /// The package dependency registry is taken from the loader rather than injected beside it. Teardown
@@ -125,7 +151,9 @@ public sealed partial class PluginBootstrapper : IHostedService
         JobScheduler scheduler,
         TimeProvider clock,
         ILogger<PluginBootstrapper> log,
-        PluginPublicationGate publication)
+        PluginPublicationGate publication,
+        ITelemetryShutdown? telemetry = null,
+        IRedactionAdmission? redaction = null)
     {
         ArgumentNullException.ThrowIfNull(loader);
         ArgumentNullException.ThrowIfNull(runtime);
@@ -138,6 +166,8 @@ public sealed partial class PluginBootstrapper : IHostedService
         ArgumentNullException.ThrowIfNull(pluginHealth);
         ArgumentNullException.ThrowIfNull(health);
         ArgumentNullException.ThrowIfNull(scheduler);
+        _telemetry = telemetry;
+        _redaction = redaction;
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(publication);
@@ -252,6 +282,10 @@ public sealed partial class PluginBootstrapper : IHostedService
                 // preserve the original exception which tells the Host why startup failed.
                 var recovered = await RecoverFailedStartupAsync().ConfigureAwait(false);
                 SetLifecycleState(recovered ? LifecycleState.Stopped : LifecycleState.StopIncomplete);
+
+                // The extensions are gone by this path too. Whoever waits for that signal — the telemetry
+                // pump does — must not wait forever because startup failed rather than stopping.
+                _tornDown.TrySetResult();
             }
 
             throw;
@@ -300,6 +334,23 @@ public sealed partial class PluginBootstrapper : IHostedService
                 // here as well as by registration order so no extension instance is withdrawn while one of
                 // its jobs is still executing. BackgroundService stop is idempotent when Host also calls it.
                 await _scheduler.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031
+            catch (Exception failure)
+#pragma warning restore CA1031
+            {
+                failures.Add(failure);
+            }
+
+            try
+            {
+                // The handshake, before anything is unpublished: delivery to extension-contributed sinks is
+                // closed, everything already owed to them is delivered or written off, and they are
+                // flushed — all while they can still be found and leased.
+                if (_telemetry is { } pipeline)
+                {
+                    await pipeline.CloseDynamicDeliveryAsync(CancellationToken.None).ConfigureAwait(false);
+                }
             }
 #pragma warning disable CA1031
             catch (Exception failure)
@@ -361,9 +412,22 @@ public sealed partial class PluginBootstrapper : IHostedService
         }
         finally
         {
+            // Signalled whatever happened, including on the failed-start recovery path: the telemetry pump
+            // waits on this before it stops accepting, and a signal only sent on the happy path would make
+            // a failed shutdown hang instead of reporting.
+            _tornDown.TrySetResult();
             _lifecycle.Release();
         }
     }
+
+    /// <summary>
+    /// Completes when extension teardown has finished, however it finished.
+    /// </summary>
+    /// <remarks>
+    /// The telemetry pump waits on this rather than on hosted-service stop order. The generic host may stop
+    /// hosted services concurrently, so ordering is a convention and this is a fact.
+    /// </remarks>
+    internal Task ExtensionsTornDown => _tornDown.Task;
 
     /// <summary>
     /// Decides whether extension shutdown genuinely finished.
@@ -645,6 +709,24 @@ public sealed partial class PluginBootstrapper : IHostedService
 
         try
         {
+            // The same handshake the ordinary stop performs, and for the same reason: a package may have
+            // published before startup failed, so events may still be owed to sinks it contributed, and
+            // recovery is about to take those sinks away.
+            if (_telemetry is { } pipeline)
+            {
+                await pipeline.CloseDynamicDeliveryAsync(CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+#pragma warning disable CA1031
+        catch (Exception failure)
+#pragma warning restore CA1031
+        {
+            recovered = false;
+            ExtensionCleanupFailed(_log, "telemetry", failure.Message);
+        }
+
+        try
+        {
             incomplete = await TeardownExtensionsAsync().ConfigureAwait(false);
         }
 // Recovery is best-effort across Host infrastructure faults. Extension cleanup itself is contained inside
@@ -754,6 +836,23 @@ public sealed partial class PluginBootstrapper : IHostedService
                 return PluginAdmissionResult.Refused(providerCode, defects);
             }
 
+            // Compiled here and applied only when this attempt publishes. A rule that will not compile is
+            // a package that described a secret it cannot mask, which is a refusal rather than a warning.
+            IRedactionCommit? rules = null;
+
+            if (_redaction is { } admission)
+            {
+                var declared = ledger.Registered<IRedactionRuleProvider>()
+                    .SelectMany(provider => provider.Rules)
+                    .ToArray();
+
+                if (declared.Length > 0
+                    && !admission.TryPrepare(manifest.Id.Value, declared, out rules, out var unusable))
+                {
+                    return PluginAdmissionResult.Refused(CoreErrorCode.PluginLoadFailure, unusable);
+                }
+            }
+
             // Every candidate takes this extension's invocation lifetime, so a runtime call into any of
             // these objects can be waited for before teardown disposes it.
             var health = _pluginHealth.Prepare(
@@ -768,7 +867,8 @@ public sealed partial class PluginBootstrapper : IHostedService
                 languages,
                 providers,
                 jobs,
-                health);
+                health,
+                rules);
 
             return PluginAdmissionResult.Prepared(attempt);
         }
@@ -1434,6 +1534,7 @@ public sealed partial class PluginBootstrapper : IHostedService
         private readonly IReadOnlyList<RegisteredProvider> _providers;
         private readonly IReadOnlyList<RegisteredJob> _jobs;
         private readonly PluginHealthContributor.RegisteredHealthContribution _health;
+        private readonly IRedactionCommit? _rules;
         private int _state;
 
         internal HostAdmissionAttempt(
@@ -1444,7 +1545,8 @@ public sealed partial class PluginBootstrapper : IHostedService
             IReadOnlyList<LanguageDefinitionRegistry.RegisteredLanguage> languages,
             IReadOnlyList<RegisteredProvider> providers,
             IReadOnlyList<RegisteredJob> jobs,
-            PluginHealthContributor.RegisteredHealthContribution health)
+            PluginHealthContributor.RegisteredHealthContribution health,
+            IRedactionCommit? rules = null)
         {
             _owner = owner;
             Plugin = plugin;
@@ -1454,6 +1556,7 @@ public sealed partial class PluginBootstrapper : IHostedService
             _providers = [.. providers];
             _jobs = [.. jobs];
             _health = health;
+            _rules = rules;
         }
 
         public PluginId Plugin { get; }
@@ -1594,6 +1697,10 @@ public sealed partial class PluginBootstrapper : IHostedService
                     return false;
                 }
 
+                // Applied here, and only provisionally: a publication step after this one can still fail,
+                // and a rule that outlived the attempt that brought it would be a half-published package.
+                _rules?.Commit();
+
                 _state = 1;
                 defects = [];
                 return true;
@@ -1606,7 +1713,14 @@ public sealed partial class PluginBootstrapper : IHostedService
         /// an extension's disposer there would hold a thread-affine gate across third-party code; the
         /// package lifetime disposes what this attempt activated, outside it.
         /// </remarks>
-        public void Rollback() => Unpublish();
+        public void Rollback()
+        {
+            Unpublish();
+            _rules?.Rollback();
+        }
+
+        /// <inheritdoc />
+        public void Confirm() => _rules?.Confirm();
 
         internal void Unpublish()
         {

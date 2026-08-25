@@ -18,7 +18,8 @@ public readonly record struct CapabilitySet
         | (1 << (int)Capability.Metadata)
         | (1 << (int)Capability.Download)
         | (1 << (int)Capability.Notification)
-        | (1 << (int)Capability.Curation);
+        | (1 << (int)Capability.Curation)
+        | (1 << (int)Capability.TelemetrySink);
 
     private readonly ushort _mask;
 

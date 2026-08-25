@@ -538,6 +538,9 @@ public class HostEventPublisherTests
         public IContributionLease<TContract> Acquire<TContract>()
             where TContract : class => throw new NotSupportedException();
 
+        public IContributionLease<TContract> AcquireOwned<TContract>(PluginId owner)
+            where TContract : class => throw new NotSupportedException();
+
         public IContributionLease<EventHandlerContribution> AcquireEventHandlers(Type eventType)
             => new Lease(
                 [.. handlers.Where(handler => handler.Value.EventType == eventType)],

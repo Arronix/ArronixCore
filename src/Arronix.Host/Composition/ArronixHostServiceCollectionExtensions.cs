@@ -2,6 +2,7 @@ using Arronix.Common.Composition;
 using Arronix.Common.Hosting;
 using Arronix.Host.Hosting;
 using Arronix.Host.Runtime;
+using Arronix.Host.Telemetry;
 using Arronix.Plugins.Composition;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -78,7 +79,13 @@ public static class ArronixHostServiceCollectionExtensions
         // lifecycle order, not constructor resolution order. Start admits jobs before the scheduler loop;
         // reverse sequential stop drains that loop first, while PluginBootstrapper explicitly owns the same
         // drain when the Generic Host is configured to stop hosted services concurrently.
-        services.AddHostedService<PluginBootstrapper>();
+        // Order matters twice over. Started in this order, the telemetry pump is running before the first
+        // extension is activated, so activation diagnostics are actually delivered. Stopped in the reverse
+        // of it, the extensions are torn down before the pump stops accepting. The handshake between the
+        // two holds either way, because the generic host is also free to stop them concurrently.
+        services.TryAddSingleton<PluginBootstrapper>();
+        services.AddHostedService<TelemetryPumpService>();
+        services.AddHostedService(static provider => provider.GetRequiredService<PluginBootstrapper>());
 
         services.AddScheduling();
         services.AddProviderRegistry();

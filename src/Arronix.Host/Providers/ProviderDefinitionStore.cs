@@ -7,6 +7,8 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Providers;
 
 
+using Arronix.Common.Diagnostics;
+
 namespace Arronix.Host.Providers;
 
 /// <summary>
@@ -222,7 +224,7 @@ public sealed class ProviderDefinitionStore
         var announcement = new ProviderDefinitionChanged(
             Guid.NewGuid(),
             _clock.GetUtcNow(),
-            Arronix.Host.Scheduling.CorrelationContext.Current,
+            CorrelationContext.Current,
             definition.Family,
             definition.Id,
             change);

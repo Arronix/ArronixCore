@@ -2,12 +2,15 @@
 namespace Arronix.Abstractions.Telemetry;
 
 /// <summary>
-/// Receives enriched, redacted telemetry events and forwards them somewhere. Implemented by telemetry
-/// extensions; never by the platform itself, which owns no remote destination.
+/// Receives enriched, redacted telemetry events and forwards them somewhere.
 /// </summary>
 /// <remarks>
-/// Registering a sink requires the <c>telemetry-sink</c> capability. Events reaching a sink have
-/// already passed enrichment, redaction and de-duplication, so every sink observes the same event.
+/// Usually implemented by a telemetry extension, since the platform owns no remote destination; a host may
+/// also register one of its own in its composition, and the two are delivered to alike. An extension
+/// registering a sink requires the <c>telemetry-sink</c> capability, which is the privilege of reading the
+/// whole process's diagnostic stream. Events reaching a sink have already passed redaction, enrichment,
+/// filtering and de-duplication, so every sink observes the same event and none of them observes a live
+/// exception.
 /// </remarks>
 public interface ITelemetrySink
 {

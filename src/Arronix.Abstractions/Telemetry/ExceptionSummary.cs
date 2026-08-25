@@ -14,7 +14,11 @@ namespace Arronix.Abstractions.Telemetry;
 /// </remarks>
 public sealed record ExceptionSummary(string TypeName, string Message, string? StackTrace)
 {
-    /// <summary>Renders one failure, including the chain behind it.</summary>
+    /// <summary>
+    /// Renders the failure itself. The chain behind it is not walked: an inner exception is another
+    /// object with another assembly behind it, and a summary that followed the chain would be unbounded in
+    /// a place that must stay bounded. A caller that wants the chain renders it into the message.
+    /// </summary>
     /// <param name="failure">The failure to render.</param>
     /// <returns>The summary.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="failure"/> is <see langword="null"/>.</exception>

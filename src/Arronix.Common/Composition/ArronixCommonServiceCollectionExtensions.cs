@@ -63,6 +63,7 @@ public static class ArronixCommonServiceCollectionExtensions
         services.AddEvents();
         services.AddHostingFacts();
         services.AddSerialization();
+        services.AddTelemetry(configuration);
 
         return services;
     }

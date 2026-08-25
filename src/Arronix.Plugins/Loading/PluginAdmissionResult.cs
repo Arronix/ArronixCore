@@ -34,6 +34,16 @@ internal interface IPluginAdmissionAttempt
     /// Abandons an uncommitted attempt or withdraws exactly the values this attempt committed.
     /// </summary>
     void Rollback();
+
+    /// <summary>
+    /// Settles what this attempt committed provisionally, once nothing that could still fail remains.
+    /// </summary>
+    /// <remarks>
+    /// Called after the last fallible publication step. Between <see cref="TryCommit"/> and this, a
+    /// publication failure can still take the attempt back, so anything applied in between has to be
+    /// reversible until here.
+    /// </remarks>
+    void Confirm();
 }
 
 /// <summary>

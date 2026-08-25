@@ -408,6 +408,13 @@ public sealed class AdmittedInventoryTests
             }
 
             public void Rollback() => events.Add($"rollback:{Plugin}");
+
+
+            public void Confirm()
+
+            {
+
+            }
         }
     }
 
@@ -444,6 +451,13 @@ public sealed class AdmittedInventoryTests
             }
 
             public void Rollback() => events.Add($"rollback:{Plugin}");
+
+
+            public void Confirm()
+
+            {
+
+            }
         }
     }
 
@@ -498,6 +512,10 @@ public sealed class AdmittedInventoryTests
                 errorCode = CoreErrorCode.Unknown;
                 defects = [];
                 return true;
+            }
+
+            public void Confirm()
+            {
             }
 
             public void Rollback()

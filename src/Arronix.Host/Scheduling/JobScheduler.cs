@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.Scheduling;
 using Arronix.Abstractions.Plugins;
+using Arronix.Common.Diagnostics;
 using Arronix.Host.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;

@@ -51,6 +51,18 @@ public sealed class PluginRuntimeOptions
     public bool Enabled { get; set; } = true;
 
     /// <summary>
+    /// Gets the identifiers of the extensions permitted to declare the telemetry-sink privilege.
+    /// </summary>
+    /// <remarks>
+    /// A sink reads every telemetry event in the process — every message, tag and correlation identifier
+    /// the host and every other extension raised — and, being an outbound network consumer by construction,
+    /// can send it anywhere. That is not something a package grants itself by writing a word in its own
+    /// manifest, so the operator names the exact identifiers here and an undeclared one is refused before
+    /// its code is loaded.
+    /// </remarks>
+    public IList<string> TrustedSinks { get; } = [];
+
+    /// <summary>
     /// Gets or sets the folder holding one subfolder per installed extension.
     /// </summary>
     [Required]

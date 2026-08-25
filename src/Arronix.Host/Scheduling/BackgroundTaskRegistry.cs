@@ -7,6 +7,7 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Scheduling;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
+using Arronix.Common.Diagnostics;
 using Arronix.Plugins.Registry;
 
 

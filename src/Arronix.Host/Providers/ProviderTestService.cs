@@ -1,9 +1,9 @@
 using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Providers;
+using Arronix.Common.Diagnostics;
 using Arronix.Host.Media;
 using Arronix.Abstractions.Shape;
-using Arronix.Host.Scheduling;
 
 
 namespace Arronix.Host.Providers;

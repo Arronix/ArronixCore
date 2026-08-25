@@ -592,6 +592,24 @@ public sealed class PluginLoader
                 defects: []);
         }
 
+        // Step 6b: the one privilege an operator grants rather than a package. Checked here, before the
+        // entry assembly is staged or loaded, because a package that may not read the diagnostic stream
+        // must not get to run a line first.
+        if (manifest.GrantedCapabilities.Has(Capability.TelemetrySink)
+            && !_options.Value.TrustedSinks.Contains(package.Id.Value, StringComparer.Ordinal))
+        {
+            return Quarantine(
+                source,
+                package.Id,
+                manifest,
+                CoreErrorCode.PluginCapabilityMissing,
+                $"Extension '{package.Id}' declares the telemetry-sink privilege, which reads every "
+                + "telemetry event in the process. An operator grants it by naming this extension in "
+                + $"'{PluginRuntimeOptions.SectionName}:{nameof(PluginRuntimeOptions.TrustedSinks)}'; it is "
+                + "not a package's to declare for itself.",
+                defects: []);
+        }
+
         // Step 7: nothing in this package's folder may privately duplicate an admitted shared contract, and
         // nothing in it may bind to one outside its own declared closure.
         if (!_contracts.TryCheckPackage(package, out var isolationCode, out var isolationDefects))
@@ -898,6 +916,9 @@ public sealed class PluginLoader
                             $"Extension '{package.Id}' became active while holding the final publication gate.");
                     }
 
+                    // Past the last step that can fail. What the attempt applied provisionally is the
+                    // installation's from here.
+                    receipt.HostAdmission?.Confirm();
                     committed = true;
                 }
             }

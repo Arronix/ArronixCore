@@ -326,6 +326,10 @@ public sealed class PackageDependencyRegistryTests
             return true;
         }
 
+        public void Confirm()
+        {
+        }
+
         public void Rollback()
         {
         }

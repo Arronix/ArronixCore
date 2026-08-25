@@ -45,5 +45,9 @@ internal sealed class NoOpAdmission : IPluginAdmissionCheck
         public void Rollback()
         {
         }
+
+        public void Confirm()
+        {
+        }
     }
 }

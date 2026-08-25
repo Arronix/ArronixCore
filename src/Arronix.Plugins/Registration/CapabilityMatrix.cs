@@ -80,8 +80,12 @@ public static class CapabilityMatrix
             [typeof(ICataloger<>)] = [Capability.Metadata],
             [typeof(ICurator<>)] = [Capability.Curation],
 
-            // Platform participation that is a privilege rather than a contribution.
+            // Platform participation that is a privilege rather than a contribution. An enricher and a
+            // filter read the events they are offered, and a filter decides whether anyone else sees them,
+            // so both are the same privilege a sink is rather than a contribution anyone may make.
             [typeof(ITelemetrySink)] = [Capability.TelemetrySink],
+            [typeof(ITelemetryEnricher)] = [Capability.TelemetrySink],
+            [typeof(ITelemetryEventFilter)] = [Capability.TelemetrySink],
             [typeof(IOutboundHttpInterceptor)] = [Capability.Indexing],
             [typeof(IDiacriticFoldingProvider)] = [Capability.Parsing, Capability.Renaming],
             [typeof(LanguageDefinitionRegistration)] = [Capability.Language]
@@ -100,8 +104,6 @@ public static class CapabilityMatrix
     private static readonly FrozenSet<Type> UngatedRows = new[]
     {
         typeof(ITelemetryEmitter),
-        typeof(ITelemetryEnricher),
-        typeof(ITelemetryEventFilter),
         typeof(IHealthContributor),
         typeof(IRedactionRuleProvider),
         typeof(IProgressReporter),

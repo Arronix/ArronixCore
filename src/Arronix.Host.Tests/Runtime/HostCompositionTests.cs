@@ -320,23 +320,24 @@ internal sealed class HostCompositionTests
     }
 
     [Test]
-    public void TheCachingHostingAndEventContractsAreRegisteredAndTelemetryIsNotYet()
+    public void EveryServiceAPackageNeedsToBeActivatedIsRegistered()
     {
         using var provider = Build();
 
-        // Four of the five services a package with an entry assembly cannot be activated without. The last
-        // lands with its own slice, and until it does this host still refuses such a package.
+        // The five an extension with an entry assembly cannot be activated without. Nothing is missing now,
+        // which is what lets an ordinary host run one at all.
         using (new AssertionScope())
         {
             provider.GetService<ICacheProvider>().Should().NotBeNull();
             provider.GetService<IHostRuntimeInfo>().Should().NotBeNull();
             provider.GetService<IOperatingSystemInfo>().Should().NotBeNull();
             provider.GetService<IEventPublisher>().Should().NotBeNull();
+            provider.GetService<ITelemetryEmitter>().Should().NotBeNull();
 
             provider.GetRequiredService<PluginPlatformServices>()
                 .MissingRequiredServices()
                 .Should()
-                .BeEquivalentTo([nameof(ITelemetryEmitter)]);
+                .BeEmpty();
         }
     }
 }

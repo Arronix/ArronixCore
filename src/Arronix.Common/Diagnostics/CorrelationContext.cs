@@ -1,6 +1,6 @@
 using System.Globalization;
 
-namespace Arronix.Host.Scheduling;
+namespace Arronix.Common.Diagnostics;
 
 /// <summary>
 /// The identifier that ties everything one operation produced back together.

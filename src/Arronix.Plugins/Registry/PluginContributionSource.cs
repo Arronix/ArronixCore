@@ -48,6 +48,20 @@ internal sealed class PluginContributionSource : IPluginContributionSource
             state: null);
 
     /// <inheritdoc />
+    public IContributionLease<TContract> AcquireOwned<TContract>(PluginId owner)
+        where TContract : class
+        => Select<TContract, PluginId>(
+            static (result, wanted) => result.Id != wanted || result.Ledger is not { } ledger
+                ? []
+                :
+                [
+                    .. ledger.Entries
+                        .Where(entry => entry.Contract == typeof(TContract))
+                        .Select(entry => (entry.Ordinal, (TContract)entry.Instance)),
+                ],
+            owner);
+
+    /// <inheritdoc />
     public IContributionLease<EventHandlerContribution> AcquireEventHandlers(Type eventType)
     {
         ArgumentNullException.ThrowIfNull(eventType);

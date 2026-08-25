@@ -50,6 +50,20 @@ internal interface IPluginContributionSource
         where TContract : class;
 
     /// <summary>
+    /// Leases one named extension's contributions of a contract, and no other extension's.
+    /// </summary>
+    /// <typeparam name="TContract">The contributed contract.</typeparam>
+    /// <param name="owner">The extension whose contributions are wanted.</param>
+    /// <returns>Its contributions, held until the lease is released.</returns>
+    /// <remarks>
+    /// Distinct from <see cref="Acquire{TContract}"/> filtered afterwards: that leases every extension that
+    /// contributes the contract in order to reach one of them, which holds runtimes open that have nothing
+    /// to do with the caller.
+    /// </remarks>
+    IContributionLease<TContract> AcquireOwned<TContract>(PluginId owner)
+        where TContract : class;
+
+    /// <summary>
     /// Selects the active handlers eligible for one event type, applying the subscription boundary.
     /// </summary>
     /// <param name="eventType">The runtime type of the event being published.</param>
