@@ -1,5 +1,32 @@
 # Arronix History
 
+## 2026-08-25 — Apply the containment policy to the two boundaries that still bypassed it
+
+`LoadFailurePolicy` already split containment by boundary: staging and loading a file uses a closed allowlist,
+package code uses a deny-list of conditions in which the process is unsound. Two boundaries were still
+catching outside it, and each produced a different failure.
+
+- **Listing a package's own folder ended the load pass.** The shared-contract isolation walk runs before the
+  loader's per-package try, so an unreadable folder escaped as an `UnauthorizedAccessException` and no package
+  after it in admission order was attempted — not quarantined, not reported, absent. The walk now contains
+  file-boundary failures and refuses that package with `PluginLoadFailure`, and the loader's headline says the
+  package could not be checked rather than that it conflicts, which is a different claim. A folder that is
+  traversable by name but not listable is the reachable case: discovery still reads the manifest, so the
+  package is real, declared and answered for, and only its contents cannot be inspected.
+- **Teardown filed an exhausted process as a cleanup note.** A disposer and a load-context unloading handler
+  are package code and were caught without the policy, so an ordinary disposer bug was contained correctly
+  and an `OutOfMemoryException` or a cancellation was recorded as a string and discarded. Both now use the
+  package-code rule. A process-fatal or canceled teardown propagates into the bootstrapper's accumulated
+  failures, which it already rethrows, and because the contract hold is retained on any reported failure the
+  stricter rule can only keep a hold the old one would have kept.
+
+Neither change widens what is contained. Both narrow what is silently absorbed, and both are proved by
+mutation: reverting either makes exactly the new fixtures fail, and reverting the teardown rule leaves the
+unfamiliar-disposer case passing, which is what the rule is for.
+
+The combined .NET 11 proof rail built with zero warnings and errors, then passed all 2,771 enabled tests out
+of 3,073 cases across 12 projects. The 302 registered skips were unchanged.
+
 ## 2026-08-25 — Separate the extension SDK from its generated Host-binding bridge
 
 - Added `Arronix.Sdk` as the packaging-only reference for extension authors. It depends on
@@ -8,9 +35,10 @@
   author must coordinate.
 - Removed generated capture mechanics from concrete author-facing surfaces. `CompiledShapes` became a
   generator-supplied override hidden from ordinary completion lists; its public CLR visibility remains only
-  because the published G01 executable-generator sentinel is immutable. Capture became an explicit hidden-interface operation, visitor dispatch and
-  erased `Type`/expression carriers became explicit implementations on concrete semantic values, and the
-  cross-assembly bridge types which must remain public are hidden from ordinary completion lists.
+  because the published G01 executable-generator sentinel is immutable. Capture became an explicit
+  hidden-interface operation, visitor dispatch and erased `Type`/expression carriers became explicit
+  implementations on concrete semantic values, and the cross-assembly bridge types which must remain public
+  are hidden from ordinary completion lists.
 - Added `ARX1003` at the media declaration when `partial` is missing, plus architecture gates which reject
   Host/Client/runtime dependencies and binding vocabulary in typed media extensions. This keeps one typed
   definition and one one-way erasure path rather than creating a simplified parallel SDK model.

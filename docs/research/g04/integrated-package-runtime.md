@@ -202,6 +202,20 @@ Neither absorbs cancellation, exhausted memory, exhausted stack, corrupted memor
 failure, and both inspect the whole exception chain, so a type initializer that ran out of memory is not
 absorbed as an ordinary refusal.
 
+Both boundaries are applied at every place the failure can arrive, not only where it was first noticed.
+
+- **Listing a package's own folder** is file-boundary work on a package-controlled path, and it happens in
+  the shared-contract isolation walk, which runs *before* the loader's per-package try. A folder that cannot
+  be enumerated — traversable by name, so discovery reads its manifest, but not listable — used to end the
+  whole load pass, and every package after it in admission order was never attempted rather than reported.
+  It now refuses that package with `PluginLoadFailure` and leaves the rest of the installation alone.
+- **Teardown runs package code twice more**: the disposer of every object the package registered, and any
+  handler it attached to its own load context's unloading event. Both used to catch every exception without
+  the policy, which contained an ordinary disposer bug correctly and filed an exhausted process as a cleanup
+  string. Both now use the package-code rule, so a process-fatal or canceled teardown propagates and reaches
+  the bootstrapper's accumulated failures rather than being discarded. The contract hold is retained on any
+  reported failure, so the stricter rule cannot release a hold that the old one would have kept.
+
 The policy governs every place package code runs before registration, including the two reflection
 boundaries: the entry module's constructor, whose failure reflection wraps in a
 `TargetInvocationException`, and the identifier getter, which the loader calls directly.
@@ -224,6 +238,8 @@ context is unloaded, whether that getter's failure was contained or propagated.
 | 7 | Private duplicates and different builds of one identity are refused with both MVIDs and hashes | `.APrivateCopyOfAnAdmittedContractIsRefusedAndUnrelatedPackagesSurvive`, `.APackageCarryingADifferentBuildOfAnAdmittedContractIsRefusedNamingBothBuilds` |
 | 8 | Every discovery order yields the same eligibility, order and diagnostics | `PackagedRefusalMatrixTests.EveryDiscoveryOrderProducesTheSameEligibilityOrderAndDiagnostics`, `PackageDependencyPermutationTests`, `PackageResolutionPlanTests` |
 | 9 | Staging comes only from evaluated publish inputs and excludes stale source-bin artifacts | `StagingExcludesStaleBuildOutputTests.APlantedStaleAssemblyInTheSourceBuildOutputCannotEnterAStagedPayload` |
+| 10 | A package the loader cannot inspect refuses only itself; the rest of the installation is still answered for | `SharedContractStoreTests.APackageWhoseFolderCannotBeListedIsRefusedRatherThanEndingTheLoadPass`, `PluginLoaderPipelineTests.AnUnreadablePackageFolderQuarantinesOnlyThatPackage` |
+| 11 | Teardown contains an unfamiliar disposer failure and propagates process-fatal or canceled failures from disposers and unloading handlers | `PackageTeardownContainmentTests` (5 cases) |
 
 Proof 9 plants a controlled stale assembly in the movies project's **real build-output directory** and runs
 the **real publish** the staging targets run. The pre-existing `StagedPayloadDetectorTests` plants a file into
@@ -243,6 +259,8 @@ Each guard was locally inverted, the suite run, and the guard restored. The work
 | `PluginLoadContext` never resolves an admitted contract | 8 fail, including all three identity proofs |
 | Staging copies the build directory instead of publishing | `APlantedStaleAssemblyInTheSourceBuildOutputCannotEnterAStagedPayload` fails, naming the planted file |
 | Module construction and identity getters catch without the containment policy | 6 fail: all four process-fatal and cancellation propagation cases, and both disposal proofs for the propagating ones |
+| The isolation walk lists a package folder without containing the failure | 2 fail: `APackageWhoseFolderCannotBeListedIsRefusedRatherThanEndingTheLoadPass` and `AnUnreadablePackageFolderQuarantinesOnlyThatPackage`, the second because the load pass ends and neither package is answered for |
+| Teardown catches without the containment policy | 4 fail: the process-fatal and canceled cases for both disposers and unloading handlers; the unfamiliar-disposer case still passes, which is the point of the rule |
 
 ## 11. What was deleted
 
@@ -260,20 +278,27 @@ type), `PluginDependencyPlan`, `PluginDependencyPlanEntry`, `PluginDependencyRef
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=11 total=2838 enabled=2536 passed=2536 failed=0 skipped=302 inconclusive=0
-cases=302 replacements=0 requiredTests=3 compileLogs=1 compileProjects=11 compileItems=261 boundSources=15
+projects=12 total=3073 enabled=2771 passed=2771 failed=0 skipped=302 inconclusive=0
+cases=302 replacements=0 requiredTests=3 compileLogs=1 compileProjects=12 compileItems=288 boundSources=15
 ```
 
-Against the G02 close (2,168 passed of 2,470, 302 skipped) this is +368 enabled cases. The registered skip
+Against the G02 close (2,168 passed of 2,470, 302 skipped) this is +603 enabled cases. The registered skip
 count is unchanged at 302 — 301 Movies cases and one architecture case — and both ratchets pass. Per project:
 
 | Project | Passed | Skipped |
 | --- | --- | --- |
-| `Arronix.Plugins.Tests` | 501 | 0 |
-| `Arronix.Host.Tests` | 532 | 0 |
-| `Arronix.Architecture.Tests` | 317 | 1 |
+| `Arronix.Plugins.Tests` | 509 | 0 |
+| `Arronix.Host.Tests` | 571 | 0 |
+| `Arronix.Common.Tests` | 427 | 0 |
 | `Arronix.Plugin.Movies.Tests` | 370 | 301 |
-| remaining seven projects | 816 | 0 |
+| `Arronix.Architecture.Tests` | 369 | 1 |
+| `Arronix.Provider.Tmdb.Tests` | 132 | 0 |
+| `Arronix.Abstractions.Tests` | 119 | 0 |
+| `Arronix.Compatibility.Ratchet.Tests` | 103 | 0 |
+| `Arronix.Plugin.Tv.Tests` | 87 | 0 |
+| `Arronix.Plugin.Music.Tests` | 66 | 0 |
+| `Arronix.Format.Video.Tests` | 10 | 0 |
+| `Arronix.Generators.Tests` | 8 | 0 |
 
 ## 13. Residual risks
 

@@ -91,10 +91,13 @@ internal sealed class PluginRuntimeLease
                     disposable.Dispose();
                 }
             }
-// Extension teardown is a containment boundary. One faulty disposer is recorded and the remaining owned
-// values and load context must still be released.
+            // Extension teardown is a containment boundary: a disposer is the package's own code, so one
+            // faulty disposer is recorded and the remaining owned values and load context must still be
+            // released. It is the package-code rule rather than the file-boundary one, because a disposer
+            // may throw any type at all — but it is still a rule, so a process-fatal condition raised inside
+            // one propagates instead of being filed as a cleanup note.
 #pragma warning disable CA1031
-            catch (Exception failure)
+            catch (Exception failure) when (LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
             {
                 failures.Add(
@@ -109,10 +112,12 @@ internal sealed class PluginRuntimeLease
             {
                 context.Unload();
             }
-// An Unloading handler is extension code. It is allowed to report a cleanup failure, but it cannot stop
-// later extensions from being released or turn a quarantine into a Host startup failure.
+            // An Unloading handler is extension code. It is allowed to report a cleanup failure, but it
+            // cannot stop later extensions from being released or turn a quarantine into a Host startup
+            // failure. The same limit applies as above: a handler that exhausts the process is not a cleanup
+            // note.
 #pragma warning disable CA1031
-            catch (Exception failure)
+            catch (Exception failure) when (LoadFailurePolicy.IsContainablePackageFailure(failure))
 #pragma warning restore CA1031
             {
                 failures.Add($"load context: {failure.Message}");

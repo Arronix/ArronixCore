@@ -9,6 +9,7 @@ using Arronix.Plugins.Registration;
 using Arronix.Plugins.Registry;
 using Arronix.Plugins.Tests.Support;
 using Microsoft.Extensions.Logging.Abstractions;
+using FluentAssertions.Execution;
 using Microsoft.Extensions.Options;
 
 
@@ -119,6 +120,94 @@ public sealed class PluginLoaderPipelineTests
     private static string ContractAssemblyPath => typeof(IPluginModule).Assembly.Location;
 
     private static string LoaderReferencingAssemblyPath => typeof(PluginLoaderPipelineTests).Assembly.Location;
+
+    private static readonly string EmittedSharedContractPath = EmittedContract.Write(
+        Directory.CreateTempSubdirectory("arronix-loader-contract").FullName,
+        "Emitted.Pipeline.Contract",
+        new Version(1, 0, 0, 0));
+
+    private static string SharedContractFileName => Path.GetFileName(EmittedSharedContractPath);
+
+    /// <summary>A package that publishes one shared contract, so the isolation walk has something to do.</summary>
+    private static string ContractPublisherManifest(string id)
+    {
+        var host = PluginLoader.HostContractVersion;
+
+        return $$"""
+             {
+               "schemaVersion": 1,
+               "id": "{{id}}",
+               "name": "{{id}}",
+               "version": "0.1.0",
+               "contracts": { "arronix": ">={{host.Major}}.{{host.Minor}} <{{host.Major}}.{{host.Minor + 1}}" },
+               "contractAssemblies": ["{{SharedContractFileName}}"],
+               "capabilities": []
+             }
+             """;
+    }
+
+    /// <remarks>
+    /// <para>
+    /// The containment invariant stated end to end: one package the loader cannot even inspect must not
+    /// decide what happens to the others. The isolation walk runs before the per-package try block, so
+    /// before this was contained an unreadable folder ended the load pass and every package after it in
+    /// admission order was never attempted — not quarantined, not reported, absent.
+    /// </para>
+    /// <para>
+    /// The walk only happens when the installation shares something, so the contract-publishing package is
+    /// part of the arrangement rather than decoration. The unreadable package is named to sort first, so
+    /// before the fix it took the sound one down with it.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AnUnreadablePackageFolderQuarantinesOnlyThatPackage()
+    {
+        Install("publisher", ContractPublisherManifest("publisher"));
+        File.Copy(
+            EmittedSharedContractPath,
+            Path.Combine(_root, "publisher", SharedContractFileName),
+            overwrite: true);
+
+        var unreadable = Install("alpha", Manifest("alpha"), ContractAssemblyPath);
+        Install("zulu", Manifest("zulu"), ContractAssemblyPath);
+
+        File.SetUnixFileMode(unreadable, UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+        try
+        {
+            var enumerate = () => Directory.EnumerateFiles(unreadable, "*.dll").ToArray();
+            enumerate.Should().Throw<UnauthorizedAccessException>(
+                "the fixture must actually deny enumeration for the containment to mean anything");
+
+            var results = await CreateLoader().LoadAllAsync(NoOpAdmission.Instance);
+
+            using var assertions = new AssertionScope();
+            results.Select(result => result.Id?.Value).Should().Contain(
+                ["alpha", "zulu"],
+                "every installed package is answered for, whatever happened to any other one");
+
+            var refused = results.Single(result => result.Id?.Value == "alpha");
+            refused.State.Should().Be(PluginState.Quarantined);
+            refused.ErrorCode.Should().Be(CoreErrorCode.PluginLoadFailure);
+            refused.Defects.Should().ContainSingle().Which.Should().Contain("could not be listed");
+
+            // The sound package's entry assembly is the contract assembly, which exposes no entry module, so
+            // it is expected to stop there. What matters is that it stopped there rather than never being
+            // reached: it was inspected, staged, loaded into its own context and searched for a module.
+            var sound = results.Single(result => result.Id?.Value == "zulu");
+            sound.Message.Should().Contain(
+                "entry module",
+                "the sound package is judged on its own contents, not on another package's folder");
+            sound.Message.Should().NotContain("could not be listed");
+            sound.Defects.Should().NotContain(defect => defect.Contains("could not be listed", StringComparison.Ordinal));
+        }
+        finally
+        {
+            File.SetUnixFileMode(
+                unreadable,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    }
 
     [Test]
     public void DiscoveryFindsOneDeclarationPerFolderAndDoesNotRecurse()

@@ -152,6 +152,15 @@ coverage.
   exactly, in both directions, against the admitted projection. Capabilities are explicit because privilege
   cannot be derived from code before it is allowed to run. Operator-specific host/root access grants are
   runtime configuration.
+- Loader containment has two rules and is applied at every boundary that can produce the failure. Staging or
+  loading a file is bounded, so that boundary uses a closed allowlist and an unnamed failure type stops
+  admission. A package's own code — its module, constructors, property getters, disposers and load-context
+  unloading handlers — may throw anything, so that boundary contains everything except conditions in which
+  the process is no longer sound. Neither absorbs cancellation, exhausted memory or stack, corrupted memory
+  or a structured native failure, and both read the whole exception chain. Listing a package's folder and
+  running its teardown are both covered: a folder that cannot be enumerated refuses that package and leaves
+  the load pass running, and a process-fatal or canceled disposer propagates instead of being filed as a
+  cleanup note, with the package's contract hold retained.
 - Books, Music, and Television manifests still carry `mediaKinds`, `identifiers`, and `tokens`. Those are transitional declarations belonging to their legacy media paths and are removed with their conversions, not here.
 - The typed Movie parser currently materializes common release text facts and consumes catalog-owned external
   identifier readings, including the installed TMDb provider's `{tmdb-...}` markers. It does not yet compose
@@ -245,8 +254,8 @@ duplicated checklist drifting from current state.
   at registration; that is erasure at the sanctioned boundary, not authoring vocabulary.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
-- The current one-command full-solution run (2026-08-25) reports 2,764 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,066 total cases across 12 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-25) reports 2,771 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,073 total cases across 12 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.
