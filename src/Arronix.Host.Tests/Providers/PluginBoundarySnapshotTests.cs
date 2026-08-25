@@ -2,6 +2,7 @@ using System.Collections;
 using System.Linq;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
@@ -107,6 +108,52 @@ public class PluginBoundarySnapshotTests
     }
 
     [Test]
+    public void UnsealedContractValuesAreRebuiltAsTheirBaseTypes()
+    {
+        var listing = new ReleaseListing(
+            new ReleaseId("r1"),
+            "Title",
+            new HostileUri("https://example.test/download"),
+            "indexer",
+            new MediaKindId("movies"),
+            Size: 1,
+            PublishDate: DateTime.UnixEpoch,
+            InfoUrl: new HostileUri("https://example.test/info"));
+
+        var item = new ItemView
+        {
+            Ref = new MediaItemRef(new MediaKindId("movies"), MediaLevelId.FromString("movie"), new MediaItemId(1)),
+            Title = "A film",
+            TitleLanguage = new HostileLanguage("en", "English"),
+            Fields = new Dictionary<string, FieldValue>(StringComparer.Ordinal)
+            {
+                ["poster"] = new FieldValue
+                {
+                    Kind = FieldValueKind.Artwork,
+                    Link = new HostileUri("https://example.test/poster.jpg"),
+                    Language = new HostileLanguage("fr", "French"),
+                },
+            },
+        };
+
+        var copiedListing = PluginBoundary.Snapshot(listing);
+        var copiedItem = PluginBoundary.Snapshot(item);
+
+        using (new AssertionScope())
+        {
+            copiedListing.DownloadUrl.Should().NotBeOfType<HostileUri>();
+            copiedListing.DownloadUrl.OriginalString.Should().Be("https://example.test/download");
+            copiedListing.InfoUrl.Should().NotBeOfType<HostileUri>();
+            copiedItem.TitleLanguage.Should().NotBeOfType<HostileLanguage>();
+            copiedItem.TitleLanguage!.Code.Should().Be("en");
+            copiedItem.Fields["poster"].Link.Should().NotBeOfType<HostileUri>();
+            copiedItem.Fields["poster"].Language.Should().NotBeOfType<HostileLanguage>();
+            Reachable(copiedItem).Should().NotContain(
+                type => type.Assembly == typeof(PluginBoundarySnapshotTests).Assembly);
+        }
+    }
+
+    [Test]
     public void FetchedBytesAreCopiedOutOfTheExtensionsOwnStorage()
     {
         var storage = new byte[] { 1, 2, 3 };
@@ -173,6 +220,129 @@ public class PluginBoundarySnapshotTests
     }
 
     [Test]
+    public void ADeclaredShapeAndIntentSurfaceKeepNothingOfTheExtension()
+    {
+        var shape = new MediaShape
+        {
+            Kind = new MediaKindId("hostile"),
+            Name = "Hostile",
+            PluralName = "Hostiles",
+            Levels = new RecordingSequence<MediaLevel>(
+            [
+                new MediaLevel
+                {
+                    Id = MediaLevelId.FromString("root"),
+                    Name = "Root",
+                    PluralName = "Roots",
+                    Identity = new LevelIdentity
+                    {
+                        HasCatalogRecord = true,
+                        HasLibraryRecord = true,
+                        RequiredRoles = new RecordingSequence<IdentifierRole>([IdentifierRole.PrimaryWork]),
+                        AdmittedRoles = new RecordingSequence<IdentifierRole>([IdentifierRole.PrimaryWork]),
+                        ExternalIds = new RecordingSequence<ExternalIdScheme>([]),
+                    },
+                    Fields = new RecordingSequence<FieldDescriptor>(
+                    [
+                        new FieldDescriptor
+                        {
+                            FieldId = "title",
+                            Name = "Title",
+                            ValueKind = FieldValueKind.Text,
+                            Choices = new RecordingSequence<FacetValue>([new FacetValue("a", "A")]),
+                            Components = new RecordingSequence<FieldDescriptor>(
+                            [
+                                new FieldDescriptor
+                                {
+                                    FieldId = "part",
+                                    Name = "Part",
+                                    ValueKind = FieldValueKind.Text,
+                                    Choices = new RecordingSequence<FacetValue>([]),
+                                    Components = new RecordingSequence<FieldDescriptor>([]),
+                                },
+                            ]),
+                        },
+                    ]),
+                    CoordinateSpaceIds = new RecordingSequence<string>([]),
+                    SequenceAxes = new RecordingSequence<SequenceAxis>([]),
+                    MonitorDimensions = new RecordingSequence<MonitorDimension>([]),
+                    FormatFamilyIds = new RecordingSequence<string>([]),
+                },
+            ]),
+            FileBinding = new FileBinding
+            {
+                AnchorLevelId = MediaLevelId.FromString("root"),
+                UnitLevelId = MediaLevelId.FromString("root"),
+                SpanConstraints = new RecordingSequence<SpanConstraint>([]),
+            },
+            FormatFamilies = new RecordingSequence<FormatFamily>(
+            [
+                new FormatFamily
+                {
+                    FamilyId = "video",
+                    Name = "Video",
+                    FileExtensions = new RecordingSequence<string>([".mkv"]),
+                    Ladder = new RecordingSequence<QualityTier>([new HostileTier("HD", 1)]),
+                    Unknown = new HostileTier("Unknown", 0),
+                },
+            ]),
+            Tokens = new RecordingSequence<NamingToken>([new HostileToken("title", "Title", "A film")]),
+            CoordinateSpaces = new RecordingSequence<CoordinateSpace>([]),
+            GroupingAxes = new RecordingSequence<GroupingAxis>([]),
+            SelectionFacets = new RecordingSequence<SelectionFacet>([]),
+            SearchKinds = new RecordingSequence<SearchKind>([]),
+        };
+
+        var surface = new PluginIntentSurface
+        {
+            MediaKind = new MediaKindId("hostile"),
+            BrowseAxes = new RecordingSequence<BrowseAxis>([]),
+            Sorts = new RecordingSequence<SortOption>([]),
+            Filters = new RecordingSequence<FilterOption>([]),
+            Actions = new RecordingSequence<ActionDescriptor>([]),
+            States = new RecordingSequence<StateDescriptor>([]),
+            ExternalSurfaces = new RecordingSequence<ExternalSurfaceDescriptor>([]),
+            Workbenches = new RecordingSequence<WorkbenchDescriptor>(
+            [
+                new WorkbenchDescriptor
+                {
+                    WorkbenchId = "assign",
+                    Name = "Assign",
+                    Subject = WorkbenchSubject.LooseFiles,
+                    CommitLabel = "Apply",
+                    CommitConsequence = Consequence.Safe,
+                    CommitConfirmation = ConfirmationRequirement.None,
+                    Columns = new RecordingSequence<WorkbenchColumn>(
+                    [
+                        new WorkbenchColumn
+                        {
+                            Field = new FieldDescriptor
+                            {
+                                FieldId = "target",
+                                Name = "Target",
+                                ValueKind = FieldValueKind.Text,
+                                Choices = new RecordingSequence<FacetValue>([]),
+                                Components = new RecordingSequence<FieldDescriptor>([]),
+                            },
+                        },
+                    ]),
+                    Inputs = new RecordingSequence<ActionParameter>([]),
+                },
+            ]),
+        };
+
+        using (new AssertionScope())
+        {
+            Reachable(DeclarationBoundary.Snapshot(shape)).Should().NotContain(
+                type => type.Assembly == typeof(PluginBoundarySnapshotTests).Assembly,
+                "a shape is retained and re-read for the life of the kind");
+            Reachable(DeclarationBoundary.Snapshot(surface)).Should().NotContain(
+                type => type.Assembly == typeof(PluginBoundarySnapshotTests).Assembly,
+                "and so is the surface projected from it");
+        }
+    }
+
+    [Test]
     public void AHealthCheckContractCannotBeDerivedFromAtAll()
     {
         // The structural half of the guarantee the reconstruction below makes. An extension that could
@@ -207,8 +377,11 @@ public class PluginBoundarySnapshotTests
             return;
         }
 
+        // Anything not from the contract assembly is recorded: an unsealed contract value that came back
+        // as a subclass is exactly as much of an escape as a custom collection.
         if (value.GetType().Namespace?.StartsWith("Arronix.Abstractions", StringComparison.Ordinal) != true)
         {
+            found.Add(value.GetType());
             return;
         }
 
@@ -242,6 +415,16 @@ public class PluginBoundarySnapshotTests
 
     /// <summary>An address type defined outside the contract assembly. Uri is not sealed.</summary>
     private sealed class HostileUri(string value) : Uri(value);
+
+    /// <summary>A language defined outside the contract assembly. Language is not sealed.</summary>
+    private sealed record HostileLanguage(string Code, string Name) : Language(Code, Name);
+
+    /// <summary>A quality tier defined outside the contract assembly. QualityTier is not sealed.</summary>
+    private sealed record HostileTier(string Name, int Rank) : QualityTier(Name, Rank);
+
+    /// <summary>A naming token defined outside the contract assembly. NamingToken is not sealed.</summary>
+    private sealed record HostileToken(string Name, string Description, string ExampleValue)
+        : NamingToken(Name, Description, ExampleValue);
 
     private sealed class InertProvider : IProvider
     {

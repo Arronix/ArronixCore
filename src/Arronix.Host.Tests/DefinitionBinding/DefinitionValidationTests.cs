@@ -34,17 +34,26 @@ internal sealed class DefinitionValidationTests
         return defects;
     }
 
+    /// <remarks>
+    /// Equal rather than the same object. The model's collections are rebuilt as host-owned values at
+    /// validation, because the engines compiled from it read it outside any invocation lease — so what
+    /// the engines execute must say exactly what was derived, without being the objects the extension
+    /// supplied.
+    /// </remarks>
     [Test]
-    public void ASoundModelValidatesAndIsHeldVerbatim()
+    public void ASoundModelValidatesAndSaysExactlyWhatWasDerived()
     {
         var model = DefinitionFixtures.Sound();
 
         Validate(model, out var validated, out var defects)
             .Should().BeTrue(string.Join("; ", defects.Select(defect => $"{defect.Path}: {defect.Message}")));
 
-        validated!.Model.Should().BeSameAs(
-            model,
-            "what the engines execute and the wire publishes is what was derived");
+        using var assertions = new FluentAssertions.Execution.AssertionScope();
+        validated!.Model.Should().BeEquivalentTo(model);
+        validated.Model.Should().NotBeSameAs(model, "the retained model is the host's own copy");
+        validated.Model.Respace.Should().BeSameAs(
+            model.Respace,
+            "a respacing function is a delegate the kind supplies and cannot be copied");
         validated.Kind.Should().Be(ShapeFixtures.Kind);
     }
 

@@ -163,6 +163,11 @@ public sealed class ValidatedShape
     {
         ArgumentNullException.ThrowIfNull(shape);
 
+        // Copied before anything reads it. A validated shape is retained for the life of the kind and read
+        // on every query, so an extension-supplied collection inside it would run extension code long after
+        // any invocation lease and would keep its context alive for the life of the process.
+        shape = DeclarationBoundary.Snapshot(shape);
+
         var found = new List<ShapeDefect>();
         validated = null;
 

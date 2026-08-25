@@ -1,10 +1,14 @@
 using System.IO;
+using System.Linq;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Health;
+using Arronix.Host.Media;
+using Arronix.Host.Languages;
 using Arronix.Host.Providers;
+using Arronix.Host.Tests.Support;
 using Arronix.Plugins.Loading;
 using Arronix.Plugins.Registry;
 using FluentAssertions;
@@ -128,6 +132,86 @@ public class InvocationLeaseRaceTests
     }
 
     [Test]
+    public async Task AMediaItemCallHoldsOffDisposalAndUnloadUntilItReturnsAsync()
+    {
+        var gate = new BlockingGate();
+        var source = new BlockingItemSource(gate);
+        var publication = new PluginPublicationGate();
+        var shape = ShapeFixtures.Fused();
+        var kinds = new MediaKindRegistry(TestOptions.Of(new Arronix.Host.Configuration.LibraryOptions()), publication);
+        var lease = Lease(source);
+
+        kinds.TryPrepare(
+            ContributionFixtures.For(shape, source),
+            out var candidate,
+            out var defects,
+            lease.Invocation).Should().BeTrue(string.Join("; ", defects.Select(defect => defect.Message)));
+        kinds.TryPublish(candidate!, out _).Should().BeTrue();
+
+        var broker = new MediaItemBroker(kinds);
+        var querying = broker.QueryAsync(candidate!.Kind, new ItemQuery { Kind = shape.Kind, Level = shape.Levels[0].Id });
+
+        await gate.Entered.WaitAsync(Patience).ConfigureAwait(false);
+
+        var releasing = lease.DisposeAsync().AsTask();
+
+        using (new AssertionScope())
+        {
+            releasing.IsCompleted.Should().BeFalse("the item source's own method is still executing");
+            source.Disposed.Should().BeFalse();
+            lease.LoadContext.Should().NotBeNull();
+        }
+
+        gate.Release();
+        await querying.WaitAsync(Patience).ConfigureAwait(false);
+        await releasing.WaitAsync(Patience).ConfigureAwait(false);
+
+        using (new AssertionScope())
+        {
+            source.Disposed.Should().BeTrue();
+            lease.LoadContext.Should().BeNull();
+        }
+    }
+
+    [Test]
+    public async Task ALanguageCallHoldsOffDisposalAndUnloadUntilItReturnsAsync()
+    {
+        var gate = new BlockingGate();
+        var definition = new BlockingLanguage(gate);
+        var publication = new PluginPublicationGate();
+        var languages = new LanguageDefinitionRegistry(publication);
+        var lease = Lease(definition);
+
+        languages.TryPrepare(Package, definition, out var candidate, out _, lease.Invocation)
+            .Should().BeTrue();
+        languages.TryPublish(candidate!, out _).Should().BeTrue();
+
+        var text = new LanguageTextService(languages);
+        var preparing = Task.Run(() => text.Query("Some title", definition.Language));
+
+        await gate.Entered.WaitAsync(Patience).ConfigureAwait(false);
+
+        var releasing = lease.DisposeAsync().AsTask();
+
+        using (new AssertionScope())
+        {
+            releasing.IsCompleted.Should().BeFalse("the language's own method is still executing");
+            definition.Disposed.Should().BeFalse();
+            lease.LoadContext.Should().NotBeNull();
+        }
+
+        gate.Release();
+        await preparing.WaitAsync(Patience).ConfigureAwait(false);
+        await releasing.WaitAsync(Patience).ConfigureAwait(false);
+
+        using (new AssertionScope())
+        {
+            definition.Disposed.Should().BeTrue();
+            lease.LoadContext.Should().BeNull();
+        }
+    }
+
+    [Test]
     public void APublishedContributionWhoseRuntimeIsClosedIsReportedRatherThanSkipped()
     {
         var provider = new BlockingProvider(new BlockingGate());
@@ -196,7 +280,13 @@ public class InvocationLeaseRaceTests
         // whose entries the runtime lease will dispose, not a second proof of the admission rules.
         var ledger = new Arronix.Plugins.Registration.PluginRegistrationLedger(Package);
         ledger.Record(
-            owned is IHealthContributor ? typeof(IHealthContributor) : typeof(IProvider),
+            owned switch
+            {
+                IHealthContributor => typeof(IHealthContributor),
+                IMediaItemSource => typeof(IMediaItemSource),
+                Arronix.Abstractions.Languages.ILanguageDefinition => typeof(Arronix.Abstractions.Languages.ILanguageDefinition),
+                _ => typeof(IProvider),
+            },
             owned);
         ledger.Freeze();
 
@@ -260,6 +350,66 @@ public class InvocationLeaseRaceTests
             await gate.WaitAsync().ConfigureAwait(false);
             return [HealthCheck.Healthy("blocking", "Blocking")];
         }
+
+        public void Dispose() => Disposed = true;
+    }
+
+    private sealed class BlockingItemSource(BlockingGate gate)
+        : IMediaItemSource, IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public Arronix.Abstractions.Identity.MediaKindId MediaKind => new("fused");
+
+        public async Task<ItemPage> QueryAsync(
+            ItemQuery query,
+            CancellationToken cancellationToken = default)
+        {
+            await gate.WaitAsync().ConfigureAwait(false);
+            return new ItemPage([], 1, 20, 0);
+        }
+
+        public Task<ItemView?> GetAsync(MediaItemRef reference, CancellationToken cancellationToken = default)
+            => Task.FromResult<ItemView?>(null);
+
+        public Task<MediaItemRef?> ResolveExternalAsync(
+            ExternalId externalId,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult<MediaItemRef?>(null);
+
+        public Task<Arronix.Abstractions.Intent.WorkbenchProposal> ProposeAsync(
+            string workbenchId,
+            IReadOnlyDictionary<string, string> inputs,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public Task<Arronix.Abstractions.Wire.ActionResult> CommitAsync(
+            Arronix.Abstractions.Intent.WorkbenchCommit commit,
+            CancellationToken cancellationToken = default)
+            => throw new NotSupportedException();
+
+        public void Dispose() => Disposed = true;
+    }
+
+    private sealed class BlockingLanguage(BlockingGate gate)
+        : Arronix.Abstractions.Languages.ILanguageDefinition, IDisposable
+    {
+        public bool Disposed { get; private set; }
+
+        public Arronix.Abstractions.DTOs.Language Language { get; } =
+            new Arronix.Abstractions.DTOs.Language("zz", "Blocking");
+
+        public string PrepareComparison(string text) => text;
+
+        public string PrepareQuery(string text)
+        {
+            gate.WaitAsync().GetAwaiter().GetResult();
+            return text;
+        }
+
+        public string PrepareFileName(string text) => text;
+
+        public string PrepareSort(string text) => text;
 
         public void Dispose() => Disposed = true;
     }

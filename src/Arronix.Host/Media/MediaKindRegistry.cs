@@ -193,7 +193,11 @@ public sealed class MediaKindRegistry(
 
         // Everything below can enumerate extension-supplied declaration collections. It deliberately runs
         // after the collision snapshot's read lease is released; final publication rechecks the collision.
-        var intent = contribution.Intent ?? new PluginIntentSurface { MediaKind = kind };
+        // Copied for the same reason the shape is: the surface is retained and projected for as long as
+        // the kind is published.
+        var intent = contribution.Intent is { } declared
+            ? DeclarationBoundary.Snapshot(declared)
+            : new PluginIntentSurface { MediaKind = kind };
         var intentDefects = IntentSurfaceValidator.Validate(shape, intent);
 
         if (intentDefects.Count > 0)

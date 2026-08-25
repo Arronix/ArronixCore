@@ -63,7 +63,18 @@ public sealed class ValidatedDefinition
     /// <summary>
     /// Gets the per-kind inputs the engines compile, verbatim, so what they execute is what was derived.
     /// </summary>
-    public MediaKindModel Model { get; }
+    /// <summary>
+    /// Gets the derived runtime model the host's engines are compiled from.
+    /// </summary>
+    /// <remarks>
+    /// Internal because it is host machinery rather than a declaration. Its collections are copied into
+    /// host-owned values before it is retained: the engines read this model outside any invocation lease,
+    /// so an extension-supplied collection here would run extension code with no ticket held. The one
+    /// members that stay the extension's are the two the contract declares as delegates —
+    /// <see cref="MediaKindModel.Respace"/> and each template requirement's predicate — which are invoked
+    /// only while the kind is published and are released with it.
+    /// </remarks>
+    internal MediaKindModel Model { get; }
 
     /// <summary>
     /// Gets the derived intent surface, when the kind declared anything to work with.
@@ -130,6 +141,10 @@ public sealed class ValidatedDefinition
         ArgumentNullException.ThrowIfNull(shape);
         ArgumentNullException.ThrowIfNull(model);
 
+        // Copied before anything reads it, and before it is retained. The engines compiled from this model
+        // read it outside any invocation lease, so an extension-supplied collection here would run
+        // extension code with no ticket held and would pin its context until the kind is withdrawn.
+        model = ModelBoundary.Snapshot(model);
         validated = null;
 
         if (!ValidatedShape.TryValidate(shape, out var validatedShape, out var shapeDefects))
@@ -147,7 +162,11 @@ public sealed class ValidatedDefinition
             return false;
         }
 
-        validated = new ValidatedDefinition(kind, model, intent, validatedShape!);
+        validated = new ValidatedDefinition(
+            kind,
+            model,
+            intent is null ? null : DeclarationBoundary.Snapshot(intent),
+            validatedShape!);
         defects = [];
         return true;
     }

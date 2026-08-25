@@ -20,10 +20,12 @@ namespace Arronix.Host.Intent;
 /// around independently.
 /// </para>
 /// <para>
-/// The residual blast radius of a hostile declaration that passes these checks is a misleading label. That
-/// is a deliberate and stated bound: because the declaration is data and never code, there is nothing to
-/// execute, and the one remaining class of attack would need a consumer to render declaration strings
-/// unescaped — a single bug in one consumer rather than one per extension.
+/// The residual blast radius of a hostile declaration that passes these checks is a misleading label. The
+/// declaration <em>becomes</em> pure data before it reaches here — every collection in it is copied into
+/// host-owned values at admission, because the members are interfaces an extension supplies the instances
+/// of, and a lazy or extension-defined collection would be executable code inside what this text calls
+/// data. Given that copy, the one remaining class of attack would need a consumer to render declaration
+/// strings unescaped: a single bug in one consumer rather than one per extension.
 /// </para>
 /// </remarks>
 public static partial class IntentSurfaceValidator

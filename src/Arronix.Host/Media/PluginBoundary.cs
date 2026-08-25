@@ -13,14 +13,19 @@ namespace Arronix.Host.Media;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A contract says <c>IReadOnlyList&lt;T&gt;</c>; what arrives can be any type the extension chose,
-/// including a lazy sequence that calls back into the extension when the host enumerates it, and including
-/// a type defined in the extension's own collectible context. Either one, enumerated or held after the
-/// ticket is released, is the exact thing the ticket exists to prevent.
+/// A contract says <c>IReadOnlyList&lt;T&gt;</c>, <c>Uri</c> or <c>Language</c>; what arrives can be any
+/// type the extension chose — a lazy sequence that calls back when the host enumerates it, or a subclass
+/// whose overrides are extension code. Either one, called or held after the ticket is released, is the
+/// exact thing the ticket exists to prevent.
 /// </para>
 /// <para>
-/// So every collection reachable from a returned value is copied, recursively, inside the leased scope.
-/// What is left afterwards is records from the contract assembly holding framework collections.
+/// So every collection, address and unsealed contract value reachable from a returned value is rebuilt,
+/// recursively, inside the leased scope.
+/// </para>
+/// <para>
+/// One case is deliberately not covered, and is not a gap: a typed catalog result carries the media kind's
+/// own item type, which is a plugin type by design and has its own lifecycle. Only the collection holding
+/// those items becomes host-owned; the items themselves stay what the kind declared them to be.
 /// </para>
 /// </remarks>
 internal static class PluginBoundary
@@ -48,8 +53,28 @@ internal static class PluginBoundary
     internal static FieldValue Snapshot(FieldValue value)
     {
         ArgumentNullException.ThrowIfNull(value);
-        return value.Items is null ? value : value with { Items = [.. value.Items.Select(Snapshot)] };
+
+        return value with
+        {
+            Items = value.Items is null ? null : [.. value.Items.Select(Snapshot)],
+            Link = Snapshot(value.Link),
+            Language = Snapshot(value.Language),
+        };
     }
+
+    /// <summary>
+    /// Rebuilds a language as the ordinary base record.
+    /// </summary>
+    /// <param name="language">What the extension supplied.</param>
+    /// <returns>A host-owned language, or <see langword="null"/>.</returns>
+    /// <remarks>
+    /// <see cref="Language"/> is not sealed, so a value can be a subclass whose members are extension code
+    /// and whose type is defined in the extension's context.
+    /// </remarks>
+    internal static Language? Snapshot(Language? language)
+        => language is null || language.GetType() == typeof(Language)
+            ? language
+            : new Language(language.Code, language.Name);
 
     /// <summary>Copies a returned item, including its fields, coordinates and identifiers.</summary>
     /// <param name="item">What the extension returned.</param>
@@ -60,6 +85,7 @@ internal static class PluginBoundary
 
         return item with
         {
+            TitleLanguage = Snapshot(item.TitleLanguage),
             Fields = item.Fields is null or { Count: 0 }
                 ? FrozenDictionary<string, FieldValue>.Empty
                 : item.Fields.ToFrozenDictionary(
@@ -178,9 +204,12 @@ internal static class PluginBoundary
     {
         ArgumentNullException.ThrowIfNull(listing);
 
-        return listing.AdditionalData is null
-            ? listing
-            : listing with { AdditionalData = Snapshot(listing.AdditionalData) };
+        return listing with
+        {
+            DownloadUrl = Snapshot(listing.DownloadUrl)!,
+            InfoUrl = Snapshot(listing.InfoUrl),
+            AdditionalData = listing.AdditionalData is null ? null : Snapshot(listing.AdditionalData),
+        };
     }
 
     /// <summary>Copies a returned query result, including every listing in it.</summary>
