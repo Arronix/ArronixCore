@@ -671,11 +671,34 @@ internal sealed class SharedContractStore
                 .ToFrozenSet(StringComparer.Ordinal);
         }
 
+        IReadOnlyList<string> files;
+
+        try
+        {
+            files = ManagedFiles(package.Folder);
+        }
+// Listing a package's own folder is file-boundary work on a path that package controls, so it uses the
+// closed allowlist. Containing it here is what keeps one unreadable folder from ending the load pass: this
+// check runs before the per-package try, so an escaping failure would abort every package not yet attempted
+// rather than refusing the one whose folder cannot be read.
+#pragma warning disable CA1031
+        catch (Exception failure) when (LoadFailurePolicy.IsContainableContractFailure(failure))
+#pragma warning restore CA1031
+        {
+            code = CoreErrorCode.PluginLoadFailure;
+            defects =
+            [
+                $"The managed files in '{package.Folder}' could not be listed, so this package cannot be "
+                + $"checked against the contracts this installation shares: {failure.Message}",
+            ];
+            return false;
+        }
+
         var duplicates = new List<string>();
         var mismatches = new List<string>();
         var undeclared = new List<string>();
 
-        foreach (var file in ManagedFiles(package.Folder))
+        foreach (var file in files)
         {
             if (admittedSources.Contains(file))
             {
@@ -749,6 +772,11 @@ internal sealed class SharedContractStore
     }
 
     /// <summary>The managed files a package carries, ordered so every diagnostic is reproducible.</summary>
+    /// <remarks>
+    /// Enumeration is materialized rather than returned lazily, so a folder that cannot be listed fails at
+    /// the one call the caller contains rather than partway through a walk it has already started reporting
+    /// on.
+    /// </remarks>
     private static IReadOnlyList<string> ManagedFiles(string folder)
         => Directory.Exists(folder)
             ? [.. Directory

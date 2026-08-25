@@ -601,7 +601,9 @@ public sealed class PluginLoader
                 package.Id,
                 manifest,
                 isolationCode,
-                $"Extension '{package.Id}' conflicts with the shared contracts this installation admitted.",
+                isolationCode == CoreErrorCode.PluginLoadFailure
+                    ? $"Extension '{package.Id}' could not be checked against the shared contracts this installation admitted."
+                    : $"Extension '{package.Id}' conflicts with the shared contracts this installation admitted.",
                 isolationDefects);
         }
 

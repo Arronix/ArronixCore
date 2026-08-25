@@ -244,7 +244,11 @@ and is never reported as accepted.
 ## 6. Side effects
 
 The loader reads plugin manifests and assemblies, creates isolated load contexts, and may quarantine invalid
-plugins. A quarantined attempt publishes nothing and releases every object it created. Host shutdown drains
+plugins. A quarantined attempt publishes nothing and releases every object it created. A failure attributable
+to one package — including a folder the loader cannot even list, and a disposer that throws while that package
+is being torn down — refuses or is recorded against that package alone and leaves every other package
+answered for; only a condition in which the process is no longer sound propagates, and a package whose
+teardown reported a failure keeps its hold on the installation's shared contracts. Host shutdown drains
 scheduled plugin work, withdraws the exact active attempt and its naming-token ownership, disposes owned
 instances, and requests collectible-context unload; a job still executing after its bounded deadline keeps
 that plugin rooted and Active. The sanctioned provider SPI supplies network and filesystem access through

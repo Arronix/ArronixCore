@@ -380,6 +380,65 @@ internal sealed class SharedContractStoreTests
         defect.Should().Contain(planted.ModuleVersionId.ToString()).And.Contain(planted.ContentHash);
     }
 
+    /// <remarks>
+    /// <para>
+    /// The isolation walk runs before the loader's per-package try, so a failure escaping it does not
+    /// quarantine one package — it ends the load pass, and every package not yet attempted is never
+    /// attempted at all. A folder whose contents cannot be listed is the reachable way to produce one:
+    /// staging already contains an unreadable <i>file</i>, but nothing contained an unreadable
+    /// <i>directory</i>.
+    /// </para>
+    /// <para>
+    /// The directory is left executable and not readable, which is the state in which a known path still
+    /// opens — so discovery reads the manifest exactly as it always would — and only enumeration is refused.
+    /// The repository's proof rail is bash and its CI is Linux, so file modes are available wherever this
+    /// runs.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void APackageWhoseFolderCannotBeListedIsRefusedRatherThanEndingTheLoadPass()
+    {
+        var publisher = Publisher("publisher", SharedName, One);
+        var dependant = Package(
+            "dependant",
+            Path.Combine(_root, "dependant"),
+            requirements: [new PackageRequirement(PluginId.FromString("publisher"), Any)]);
+
+        Directory.CreateDirectory(dependant.Folder);
+        EmittedContract.Write(dependant.Folder, "Emitted.Dependant", One);
+
+        var store = Admit(publisher, dependant);
+
+        Unlistable(dependant.Folder);
+
+        try
+        {
+            // The arrangement has to bite, or this fixture proves nothing.
+            var enumerate = () => Directory.EnumerateFiles(dependant.Folder, "*.dll").ToArray();
+            enumerate.Should().Throw<UnauthorizedAccessException>(
+                "the fixture must actually deny enumeration for the refusal to mean anything");
+
+            var checkedPackage = store.TryCheckPackage(dependant, out var code, out var defects);
+
+            using var assertions = new AssertionScope();
+            checkedPackage.Should().BeFalse();
+            code.Should().Be(CoreErrorCode.PluginLoadFailure);
+            defects.Should().ContainSingle().Which.Should()
+                .Contain(dependant.Folder)
+                .And.Contain("could not be listed");
+
+            store.Admitted.Should().ContainSingle(
+                "one package's unreadable folder says nothing about what the installation already shares");
+            store.TryCheckPackage(publisher, out _, out var publisherDefects).Should().BeTrue(
+                "and it says nothing about any other package either");
+            publisherDefects.Should().BeEmpty();
+        }
+        finally
+        {
+            Relistable(dependant.Folder);
+        }
+    }
+
     [Test]
     public void ThePublishersOwnCopyIsNotTreatedAsADuplicateOfItself()
     {
@@ -739,6 +798,16 @@ internal sealed class SharedContractStoreTests
         _stores.Add(store);
         return store;
     }
+
+    /// <summary>Leaves a folder traversable by name but impossible to enumerate.</summary>
+    private static void Unlistable(string folder)
+        => File.SetUnixFileMode(folder, UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+
+    /// <summary>Restores a folder so the fixture's own cleanup can delete it.</summary>
+    private static void Relistable(string folder)
+        => File.SetUnixFileMode(
+            folder,
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
     private SharedContractStore Admit(params InstalledPackage[] packages)
     {
