@@ -217,8 +217,8 @@ public interface IPluginRegistry
 
     /// <summary>
     /// Registers a telemetry filter. Requires <see cref="Capability.TelemetryProcessing"/>: a filter
-    /// decides whether anyone sees an event. It decides that only for this extension's own events, and
-    /// never for one the host raised at error severity or above.
+    /// decides whether anyone sees an event. It is asked only about this extension's own events below
+    /// <see cref="Telemetry.TelemetrySeverity.Error"/>, and never about another extension's or the host's.
     /// </summary>
     /// <param name="filter">The filter.</param>
     /// <returns>This registry, for chaining.</returns>
