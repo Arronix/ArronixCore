@@ -271,7 +271,9 @@ internal sealed partial class HostEventPublisher : IEventPublisher
     /// <summary>The name of a type as text the host owns, so no log holds the type itself.</summary>
     private static string Rendered(Type type) => Bounded(type.FullName ?? type.Name);
 
-    /// <summary>The failure's message, which an extension may have overridden to throw in its turn.</summary>
+    /// <summary>
+    /// The failure's message, which an extension may have overridden to throw, or to answer with nothing.
+    /// </summary>
     [SuppressMessage(
         "Design",
         "CA1031:Do not catch general exception types",
@@ -280,7 +282,9 @@ internal sealed partial class HostEventPublisher : IEventPublisher
     {
         try
         {
-            return Bounded(failure.Message);
+            // A getter that answers null is as much the extension's prerogative as one that throws, and the
+            // report is made either way: it is what says a handler failed and that the others still ran.
+            return failure.Message is { } message ? Bounded(message) : "<the failure stated no message>";
         }
         catch (Exception unreadable) when (!ProcessFailure.IsFatal(unreadable))
         {

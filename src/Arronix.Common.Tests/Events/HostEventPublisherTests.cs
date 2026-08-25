@@ -274,6 +274,30 @@ public class HostEventPublisherTests
     }
 
     [Test]
+    public async Task AFailureThatStatesNoMessageIsStillReportedAsync()
+    {
+        var order = new List<string>();
+        var log = new CapturingLog();
+        var services = new ServiceCollection();
+
+        services.AddSingleton<IEventHandler<Renamed>>(new Recording<Renamed>("silent", order, new Speechless()));
+        services.AddSingleton<IEventHandler<Renamed>>(new Recording<Renamed>("after", order));
+
+        var publisher = new HostEventPublisher(services.BuildServiceProvider(), log, null);
+        await publisher.PublishAsync(new Renamed()).ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(order, Is.EqualTo(new[] {"silent", "after"}), "the handlers after it still run");
+            Assert.That(
+                log.Written,
+                Has.Some.Contains(nameof(Speechless)),
+                "a message getter answering null is not a reason to say nothing about the failure");
+            Assert.That(log.Written, Has.Some.Contains("stated no message"));
+        });
+    }
+
+    [Test]
     public async Task AFailingLogIsNotAReasonToStopCallingHandlersAsync()
     {
         var order = new List<string>();
@@ -475,6 +499,33 @@ public class HostEventPublisherTests
     private sealed class Unreadable : Exception
     {
         public override string Message => throw new InvalidOperationException("not telling");
+    }
+
+    /// <summary>An exception that answers nothing, which an override is equally free to do.</summary>
+    private sealed class Speechless : Exception
+    {
+        public override string Message => null!;
+    }
+
+    /// <summary>Keeps what the publisher said about a handler, which is the whole of the report.</summary>
+    private sealed class CapturingLog : ILogger<HostEventPublisher>
+    {
+        private readonly List<string> _written = [];
+
+        internal IReadOnlyList<string> Written => _written;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => _written.Add(formatter(state, exception));
     }
 
     /// <summary>A log that fails on its own account, the way an overwhelmed sink does.</summary>

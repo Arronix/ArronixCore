@@ -816,24 +816,69 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         }
         catch (OperationCanceledException) when (budget.IsCancellationRequested)
         {
-            Report(() => SinkAbandoned(_log, Named(sink), what, _options.SinkAttempt));
+            // Two things can cancel that budget, and they are different events. Reporting the attempt bound
+            // when the caller simply stopped waiting would send an operator to a setting that had no part
+            // in it.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                Report(() => SinkStopped(_log, Named(sink), what));
+            }
+            else
+            {
+                Report(() => SinkAbandoned(_log, Named(sink), what, _options.SinkAttempt));
+            }
 
-            // The wait is over; the sink is not. Whatever kept it — the lease on its package included — is
-            // held until it actually finishes, because unloading code that is still running is worse than
-            // waiting forever for a sink that never answers.
-            hold?.Abandoned(running);
-            _ = running.ContinueWith(
-                static (_, state) => ((CancellationTokenSource)state!).Dispose(),
-                budget,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
+            Abandon(sink, what, running, hold, budget);
         }
         catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             budget.Dispose();
             Report(() => SinkFailed(_log, Named(sink), Safe(failure)));
         }
+    }
+
+    /// <summary>
+    /// Lets go of a call the pipeline stopped waiting for, without letting go of what that call still needs.
+    /// </summary>
+    /// <remarks>
+    /// How it ends is reported here and nowhere else: the await it would have travelled back through was
+    /// abandoned, so a late failure cannot reach the caller and is not pretended to. The owner's lease is
+    /// held across that inspection and given up after it, because the call was running a moment ago and
+    /// reading how it ended is the last thing done while its package is certainly still there.
+    /// </remarks>
+    private void Abandon(
+        ITelemetrySink sink,
+        string what,
+        Task running,
+        LeaseHold? hold,
+        CancellationTokenSource budget)
+    {
+        hold?.Abandoned();
+
+        var named = Named(sink);
+
+        _ = running.ContinueWith(
+            (finished, state) =>
+            {
+                try
+                {
+                    if (finished.Exception is { } aggregate)
+                    {
+                        var failure = aggregate.InnerException ?? aggregate;
+                        var text = $"{failure.GetType().FullName ?? failure.GetType().Name}: {Safe(failure)}";
+                        Report(() => SinkFailedLate(_log, named, what, text));
+                    }
+                }
+                finally
+                {
+                    ((LeaseHold?)state)?.Finished();
+                    budget.Dispose();
+                }
+            },
+            hold,
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
     }
 
     /// <summary>
@@ -850,19 +895,17 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         private int _outstanding;
         private bool _released;
 
-        internal void Abandoned(Task running)
+        /// <summary>Records that one call is still running, and that this lease is owed to it.</summary>
+        /// <remarks>
+        /// The matching <see cref="Finished"/> is the caller's to make, after it has read how that call
+        /// ended. Releasing from a continuation of its own would race that reading.
+        /// </remarks>
+        internal void Abandoned()
         {
             lock (_gate)
             {
                 _outstanding++;
             }
-
-            _ = running.ContinueWith(
-                static (_, state) => ((LeaseHold)state!).Finished(),
-                this,
-                CancellationToken.None,
-                TaskContinuationOptions.ExecuteSynchronously,
-                TaskScheduler.Default);
         }
 
         internal void Release()
@@ -880,7 +923,8 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
             lease.Dispose();
         }
 
-        private void Finished()
+        /// <summary>Gives up what one abandoned call was owed, and the lease itself if it was the last.</summary>
+        internal void Finished()
         {
             lock (_gate)
             {
@@ -998,5 +1042,17 @@ internal sealed partial class HostTelemetryEmitter : IOriginatedTelemetryEmitter
         Level = LogLevel.Warning,
         Message = "Telemetry sink '{Sink}' did not finish its {What} within {Budget}; the wait was abandoned and its package stays held until the call returns.")]
     private static partial void SinkAbandoned(ILogger logger, string sink, string what, TimeSpan budget);
+
+    [LoggerMessage(
+        EventId = 9406,
+        Level = LogLevel.Warning,
+        Message = "Telemetry sink '{Sink}' was still running its {What} when the pipeline stopped; its package stays held until the call returns.")]
+    private static partial void SinkStopped(ILogger logger, string sink, string what);
+
+    [LoggerMessage(
+        EventId = 9407,
+        Level = LogLevel.Warning,
+        Message = "Telemetry sink '{Sink}' failed its {What} after the wait for it was abandoned: {Failure}. Nothing was still waiting for that answer.")]
+    private static partial void SinkFailedLate(ILogger logger, string sink, string what, string failure);
 
 }

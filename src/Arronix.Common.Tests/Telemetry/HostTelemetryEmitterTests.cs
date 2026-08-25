@@ -583,6 +583,126 @@ public class HostTelemetryEmitterTests
     }
 
     [Test]
+    public async Task ALateFailureFromAnAbandonedSinkIsReportedRatherThanLostAsync()
+    {
+        var ending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var contributions = new StubContributions().Add(Movies, new DeferredSink(ending));
+        var heldWhenReported = -1;
+
+        var log = new CapturingLogger(text =>
+        {
+            if (text.Contains("after the wait for it was abandoned", StringComparison.Ordinal))
+            {
+                heldWhenReported = contributions.SinkLeasesReleased;
+            }
+        });
+
+        await using (var pipeline = Pipeline(
+            contributions: contributions,
+            options: new TelemetryOptions { SinkAttempt = TimeSpan.FromMilliseconds(50) },
+            log: log))
+        {
+            pipeline.Emitter.Emit(Event("late"), Movies);
+            await pipeline.DrainAsync().ConfigureAwait(false);
+        }
+
+        Assert.That(
+            contributions.SinkLeasesReleased,
+            Is.Zero,
+            "the lease is owed to a call that has not ended, whatever the pipeline stopped waiting for");
+
+        ending.SetException(new InvalidOperationException("the sink gave up later"));
+
+        Assert.That(
+            await Waited(() => contributions.SinkLeasesReleased == 1).ConfigureAwait(false),
+            Is.True,
+            "and it is given up once that call has ended");
+
+        var written = log.Written;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                written,
+                Has.Some.Contains("after the wait for it was abandoned"),
+                "the failure cannot travel back through an abandoned await, so this is where it is said");
+            Assert.That(written, Has.Some.Contains("System.InvalidOperationException"));
+            Assert.That(written, Has.Some.Contains("the sink gave up later"));
+            Assert.That(
+                heldWhenReported,
+                Is.Zero,
+                "the owner's lease is held while how its call ended is read, and given up after");
+        });
+    }
+
+    [Test]
+    public async Task AnAbandonedSinkThatEventuallySucceedsReportsNoFailureAsync()
+    {
+        var ending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var log = new CapturingLogger();
+        var contributions = new StubContributions().Add(Movies, new DeferredSink(ending));
+
+        await using (var pipeline = Pipeline(
+            contributions: contributions,
+            options: new TelemetryOptions { SinkAttempt = TimeSpan.FromMilliseconds(50) },
+            log: log))
+        {
+            pipeline.Emitter.Emit(Event("slow but sound"), Movies);
+            await pipeline.DrainAsync().ConfigureAwait(false);
+        }
+
+        ending.SetResult();
+
+        Assert.That(
+            await Waited(() => contributions.SinkLeasesReleased == 1).ConfigureAwait(false),
+            Is.True,
+            "a call that ends well ends the hold on its owner just the same");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(log.Written, Has.None.Contains("after the wait for it was abandoned"));
+            Assert.That(log.Written, Has.Some.Contains("did not finish its send"), "the wait is still reported");
+        });
+    }
+
+    [Test]
+    public async Task ACallerThatStopsWaitingIsReportedAsThatRatherThanAsTheAttemptBudgetAsync()
+    {
+        using var stopping = new CancellationTokenSource();
+        var ending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var sink = new DeferredSink(ending);
+        var log = new CapturingLogger();
+
+        // Long enough that the attempt bound cannot be what fires; the caller's token is the only candidate.
+        var emitter = new HostTelemetryEmitter(
+            [],
+            [],
+            [sink],
+            RedactionEngine.Empty,
+            TimeProvider.System,
+            log,
+            Options.Create(new TelemetryOptions { SinkAttempt = TimeSpan.FromSeconds(30) }));
+
+        var pump = emitter.RunAsync(stopping.Token);
+        emitter.Emit(Event("stopped mid-send"));
+
+        await sink.Entered.Task.WaitAsync(Patience).ConfigureAwait(false);
+        await stopping.CancelAsync().ConfigureAwait(false);
+        await pump.WaitAsync(Patience).ConfigureAwait(false);
+
+        ending.SetResult();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(log.Written, Has.Some.Contains("was still running its send when the pipeline stopped"));
+            Assert.That(
+                log.Written,
+                Has.None.Contains("did not finish its send"),
+                "the attempt bound had nothing to do with it");
+        });
+    }
+
+    [Test]
     public async Task ALoggerThatObjectsDoesNotStopTheEventAsync()
     {
         var sink = new RecordingSink();
@@ -643,7 +763,8 @@ public class HostTelemetryEmitterTests
         IReadOnlyList<ITelemetrySink>? sinks = null,
         StubContributions? contributions = null,
         IReadOnlyList<OwnedRedactionRules>? rules = null,
-        TelemetryOptions? options = null)
+        TelemetryOptions? options = null,
+        CapturingLogger? log = null)
     {
         var settings = options ?? new TelemetryOptions();
 
@@ -653,7 +774,7 @@ public class HostTelemetryEmitterTests
             sinks ?? [],
             rules is null ? RedactionEngine.Empty : RedactionEngine.Compile(rules, settings),
             TimeProvider.System,
-            NullLogger<HostTelemetryEmitter>.Instance,
+            log ?? (Microsoft.Extensions.Logging.ILogger<HostTelemetryEmitter>)NullLogger<HostTelemetryEmitter>.Instance,
             Options.Create(settings),
             contributions);
 
@@ -679,6 +800,64 @@ public class HostTelemetryEmitterTests
             await Emitter.DrainAsync().ConfigureAwait(false);
             await _stopping.CancelAsync().ConfigureAwait(false);
             _stopping.Dispose();
+        }
+    }
+
+    /// <summary>A sink whose call outlives the pipeline's wait for it, and ends when the fixture says.</summary>
+    private sealed class DeferredSink(TaskCompletionSource ending) : ITelemetrySink
+    {
+        internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public string SinkId => "deferred";
+
+        public Task SendAsync(TelemetryEvent telemetryEvent, CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            return ending.Task;
+        }
+
+        public Task FlushAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    /// <summary>Keeps what the pipeline said, which for an abandoned call is the only place it is said.</summary>
+    private sealed class CapturingLogger(Action<string>? watching = null)
+        : Microsoft.Extensions.Logging.ILogger<HostTelemetryEmitter>
+    {
+        private readonly List<string> _written = [];
+
+        internal IReadOnlyList<string> Written
+        {
+            get
+            {
+                lock (_written)
+                {
+                    return [.. _written];
+                }
+            }
+        }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(Microsoft.Extensions.Logging.LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            Microsoft.Extensions.Logging.LogLevel logLevel,
+            Microsoft.Extensions.Logging.EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var text = formatter(state, exception);
+
+            lock (_written)
+            {
+                _written.Add(text);
+            }
+
+            // Read where the pipeline stands at the moment it says this, which is the only place the order
+            // between reporting and releasing is visible.
+            watching?.Invoke(text);
         }
     }
 
