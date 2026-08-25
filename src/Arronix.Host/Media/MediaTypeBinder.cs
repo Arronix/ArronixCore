@@ -4,6 +4,7 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
+using Arronix.Common.Contributions;
 using Arronix.Host.Media.Typed;
 using Arronix.Host.Engines.Parsing;
 using Arronix.Host.Providers;
@@ -107,7 +108,8 @@ public sealed class MediaTypeBinder
     internal bool TryPrepare(
         TypedContribution contribution,
         out RegisteredMediaKind? registered,
-        out IReadOnlyList<ShapeDefect> defects)
+        out IReadOnlyList<ShapeDefect> defects,
+        IInvocationLifetime? lifetime = null)
     {
         ArgumentNullException.ThrowIfNull(contribution);
 
@@ -117,7 +119,8 @@ public sealed class MediaTypeBinder
             contribution.Capabilities,
             contribution.Registration.Bind(DerivationBinder.Instance),
             out registered,
-            out defects);
+            out defects,
+            lifetime);
     }
 
     /// <summary>
@@ -163,7 +166,8 @@ public sealed class MediaTypeBinder
         CapabilitySet capabilities,
         IMediaTypeRuntime derived,
         out RegisteredMediaKind? registered,
-        out IReadOnlyList<ShapeDefect> defects)
+        out IReadOnlyList<ShapeDefect> defects,
+        IInvocationLifetime? lifetime = null)
     {
         ArgumentNullException.ThrowIfNull(derived);
 
@@ -216,7 +220,7 @@ public sealed class MediaTypeBinder
             Definition = validated,
         };
 
-        return _kinds.TryPrepare(bundle, out registered, out defects);
+        return _kinds.TryPrepare(bundle, out registered, out defects, lifetime);
     }
 
     private static TSeam? Build<TSeam>(

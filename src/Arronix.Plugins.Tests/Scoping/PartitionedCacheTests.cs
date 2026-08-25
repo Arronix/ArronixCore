@@ -30,7 +30,7 @@ public sealed class PartitionedCacheTests
     public void ACachePartitionIsNamespacedByTheExtension()
     {
         var inner = new RecordingCacheProvider();
-        var provider = new PartitionedCacheProvider(inner, Plugin);
+        var provider = new PartitionedCacheProvider(inner, Plugin, attemptId: 1);
 
         provider.GetCache<PartitionedCacheTests, string>("releases");
 
@@ -41,7 +41,7 @@ public sealed class PartitionedCacheTests
     public void EveryCacheFlavorIsNamespacedTheSameWay()
     {
         var inner = new RecordingCacheProvider();
-        var provider = new PartitionedCacheProvider(inner, Plugin);
+        var provider = new PartitionedCacheProvider(inner, Plugin, attemptId: 1);
 
         provider.GetCache<PartitionedCacheTests, string>("a");
         provider.GetRollingCache<PartitionedCacheTests, string>("b", TimeSpan.FromMinutes(1));
@@ -60,8 +60,8 @@ public sealed class PartitionedCacheTests
     {
         var inner = new RecordingCacheProvider();
 
-        new PartitionedCacheProvider(inner, Plugin).GetCache<PartitionedCacheTests, string>("shared");
-        new PartitionedCacheProvider(inner, Other).GetCache<PartitionedCacheTests, string>("shared");
+        new PartitionedCacheProvider(inner, Plugin, attemptId: 1).GetCache<PartitionedCacheTests, string>("shared");
+        new PartitionedCacheProvider(inner, Other, attemptId: 2).GetCache<PartitionedCacheTests, string>("shared");
 
         inner.Partitions.Should().OnlyHaveUniqueItems(
             "one extension must be able neither to read nor to evict another's entries");
@@ -70,7 +70,7 @@ public sealed class PartitionedCacheTests
     [Test]
     public void ABlankPartitionNameIsRefused()
     {
-        var provider = new PartitionedCacheProvider(new RecordingCacheProvider(), Plugin);
+        var provider = new PartitionedCacheProvider(new RecordingCacheProvider(), Plugin, attemptId: 1);
 
         var resolve = () => provider.ResolvePartition("  ");
 

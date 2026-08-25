@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using Arronix.Abstractions.Caching;
+using Arronix.Common.Caching;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Health;
@@ -294,9 +295,18 @@ internal sealed class RecordingEventPublisher : IEventPublisher
 /// <summary>
 /// Records the partition names a decorator resolved to, which is the whole of what the decorator promises.
 /// </summary>
-internal sealed class RecordingCacheProvider : ICacheProvider
+internal sealed class RecordingCacheProvider : ICacheNamespaceProvider
 {
     public List<string> Partitions { get; } = [];
+
+    public List<RecordingCacheNamespace> Namespaces { get; } = [];
+
+    public ICacheNamespace CreateNamespace(string name)
+    {
+        var created = new RecordingCacheNamespace(this, name);
+        Namespaces.Add(created);
+        return created;
+    }
 
     public ICache<TValue> GetCache<TOwner, TValue>(string partition)
     {
@@ -317,6 +327,44 @@ internal sealed class RecordingCacheProvider : ICacheProvider
     {
         Partitions.Add(partition);
         return new RecordingSelfRefreshingCache<TValue>(partition);
+    }
+}
+
+/// <summary>A releasable group over the recording provider, so teardown has something exact to take back.</summary>
+internal sealed class RecordingCacheNamespace(RecordingCacheProvider owner, string name) : ICacheNamespace
+{
+    public string Name { get; } = name;
+
+    public bool IsReleased { get; private set; }
+
+    public int Releases { get; private set; }
+
+    public ValueTask ReleaseAsync()
+    {
+        IsReleased = true;
+        Releases++;
+        return ValueTask.CompletedTask;
+    }
+
+    public ICache<TValue> GetCache<TOwner, TValue>(string partition)
+        => Guard<TValue>(() => owner.GetCache<TOwner, TValue>(partition));
+
+    public ICache<TValue> GetRollingCache<TOwner, TValue>(string partition, TimeSpan defaultLifetime)
+        => Guard<TValue>(() => owner.GetRollingCache<TOwner, TValue>(partition, defaultLifetime));
+
+    public ISelfRefreshingCache<TValue> GetSelfRefreshingCache<TOwner, TValue>(
+        string partition,
+        Func<CancellationToken, Task<IReadOnlyDictionary<string, TValue>>> fetch,
+        TimeSpan? lifetime = null)
+    {
+        ObjectDisposedException.ThrowIf(IsReleased, Name);
+        return owner.GetSelfRefreshingCache<TOwner, TValue>(partition, fetch, lifetime);
+    }
+
+    private ICache<TValue> Guard<TValue>(Func<ICache<TValue>> resolve)
+    {
+        ObjectDisposedException.ThrowIf(IsReleased, Name);
+        return resolve();
     }
 }
 

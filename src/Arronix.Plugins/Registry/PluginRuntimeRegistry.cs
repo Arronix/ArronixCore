@@ -169,6 +169,10 @@ public sealed class PluginRuntimeRegistry : IPluginRuntimeRegistry
         }
 
         lifetime = active.PackageLease;
+
+        // Under the same write lease that removes the published result, so a dispatch path either took its
+        // lease before this and is waited for, or cannot take one at all.
+        lifetime?.CloseToInvocation();
         lifetime?.UnpublishTokenClaims();
         _results[key] = active.Stop(changedAt);
         return true;

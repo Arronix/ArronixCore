@@ -86,6 +86,7 @@ internal static class ItemEndpoints
         string kind,
         string level,
         IMediaKindRegistry registry,
+        MediaItemBroker items,
         MediaItemProjection projection,
         IOptions<ApiOptions> options,
         HttpContext context,
@@ -122,7 +123,16 @@ internal static class ItemEndpoints
         }
 
         var query = BuildQuery(registered, levelId, parent, context, options.Value, ApiRequests.Filters(context.Request));
-        var page = await registered.Items.QueryAsync(query, cancellationToken).ConfigureAwait(false);
+        var page = await items.QueryAsync(registered.Kind, query, cancellationToken).ConfigureAwait(false);
+
+        if (page is null)
+        {
+            return ApiRequests.Problem(
+                StatusCodes.Status404NotFound,
+                CoreErrorCode.MediaKindNotFound,
+                $"'{kind}' is no longer installed.");
+        }
+
         var projected = await projection.ProjectAsync(registered, page, cancellationToken).ConfigureAwait(false);
 
         return TypedResults.Ok(projected);
@@ -132,6 +142,7 @@ internal static class ItemEndpoints
         string kind,
         string id,
         IMediaKindRegistry registry,
+        MediaItemBroker items,
         MediaItemProjection projection,
         CancellationToken cancellationToken)
     {
@@ -151,7 +162,7 @@ internal static class ItemEndpoints
                 $"'{id}' is not a well-formed item reference for '{kind}'; the form is 'level:id'.");
         }
 
-        var item = await registered.Items.GetAsync(reference, cancellationToken).ConfigureAwait(false);
+        var item = await items.GetAsync(registered.Kind, reference, cancellationToken).ConfigureAwait(false);
         if (item is null)
         {
             return ApiRequests.Problem(
@@ -170,6 +181,7 @@ internal static class ItemEndpoints
         string kind,
         string id,
         IMediaKindRegistry registry,
+        MediaItemBroker items,
         MediaItemProjection projection,
         IOptions<ApiOptions> options,
         HttpContext context,
@@ -207,7 +219,16 @@ internal static class ItemEndpoints
         }
 
         var query = BuildQuery(registered, child.Id, reference, context, options.Value, ApiRequests.Filters(context.Request));
-        var page = await registered.Items.QueryAsync(query, cancellationToken).ConfigureAwait(false);
+        var page = await items.QueryAsync(registered.Kind, query, cancellationToken).ConfigureAwait(false);
+
+        if (page is null)
+        {
+            return ApiRequests.Problem(
+                StatusCodes.Status404NotFound,
+                CoreErrorCode.MediaKindNotFound,
+                $"'{kind}' is no longer installed.");
+        }
+
         var projected = await projection.ProjectAsync(registered, page, cancellationToken).ConfigureAwait(false);
 
         return TypedResults.Ok(projected);
@@ -217,6 +238,7 @@ internal static class ItemEndpoints
         string kind,
         string axisId,
         IMediaKindRegistry registry,
+        MediaItemBroker items,
         MediaItemProjection projection,
         IOptions<ApiOptions> options,
         HttpContext context,
@@ -255,7 +277,16 @@ internal static class ItemEndpoints
         }
 
         var query = BuildQuery(registered, axis.MemberLevelId, null, context, options.Value, filters);
-        var page = await registered.Items.QueryAsync(query, cancellationToken).ConfigureAwait(false);
+        var page = await items.QueryAsync(registered.Kind, query, cancellationToken).ConfigureAwait(false);
+
+        if (page is null)
+        {
+            return ApiRequests.Problem(
+                StatusCodes.Status404NotFound,
+                CoreErrorCode.MediaKindNotFound,
+                $"'{kind}' is no longer installed.");
+        }
+
         var projected = await projection.ProjectAsync(registered, page, cancellationToken).ConfigureAwait(false);
 
         return TypedResults.Ok(projected);

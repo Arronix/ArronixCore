@@ -8,6 +8,7 @@ using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
+using Arronix.Common.Contributions;
 using Arronix.Host.Configuration;
 using Arronix.Host.Intent;
 using Arronix.Plugins.Registry;
@@ -63,6 +64,49 @@ public sealed class MediaKindRegistry(
     }
 
     /// <inheritdoc />
+    /// <summary>
+    /// Takes a kind together with its contributing extension's ticket.
+    /// </summary>
+    /// <param name="kind">The kind.</param>
+    /// <param name="leased">The kind and its ticket. Dispose it when the work using it has finished.</param>
+    /// <returns><see langword="false"/> when no such kind is published.</returns>
+    /// <remarks>
+    /// Everything executable a kind carries is extension code, so anything that runs one of its seams takes
+    /// this rather than <see cref="TryGet"/> and holds it across every await in the call.
+    /// </remarks>
+    internal bool TryLease(MediaKindId kind, [NotNullWhen(true)] out Leased<RegisteredMediaKind>? leased)
+    {
+        using var publication = _publication.EnterRead();
+
+        if (_kinds.TryGetValue(kind, out var registered))
+        {
+            leased = new Leased<RegisteredMediaKind>(registered, Ticket(registered));
+            return true;
+        }
+
+        leased = null;
+        return false;
+    }
+
+    /// <summary>Takes the ticket a published kind's extension must still be able to give.</summary>
+    private static IDisposable? Ticket(RegisteredMediaKind registered)
+    {
+        if (registered.Lifetime is not { } lifetime)
+        {
+            return null;
+        }
+
+        if (lifetime.TryEnter(out var ticket))
+        {
+            return ticket;
+        }
+
+        throw new InvalidOperationException(
+            $"Media kind '{registered.Shape.Kind}' is still published while extension '{registered.Plugin}' "
+            + "is closed to invocation. Removing a contribution and closing its runtime are one transition "
+            + "under the publication write gate, so this is a lifecycle defect rather than an ordinary race.");
+    }
+
     public bool TryGet(MediaKindId kind, [NotNullWhen(true)] out RegisteredMediaKind? registered)
     {
         using var publication = _publication.EnterRead();
@@ -97,7 +141,7 @@ public sealed class MediaKindRegistry(
         out RegisteredMediaKind? registered,
         out IReadOnlyList<ShapeDefect> defects)
     {
-        if (!TryPrepare(contribution, out registered, out defects))
+        if (!TryPrepare(contribution, out registered, out defects, lifetime: null))
         {
             return false;
         }
@@ -115,7 +159,8 @@ public sealed class MediaKindRegistry(
     internal bool TryPrepare(
         MediaKindContribution contribution,
         out RegisteredMediaKind? registered,
-        out IReadOnlyList<ShapeDefect> defects)
+        out IReadOnlyList<ShapeDefect> defects,
+        IInvocationLifetime? lifetime = null)
     {
         ArgumentNullException.ThrowIfNull(contribution);
 
@@ -162,7 +207,8 @@ public sealed class MediaKindRegistry(
             shape,
             intent,
             new MediaKindProjection(shape, contribution.PluginVersion, contribution.Capabilities),
-            BuildDescriptor(contribution, shape, intent, RootFolderConfigured, _releaseSourceConfigured));
+            BuildDescriptor(contribution, shape, intent, RootFolderConfigured, _releaseSourceConfigured),
+            lifetime);
 
         defects = [];
         return true;

@@ -85,12 +85,13 @@ public sealed class IndexerDispatcher(
         foreach (var definition in _definitions.Query(ProviderFamily.Indexer, kind.Kind, enabledOnly: true))
         {
             if (!_status.IsAvailable(definition.Id)
-                || !_providers.TryGet<IIndexer>(definition.Provider, out var indexer))
+                || !_providers.TryLease<IIndexer>(definition.Provider, out var leased))
             {
                 continue;
             }
 
-            var profile = await DescribeAsync(indexer, definition, cancellationToken).ConfigureAwait(false);
+            using var held = leased;
+            var profile = await DescribeAsync(held.Value, definition, cancellationToken).ConfigureAwait(false);
 
             if (profile is not null && profile.SearchProfiles.Any(candidate => IsEligible(search, candidate)))
             {
@@ -129,16 +130,22 @@ public sealed class IndexerDispatcher(
 
         foreach (var definition in await EligibleAsync(kind, query.SearchKindId, cancellationToken).ConfigureAwait(false))
         {
-            if (!_providers.TryGet<IIndexer>(definition.Provider, out var indexer))
+            if (!_providers.TryLease<IIndexer>(definition.Provider, out var leased))
             {
                 continue;
             }
 
+            // Held across the search: an indexer disposed mid-call would be a plugin object torn down
+            // while its own method is running.
+            using var held = leased;
+            var indexer = held.Value;
+
             try
             {
-                var result = await indexer
-                    .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
-                    .ConfigureAwait(false);
+                var result = PluginBoundary.Snapshot(
+                    await indexer
+                        .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
+                        .ConfigureAwait(false));
 
                 releases.AddRange(result.Releases);
                 warnings.AddRange(result.Warnings);
@@ -171,9 +178,12 @@ public sealed class IndexerDispatcher(
     {
         try
         {
-            return await indexer
-                .DescribeAsync(_tests.Invocation(definition), cancellationToken)
-                .ConfigureAwait(false);
+            // Copied inside the caller's lease: a profile's collections are the extension's own, and this
+            // one is read after the call returns.
+            return PluginBoundary.Snapshot(
+                await indexer
+                    .DescribeAsync(_tests.Invocation(definition), cancellationToken)
+                    .ConfigureAwait(false));
         }
         catch (OperationCanceledException)
         {

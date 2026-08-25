@@ -23,14 +23,14 @@ internal sealed class UnitFileLinkInvariantTests
     {
         var items = new FakeItemSource(ShapeFixtures.Kind);
         var kinds = TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Fused(), items));
-        return (new InMemoryMediaStore(kinds), kinds, items);
+        return (TestOptions.StoreWith(kinds), kinds, items);
     }
 
     private static (IMediaStore Store, FakeItemSource Items) Layered()
     {
         var items = new FakeItemSource(ShapeFixtures.Kind);
         var kinds = TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Layered(), items));
-        return (new InMemoryMediaStore(kinds), items);
+        return (TestOptions.StoreWith(kinds), items);
     }
 
     [Test]

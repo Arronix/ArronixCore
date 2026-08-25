@@ -5,6 +5,7 @@ using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Scheduling;
+using Arronix.Common.Contributions;
 
 
 namespace Arronix.Plugins.Registration;
@@ -29,7 +30,16 @@ public sealed record ScheduledJobRegistration(IScheduledJob Job, string Schedule
 /// </summary>
 /// <param name="EventType">The event type subscribed to.</param>
 /// <param name="Handler">The handler, typed as an object because the ledger is not generic.</param>
-public sealed record EventHandlerRegistration(Type EventType, object Handler);
+/// <param name="Invoke">
+/// Calls the handler with an event of that type. Captured where the type argument is still known, so
+/// dispatch never rediscovers <c>HandleAsync</c> by reflection.
+/// </param>
+/// <param name="Ordinal">Its position in the extension's registration order.</param>
+public sealed record EventHandlerRegistration(
+    Type EventType,
+    object Handler,
+    Func<IDomainEvent, CancellationToken, Task> Invoke,
+    int Ordinal);
 
 /// <summary>
 /// Everything one extension registered, in the order it registered it.
@@ -70,6 +80,12 @@ public sealed class PluginRegistrationLedger
 
     /// <summary>Gets the capability-scoped context supplied when registered provider types are activated.</summary>
     public IPluginContext? ActivationContext { get; internal set; }
+
+    /// <summary>
+    /// Gets this extension's licence to be called, which every Host candidate built from this ledger takes
+    /// so that a runtime call into one of these objects can be waited for at teardown.
+    /// </summary>
+    internal IInvocationLifetime? Invocation { get; set; }
 
     /// <summary>
     /// Gets everything that was registered, in registration order.
@@ -207,10 +223,13 @@ public sealed class PluginRegistrationLedger
         Record(typeof(IScheduledJob), job);
     }
 
-    internal void RecordEventHandler(Type eventType, object handler)
+    internal void RecordEventHandler(
+        Type eventType,
+        object handler,
+        Func<IDomainEvent, CancellationToken, Task> invoke)
     {
         ThrowIfFrozen();
-        _handlers.Add(new EventHandlerRegistration(eventType, handler));
+        _handlers.Add(new EventHandlerRegistration(eventType, handler, invoke, _entries.Count));
         _entries.Add(new LedgerEntry(typeof(IEventHandler<>), handler, _entries.Count));
     }
 

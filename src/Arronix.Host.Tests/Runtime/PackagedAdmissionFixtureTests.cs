@@ -4,6 +4,8 @@ using System.Runtime.Loader;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Arronix.Abstractions.Caching;
+using Arronix.Common.Caching;
+using Arronix.Host.Tests.Support;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Hosting;
@@ -1000,7 +1002,7 @@ internal sealed class PackagedAdmissionFixtureTests
 
     /// <summary>Satisfies platform services the fixture does not exercise.</summary>
     private sealed class RequiredServiceStub :
-        ICacheProvider,
+        ICacheNamespaceProvider,
         ITelemetryEmitter,
         IEventPublisher,
         IHostRuntimeInfo,
@@ -1041,6 +1043,8 @@ internal sealed class PackagedAdmissionFixtureTests
         public bool IsDocker => false;
 
         public bool IsPodman => false;
+
+        public ICacheNamespace CreateNamespace(string name) => new PlatformServiceStub.StubNamespace(name);
 
         public ICache<TValue> GetCache<TOwner, TValue>(string partition) => throw Unused();
 

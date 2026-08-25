@@ -2,6 +2,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.Loader;
 using Arronix.Abstractions.Caching;
+using Arronix.Common.Caching;
+using Arronix.Host.Tests.Support;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Health;
@@ -329,7 +331,7 @@ internal sealed class PackagedMoviesAdmissionTests
     /// loader's capability-filtered wrappers, not these instances directly.
     /// </summary>
     private sealed class RequiredServiceStub :
-        ICacheProvider,
+        ICacheNamespaceProvider,
         ITelemetryEmitter,
         IEventPublisher,
         IHostRuntimeInfo,
@@ -356,6 +358,8 @@ internal sealed class PackagedMoviesAdmissionTests
         public bool IsDocker => false;
 
         public bool IsPodman => false;
+
+        public ICacheNamespace CreateNamespace(string name) => new PlatformServiceStub.StubNamespace(name);
 
         public ICache<TValue> GetCache<TOwner, TValue>(string partition) => throw Unused();
 

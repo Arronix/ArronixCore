@@ -3,7 +3,7 @@ namespace Arronix.Abstractions.Health;
 /// <summary>
 /// Represents a health check result from a component or plugin.
 /// </summary>
-public record HealthCheck(
+public sealed record HealthCheck(
     string CheckId,
     string Name,
     HealthStatus Status,

@@ -267,6 +267,11 @@ public sealed class PluginRegistry : IPluginRegistry
         => Admit<IOutboundHttpInterceptor>(interceptor);
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The invocation delegate is captured here, where <typeparamref name="TEvent"/> is still a type
+    /// argument. Dispatch then calls a delegate rather than rediscovering <c>HandleAsync</c> on every
+    /// published event.
+    /// </remarks>
     public IPluginRegistry AddEventHandler<TEvent>(IEventHandler<TEvent> handler)
         where TEvent : IDomainEvent
     {
@@ -275,7 +280,10 @@ public sealed class PluginRegistry : IPluginRegistry
         lock (_gate)
         {
             ThrowIfSealed();
-            Ledger.RecordEventHandler(typeof(TEvent), handler);
+            Ledger.RecordEventHandler(
+                typeof(TEvent),
+                handler,
+                (domainEvent, token) => handler.HandleAsync((TEvent)domainEvent, token));
             return this;
         }
     }

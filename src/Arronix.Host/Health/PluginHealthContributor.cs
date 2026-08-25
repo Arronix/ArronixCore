@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.Health;
+using Arronix.Common.Contributions;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
 using Arronix.Plugins.Loading;
@@ -38,7 +39,7 @@ public sealed class PluginHealthContributor(
     PluginPublicationGate publication) : IHealthContributor
 {
     private readonly IPluginRuntimeRegistry _plugins = plugins ?? throw new ArgumentNullException(nameof(plugins));
-    private readonly ConcurrentDictionary<PluginId, List<IHealthContributor>> _contributed = new();
+    private readonly ConcurrentDictionary<PluginId, RegisteredHealthContribution> _contributed = new();
     private readonly PluginPublicationGate _publication = publication ?? throw new ArgumentNullException(nameof(publication));
 
     /// <summary>Creates a standalone contributor with its own publication boundary.</summary>
@@ -76,7 +77,8 @@ public sealed class PluginHealthContributor(
     /// <summary>Snapshots an extension's contributors without publishing them.</summary>
     internal RegisteredHealthContribution Prepare(
         PluginId plugin,
-        IReadOnlyList<IHealthContributor> contributors)
+        IReadOnlyList<IHealthContributor> contributors,
+        IInvocationLifetime? lifetime = null)
     {
         ArgumentNullException.ThrowIfNull(contributors);
         if (contributors.Any(static contributor => contributor is null))
@@ -84,7 +86,7 @@ public sealed class PluginHealthContributor(
             throw new ArgumentException("A health-contributor collection cannot contain null.", nameof(contributors));
         }
 
-        return new RegisteredHealthContribution(plugin, [.. contributors]);
+        return new RegisteredHealthContribution(plugin, [.. contributors], lifetime);
     }
 
     /// <summary>Publishes one already-snapshotted health contribution.</summary>
@@ -98,7 +100,7 @@ public sealed class PluginHealthContributor(
         }
 
         using var publication = _publication.EnterWrite();
-        return _contributed.TryAdd(candidate.Plugin, candidate.Contributors);
+        return _contributed.TryAdd(candidate.Plugin, candidate);
     }
 
     /// <summary>Removes exactly one health contribution and never a later replacement.</summary>
@@ -112,10 +114,8 @@ public sealed class PluginHealthContributor(
         }
 
         using var publication = _publication.EnterWrite();
-        return ((ICollection<KeyValuePair<PluginId, List<IHealthContributor>>>)_contributed)
-            .Remove(new KeyValuePair<PluginId, List<IHealthContributor>>(
-                candidate.Plugin,
-                candidate.Contributors));
+        return ((ICollection<KeyValuePair<PluginId, RegisteredHealthContribution>>)_contributed)
+            .Remove(new KeyValuePair<PluginId, RegisteredHealthContribution>(candidate.Plugin, candidate));
     }
 
     /// <summary>
@@ -134,11 +134,33 @@ public sealed class PluginHealthContributor(
         cancellationToken.ThrowIfCancellationRequested();
 
         IReadOnlyList<PluginStatusView> results;
-        IReadOnlyList<KeyValuePair<PluginId, List<IHealthContributor>>> contributed;
-        using (_publication.EnterRead())
+        List<Leased<RegisteredHealthContribution>> contributed = [];
+
+        // Selected and leased under one read lease, so a contributor cannot be withdrawn between being
+        // chosen and being run. Partial acquisition is released here rather than in the try below, because
+        // a ticket refused halfway through the loop would otherwise leak the ones taken before it.
+        try
         {
-            results = _plugins.Snapshot();
-            contributed = [.. _contributed];
+            using (_publication.EnterRead())
+            {
+                results = _plugins.Snapshot();
+
+                foreach (var contribution in _contributed.Values.OrderBy(
+                             entry => entry.Plugin.ToString(),
+                             StringComparer.Ordinal))
+                {
+                    contributed.Add(new Leased<RegisteredHealthContribution>(contribution, Ticket(contribution)));
+                }
+            }
+        }
+        catch
+        {
+            foreach (var lease in contributed)
+            {
+                lease.Dispose();
+            }
+
+            throw;
         }
 
         var checks = new List<HealthCheck>();
@@ -173,20 +195,51 @@ public sealed class PluginHealthContributor(
                 CultureInfo.InvariantCulture,
                 $"{active} of {results.Count} installed extensions are running.")));
 
-        foreach (var (plugin, contributors) in contributed)
+        try
         {
-            foreach (var contributor in contributors)
+            foreach (var lease in contributed)
             {
-                checks.AddRange(await RunAsync(plugin, contributor, cancellationToken).ConfigureAwait(false));
+                foreach (var contributor in lease.Value.Contributors)
+                {
+                    checks.AddRange(
+                        await RunAsync(lease.Value.Plugin, contributor, cancellationToken).ConfigureAwait(false));
+                }
+            }
+        }
+        finally
+        {
+            foreach (var lease in contributed)
+            {
+                lease.Dispose();
             }
         }
 
         return checks;
     }
 
+    /// <summary>Takes the ticket a published contribution's extension must still be able to give.</summary>
+    private static IDisposable? Ticket(RegisteredHealthContribution contribution)
+    {
+        if (contribution.Lifetime is not { } lifetime)
+        {
+            return null;
+        }
+
+        if (lifetime.TryEnter(out var ticket))
+        {
+            return ticket;
+        }
+
+        throw new InvalidOperationException(
+            $"Health contributors for extension '{contribution.Plugin}' are still published while it is "
+            + "closed to invocation. Removing a contribution and closing its runtime are one transition "
+            + "under the publication write gate, so this is a lifecycle defect rather than an ordinary race.");
+    }
+
     internal sealed record RegisteredHealthContribution(
         PluginId Plugin,
-        List<IHealthContributor> Contributors);
+        List<IHealthContributor> Contributors,
+        IInvocationLifetime? Lifetime = null);
 
     [SuppressMessage(
         "Design",
@@ -201,7 +254,20 @@ public sealed class PluginHealthContributor(
         {
             var produced = await contributor.CheckAsync(cancellationToken).ConfigureAwait(false);
 
-            return [.. produced.Select(check => check with { CheckId = $"{plugin}/{check.CheckId}" })];
+            // Reconstructed rather than cloned. A record's `with` calls the virtual clone, which preserves
+            // the runtime type it was given — so a check the extension derived would survive its own
+            // contributor's lease as a live plugin type. Building the base record leaves nothing of it.
+            return
+            [
+                .. produced.Select(check => new HealthCheck(
+                    $"{plugin}/{check.CheckId}",
+                    check.Name,
+                    check.Status,
+                    check.Severity,
+                    check.Message,
+                    check.RemediationHint,
+                    check.LastChecked)),
+            ];
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

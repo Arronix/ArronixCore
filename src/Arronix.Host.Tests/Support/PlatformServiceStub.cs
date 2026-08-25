@@ -2,6 +2,7 @@ using Arronix.Abstractions.Caching;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Telemetry;
+using Arronix.Common.Caching;
 
 namespace Arronix.Host.Tests.Support;
 
@@ -13,7 +14,7 @@ namespace Arronix.Host.Tests.Support;
 /// not grant it, and a silent no-op there would make that indistinguishable from not reaching it at all.
 /// </remarks>
 internal sealed class PlatformServiceStub :
-    ICacheProvider,
+    ICacheNamespaceProvider,
     ITelemetryEmitter,
     IEventPublisher,
     IHostRuntimeInfo,
@@ -41,6 +42,8 @@ internal sealed class PlatformServiceStub :
 
     public bool IsPodman => false;
 
+    public ICacheNamespace CreateNamespace(string name) => new StubNamespace(name);
+
     public ICache<TValue> GetCache<TOwner, TValue>(string partition) => throw Unused();
 
     public ICache<TValue> GetRollingCache<TOwner, TValue>(string partition, TimeSpan defaultLifetime)
@@ -60,4 +63,34 @@ internal sealed class PlatformServiceStub :
 
     private static InvalidOperationException Unused() =>
         new("A packaged extension must not exercise undeclared platform privileges.");
+
+    /// <summary>
+    /// A releasable group that hands out nothing and records that teardown took it back.
+    /// </summary>
+    /// <remarks>
+    /// The host now requires namespace control before it will activate anything, so this stands in for it
+    /// while keeping the stub's rule: every cache member still throws.
+    /// </remarks>
+    internal sealed class StubNamespace(string name) : ICacheNamespace
+    {
+        public string Name { get; } = name;
+
+        public bool IsReleased { get; private set; }
+
+        public ValueTask ReleaseAsync()
+        {
+            IsReleased = true;
+            return ValueTask.CompletedTask;
+        }
+
+        public ICache<TValue> GetCache<TOwner, TValue>(string partition) => throw Unused();
+
+        public ICache<TValue> GetRollingCache<TOwner, TValue>(string partition, TimeSpan defaultLifetime)
+            => throw Unused();
+
+        public ISelfRefreshingCache<TValue> GetSelfRefreshingCache<TOwner, TValue>(
+            string partition,
+            Func<CancellationToken, Task<IReadOnlyDictionary<string, TValue>>> fetch,
+            TimeSpan? lifetime = null) => throw Unused();
+    }
 }

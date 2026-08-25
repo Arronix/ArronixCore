@@ -58,6 +58,8 @@ internal sealed class PackageDependencyEdge
 /// </remarks>
 internal sealed class PackageAdmissionReceipt
 {
+    private static long _attempts;
+
     private IPluginAdmissionAttempt? _hostAdmission;
 
     internal PackageAdmissionReceipt(
@@ -105,7 +107,18 @@ internal sealed class PackageAdmissionReceipt
 
         Package = package;
         Edges = edges.ToList().AsReadOnly();
+        AttemptId = Interlocked.Increment(ref _attempts);
     }
+
+    /// <summary>
+    /// Gets this attempt's identity, unique within the process.
+    /// </summary>
+    /// <remarks>
+    /// Distinguishes two attempts at one package — a reload, or a second folder claiming the identifier —
+    /// where the identifier and the folder are exactly what they have in common. Host-minted, so nothing
+    /// derived from it leaks a filesystem path into a name an operator reads.
+    /// </remarks>
+    internal long AttemptId { get; }
 
     /// <summary>Gets the canonical installed package this attempt belongs to.</summary>
     internal InstalledPackage Package { get; }
@@ -205,6 +218,18 @@ internal sealed class PackageAdmissionLease
 
     /// <summary>Withdraws naming-token claims published by the executable attempt, if there was one.</summary>
     internal void UnpublishTokenClaims() => _runtime?.UnpublishTokenClaims();
+
+    /// <summary>Closes the executable half to new invocations. Called under the publication write gate.</summary>
+    internal void CloseToInvocation() => _runtime?.Invocation.Close();
+
+    /// <summary>
+    /// Waits for every invocation already admitted into the executable half.
+    /// </summary>
+    /// <remarks>
+    /// Awaited outside the publication gate and before anything the package contributed is disposed —
+    /// including the providers and languages Host activated, which a running callback may still be using.
+    /// </remarks>
+    internal Task DrainInvocationsAsync() => _runtime?.Invocation.DrainAsync() ?? Task.CompletedTask;
 
     /// <summary>
     /// Releases the executable runtime and then this package's contract hold.

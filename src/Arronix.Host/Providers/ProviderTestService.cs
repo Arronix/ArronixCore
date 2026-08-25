@@ -1,6 +1,7 @@
 using System.Diagnostics.CodeAnalysis;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Providers;
+using Arronix.Host.Media;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Scheduling;
 
@@ -71,7 +72,7 @@ public sealed class ProviderTestService(
                 CoreErrorCode.InvalidConfiguration));
         }
 
-        if (!_providers.TryGet(definition.Provider, out var registered))
+        if (!_providers.TryLease(definition.Provider, out var leased))
         {
             return ValidationOutcome.Failed(new ValidationFailure(
                 null,
@@ -80,7 +81,10 @@ public sealed class ProviderTestService(
                 CoreErrorCode.PluginDisabled));
         }
 
-        var missing = MissingRequiredSettings(registered.Descriptor, definition);
+        // Held from here, because the descriptor read below and the test call after it are both against
+        // the leased provider.
+        using var held = leased;
+        var missing = MissingRequiredSettings(held.Value.Descriptor, definition);
 
         if (missing.Count > 0)
         {
@@ -89,9 +93,12 @@ public sealed class ProviderTestService(
 
         try
         {
-            var outcome = await registered.Provider
-                .TestAsync(Invocation(definition), cancellationToken)
-                .ConfigureAwait(false);
+            // Copied inside the lease: the outcome's failure list is the provider's own collection and is
+            // read after the call returns.
+            var outcome = PluginBoundary.Snapshot(
+                await held.Value.Provider
+                    .TestAsync(Invocation(definition), cancellationToken)
+                    .ConfigureAwait(false));
 
             if (outcome.IsValid)
             {
@@ -140,16 +147,20 @@ public sealed class ProviderTestService(
 
         var definition = _definitions.Find(definitionId);
 
-        if (definition is null || !_providers.TryGet(definition.Provider, out var registered))
+        if (definition is null || !_providers.TryLease(definition.Provider, out var leased))
         {
             return [];
         }
 
         try
         {
-            return await registered.Provider
-                .GetOptionsAsync(Invocation(definition), optionSourceId, cancellationToken)
-                .ConfigureAwait(false);
+            using var held = leased;
+
+            // Copied inside the lease, so the provider's own list is not enumerated after its ticket ends.
+            return PluginBoundary.Snapshot(
+                await held.Value.Provider
+                    .GetOptionsAsync(Invocation(definition), optionSourceId, cancellationToken)
+                    .ConfigureAwait(false));
         }
         catch (OperationCanceledException)
         {

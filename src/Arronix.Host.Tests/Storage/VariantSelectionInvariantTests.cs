@@ -18,7 +18,7 @@ namespace Arronix.Host.Tests.Storage;
 internal sealed class VariantSelectionInvariantTests
 {
     private static IMediaStore Layered()
-        => new InMemoryMediaStore(
+        => TestOptions.StoreWith(
             TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Layered())));
 
     [Test]
@@ -85,7 +85,7 @@ internal sealed class VariantSelectionInvariantTests
     [Test]
     public async Task AShapeWithNoVariantLevelRefusesAChoiceAltogether()
     {
-        var store = new InMemoryMediaStore(
+        var store = TestOptions.StoreWith(
             TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Fused())));
 
         var act = async () => await store.UpsertLibraryAsync(new LibraryFacet

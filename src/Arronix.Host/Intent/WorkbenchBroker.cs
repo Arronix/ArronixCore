@@ -37,10 +37,18 @@ namespace Arronix.Host.Intent;
 /// </remarks>
 /// <param name="kinds">The media-kind registry.</param>
 /// <param name="intent">The declared surfaces.</param>
-public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry intent)
+/// <param name="items">
+/// How a kind's item source is reached. Every call through it holds the contributing extension's ticket, so
+/// teardown waits for a proposal or a commit rather than disposing the source while one is running.
+/// </param>
+public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry intent, MediaItemBroker items)
 {
     private readonly IMediaKindRegistry _kinds = kinds ?? throw new ArgumentNullException(nameof(kinds));
     private readonly IIntentRegistry _intent = intent ?? throw new ArgumentNullException(nameof(intent));
+    private readonly MediaItemBroker _items = items ?? throw new ArgumentNullException(nameof(items));
+
+    private static ArronixException Withdrawn(MediaKindId kind)
+        => new(CoreErrorCode.MediaKindNotFound, $"Media kind '{kind}' is no longer installed.");
 
     /// <summary>
     /// Asks an extension for its proposal.
@@ -61,7 +69,6 @@ public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry in
         ArgumentNullException.ThrowIfNull(inputs);
 
         var descriptor = Require(kind, workbenchId);
-        var registered = _kinds.Require(kind);
 
         var missing = descriptor.Inputs
             .Where(input => input.Required && !inputs.ContainsKey(input.ParameterId))
@@ -75,11 +82,8 @@ public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry in
                 $"'{descriptor.Name}' needs {string.Join(", ", missing)} before it can propose anything.");
         }
 
-        var proposal = await registered.Items
-            .ProposeAsync(workbenchId, inputs, cancellationToken)
-            .ConfigureAwait(false);
-
-        return proposal;
+        return await _items.ProposeAsync(kind, workbenchId, inputs, cancellationToken).ConfigureAwait(false)
+            ?? throw Withdrawn(kind);
     }
 
     /// <summary>
@@ -102,7 +106,6 @@ public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry in
         ArgumentNullException.ThrowIfNull(commit);
 
         var descriptor = Require(kind, commit.WorkbenchId);
-        var registered = _kinds.Require(kind);
         var failures = Validate(descriptor, commit);
 
         if (failures.Count > 0)
@@ -114,7 +117,8 @@ public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry in
                 new ValidationOutcome { Failures = failures });
         }
 
-        return await registered.Items.CommitAsync(commit, cancellationToken).ConfigureAwait(false);
+        return await _items.CommitAsync(kind, commit, cancellationToken).ConfigureAwait(false)
+            ?? throw Withdrawn(kind);
     }
 
     /// <summary>
@@ -152,12 +156,11 @@ public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry in
                 $"'{descriptor.Name}' declares no option set '{optionSourceId}'.");
         }
 
-        var registered = _kinds.Require(kind);
-
         // The option set is asked for through the same proposal call, scoped to one row. That keeps the
         // extension-side seam to the two methods it already implements rather than adding a third.
-        var proposal = await registered.Items
+        var proposal = await _items
             .ProposeAsync(
+                kind,
                 workbenchId,
                 new Dictionary<string, string>(StringComparer.Ordinal)
                 {
@@ -165,7 +168,8 @@ public sealed class WorkbenchBroker(IMediaKindRegistry kinds, IIntentRegistry in
                     ["rowId"] = rowId,
                 },
                 cancellationToken)
-            .ConfigureAwait(false);
+            .ConfigureAwait(false)
+            ?? throw Withdrawn(kind);
 
         return
         [

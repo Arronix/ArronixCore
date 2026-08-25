@@ -6,6 +6,7 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
+using Arronix.Common.Contributions;
 using Arronix.Plugins.Registry;
 
 
@@ -22,8 +23,10 @@ public sealed class RegisteredProvider
         ProviderDescriptor descriptor,
         IProvider provider,
         PluginId plugin,
-        Type? mediaItemType)
+        Type? mediaItemType,
+        IInvocationLifetime? lifetime = null)
     {
+        Lifetime = lifetime;
         Id = id;
         Family = family;
         Descriptor = descriptor;
@@ -43,14 +46,31 @@ public sealed class RegisteredProvider
     /// <summary>Gets what the provider declares about itself and its settings.</summary>
     public ProviderDescriptor Descriptor { get; }
 
-    /// <summary>Gets the stateless implementation.</summary>
-    public IProvider Provider { get; }
+    /// <summary>
+    /// Gets the stateless implementation.
+    /// </summary>
+    /// <remarks>
+    /// Internal, and reachable only from a leased handle, because calling it without the contributing
+    /// extension's ticket lets teardown dispose the object and unload its code while the call is running.
+    /// Consumers outside the host read <see cref="Descriptor"/>, <see cref="Catalog"/> and
+    /// <see cref="Id"/>, which are declarations rather than executable code.
+    /// </remarks>
+    internal IProvider Provider { get; }
+
+    /// <summary>Gets the contributing extension's licence to be called, when an extension contributed it.</summary>
+    internal IInvocationLifetime? Lifetime { get; }
 
     /// <summary>Gets the extension which contributed the implementation.</summary>
     public PluginId Plugin { get; }
 
-    /// <summary>Gets the paired media item type for a typed cataloger or curator.</summary>
-    public Type? MediaItemType { get; }
+    /// <summary>
+    /// Gets the paired media item type for a typed cataloger or curator.
+    /// </summary>
+    /// <remarks>
+    /// Internal: it is a type from the contributing extension's collectible context, so holding it outside
+    /// the host would keep that context alive after the extension has gone.
+    /// </remarks>
+    internal Type? MediaItemType { get; }
 
     /// <summary>Gets the external identifier scheme a cataloger declared it is the authority for.</summary>
     /// <remarks>
@@ -128,15 +148,130 @@ public sealed class ProviderRegistry
             : All;
 
     /// <summary>
-    /// Looks up a provider.
+    /// Looks up a provider's declaration.
     /// </summary>
     /// <param name="id">The identifier.</param>
     /// <param name="provider">The provider when it is registered.</param>
     /// <returns><see langword="true"/> when it is registered.</returns>
+    /// <remarks>
+    /// Reads identity, family and descriptor. The implementation itself is not reachable from here; a
+    /// caller that is going to invoke it takes <c>TryLease</c> instead.
+    /// </remarks>
     public bool TryGet(ProviderId id, [NotNullWhen(true)] out RegisteredProvider? provider)
     {
         using var publication = _publication.EnterRead();
         return _providers.TryGetValue(id, out provider);
+    }
+
+    /// <summary>
+    /// Takes a provider together with its contributing extension's lease.
+    /// </summary>
+    /// <param name="id">The identifier.</param>
+    /// <param name="leased">The provider and its ticket. Dispose it when the call has finished.</param>
+    /// <returns>
+    /// <see langword="false"/> when nothing is registered under that identifier, or the extension that
+    /// contributed it is being withdrawn.
+    /// </returns>
+    /// <remarks>
+    /// Selection and the ticket are taken under one publication read lease, so a provider cannot be
+    /// withdrawn between being found and being called.
+    /// </remarks>
+    internal bool TryLease(ProviderId id, [NotNullWhen(true)] out Leased<RegisteredProvider>? leased)
+    {
+        using var publication = _publication.EnterRead();
+
+        if (_providers.TryGetValue(id, out var registered))
+        {
+            leased = new Leased<RegisteredProvider>(registered, Ticket(registered));
+            return true;
+        }
+
+        leased = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Takes a provider narrowed to one contract, together with its contributing extension's lease.
+    /// </summary>
+    /// <typeparam name="TProvider">The contract wanted.</typeparam>
+    /// <param name="id">The identifier.</param>
+    /// <param name="leased">The implementation and its ticket.</param>
+    /// <returns><see langword="true"/> when it is registered, of that contract, and still callable.</returns>
+    internal bool TryLease<TProvider>(ProviderId id, [NotNullWhen(true)] out Leased<TProvider>? leased)
+        where TProvider : class, IProvider
+    {
+        using var publication = _publication.EnterRead();
+
+        if (_providers.TryGetValue(id, out var registered) && registered.Provider is TProvider typed)
+        {
+            leased = new Leased<TProvider>(typed, Ticket(registered));
+            return true;
+        }
+
+        leased = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Takes every registered provider together with the leases that keep them callable.
+    /// </summary>
+    /// <param name="family">The family, or <see langword="null"/> for all of them.</param>
+    /// <returns>
+    /// The set, ordered by identifier. Dispose the set itself: releasing element by element inside a loop
+    /// leaks every lease after one whose callback threw, and a leaked lease is an extension that can never
+    /// be torn down.
+    /// </returns>
+    internal LeasedSet<RegisteredProvider> LeaseAll(ProviderFamily? family = null)
+    {
+        var leased = new List<Leased<RegisteredProvider>>();
+        var set = new LeasedSet<RegisteredProvider>(leased);
+
+        try
+        {
+            using var publication = _publication.EnterRead();
+
+            foreach (var registered in _providers.Values
+                         .Where(provider => family is not { } wanted || provider.Family == wanted)
+                         .OrderBy(provider => provider.Id.Value, StringComparer.Ordinal))
+            {
+                leased.Add(new Leased<RegisteredProvider>(registered, Ticket(registered)));
+            }
+        }
+        catch
+        {
+            set.Dispose();
+            throw;
+        }
+
+        return set;
+    }
+
+    /// <summary>
+    /// Takes the ticket a published provider's extension must still be able to give.
+    /// </summary>
+    /// <remarks>
+    /// Withdrawal removes the provider and closes its extension's lifetime inside one publication write
+    /// lease, so a provider that is still published while its lifetime refuses is a lifecycle defect: it
+    /// would let teardown dispose an object a caller is about to invoke. Reported rather than skipped,
+    /// because skipping it silently turns a broken invariant into a missing search result.
+    /// </remarks>
+    private static IDisposable? Ticket(RegisteredProvider registered)
+    {
+        if (registered.Lifetime is not { } lifetime)
+        {
+            // Registered by the host itself: no extension runtime behind it, and nothing to wait for.
+            return null;
+        }
+
+        if (lifetime.TryEnter(out var ticket))
+        {
+            return ticket;
+        }
+
+        throw new InvalidOperationException(
+            $"Provider '{registered.Id}' is still published while extension '{registered.Plugin}' is closed "
+            + "to invocation. Removing a contribution and closing its runtime are one transition under the "
+            + "publication write gate, so this is a lifecycle defect rather than an ordinary race.");
     }
 
     /// <summary>
@@ -182,13 +317,25 @@ public sealed class ProviderRegistry
         IProvider implementation,
         Type? mediaItemType,
         out RegisteredProvider candidate,
-        out string? error)
+        out string? error,
+        IInvocationLifetime? lifetime = null)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
         ArgumentNullException.ThrowIfNull(implementation);
 
         var id = ProviderId.Create(plugin, descriptor.LocalId);
-        candidate = new RegisteredProvider(id, family, descriptor, implementation, plugin, mediaItemType);
+
+        // Copied here, at admission, because the declaration is retained for as long as the provider is
+        // published and is serialized to every consumer that lists providers. A plugin-defined collection
+        // left in it would run extension code, and pin its context, long after any invocation lease.
+        candidate = new RegisteredProvider(
+            id,
+            family,
+            Media.PluginBoundary.Snapshot(descriptor),
+            implementation,
+            plugin,
+            mediaItemType,
+            lifetime);
 
         using var publication = _publication.EnterRead();
         if (_providers.ContainsKey(id))
@@ -248,27 +395,6 @@ public sealed class ProviderRegistry
     }
 
     /// <summary>
-    /// Gets a registered provider narrowed to one contract.
-    /// </summary>
-    /// <typeparam name="TProvider">The contract wanted.</typeparam>
-    /// <param name="id">The identifier.</param>
-    /// <param name="provider">The implementation, when it is registered and of that contract.</param>
-    /// <returns><see langword="true"/> when it is registered and implements the contract.</returns>
-    public bool TryGet<TProvider>(ProviderId id, [NotNullWhen(true)] out TProvider? provider)
-        where TProvider : class, IProvider
-    {
-        using var publication = _publication.EnterRead();
-        if (_providers.TryGetValue(id, out var registered) && registered.Provider is TProvider typed)
-        {
-            provider = typed;
-            return true;
-        }
-
-        provider = null;
-        return false;
-    }
-
-    /// <summary>
     /// Reads external identity markers using the installed catalogers paired with one media item type.
     /// </summary>
     /// <param name="mediaItemType">The exact media-owned item type being interpreted.</param>
@@ -285,17 +411,24 @@ public sealed class ProviderRegistry
         var readings = new List<ExternalIdReading>();
         var seen = new HashSet<ExternalId>();
 
-        foreach (var registered in All)
+        // One using around the whole loop: a cataloger that throws must not leave the leases of the
+        // catalogers after it held forever, which would make teardown wait for a call nobody is making.
+        using var catalogers = LeaseAll(ProviderFamily.Cataloger);
+
+        foreach (var registered in catalogers)
         {
-            if (registered.Family != ProviderFamily.Cataloger
-                || registered.MediaItemType != mediaItemType
+            if (registered.MediaItemType != mediaItemType
                 || registered.Provider is not ICataloger cataloger
                 || registered.CatalogScheme is not { } catalogScheme)
             {
                 continue;
             }
 
-            foreach (var reading in cataloger.ReadExternalIds(text).OrderBy(static reading => reading.Index))
+            // Copied out of the cataloger's own collection before it is enumerated, so a lazy sequence
+            // cannot call back into the extension part-way through the checks below.
+            var read = Media.PluginBoundary.Snapshot(cataloger.ReadExternalIds(text));
+
+            foreach (var reading in read.OrderBy(static reading => reading.Index))
             {
                 if (!string.Equals(reading.Id.Scheme, catalogScheme, StringComparison.Ordinal)
                     || string.IsNullOrWhiteSpace(reading.Id.Value))

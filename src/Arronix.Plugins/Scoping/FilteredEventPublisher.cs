@@ -2,6 +2,7 @@ using System.Runtime.Loader;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
+using Arronix.Plugins.Registry;
 
 
 namespace Arronix.Plugins.Scoping;
@@ -34,6 +35,7 @@ public sealed class FilteredEventPublisher : IEventPublisher
 
     private readonly IEventPublisher _inner;
     private readonly AssemblyLoadContext? _owningContext;
+    private readonly PluginInvocationLifetime? _invocation;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="FilteredEventPublisher"/> class.
@@ -45,12 +47,22 @@ public sealed class FilteredEventPublisher : IEventPublisher
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="inner"/> is <see langword="null"/>.</exception>
     public FilteredEventPublisher(IEventPublisher inner, PluginId plugin, AssemblyLoadContext? owningContext = null)
+        : this(inner, plugin, owningContext, invocation: null)
+    {
+    }
+
+    internal FilteredEventPublisher(
+        IEventPublisher inner,
+        PluginId plugin,
+        AssemblyLoadContext? owningContext,
+        PluginInvocationLifetime? invocation)
     {
         ArgumentNullException.ThrowIfNull(inner);
 
         _inner = inner;
         Plugin = plugin;
         _owningContext = owningContext;
+        _invocation = invocation;
     }
 
     /// <summary>
@@ -80,7 +92,7 @@ public sealed class FilteredEventPublisher : IEventPublisher
     /// <exception cref="PluginIsolationException">
     /// The event type belongs neither to the platform nor to this extension.
     /// </exception>
-    public Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken = default)
+    public async Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken = default)
         where TEvent : IDomainEvent
     {
         ArgumentNullException.ThrowIfNull(domainEvent);
@@ -92,6 +104,23 @@ public sealed class FilteredEventPublisher : IEventPublisher
             throw new PluginIsolationException(eventType.Assembly.GetName().Name ?? eventType.FullName!, Plugin.ToString());
         }
 
-        return _inner.PublishAsync(domainEvent, cancellationToken);
+        if (_invocation is null)
+        {
+            await _inner.PublishAsync(domainEvent, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // The event carries this extension's own type. Held for the whole fan-out, so teardown cannot
+        // unload the assembly that defines it while a handler is still reading it.
+        if (!_invocation.TryEnter(out var lease))
+        {
+            throw new InvalidOperationException(
+                $"Extension '{Plugin}' published an event after its runtime was withdrawn.");
+        }
+
+        using (lease)
+        {
+            await _inner.PublishAsync(domainEvent, cancellationToken).ConfigureAwait(false);
+        }
     }
 }

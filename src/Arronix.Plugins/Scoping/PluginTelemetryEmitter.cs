@@ -1,5 +1,6 @@
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Telemetry;
+using Arronix.Plugins.Registry;
 
 
 namespace Arronix.Plugins.Scoping;
@@ -28,6 +29,7 @@ public sealed class PluginTelemetryEmitter : ITelemetryEmitter
     public const string PluginTag = "plugin";
 
     private readonly ITelemetryEmitter _inner;
+    private readonly PluginInvocationLifetime? _invocation;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="PluginTelemetryEmitter"/> class.
@@ -36,10 +38,19 @@ public sealed class PluginTelemetryEmitter : ITelemetryEmitter
     /// <param name="plugin">The extension the events are attributed to.</param>
     /// <exception cref="ArgumentNullException"><paramref name="inner"/> is <see langword="null"/>.</exception>
     public PluginTelemetryEmitter(ITelemetryEmitter inner, PluginId plugin)
+        : this(inner, plugin, invocation: null)
+    {
+    }
+
+    internal PluginTelemetryEmitter(
+        ITelemetryEmitter inner,
+        PluginId plugin,
+        PluginInvocationLifetime? invocation)
     {
         ArgumentNullException.ThrowIfNull(inner);
 
         _inner = inner;
+        _invocation = invocation;
         Plugin = plugin;
     }
 
@@ -62,6 +73,46 @@ public sealed class PluginTelemetryEmitter : ITelemetryEmitter
 
         tags[PluginTag] = Plugin.ToString();
 
-        _inner.Emit(telemetryEvent with { Tags = tags });
+        // Host-owned collections, never the extension's own. A dictionary or list type defined in the
+        // extension's assembly would keep its collectible context alive for as long as the event lives,
+        // which for a queued event is past the point the host declared the extension gone.
+        var attributed = telemetryEvent with
+        {
+            Tags = tags,
+            Fingerprint = [.. telemetryEvent.Fingerprint],
+        };
+
+        if (_invocation is null)
+        {
+            _inner.Emit(attributed);
+            return;
+        }
+
+        // A lease for the duration of the call, so teardown cannot dispose the pipeline's contributions
+        // while this extension is inside it.
+        if (_invocation.TryEnter(out var lease))
+        {
+            using (lease)
+            {
+                _inner.Emit(attributed);
+            }
+
+            return;
+        }
+
+        // Closed: this extension is being torn down, and this is its cleanup telemetry — the events an
+        // operator most wants. It is still emitted and still attributed. What it cannot carry across the
+        // close is a live exception, whose type may be the extension's own, so it is rendered to text.
+        _inner.Emit(Rendered(attributed));
     }
+
+    /// <summary>Replaces a possibly extension-owned failure with three host-owned strings.</summary>
+    private static TelemetryEvent Rendered(TelemetryEvent telemetryEvent)
+        => telemetryEvent.Exception is not { } failure
+            ? telemetryEvent
+            : telemetryEvent with
+            {
+                Exception = null,
+                ExceptionSummary = telemetryEvent.ExceptionSummary ?? ExceptionSummary.From(failure),
+            };
 }

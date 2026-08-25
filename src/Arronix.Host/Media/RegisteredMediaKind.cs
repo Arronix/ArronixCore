@@ -7,6 +7,7 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
+using Arronix.Common.Contributions;
 
 
 namespace Arronix.Host.Media;
@@ -15,10 +16,17 @@ namespace Arronix.Host.Media;
 /// One media kind, as the host holds it after admission.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Everything reachable from here has already been checked. The shape is resolved rather than declared, the
 /// stable projection and the wire bundle are built rather than supplied, and the seams are exactly those the
-/// contributing extension was granted. Nothing downstream needs to re-validate anything, which is the whole
-/// purpose of putting a gate at the boundary.
+/// contributing extension was granted.
+/// </para>
+/// <para>
+/// The executable seams are internal, and reachable only from a leased handle. Identity, shape, descriptor
+/// and projection are declarations and stay public. That split is what makes the lease a compiler rule
+/// rather than a convention: outside the host there is no way to call a kind's parser or item source at all,
+/// and inside it there is no way to reach one without holding the contributing extension's ticket.
+/// </para>
 /// </remarks>
 public sealed class RegisteredMediaKind
 {
@@ -27,8 +35,10 @@ public sealed class RegisteredMediaKind
         ValidatedShape shape,
         PluginIntentSurface intent,
         IMediaKind projection,
-        MediaKindDescriptor descriptor)
+        MediaKindDescriptor descriptor,
+        IInvocationLifetime? lifetime = null)
     {
+        Lifetime = lifetime;
         Plugin = contribution.Plugin;
         PluginVersion = contribution.PluginVersion;
         Capabilities = contribution.Capabilities;
@@ -49,6 +59,15 @@ public sealed class RegisteredMediaKind
         MediaType = contribution.MediaType;
     }
 
+    /// <summary>
+    /// Gets the contributing extension's licence to be called, when an extension contributed the kind.
+    /// </summary>
+    /// <remarks>
+    /// Everything executable this kind carries — its parser, matcher, query planner, naming and import
+    /// seams — is that extension's code, so a caller that runs one holds a ticket for the whole call.
+    /// </remarks>
+    internal IInvocationLifetime? Lifetime { get; }
+
     /// <summary>Gets the extension that contributed this kind.</summary>
     public PluginId Plugin { get; }
 
@@ -62,37 +81,37 @@ public sealed class RegisteredMediaKind
     public Abstractions.Identity.MediaKindId Kind => Shape.Kind;
 
     /// <summary>Gets the closed typed media runtime, when registered through the typed contract.</summary>
-    public IMediaTypeRuntime? MediaType { get; }
+    internal IMediaTypeRuntime? MediaType { get; }
 
     /// <summary>Gets the resolved shape.</summary>
     public ValidatedShape Shape { get; }
 
     /// <summary>Gets the catalog projection.</summary>
-    public IMediaItemSource Items { get; }
+    internal IMediaItemSource Items { get; }
 
     /// <summary>Gets the seam that decides which items a release or a file refers to.</summary>
-    public IReleaseMatcher? Matcher { get; }
+    internal IReleaseMatcher? Matcher { get; }
 
     /// <summary>Gets the seam that turns an acquisition into queries.</summary>
-    public IReleaseQueryPlanner? QueryPlanner { get; }
+    internal IReleaseQueryPlanner? QueryPlanner { get; }
 
     /// <summary>Gets release-name parsing.</summary>
-    public IReleaseParser? Parser { get; }
+    internal IReleaseParser? Parser { get; }
 
     /// <summary>Gets quality evaluation.</summary>
-    public IQualityModel? Quality { get; }
+    internal IQualityModel? Quality { get; }
 
     /// <summary>Gets the pipeline that takes files into the library.</summary>
-    public IImportPipeline? Import { get; }
+    internal IImportPipeline? Import { get; }
 
     /// <summary>Gets naming templates.</summary>
-    public IRenamePolicy? Naming { get; }
+    internal IRenamePolicy? Naming { get; }
 
     /// <summary>Gets folder layout.</summary>
-    public ILibraryLayout? Layout { get; }
+    internal ILibraryLayout? Layout { get; }
 
     /// <summary>Gets external-identifier resolution.</summary>
-    public IMediaIdResolver? IdResolver { get; }
+    internal IMediaIdResolver? IdResolver { get; }
 
     /// <summary>Gets what the extension declared about how its kind is worked with.</summary>
     public PluginIntentSurface Intent { get; }

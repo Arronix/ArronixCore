@@ -14,6 +14,7 @@ using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Shape;
+using Arronix.Common.Contributions;
 using Arronix.Host.Health;
 using Arronix.Host.Languages;
 using Arronix.Host.Media;
@@ -440,12 +441,13 @@ public sealed partial class PluginBootstrapper : IHostedService
     /// </para>
     /// <para>
     /// Each package is withdrawn in two phases around its disposal, because disposal runs extension code
-    /// and unloads a context and neither may happen under the gate. Under the gate it is hidden and marked
-    /// withdrawing while keeping every dependency it holds; its instances and context are then released
-    /// outside the gate; and only a release that reported no failure re-enters the gate to give up its
-    /// dependencies. Releasing them at the first step would unpin a dependency while this package's own
-    /// disposers were still executing against its types, and would leave it unpinned outright when that
-    /// unload failed.
+    /// and unloads a context and neither may happen under the gate. Under the gate it is hidden, closed to
+    /// new invocations and marked withdrawing while keeping every dependency it holds; outside the gate the
+    /// invocations already running are waited for, then Host-activated objects, then extension objects, the
+    /// cache namespace and the context are released; and only a release that reported no failure re-enters
+    /// the gate to give up its dependencies. Releasing them at the first step would unpin a dependency
+    /// while this package's own disposers were still executing against its types, and would leave it
+    /// unpinned outright when that unload failed.
     /// </para>
     /// </remarks>
     private async Task<IReadOnlyList<PluginId>> TeardownExtensionsAsync()
@@ -491,7 +493,9 @@ public sealed partial class PluginBootstrapper : IHostedService
                 else
                 {
                     // Phase one: nothing new binds to this package from here, and it goes on holding
-                    // everything it depends on until its own code is gone.
+                    // everything it depends on until its own code is gone. The runtime stop below closes it
+                    // to invocation inside this same writer transition, so there is no instant at which a
+                    // contribution is gone but a direct wrapper could still enter.
                     attempt?.Unpublish();
 
                     if (receipt is not null && !_dependencies.BeginWithdrawal(receipt, out var acquired))
@@ -527,7 +531,15 @@ public sealed partial class PluginBootstrapper : IHostedService
                 continue;
             }
 
-            // Phase two: extension disposers and a collectible unload, outside the gate.
+            // Phase two, outside the gate, and the order inside it is the safety property. The gate closed
+            // this package to new invocations; this waits for the ones already running. Only then may the
+            // providers and languages Host activated be disposed, because a callback still executing is
+            // still using them.
+            if (packageLease is not null)
+            {
+                await packageLease.DrainInvocationsAsync().ConfigureAwait(false);
+            }
+
             var released = true;
 
             if (attempt is not null)
@@ -736,7 +748,12 @@ public sealed partial class PluginBootstrapper : IHostedService
                 return PluginAdmissionResult.Refused(providerCode, defects);
             }
 
-            var health = _pluginHealth.Prepare(manifest.Id, ledger.Registered<IHealthContributor>());
+            // Every candidate takes this extension's invocation lifetime, so a runtime call into any of
+            // these objects can be waited for before teardown disposes it.
+            var health = _pluginHealth.Prepare(
+                manifest.Id,
+                ledger.Registered<IHealthContributor>(),
+                ledger.Invocation);
             var attempt = new HostAdmissionAttempt(
                 this,
                 manifest.Id,
@@ -795,7 +812,7 @@ public sealed partial class PluginBootstrapper : IHostedService
         var registered = new List<RegisteredMediaKind>(typed.Count + shapes.Count);
 
         if (typed.Count > 0
-            && !TryPrepareTypedKinds(manifest, typed, registered, out errorCode, out defects))
+            && !TryPrepareTypedKinds(manifest, typed, registered, ledger.Invocation, out errorCode, out defects))
         {
             return false;
         }
@@ -841,7 +858,7 @@ public sealed partial class PluginBootstrapper : IHostedService
                 IdResolver = Pick<IMediaIdResolver>(ledger),
             };
 
-            if (_kinds.TryPrepare(contribution, out var admittedKind, out var shapeDefects))
+            if (_kinds.TryPrepare(contribution, out var admittedKind, out var shapeDefects, ledger.Invocation))
             {
                 if (registered.Any(candidate => candidate.Kind == admittedKind!.Kind))
                 {
@@ -945,6 +962,7 @@ public sealed partial class PluginBootstrapper : IHostedService
         ValidatedManifest manifest,
         IReadOnlyList<IMediaTypeRegistration> registrations,
         List<RegisteredMediaKind> registered,
+        IInvocationLifetime? invocation,
         out CoreErrorCode errorCode,
         out IReadOnlyList<string> defects)
     {
@@ -961,7 +979,7 @@ public sealed partial class PluginBootstrapper : IHostedService
                 Registration = registration,
             };
 
-            if (_mediaTypes.TryPrepare(contribution, out var admittedKind, out var kindDefects))
+            if (_mediaTypes.TryPrepare(contribution, out var admittedKind, out var kindDefects, invocation))
             {
                 if (registered.Any(candidate => candidate.Kind == admittedKind!.Kind))
                 {
@@ -1068,7 +1086,7 @@ public sealed partial class PluginBootstrapper : IHostedService
             {
                 language = (ILanguageDefinition)activation!.CreateInstance(registration.ImplementationType);
 
-                if (!_languages.TryPrepare(manifest.Id, language, out var candidate, out var error))
+                if (!_languages.TryPrepare(manifest.Id, language, out var candidate, out var error, ledger.Invocation))
                 {
                     found.Add($"language[{registration.ImplementationType.Name}]: {error}");
                     DisposeActivated(language);
@@ -1181,7 +1199,8 @@ public sealed partial class PluginBootstrapper : IHostedService
                     provider,
                     registration.MediaItemType,
                     out var candidate,
-                    out var error))
+                    out var error,
+                    ledger.Invocation))
                 {
                     found.Add($"provider[{registration.Descriptor.LocalId}]: {error}");
                     DisposeActivated(provider);

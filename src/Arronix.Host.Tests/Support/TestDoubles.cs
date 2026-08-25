@@ -7,6 +7,7 @@ using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
 using Arronix.Host.Configuration;
 using Arronix.Host.Media;
+using Arronix.Host.Storage;
 using Microsoft.Extensions.Options;
 
 
@@ -149,6 +150,10 @@ internal static class TestOptions
     internal static IOptions<TOptions> Of<TOptions>(TOptions value)
         where TOptions : class
         => Microsoft.Extensions.Options.Options.Create(value);
+
+    /// <summary>Builds a store over one registry, with the item broker that leases from that same registry.</summary>
+    internal static InMemoryMediaStore StoreWith(MediaKindRegistry registry)
+        => new(registry, new MediaItemBroker(registry));
 
     internal static MediaKindRegistry RegistryWith(params MediaKindContribution[] contributions)
     {

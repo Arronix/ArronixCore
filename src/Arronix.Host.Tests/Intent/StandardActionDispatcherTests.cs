@@ -2,7 +2,6 @@ using System.Linq;
 using Arronix.Abstractions.Intent;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Intent;
-using Arronix.Host.Storage;
 using Arronix.Host.Tests.Support;
 using FluentAssertions;
 
@@ -16,7 +15,7 @@ internal sealed class StandardActionDispatcherTests
     [Test]
     public async Task SetMonitoringWritesTheHostOwnedLibraryFacet()
     {
-        var store = new InMemoryMediaStore(
+        var store = TestOptions.StoreWith(
             TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Fused())));
         var dispatcher = new StandardActionDispatcher(store, TimeProvider.System);
         var item = ShapeFixtures.Item(ShapeFixtures.Catalog, 42);
@@ -47,7 +46,7 @@ internal sealed class StandardActionDispatcherTests
     [Test]
     public async Task AnOperationWithoutAnExecutionCapabilityIsNotAccepted()
     {
-        var store = new InMemoryMediaStore(
+        var store = TestOptions.StoreWith(
             TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Fused())));
         var dispatcher = new StandardActionDispatcher(store, TimeProvider.System);
 

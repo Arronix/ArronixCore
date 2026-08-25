@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 using Arronix.Abstractions.DTOs;
+using Arronix.Abstractions.Languages;
 
 namespace Arronix.Host.Languages;
 
@@ -20,15 +21,21 @@ internal sealed class LanguageTextService(LanguageDefinitionRegistry definitions
 
         if (language is not null)
         {
-            if (_definitions.Find(language) is { } definition)
+            using var held = _definitions.Lease(language);
+
+            if (held is not null)
             {
-                Add(keys, definition.Language.Code, definition.PrepareComparison(text));
+                Add(keys, held.Value.Language.Code, held.Value.PrepareComparison(text));
             }
 
             return keys;
         }
 
-        foreach (var definition in _definitions.All)
+        // One using around the whole loop: a definition that throws must not leave the leases of the
+        // definitions after it held forever.
+        using var definitions = _definitions.LeaseAll();
+
+        foreach (var definition in definitions)
         {
             Add(keys, definition.Language.Code, definition.PrepareComparison(text));
         }
@@ -41,29 +48,39 @@ internal sealed class LanguageTextService(LanguageDefinitionRegistry definitions
     {
         ArgumentNullException.ThrowIfNull(text);
 
-        var prepared = language is not null && _definitions.Find(language) is { } definition
-            ? definition.PrepareQuery(text)
-            : text;
-
-        return CollapseQueryWhitespace(prepared);
+        return CollapseQueryWhitespace(Prepared(text, language, static definition => definition.PrepareQuery));
     }
 
     /// <summary>Builds language-aware text for a file or folder name.</summary>
     internal string FileName(string text, Language? language = null)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return language is not null && _definitions.Find(language) is { } definition
-            ? definition.PrepareFileName(text)
-            : text;
+        return Prepared(text, language, static definition => definition.PrepareFileName);
     }
 
     /// <summary>Builds a sort spelling using a stated language when one is known.</summary>
     internal string Sort(string text, Language? language = null)
     {
         ArgumentNullException.ThrowIfNull(text);
-        return language is not null && _definitions.Find(language) is { } definition
-            ? definition.PrepareSort(text)
-            : text;
+        return Prepared(text, language, static definition => definition.PrepareSort);
+    }
+
+    /// <summary>
+    /// Runs one language-owned operation under that language's lease, or returns the text unchanged.
+    /// </summary>
+    /// <remarks>
+    /// The lease is held for the whole call, because the operation is the extension's own code and teardown
+    /// must wait for it rather than disposing the definition while it runs.
+    /// </remarks>
+    private string Prepared(string text, Language? language, Func<ILanguageDefinition, Func<string, string>> select)
+    {
+        if (language is null)
+        {
+            return text;
+        }
+
+        using var held = _definitions.Lease(language);
+        return held is null ? text : select(held.Value)(text);
     }
 
     private static void Add(ISet<string> keys, string language, string text)

@@ -22,6 +22,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Arronix.Common.Tests" />
     <InternalsVisibleTo Include="Arronix.Plugins" />
+    <InternalsVisibleTo Include="Arronix.Plugins.Tests" />
+    <InternalsVisibleTo Include="Arronix.Host" />
+    <InternalsVisibleTo Include="Arronix.Host.Tests" />
   </ItemGroup>
 
   <ItemGroup>

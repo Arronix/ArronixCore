@@ -36,7 +36,18 @@ public sealed record TelemetryEvent(
     /// <summary>
     /// Gets the failure that produced this event, when there was one.
     /// </summary>
+    /// <remarks>
+    /// Host-only. A live exception is a handle onto the assembly that defines it and the method that threw
+    /// it, so the pipeline replaces it with <see cref="ExceptionSummary"/> before an event is visible to
+    /// anything an extension contributed. An extension raising an event may set it; what it receives never
+    /// has it set.
+    /// </remarks>
     public Exception? Exception { get; init; }
+
+    /// <summary>
+    /// Gets the failure rendered to text, which is what every non-host reader of this event sees.
+    /// </summary>
+    public ExceptionSummary? ExceptionSummary { get; init; }
 
     /// <summary>
     /// Gets the identifier of the wider operation this event belongs to, when it was raised inside one.

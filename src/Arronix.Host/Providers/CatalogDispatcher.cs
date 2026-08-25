@@ -110,9 +110,17 @@ public sealed class CatalogDispatcher(
 
         foreach (var definition in RequireAuthorities(kind, catalogId.Scheme))
         {
-            if (!_providers.TryGet(definition.Provider, out var registered)
-                || registered.Provider is not ICataloger<TItem> cataloger
-                || registered.CatalogScheme is not { } catalogScheme)
+            if (!_providers.TryLease(definition.Provider, out var leased))
+            {
+                continue;
+            }
+
+            // Held across the fetch: teardown waits for this call rather than disposing the cataloger and
+            // unloading its code while it is running.
+            using var held = leased;
+
+            if (held.Value.Provider is not ICataloger<TItem> cataloger
+                || held.Value.CatalogScheme is not { } catalogScheme)
             {
                 continue;
             }
@@ -171,16 +179,25 @@ public sealed class CatalogDispatcher(
 
         foreach (var definition in RequireAuthorities(kind, scheme))
         {
-            if (!_providers.TryGet(definition.Provider, out var registered)
-                || registered.Provider is not ICataloger<TItem> cataloger
-                || registered.CatalogScheme is not { } catalogScheme)
+            if (!_providers.TryLease(definition.Provider, out var leased))
             {
                 continue;
             }
 
-            var results = await cataloger
-                .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
-                .ConfigureAwait(false);
+            using var held = leased;
+
+            if (held.Value.Provider is not ICataloger<TItem> cataloger
+                || held.Value.CatalogScheme is not { } catalogScheme)
+            {
+                continue;
+            }
+
+            // Materialized inside the lease and into a host-owned list, so nothing the cataloger returned
+            // is enumerated after its ticket is released.
+            var results = PluginBoundary.Snapshot(
+                await cataloger
+                    .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
+                    .ConfigureAwait(false));
 
             found.AddRange(results.Select(item => Materialize(kind, catalogScheme, item, catalogId: null)));
         }

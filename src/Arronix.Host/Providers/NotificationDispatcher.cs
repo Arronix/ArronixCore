@@ -64,8 +64,17 @@ public sealed partial class NotificationDispatcher(
         foreach (var definition in _definitions.Query(ProviderFamily.Notifier, message.MediaKind, enabledOnly: true))
         {
             if (!_status.IsAvailable(definition.Id)
-                || !_providers.TryGet<INotifier>(definition.Provider, out var notifier)
-                || !notifier.SupportedEvents.Contains(message.Event))
+                || !_providers.TryLease<INotifier>(definition.Provider, out var leased))
+            {
+                continue;
+            }
+
+            // Held for the whole call: teardown waits for it rather than disposing the notifier while it
+            // is still sending.
+            using var held = leased;
+            var notifier = held.Value;
+
+            if (!notifier.SupportedEvents.Contains(message.Event))
             {
                 continue;
             }

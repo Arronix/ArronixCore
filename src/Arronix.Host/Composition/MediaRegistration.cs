@@ -25,6 +25,10 @@ internal static class MediaRegistration
     internal static IServiceCollection AddMediaRegistry(this IServiceCollection services)
     {
         services.TryAddSingleton<MediaKindRegistry>();
+
+        // The only way outside the host to reach a kind's item source: it holds the contributing
+        // extension's ticket for the whole call.
+        services.TryAddSingleton<MediaItemBroker>();
         services.RemoveAll<IMediaKindRegistry>();
         services.AddSingleton<IMediaKindRegistry>(
             provider => provider.GetRequiredService<MediaKindRegistry>());

@@ -628,6 +628,8 @@ public sealed class PluginLoader
         IPluginModule? module = null;
         PluginRegistrationLedger? ledger = null;
         PluginRuntimeLease? runtimeLease = null;
+        PartitionedCacheProvider? caches = null;
+        PluginInvocationLifetime? invocation = null;
         var committed = false;
         PluginAdmissionResult? preparation = null;
         TokenRegistry.TokenClaimPlan? tokenPlan = null;
@@ -689,7 +691,14 @@ public sealed class PluginLoader
                 ledger = new PluginRegistrationLedger(package.Id);
                 var registry = new PluginRegistry(package.Id, manifest.GrantedCapabilities, ledger, _mediaTypes);
 
-                var pluginContext = BuildContext(manifest, registry, context);
+                // Created before the extension is configured, so its cache, telemetry and event wrappers all
+                // hold this exact retention authority from the first call it makes — configuration-time
+                // emissions included.
+                invocation = new PluginInvocationLifetime(package.Id);
+
+                ledger.Invocation = invocation;
+
+                var pluginContext = BuildContext(manifest, registry, context, receipt, invocation, out caches);
                 ledger.ActivationContext = pluginContext;
 
                 try
@@ -814,7 +823,14 @@ public sealed class PluginLoader
 
                 // Step 19.
                 receipt.AttachHostAdmission(admissionAttempt);
-                runtimeLease = new PluginRuntimeLease(context, ledger, module, tokenPlan, admissionAttempt);
+                runtimeLease = new PluginRuntimeLease(
+                    context,
+                    ledger,
+                    module,
+                    tokenPlan,
+                    admissionAttempt,
+                    caches?.Namespace,
+                    invocation);
                 lease.AttachRuntime(runtimeLease);
 
                 loaded = PluginLoadResult
@@ -959,7 +975,14 @@ public sealed class PluginLoader
                 {
                     if (context is not null && lease.Runtime is null)
                     {
-                        lease.AttachRuntime(new PluginRuntimeLease(context, ledger, module, tokenPlan, preparation?.Attempt));
+                        lease.AttachRuntime(new PluginRuntimeLease(
+                            context,
+                            ledger,
+                            module,
+                            tokenPlan,
+                            preparation?.Attempt,
+                            caches?.Namespace,
+                            invocation));
                     }
 
                     foreach (var failure in await lease.DisposeAsync().ConfigureAwait(false))
@@ -1093,7 +1116,10 @@ public sealed class PluginLoader
     private PluginContext BuildContext(
         ValidatedManifest manifest,
         PluginRegistry registry,
-        PluginLoadContext loadContext)
+        PluginLoadContext loadContext,
+        PackageAdmissionReceipt receipt,
+        PluginInvocationLifetime invocation,
+        out PartitionedCacheProvider caches)
     {
         var options = _options.Value;
         var access = options.AccessFor(manifest.Id.Value);
@@ -1120,6 +1146,10 @@ public sealed class PluginLoader
             ? new ScopedFileSystem(_platform.FileSystem, manifest.Id, roots)
             : null;
 
+        // Opened here and owned by the runtime lease, so an extension that never reaches activation still
+        // has its group taken back by the same teardown path as one that does.
+        caches = new PartitionedCacheProvider(_platform.CacheNamespaces!, manifest.Id, receipt.AttemptId);
+
         return new PluginContext(
             manifest.Id,
             manifest.Version.ToString(),
@@ -1127,10 +1157,10 @@ public sealed class PluginLoader
             granted,
             registry,
             paths,
-            new PartitionedCacheProvider(_platform.Cache!, manifest.Id),
+            caches,
             _platform.Json,
-            new PluginTelemetryEmitter(_platform.Telemetry!, manifest.Id),
-            new FilteredEventPublisher(_platform.Events!, manifest.Id, loadContext),
+            new PluginTelemetryEmitter(_platform.Telemetry!, manifest.Id, invocation),
+            new FilteredEventPublisher(_platform.Events!, manifest.Id, loadContext, invocation),
             _platform.Runtime!,
             _platform.OperatingSystem!,
             _platform.Clock,

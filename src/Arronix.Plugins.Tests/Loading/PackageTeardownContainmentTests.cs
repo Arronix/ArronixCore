@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
 using FluentAssertions.Execution;
@@ -40,8 +41,14 @@ internal sealed class PackageTeardownContainmentTests
         }
     }
 
+    /// <remarks>
+    /// The disposer's failure is contained and recorded, and the context is <em>not</em> unloaded. An
+    /// object this extension owns could not be disposed, so something of it may still be live; unloading
+    /// would mark the context for a collection that cannot happen while reporting the extension gone.
+    /// The retention is reported as a second cleanup note rather than left for a reader to infer.
+    /// </remarks>
     [Test]
-    public async Task AnUnfamiliarDisposerFailureIsRecordedAndTheContextIsStillReleased()
+    public async Task AnUnfamiliarDisposerFailureIsRecordedAndRetainsTheContext()
     {
         var module = new ThrowingModule(new TeardownFixtureException("the disposer objected"));
         var context = Context();
@@ -50,11 +57,31 @@ internal sealed class PackageTeardownContainmentTests
         var failures = await lease.DisposeAsync();
 
         using var assertions = new AssertionScope();
-        failures.Should().ContainSingle().Which.Should()
+        failures.Should().HaveCount(2);
+        failures[0].Should()
             .Contain(nameof(ThrowingModule))
             .And.Contain("the disposer objected");
+        failures[1].Should().Contain("load context").And.Contain("retained");
         module.Disposed.Should().BeTrue();
-        lease.LoadContext.Should().BeNull("the context is released whatever the disposer did");
+        lease.LoadContext.Should().NotBeNull("a context whose objects may still be live stays rooted");
+    }
+
+    /// <remarks>
+    /// Repeated and concurrent teardown converge on one release. A second caller that returned early would
+    /// report an extension released while the first caller's drain was still running.
+    /// </remarks>
+    [Test]
+    public async Task ConcurrentTeardownCallersShareOneCompletion()
+    {
+        var module = new ThrowingModule(new TeardownFixtureException("the disposer objected"));
+        var lease = new PluginRuntimeLease(Context(), ledger: null, module);
+
+        var results = await Task.WhenAll(
+            Enumerable.Range(0, 8).Select(async _ => await lease.DisposeAsync()));
+
+        using var assertions = new AssertionScope();
+        results.Should().AllSatisfy(failures => failures.Should().HaveCount(2));
+        module.DisposeCount.Should().Be(1, "the disposer runs once however many callers ask");
     }
 
     /// <remarks>
@@ -130,7 +157,9 @@ internal sealed class PackageTeardownContainmentTests
     {
         public PluginId Id => Package;
 
-        public bool Disposed { get; private set; }
+        public bool Disposed => DisposeCount > 0;
+
+        public int DisposeCount { get; private set; }
 
         public void Configure(IPluginContext context)
         {
@@ -138,7 +167,7 @@ internal sealed class PackageTeardownContainmentTests
 
         public void Dispose()
         {
-            Disposed = true;
+            DisposeCount++;
             throw failure;
         }
     }

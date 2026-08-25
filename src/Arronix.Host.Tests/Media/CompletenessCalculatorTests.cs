@@ -21,7 +21,7 @@ internal sealed class CompletenessCalculatorTests
     private static (CompletenessCalculator Calculator, IMediaStore Store, ValidatedShape Shape) Build()
     {
         var kinds = TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Layered()));
-        var store = new InMemoryMediaStore(kinds);
+        var store = TestOptions.StoreWith(kinds);
 
         return (new CompletenessCalculator(store), store, kinds.All[0].Shape);
     }

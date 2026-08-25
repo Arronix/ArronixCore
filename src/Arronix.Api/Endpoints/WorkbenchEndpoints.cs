@@ -72,6 +72,7 @@ internal static class WorkbenchEndpoints
         string kind,
         string workbenchId,
         IMediaKindRegistry registry,
+        MediaItemBroker items,
         HttpContext context,
         CancellationToken cancellationToken)
     {
@@ -98,9 +99,17 @@ internal static class WorkbenchEndpoints
                 $"'{descriptor.Name}' needs {string.Join(", ", missing)} before it can propose anything.");
         }
 
-        var proposal = await registered.Items
-            .ProposeAsync(descriptor.WorkbenchId, inputs, cancellationToken)
+        var proposal = await items
+            .ProposeAsync(registered.Kind, descriptor.WorkbenchId, inputs, cancellationToken)
             .ConfigureAwait(false);
+
+        if (proposal is null)
+        {
+            return ApiRequests.Problem(
+                StatusCodes.Status404NotFound,
+                CoreErrorCode.MediaKindNotFound,
+                $"'{kind}' is no longer installed.");
+        }
 
         return TypedResults.Ok(proposal);
     }
@@ -137,6 +146,7 @@ internal static class WorkbenchEndpoints
         string workbenchId,
         WorkbenchCommit? commit,
         IMediaKindRegistry registry,
+        MediaItemBroker items,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(registry);
@@ -170,7 +180,15 @@ internal static class WorkbenchEndpoints
                 $"'{descriptor.Name}' does not allow rows to be excluded.");
         }
 
-        var result = await registered.Items.CommitAsync(commit, cancellationToken).ConfigureAwait(false);
+        var result = await items.CommitAsync(registered.Kind, commit, cancellationToken).ConfigureAwait(false);
+
+        if (result is null)
+        {
+            return ApiRequests.Problem(
+                StatusCodes.Status404NotFound,
+                CoreErrorCode.MediaKindNotFound,
+                $"'{kind}' is no longer installed.");
+        }
 
         if (!result.Accepted)
         {

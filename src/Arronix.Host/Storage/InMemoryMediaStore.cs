@@ -32,9 +32,12 @@ namespace Arronix.Host.Storage;
 /// </para>
 /// </remarks>
 /// <param name="kinds">The registry the declared invariants are read from.</param>
-internal sealed class InMemoryMediaStore(IMediaKindRegistry kinds) : IMediaStore, IDisposable
+/// <param name="items">How a kind's item source is reached, under the contributing extension's ticket.</param>
+internal sealed class InMemoryMediaStore(MediaKindRegistry kinds, MediaItemBroker items)
+    : IMediaStore, IDisposable
 {
-    private readonly IMediaKindRegistry _kinds = kinds ?? throw new ArgumentNullException(nameof(kinds));
+    private readonly MediaKindRegistry _kinds = kinds ?? throw new ArgumentNullException(nameof(kinds));
+    private readonly MediaItemBroker _items = items ?? throw new ArgumentNullException(nameof(items));
     private readonly ConcurrentDictionary<MediaItemRef, LibraryFacet> _library = new();
     private readonly ConcurrentDictionary<MediaFileId, MediaFileRecord> _files = new();
     private readonly Dictionary<MediaItemRef, List<UnitFileLink>> _linksByUnit = [];
@@ -456,7 +459,7 @@ internal sealed class InMemoryMediaStore(IMediaKindRegistry kinds) : IMediaStore
         }
     }
 
-    private static async ValueTask GuardSpanConstraintsAsync(
+    private async ValueTask GuardSpanConstraintsAsync(
         RegisteredMediaKind registered,
         ValidatedShape shape,
         UnitFileLink link,
@@ -472,7 +475,30 @@ internal sealed class InMemoryMediaStore(IMediaKindRegistry kinds) : IMediaStore
             return;
         }
 
-        var incoming = await registered.Items.GetAsync(link.Unit, cancellationToken).ConfigureAwait(false);
+        // One ticket for the whole span check: both reads are the extension's own item source, and a
+        // teardown landing between them would leave the constraint decision half-made.
+        // Refused rather than skipped when the kind disappears: this is the check that decides whether a
+        // link may exist at all, and a withdrawal that silently satisfied it would admit the link the rule
+        // forbids.
+        await _items.RequireItemsAsync(
+            registered.Kind,
+            async (source, token) =>
+            {
+                await GuardAsync(source, shape, link, existingForFile, constraints, token).ConfigureAwait(false);
+                return true;
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async ValueTask GuardAsync(
+        IMediaItemSource source,
+        ValidatedShape shape,
+        UnitFileLink link,
+        List<UnitFileLink> existingForFile,
+        List<SpanConstraint> constraints,
+        CancellationToken cancellationToken)
+    {
+        var incoming = await source.GetAsync(link.Unit, cancellationToken).ConfigureAwait(false);
 
         if (incoming is null)
         {
@@ -481,7 +507,7 @@ internal sealed class InMemoryMediaStore(IMediaKindRegistry kinds) : IMediaStore
 
         foreach (var existing in existingForFile)
         {
-            var other = await registered.Items.GetAsync(existing.Unit, cancellationToken).ConfigureAwait(false);
+            var other = await source.GetAsync(existing.Unit, cancellationToken).ConfigureAwait(false);
 
             if (other is null)
             {

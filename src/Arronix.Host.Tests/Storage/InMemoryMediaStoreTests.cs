@@ -14,11 +14,11 @@ namespace Arronix.Host.Tests.Storage;
 internal sealed class InMemoryMediaStoreTests
 {
     private static IMediaStore Fused()
-        => new InMemoryMediaStore(
+        => TestOptions.StoreWith(
             TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Fused())));
 
     private static IMediaStore Layered()
-        => new InMemoryMediaStore(
+        => TestOptions.StoreWith(
             TestOptions.RegistryWith(ContributionFixtures.For(ShapeFixtures.Layered())));
 
     [Test]

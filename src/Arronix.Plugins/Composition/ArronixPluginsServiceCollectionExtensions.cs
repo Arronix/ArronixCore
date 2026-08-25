@@ -1,3 +1,4 @@
+using Arronix.Common.Contributions;
 using Arronix.Plugins.Configuration;
 using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Loading;
@@ -71,6 +72,11 @@ public static class ArronixPluginsServiceCollectionExtensions
         services.TryAddSingleton<PluginPlatformServices>();
 
         services.TryAddSingleton<PluginPublicationGate>();
+
+        // What the platform's event and telemetry pipelines dispatch through. Registered here because only
+        // the extension runtime knows what is Active; the platform assembly consumes the contract.
+        services.TryAddSingleton<IPluginContributionSource>(
+            provider => new PluginContributionSource(provider.GetRequiredService<PluginRuntimeRegistry>()));
         services.TryAddSingleton<TokenRegistry>();
         services.TryAddSingleton<PluginRuntimeRegistry>();
         services.TryAddSingleton<IPluginRuntimeRegistry>(

@@ -1,5 +1,6 @@
 using Arronix.Abstractions.Caching;
 using Arronix.Abstractions.Events;
+using Arronix.Common.Caching;
 using Arronix.Abstractions.FileSystem;
 using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Http;
@@ -34,7 +35,10 @@ public sealed class PluginPlatformServices
     /// </summary>
     /// <param name="json">The serializer, so an extension needs no serialization package of its own.</param>
     /// <param name="clock">The clock every component reads.</param>
-    /// <param name="cache">The shared cache provider.</param>
+    /// <param name="cache">
+    /// The shared cache provider. Namespace control is read off this exact instance, because a host that
+    /// released namespaces on a different object than extensions filled would release nothing.
+    /// </param>
     /// <param name="telemetry">The platform's telemetry emitter.</param>
     /// <param name="events">The platform's event publisher.</param>
     /// <param name="runtime">Facts about the running host.</param>
@@ -64,6 +68,7 @@ public sealed class PluginPlatformServices
         Json = json;
         Clock = clock;
         Cache = cache;
+        CacheNamespaces = cache as ICacheNamespaceProvider;
         Telemetry = telemetry;
         Events = events;
         Runtime = runtime;
@@ -83,6 +88,11 @@ public sealed class PluginPlatformServices
 
     /// <summary>Gets the shared cache provider, when the host has one.</summary>
     public ICacheProvider? Cache { get; }
+
+    /// <summary>
+    /// Gets the same object as <see cref="Cache"/>, when that provider can hand out releasable namespaces.
+    /// </summary>
+    public ICacheNamespaceProvider? CacheNamespaces { get; }
 
     /// <summary>Gets the platform's telemetry emitter, when the host has one.</summary>
     public ITelemetryEmitter? Telemetry { get; }
@@ -126,6 +136,12 @@ public sealed class PluginPlatformServices
         if (Cache is null)
         {
             missing.Add(nameof(ICacheProvider));
+        }
+        else if (CacheNamespaces is null)
+        {
+            // A provider the host cannot take caches back from would leave every activated extension
+            // permanently resident, so it is reported as missing rather than used.
+            missing.Add(nameof(ICacheNamespaceProvider));
         }
 
         if (Telemetry is null)
