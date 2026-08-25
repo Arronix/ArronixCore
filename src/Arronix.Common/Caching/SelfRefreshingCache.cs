@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using System.Linq;
 using Arronix.Abstractions.Caching;
+using Arronix.Common.Lifetimes;
 
 namespace Arronix.Common.Caching;
 
@@ -10,25 +11,20 @@ namespace Arronix.Common.Caching;
 /// <typeparam name="TValue">The cached value type.</typeparam>
 /// <remarks>
 /// <para>
-/// The contents are one immutable snapshot replaced wholesale, so a reader either sees the whole of the
-/// previous fetch or the whole of the next one and never a half-applied refresh. The legacy implementation
-/// this replaces mutated a shared dictionary while a fetch was in progress.
+/// The contents are one immutable snapshot replaced wholesale, so a reader sees the whole of the previous
+/// fetch or the whole of the next one and never a half-applied refresh.
 /// </para>
+/// <para>A refresh is single-flight: concurrent callers observe one fetch.</para>
 /// <para>
-/// A refresh is single-flight. Concurrent callers observe one fetch, which is the defect
-/// <see cref="ISelfRefreshingCache{TValue}.RefreshAsync"/> is documented to prevent.
-/// </para>
-/// <para>
-/// The fetch delegate is held for the life of the cache and can be extension code closing over extension
-/// state, so it is dropped by release along with the snapshot. Every public member except
-/// <see cref="Name"/> passes through the owning namespace's gate for the same reason.
+/// The fetch delegate is held for the life of the cache and can be extension code, so release drops it
+/// with the snapshot. Every member except <see cref="Name"/> passes through the namespace's gate.
 /// </para>
 /// </remarks>
 internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefreshingCache<TValue>
 {
     private readonly TimeProvider _clock;
     private readonly TimeSpan? _lifetime;
-    private readonly CacheOperationGate? _namespaceGate;
+    private readonly QuiescenceGate? _namespaceGate;
     private readonly object _gate = new();
 
     private Func<CancellationToken, Task<IReadOnlyDictionary<string, TValue>>>? _fetch;
@@ -46,7 +42,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         Func<CancellationToken, Task<IReadOnlyDictionary<string, TValue>>> fetch,
         TimeProvider clock,
         TimeSpan? lifetime,
-        CacheOperationGate? namespaceGate = null)
+        QuiescenceGate? namespaceGate = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(fetch);
@@ -65,10 +61,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
     public string Name { get; }
 
     /// <inheritdoc />
-    /// <remarks>
-    /// The count of what was last fetched. Staleness is a property of the snapshot as a whole here, so
-    /// there is no per-entry expiry for a sweep to remove.
-    /// </remarks>
+    /// <remarks>The count of what was last fetched; staleness here is a property of the whole snapshot.</remarks>
     public int Count
     {
         get
@@ -90,10 +83,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
     }
 
     /// <inheritdoc />
-    /// <remarks>
-    /// Contents that have outlived the configured lifetime are dropped. A cache with no configured
-    /// lifetime has nothing to measure against and is left alone rather than emptied.
-    /// </remarks>
+    /// <remarks>A cache with no configured lifetime has nothing to measure against and is left alone.</remarks>
     public void ClearExpired()
     {
         using var admission = Enter();
@@ -263,13 +253,8 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         await FetchAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Replaces the contents, collapsing concurrent callers onto one fetch.
-    /// </summary>
-    /// <remarks>
-    /// A caller that arrives while a fetch is running joins it rather than starting a second one. A fetch
-    /// that fails is not published and does not become the in-flight attempt for the next caller.
-    /// </remarks>
+    /// <summary>Replaces the contents, collapsing concurrent callers onto one fetch.</summary>
+    /// <remarks>A fetch that fails is not published and is not left as the next caller's attempt.</remarks>
     private async Task FetchAsync(CancellationToken cancellationToken)
     {
         while (true)
@@ -301,9 +286,8 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
 
                     lock (_gate)
                     {
-                        // A release that ran while this fetch was in flight has already dropped the fetch
-                        // delegate; publishing this snapshot now would put extension values back into a
-                        // cache the host has finished taking apart.
+                        // A release that ran while this fetch was in flight already dropped the delegate;
+                        // publishing now would put extension values back into a released cache.
                         if (_fetch is not null)
                         {
                             _snapshot = produced;
@@ -340,8 +324,8 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
 
     private async Task<Snapshot> RunFetchAsync(CancellationToken cancellationToken)
     {
-        // Yielding first keeps the fetch off the caller's stack while the lock that published this task
-        // is still held, so the delegate can never run under the snapshot lock.
+        // Keeps the fetch off the caller's stack while the publishing lock is held, so the delegate never
+        // runs under the snapshot lock.
         await Task.Yield();
 
         var fetch = Volatile.Read(ref _fetch)
@@ -386,7 +370,7 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
 
         internal DateTimeOffset? LoadedAt { get; } = loadedAt;
 
-        /// <summary>Contents never loaded are stale by definition, which is what forces the first fetch.</summary>
+        /// <summary>Contents never loaded are stale, which is what forces the first fetch.</summary>
         internal bool IsExpired(DateTimeOffset now, TimeSpan timeToLive)
             => LoadedAt is not { } at || at + timeToLive <= now;
     }

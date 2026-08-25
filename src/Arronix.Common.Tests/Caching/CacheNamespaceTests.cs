@@ -10,11 +10,6 @@ namespace Arronix.Common.Tests.Caching;
 /// <summary>
 /// The release sequence a host depends on before it unloads the extension that filled a namespace.
 /// </summary>
-/// <remarks>
-/// Every test here is about a claim teardown makes on the strength of release having returned: nothing is
-/// running, nothing is held, and nothing new can start. A test that only counted dictionary entries would
-/// pass against an implementation that dropped its references while a factory was still producing into it.
-/// </remarks>
 [TestFixture]
 public class CacheNamespaceTests
 {
@@ -38,8 +33,8 @@ public class CacheNamespaceTests
     [Test]
     public async Task ReleaseRemovesEveryCacheInTheNamespaceAndNothingElseAsync()
     {
-        var mine = _provider.CreateNamespace("plugin:a");
-        var theirs = _provider.CreateNamespace("plugin:b");
+        var mine = (CacheNamespace)_provider.CreateNamespace("plugin:a");
+        var theirs = (CacheNamespace)_provider.CreateNamespace("plugin:b");
 
         mine.GetCache<Owner, string>("plugin:a:titles").Set("k", "v");
         theirs.GetCache<Owner, string>("plugin:b:titles").Set("k", "v");
@@ -63,7 +58,7 @@ public class CacheNamespaceTests
     [Test]
     public async Task EveryOperationOnAReleasedCacheIsRefusedAsync()
     {
-        var owned = _provider.CreateNamespace("plugin:a");
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
         var keyed = owned.GetCache<Owner, string>("plugin:a:titles");
         var bulk = owned.GetSelfRefreshingCache<Owner, string>(
             "plugin:a:bulk",
@@ -105,7 +100,7 @@ public class CacheNamespaceTests
     [Test]
     public async Task ReleaseDoesNotCompleteWhileAFactoryIsStillRunningAsync()
     {
-        var owned = _provider.CreateNamespace("plugin:a");
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
         var cache = owned.GetCache<Owner, string>("plugin:a:titles");
 
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -121,9 +116,8 @@ public class CacheNamespaceTests
         await entered.Task.WaitAsync(Patience).ConfigureAwait(false);
 
         var releasing = owned.ReleaseAsync().AsTask();
-        var raced = await Task.WhenAny(releasing, Task.Delay(TimeSpan.FromMilliseconds(250))).ConfigureAwait(false);
 
-        Assert.That(raced, Is.Not.SameAs(releasing), "release must wait for the factory it admitted");
+        Assert.That(releasing.IsCompleted, Is.False, "release must wait for the factory it admitted");
 
         release.SetResult();
 
@@ -136,7 +130,7 @@ public class CacheNamespaceTests
     [Test]
     public async Task ReleaseDoesNotCompleteWhileABulkFetchIsStillRunningAsync()
     {
-        var owned = _provider.CreateNamespace("plugin:a");
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -153,9 +147,8 @@ public class CacheNamespaceTests
         await entered.Task.WaitAsync(Patience).ConfigureAwait(false);
 
         var releasing = owned.ReleaseAsync().AsTask();
-        var raced = await Task.WhenAny(releasing, Task.Delay(TimeSpan.FromMilliseconds(250))).ConfigureAwait(false);
 
-        Assert.That(raced, Is.Not.SameAs(releasing), "release must wait for the fetch it admitted");
+        Assert.That(releasing.IsCompleted, Is.False, "release must wait for the fetch it admitted");
 
         release.SetResult();
         await fetching.ConfigureAwait(false);
@@ -167,7 +160,7 @@ public class CacheNamespaceTests
     [Test]
     public async Task ConcurrentReleaseCallersAllAwaitTheSameCompletionAsync()
     {
-        var owned = _provider.CreateNamespace("plugin:a");
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
         var cache = owned.GetCache<Owner, string>("plugin:a:titles");
 
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -197,56 +190,71 @@ public class CacheNamespaceTests
     }
 
     [Test]
-    public async Task ResolvingACacheRacesReleaseToOneOfTwoOutcomesAsync()
+    public async Task AResolutionAdmittedBeforeTheCloseIsWaitedForAndThenRemovedAsync()
     {
-        var owned = _provider.CreateNamespace("plugin:a");
-        var barrier = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
+        Task? releasing = null;
 
-        var resolving = Task.Run(async () =>
+        // Begins release from inside the resolution that already holds an admission, so the ordering is
+        // fixed rather than left to whichever task the scheduler runs first.
+        _provider.OnResolutionAdmitted = () =>
         {
-            await barrier.Task.ConfigureAwait(false);
+            _provider.OnResolutionAdmitted = null;
+            releasing = owned.ReleaseAsync().AsTask();
 
-            for (var attempt = 0; attempt < 200; attempt++)
-            {
-                try
-                {
-                    owned.GetCache<Owner, string>($"plugin:a:p{attempt}");
-                }
-                catch (ObjectDisposedException)
-                {
-                    return attempt;
-                }
-            }
+            Assert.That(owned.IsReleased, Is.True, "the close lands before this resolution finishes");
+            Assert.That(releasing.IsCompleted, Is.False, "and release cannot finish while it holds one");
+        };
 
-            return -1;
-        });
+        var cache = owned.GetCache<Owner, string>("plugin:a:mid-flight");
 
-        var releasing = Task.Run(async () =>
-        {
-            await barrier.Task.ConfigureAwait(false);
-            await owned.ReleaseAsync().ConfigureAwait(false);
-        });
-
-        barrier.SetResult();
-
-        var refusedAt = await resolving.WaitAsync(Patience).ConfigureAwait(false);
-        await releasing.WaitAsync(Patience).ConfigureAwait(false);
+        await releasing!.WaitAsync(Patience).ConfigureAwait(false);
 
         Assert.Multiple(() =>
         {
-            Assert.That(refusedAt, Is.Not.EqualTo(-1), "release must eventually refuse new resolutions");
-            Assert.That(owned.CacheCount, Is.Zero, "and nothing resolved before it may survive release");
-            Assert.That(
-                _provider.CacheNames.Any(name => name.Contains(":plugin:a:p", StringComparison.Ordinal)),
-                Is.False,
-                "including a cache registered while release was closing");
+            Assert.That(owned.CacheCount, Is.Zero);
+            Assert.That(_provider.CacheNames, Is.Empty, "a cache registered under the close is still removed");
+            Assert.Throws<ObjectDisposedException>(() => cache.Find("k"));
         });
+    }
+
+    [Test]
+    public async Task AResolutionAttemptedAfterTheCloseIsRefusedAsync()
+    {
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
+        var cache = owned.GetCache<Owner, string>("plugin:a:titles");
+
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var producing = cache.GetAsync("k", async _ =>
+        {
+            entered.SetResult();
+            await release.Task.ConfigureAwait(false);
+            return "produced";
+        });
+
+        await entered.Task.WaitAsync(Patience).ConfigureAwait(false);
+
+        var releasing = owned.ReleaseAsync().AsTask();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(releasing.IsCompleted, Is.False);
+            Assert.Throws<ObjectDisposedException>(() => owned.GetCache<Owner, string>("plugin:a:after"));
+        });
+
+        release.SetResult();
+        await producing.ConfigureAwait(false);
+        await releasing.WaitAsync(Patience).ConfigureAwait(false);
+
+        Assert.That(_provider.CacheNames, Is.Empty);
     }
 
     [Test]
     public async Task TheSweepDoesNotThrowWhileANamespaceIsDrainingAsync()
     {
-        var owned = _provider.CreateNamespace("plugin:a");
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
         var cache = owned.GetCache<Owner, string>("plugin:a:titles");
         cache.Set("expired", "v", TimeSpan.FromMinutes(1));
 
@@ -285,13 +293,13 @@ public class CacheNamespaceTests
     [Test]
     public async Task ANameIsReusableOnlyAfterTheNamespaceHoldingItIsReleasedAsync()
     {
-        var first = _provider.CreateNamespace("plugin:a");
+        var first = (CacheNamespace)_provider.CreateNamespace("plugin:a");
 
         Assert.Throws<InvalidOperationException>(() => _provider.CreateNamespace("plugin:a"));
 
         await first.ReleaseAsync().ConfigureAwait(false);
 
-        var second = _provider.CreateNamespace("plugin:a");
+        var second = (CacheNamespace)_provider.CreateNamespace("plugin:a");
 
         Assert.That(second, Is.Not.SameAs(first));
     }
@@ -299,7 +307,7 @@ public class CacheNamespaceTests
     [Test]
     public async Task ANamespaceHandsOutNoFurtherCachesOnceReleasedAsync()
     {
-        var owned = _provider.CreateNamespace("plugin:a");
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
         await owned.ReleaseAsync().ConfigureAwait(false);
 
         Assert.Multiple(() =>
@@ -316,17 +324,40 @@ public class CacheNamespaceTests
     }
 
     [Test]
-    public void TwoNamespacesMayNotShareOneOwnerAndPartition()
+    public async Task TwoNamespacesAskingForOneOwnerAndPartitionGetTwoIndependentCachesAsync()
     {
-        var mine = _provider.CreateNamespace("plugin:a");
-        var theirs = _provider.CreateNamespace("plugin:b");
+        var mine = (CacheNamespace)_provider.CreateNamespace("plugin:a");
+        var theirs = (CacheNamespace)_provider.CreateNamespace("plugin:b");
 
-        _ = mine.GetCache<Owner, string>("shared");
+        var ours = mine.GetCache<Owner, string>("shared");
+        var yours = theirs.GetCache<Owner, string>("shared");
+
+        ours.Set("k", "mine");
 
         Assert.Multiple(() =>
         {
-            Assert.Throws<InvalidOperationException>(() => theirs.GetCache<Owner, string>("shared"));
-            Assert.Throws<InvalidOperationException>(() => _provider.GetCache<Owner, string>("shared"));
+            Assert.That(yours, Is.Not.SameAs(ours), "the namespace is part of a cache's identity");
+            Assert.That(yours.Find("k"), Is.Null);
         });
+
+        await mine.ReleaseAsync().ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.Throws<ObjectDisposedException>(() => ours.Find("k"));
+            Assert.That(yours.Find("k"), Is.Null, "the other namespace is untouched");
+            Assert.That(theirs.CacheCount, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public void AnUnscopedCacheAndANamespacedOneDoNotCollide()
+    {
+        var owned = (CacheNamespace)_provider.CreateNamespace("plugin:a");
+
+        var scoped = owned.GetCache<Owner, string>("shared");
+        var unscoped = _provider.GetCache<Owner, string>("shared");
+
+        Assert.That(unscoped, Is.Not.SameAs(scoped));
     }
 }

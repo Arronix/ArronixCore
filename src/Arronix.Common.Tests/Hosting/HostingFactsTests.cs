@@ -87,7 +87,7 @@ public class HostingFactsTests
         }
 
         var operatingSystem = new OperatingSystemInfo(NoProbes, facts);
-        var runtime = new HostRuntimeInfo(operatingSystem, TimeProvider.System, facts);
+        var runtime = new HostRuntimeInfo(operatingSystem, TimeProvider.System, new StubDetector(false), facts);
 
         Assert.That(runtime.IsContainerized, Is.EqualTo(operatingSystem.IsContainerized));
         Assert.That(runtime.IsContainerized, Is.EqualTo(containerized));
@@ -105,43 +105,41 @@ public class HostingFactsTests
     }
 
     [Test]
-    public void AWindowsServiceIsReportedAsOneAndIsNotInteractive()
+    public void TheServiceControlManagerAnswerIsTheDetectorsAndNotAGuessFromInteractivity()
     {
         var facts = PlatformFactsStub.Windows();
         facts.IsUserInteractive = false;
 
-        var runtime = Runtime(facts);
-
         Assert.Multiple(() =>
         {
-            Assert.That(runtime.IsWindowsService, Is.True);
-            Assert.That(runtime.IsUserInteractive, Is.False);
+            Assert.That(
+                Runtime(facts, service: true).IsWindowsService,
+                Is.True,
+                "a registered detector is the authority");
+            Assert.That(
+                Runtime(facts, service: false).IsWindowsService,
+                Is.False,
+                "a non-interactive Windows process may be a scheduled task or a container entry point");
         });
     }
 
     [Test]
-    public void AnInteractiveWindowsProcessIsNotAService()
+    public void AHostThatRegistersNoDetectorReportsNoService()
     {
-        var runtime = Runtime(PlatformFactsStub.Windows());
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(runtime.IsWindowsService, Is.False);
-            Assert.That(runtime.IsUserInteractive, Is.True);
-        });
-    }
-
-    [Test]
-    public void ASystemdUnitIsNotAWindowsService()
-    {
-        var facts = PlatformFactsStub.Linux()
-            .WithEnvironment("INVOCATION_ID", "3f2a1c9e5b7d4e0a8c6f1b2d3e4a5f60");
+        var facts = PlatformFactsStub.Windows();
         facts.IsUserInteractive = false;
 
-        var runtime = Runtime(facts);
+        Assert.That(Runtime(facts).IsWindowsService, Is.False);
+    }
+
+    [Test]
+    public void NoNonWindowsProcessIsAWindowsServiceEvenWhenADetectorSaysSo()
+    {
+        var facts = PlatformFactsStub.Linux();
+        facts.IsUserInteractive = false;
 
         Assert.That(
-            runtime.IsWindowsService,
+            Runtime(facts, service: true).IsWindowsService,
             Is.False,
             "the contract's member is Windows-specific and must not be widened to mean 'started by something'");
     }
@@ -154,7 +152,11 @@ public class HostingFactsTests
         var facts = PlatformFactsStub.Linux();
         facts.ProcessStartTime = null;
 
-        var runtime = new HostRuntimeInfo(new OperatingSystemInfo(NoProbes, facts), clock, facts);
+        var runtime = new HostRuntimeInfo(
+            new OperatingSystemInfo(NoProbes, facts),
+            clock,
+            new StubDetector(false),
+            facts);
 
         Assert.That(runtime.StartTime, Is.EqualTo(composed));
     }
@@ -261,8 +263,13 @@ public class HostingFactsTests
         });
     }
 
-    private static HostRuntimeInfo Runtime(IPlatformFacts facts)
-        => new(new OperatingSystemInfo(NoProbes, facts), TimeProvider.System, facts);
+    private static HostRuntimeInfo Runtime(IPlatformFacts facts, bool service = false)
+        => new(new OperatingSystemInfo(NoProbes, facts), TimeProvider.System, new StubDetector(service), facts);
+
+    private sealed class StubDetector(bool isWindowsService) : IWindowsServiceDetector
+    {
+        public bool IsWindowsService => isWindowsService;
+    }
 
     private sealed class StubProbe(string name, bool supported = true, bool answers = true) : IOsVersionProbe
     {

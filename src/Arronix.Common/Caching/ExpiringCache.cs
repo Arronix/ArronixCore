@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Runtime.ExceptionServices;
 using Arronix.Abstractions.Caching;
+using Arronix.Common.Lifetimes;
 
 namespace Arronix.Common.Caching;
 
@@ -12,18 +13,12 @@ namespace Arronix.Common.Caching;
 /// <typeparam name="TValue">The cached value type.</typeparam>
 /// <remarks>
 /// <para>
-/// Time is read through the injected <see cref="TimeProvider"/>, never from a static clock, so expiry is
-/// exactly as testable as the code that depends on it.
+/// A miss is single-flight per key: concurrent callers observe one factory invocation and share its
+/// outcome, and a factory that throws or is canceled produces no entry and poisons no later attempt.
 /// </para>
 /// <para>
-/// A miss is single-flight per key. Concurrent callers observe one factory invocation and share its
-/// outcome; a factory that throws or is cancelled produces no entry and leaves nothing behind, so the next
-/// caller starts a fresh attempt rather than inheriting a cached failure.
-/// </para>
-/// <para>
-/// Every member except <see cref="Name"/> passes through the owning namespace's gate. A released namespace
-/// therefore refuses reads, writes, enumeration and removal alike — the point being that "the namespace is
-/// gone" is one state rather than a set of members that each decided for themselves.
+/// Every member except <see cref="Name"/> passes through the owning namespace's gate, so a released
+/// namespace refuses reads, writes, enumeration and removal alike.
 /// </para>
 /// </remarks>
 internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
@@ -33,7 +28,7 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
     private readonly TimeProvider _clock;
     private readonly CacheExpiry _expiry;
     private readonly TimeSpan? _defaultLifetime;
-    private readonly CacheOperationGate? _namespaceGate;
+    private readonly QuiescenceGate? _namespaceGate;
 
     /// <summary>Initializes a new instance of the <see cref="ExpiringCache{TValue}"/> class.</summary>
     /// <param name="name">The fully-qualified cache name, including the owning partition.</param>
@@ -51,7 +46,7 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
         TimeProvider clock,
         CacheExpiry expiry,
         TimeSpan? defaultLifetime,
-        CacheOperationGate? namespaceGate = null)
+        QuiescenceGate? namespaceGate = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(clock);
@@ -85,13 +80,36 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Enumerating hands out each live value, so on a rolling cache it is a successful read and restarts
+    /// those entries' lifetimes. The renewal is a reference-identity swap, so no cached value's own
+    /// equality runs.
+    /// </remarks>
     public IReadOnlyCollection<TValue> Values
     {
         get
         {
             using var admission = Enter();
+
             var now = _clock.GetUtcNow();
-            return [.. _entries.Values.Where(entry => !entry.IsExpired(now)).Select(entry => entry.Value)];
+            var live = new List<TValue>(_entries.Count);
+
+            foreach (var pair in _entries)
+            {
+                if (pair.Value.IsExpired(now))
+                {
+                    continue;
+                }
+
+                if (_expiry == CacheExpiry.Rolling && pair.Value.Lifetime is { } lifetime)
+                {
+                    _entries.TryUpdate(pair.Key, pair.Value.RenewedTo(now + lifetime), pair.Value);
+                }
+
+                live.Add(pair.Value.Value);
+            }
+
+            return live;
         }
     }
 
@@ -158,8 +176,8 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
 
             if (!ReferenceEquals(joined, flight))
             {
-                // Somebody else is already producing this key. Blocking here is the point of the
-                // synchronous overload; the alternative is every caller running the same factory.
+                // Blocking is the point of the synchronous overload; the alternative is every caller
+                // running the same factory.
                 var observed = joined.Task.GetAwaiter().GetResult();
 
                 observed.Failure?.Throw();
@@ -181,9 +199,8 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
             }
             catch (Exception failure)
             {
-                // A failed factory is not a value and must not become one. The dispatch info carries the
-                // original throw site to everyone who joined, so a shared failure is not re-stacked at the
-                // point one unrelated caller happened to observe it.
+                // The dispatch info carries the original throw site to everyone who joined, so a shared
+                // failure is not re-stacked where one unrelated caller happened to observe it.
                 flight.Fail(ExceptionDispatchInfo.Capture(failure));
                 throw;
             }
@@ -230,8 +247,8 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
                     return observed.Value!;
                 }
 
-                // The caller that owned that attempt gave up. This one has not, so it starts its own
-                // rather than inheriting an unrelated cancellation.
+                // That attempt's owner gave up; this caller has not, so it starts its own rather than
+                // inheriting an unrelated cancellation.
                 continue;
             }
 
@@ -280,7 +297,14 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
     }
 
     /// <inheritdoc />
-    public void ReleaseReferences() => _entries.Clear();
+    public void ReleaseReferences()
+    {
+        _entries.Clear();
+
+        // Nothing is in flight by here — the gate drained first — but a completed flight still holds the
+        // value it produced, so the table is emptied rather than assumed empty.
+        _inFlight.Clear();
+    }
 
     private void Sweep()
     {
@@ -329,8 +353,7 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
 
         if (entry.IsExpired(now))
         {
-            // Removing by exact pair so that a value stored by another thread between the read and the
-            // removal survives. An expired read never returns a value either way.
+            // By exact pair, so a value stored by another thread between the read and the removal survives.
             ((ICollection<KeyValuePair<string, Entry>>)_entries).Remove(new KeyValuePair<string, Entry>(key, entry));
             value = default;
             return false;
@@ -345,13 +368,10 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
         return true;
     }
 
-    /// <summary>
-    /// One stored value, its expiry instant, and the lifetime a rolling read restarts.
-    /// </summary>
+    /// <summary>One stored value, its expiry instant, and the lifetime a rolling read restarts.</summary>
     /// <remarks>
-    /// A class with reference equality rather than a record: the dictionary's compare-and-swap operations
-    /// would otherwise run the cached value's own equality, which is extension code on a path that is
-    /// meant to be doing nothing but bookkeeping.
+    /// Reference equality rather than a record, so the dictionary's compare-and-swap operations do not run
+    /// the cached value's own equality.
     /// </remarks>
     private sealed class Entry(TValue value, DateTimeOffset? expiresAt, TimeSpan? lifetime)
     {

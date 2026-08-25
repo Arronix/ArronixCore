@@ -15,12 +15,13 @@
   </ItemGroup>
 
   <!--
-       The platform reading surface behind the hosting facts, the cache namespace gate and the telemetry
-       pump are internal on purpose: they are host mechanics, not contracts. The tests prove their branches
-       directly rather than through a public seam nothing else needs.
+       Host mechanics rather than contracts: the platform reading surface behind the hosting facts, the
+       quiescence gate, and the concrete cache namespace. Arronix.Plugins builds an extension's invocation
+       lifetime on the same gate, and the tests prove the branches directly.
   -->
   <ItemGroup>
     <InternalsVisibleTo Include="Arronix.Common.Tests" />
+    <InternalsVisibleTo Include="Arronix.Plugins" />
   </ItemGroup>
 
   <ItemGroup>

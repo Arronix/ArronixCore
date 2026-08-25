@@ -11,24 +11,21 @@ namespace Arronix.Common.Caching;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A cache is identified by its owning type and its partition name, and that identity carries a shape —
-/// the value type, whether the lifetime runs from storage or from the last read, the default lifetime, and
-/// the namespace it belongs to. Two callers asking for the same identity with different shapes are not
-/// sharing a cache, they are disagreeing about one, so the second is refused. Silently aliasing them would
-/// hand one caller entries that expire by rules it did not ask for, or hand one extension a cache the host
-/// releases when a different extension is torn down.
+/// A cache is named by its releasable namespace, its owning type and its partition, and carries a shape:
+/// the value type, whether the lifetime runs from storage or from the last read, and the default lifetime.
+/// Two callers asking for one name with different shapes are disagreeing about a cache rather than sharing
+/// one, so the second is refused instead of being handed entries that expire by rules it did not ask for.
 /// </para>
 /// <para>
-/// Both types in that identity are recorded as text. The provider outlives the extensions that use it, and
-/// a <see cref="Type"/> kept in a long-lived dictionary keeps its whole load context alive — the exact
-/// leak the releasable namespace exists to prevent, reintroduced by the bookkeeping meant to manage it.
-/// The constructed generic cache instance is the only thing that holds those types, and it lives inside the
-/// namespace that can be taken back.
+/// Both types are recorded as text, including their assembly identity. The provider outlives the
+/// extensions that use it, and a <see cref="Type"/> in a long-lived dictionary keeps its whole load context
+/// alive — the leak the releasable namespace exists to prevent. Assembly identity is part of the name as
+/// well as the shape, so two types that share a full name do not collapse onto one entry and then refuse
+/// each other.
 /// </para>
 /// <para>
-/// Expired entries are never returned, so the sweep is about memory rather than correctness. It runs on
-/// the injected clock's timer, which is what lets a test advance time and observe a sweep without waiting
-/// for one.
+/// Expired entries are never returned, so the sweep is about memory rather than correctness. It runs on the
+/// injected clock's timer.
 /// </para>
 /// </remarks>
 public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
@@ -57,8 +54,19 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
         }
     }
 
-    /// <summary>Gets the fully-qualified names of every cache currently held.</summary>
+    /// <summary>Gets the names of every cache currently held.</summary>
     public IReadOnlyCollection<string> CacheNames => [.. _caches.Keys.Order(StringComparer.Ordinal)];
+
+    /// <summary>
+    /// Gets or sets a hook run inside cache resolution, after the namespace admission is taken and before
+    /// the cache is registered.
+    /// </summary>
+    /// <remarks>
+    /// The seam that makes the creation-versus-release ordering provable without a scheduler race: a test
+    /// begins a release from inside the hook and observes that the release cannot complete while this
+    /// resolution holds its admission. Unset in production.
+    /// </remarks>
+    internal Action? OnResolutionAdmitted { get; set; }
 
     /// <inheritdoc />
     public ICache<TValue> GetCache<TOwner, TValue>(string partition)
@@ -76,7 +84,7 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
         => GetSelfRefreshingCache<TOwner, TValue>(partition, fetch, lifetime, owningNamespace: null);
 
     /// <inheritdoc />
-    public CacheNamespace CreateNamespace(string name)
+    public ICacheNamespace CreateNamespace(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
@@ -96,10 +104,8 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
     /// Removes entries whose lifetime has elapsed, in every cache this provider holds.
     /// </summary>
     /// <remarks>
-    /// Runs on a timer, so it can land at any point in a namespace's release. Each cache is asked to sweep
-    /// only if its namespace still admits work: either the sweep was admitted before the close and release
-    /// waits for it, or it does nothing. It never refuses, because an exception out of a timer callback is
-    /// a failure nobody observes.
+    /// Runs on a timer and so can land at any point in a release. Each cache sweeps only if its namespace
+    /// still admits work, and never refuses: an exception out of a timer callback is a failure nobody sees.
     /// </remarks>
     public void SweepExpired()
     {
@@ -202,18 +208,20 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
         => ((ICollection<KeyValuePair<string, CacheNamespace>>)_namespaces).Remove(
             new KeyValuePair<string, CacheNamespace>(released.Name, released));
 
-    /// <summary>The name a cache is known by: its owner, then its partition.</summary>
-    internal static string NameOf(Type owner, string partition)
-        => string.Create(CultureInfo.InvariantCulture, $"{owner.FullName ?? owner.Name}:{partition}");
-
     /// <summary>
-    /// The text identity of a type, for a record that outlives the type's load context.
+    /// The name a cache is known by: its namespace, its owning type's exact identity, and its partition.
     /// </summary>
     /// <remarks>
-    /// The assembly identity is included because two collectible contexts can each hold a type with the
-    /// same full name, and a shape that could not tell them apart would let one extension's cache be
-    /// handed to another's.
+    /// The same identity the shape records, so two owners the shape would tell apart never collapse onto
+    /// one entry and then refuse each other.
     /// </remarks>
+    internal static string NameOf(Type owner, string partition, string? owningNamespace = null)
+    {
+        var scope = owningNamespace is null ? string.Empty : owningNamespace + "/";
+        return string.Create(CultureInfo.InvariantCulture, $"{scope}{IdentityOf(owner)}:{partition}");
+    }
+
+    /// <summary>The text identity of a type, for a record that outlives the type's load context.</summary>
     private static string IdentityOf(Type type)
         => string.Create(
             CultureInfo.InvariantCulture,
@@ -233,11 +241,13 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
 
         // Resolution is an admitted operation, so a release either waits for this registration or refuses
-        // it. Without the admission there is a window in which a cache is added to a namespace whose
-        // release has already read its contents.
+        // it. Without the admission a cache can be added to a namespace whose release already read its
+        // contents.
         using var admission = owningNamespace?.Enter();
 
-        var name = NameOf(owner, partition);
+        OnResolutionAdmitted?.Invoke();
+
+        var name = NameOf(owner, partition, owningNamespace?.Name);
         var shape = new CacheShape(
             IdentityOf(owner),
             IdentityOf(valueType),

@@ -18,9 +18,10 @@ internal static class CachingRegistration
     /// <param name="configuration">Where the sweep options are read from.</param>
     /// <returns>The same collection, for chaining.</returns>
     /// <remarks>
-    /// One instance, two contracts. The extension-facing <see cref="ICacheProvider"/> and the host-facing
-    /// <see cref="ICacheNamespaceProvider"/> must be the same object, because a host that released
-    /// namespaces on one provider while extensions filled another would release nothing.
+    /// The extension-facing <see cref="ICacheProvider"/> is the authority and namespace control is derived
+    /// from that exact instance. A host that substitutes its own provider therefore either keeps control of
+    /// the caches its extensions fill or is told it cannot, rather than quietly leaving the host releasing
+    /// namespaces on one object while extensions fill another.
     /// </remarks>
     internal static IServiceCollection AddCaching(this IServiceCollection services, IConfiguration configuration)
     {
@@ -30,10 +31,15 @@ internal static class CachingRegistration
             .ValidateDataAnnotations();
 
         services.TryAddSingleton<CacheProvider>();
-        services.TryAddSingleton<ICacheNamespaceProvider>(
-            static provider => provider.GetRequiredService<CacheProvider>());
         services.TryAddSingleton<ICacheProvider>(
-            static provider => provider.GetRequiredService<ICacheNamespaceProvider>());
+            static provider => provider.GetRequiredService<CacheProvider>());
+        services.TryAddSingleton(
+            static provider => provider.GetRequiredService<ICacheProvider>() as ICacheNamespaceProvider
+                ?? throw new InvalidOperationException(
+                    $"The registered {nameof(ICacheProvider)} is a "
+                    + $"'{provider.GetRequiredService<ICacheProvider>().GetType().FullName}', which does not "
+                    + $"implement {nameof(ICacheNamespaceProvider)}. Extensions are handed releasable cache "
+                    + "namespaces, and a host cannot unload an extension whose caches it cannot take back."));
 
         return services;
     }

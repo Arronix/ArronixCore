@@ -4,9 +4,8 @@ namespace Arronix.Common.Caching;
 /// Validates the lifetimes callers hand to the caching surface.
 /// </summary>
 /// <remarks>
-/// A zero or negative lifetime is not a shorter cache, it is an entry that is expired before it is
-/// readable — which reads at the call site as caching and behaves as a leak of the factory's cost onto
-/// every caller. It is refused rather than clamped, because clamping would make the mistake invisible.
+/// A zero or negative lifetime is an entry expired before it is readable. Refused rather than clamped,
+/// because clamping makes the mistake invisible.
 /// </remarks>
 internal static class CacheLifetime
 {

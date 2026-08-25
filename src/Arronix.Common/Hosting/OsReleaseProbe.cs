@@ -7,9 +7,8 @@ namespace Arronix.Common.Hosting;
 /// Reads a Linux distribution's identity out of the freedesktop <c>os-release</c> file.
 /// </summary>
 /// <remarks>
-/// The one probe the platform assembly ships, because it is the one source every mainstream distribution
-/// agrees on. Anything vendor-specific belongs to a platform pack, which is what the probe contract exists
-/// for; shipping a chain of vendor readers here would be the mistake the seam was designed to prevent.
+/// The one probe the platform ships: the source every mainstream distribution agrees on. Vendor-specific
+/// readers belong to platform packs, which is what the probe contract exists for.
 /// </remarks>
 internal sealed class OsReleaseProbe : IOsVersionProbe
 {
@@ -58,13 +57,8 @@ internal sealed class OsReleaseProbe : IOsVersionProbe
         return null;
     }
 
-    /// <summary>
-    /// Reads the <c>KEY=value</c> lines, ignoring comments, blanks and anything without a separator.
-    /// </summary>
-    /// <remarks>
-    /// Quoting is left to <see cref="OsVersionDescriptor.Create"/>, which already strips it, so this does
-    /// not carry a second copy of that rule.
-    /// </remarks>
+    /// <summary>Reads the <c>KEY=value</c> lines, ignoring comments, blanks and lines without a separator.</summary>
+    /// <remarks>Quoting is left to <see cref="OsVersionDescriptor.Create"/>, which already strips it.</remarks>
     private static Dictionary<string, string> Parse(string contents)
     {
         var fields = new Dictionary<string, string>(StringComparer.Ordinal);

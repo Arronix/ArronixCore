@@ -46,6 +46,40 @@ public class PlatformServiceCompositionTests
     }
 
     [Test]
+    public async Task ASubstitutedProviderStaysTheOneTeardownControlsAsync()
+    {
+        var substitute = new NamespacedSubstitute();
+        var services = new ServiceCollection();
+        services.AddSingleton<ICacheProvider>(substitute);
+        services.AddArronixCommon(new ConfigurationBuilder().Build());
+
+        using var provider = services.BuildServiceProvider();
+
+        var hostFacing = provider.GetRequiredService<ICacheNamespaceProvider>();
+
+        Assert.That(provider.GetRequiredService<ICacheProvider>(), Is.SameAs(substitute));
+        Assert.That(hostFacing, Is.SameAs(substitute));
+
+        // The contract is implementable outside this assembly, not just satisfiable by identity: the
+        // substitute creates a namespace, serves a cache from it, and takes it back.
+        var owned = hostFacing.CreateNamespace("plugin:a");
+        var cache = owned.GetCache<PlatformServiceCompositionTests, string>("titles");
+        cache.Set("k", "v");
+
+        Assert.That(cache.Find("k"), Is.EqualTo("v"));
+
+        await owned.ReleaseAsync().ConfigureAwait(false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(owned.IsReleased, Is.True);
+            Assert.Throws<ObjectDisposedException>(() => cache.Find("k"));
+            Assert.Throws<ObjectDisposedException>(
+                () => owned.GetCache<PlatformServiceCompositionTests, string>("more"));
+        });
+    }
+
+    [Test]
     public void TheRuntimeAndOperatingSystemFactsAgreeAboutContainerization()
     {
         using var provider = Build();
@@ -65,6 +99,25 @@ public class PlatformServiceCompositionTests
         using var provider = services.BuildServiceProvider();
 
         Assert.That(provider.GetRequiredService<ICacheProvider>(), Is.TypeOf<SubstituteCacheProvider>());
+    }
+
+    [Test]
+    public void ASubstitutedProviderWithNoNamespaceControlIsRefusedExplicitly()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<ICacheProvider, SubstituteCacheProvider>();
+        services.AddArronixCommon(new ConfigurationBuilder().Build());
+
+        using var provider = services.BuildServiceProvider();
+
+        var failure = Assert.Throws<InvalidOperationException>(
+            () => provider.GetRequiredService<ICacheNamespaceProvider>());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(failure!.Message, Does.Contain(typeof(SubstituteCacheProvider).FullName!));
+            Assert.That(failure.Message, Does.Contain(nameof(ICacheNamespaceProvider)));
+        });
     }
 
     [Test]
@@ -92,6 +145,50 @@ public class PlatformServiceCompositionTests
         var services = new ServiceCollection();
         services.AddArronixCommon(new ConfigurationBuilder().Build());
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>
+    /// A namespace-capable substitute written entirely against the public contract, which is the proof that
+    /// a host really can supply its own and keep extension teardown working.
+    /// </summary>
+    private sealed class NamespacedSubstitute : ICacheNamespaceProvider
+    {
+        private readonly CacheProvider _inner = new(TimeProvider.System);
+
+        public ICacheNamespace CreateNamespace(string name) => new Group(_inner.CreateNamespace(name));
+
+        public ICache<TValue> GetCache<TOwner, TValue>(string partition)
+            => _inner.GetCache<TOwner, TValue>(partition);
+
+        public ICache<TValue> GetRollingCache<TOwner, TValue>(string partition, TimeSpan defaultLifetime)
+            => _inner.GetRollingCache<TOwner, TValue>(partition, defaultLifetime);
+
+        public ISelfRefreshingCache<TValue> GetSelfRefreshingCache<TOwner, TValue>(
+            string partition,
+            Func<CancellationToken, Task<IReadOnlyDictionary<string, TValue>>> fetch,
+            TimeSpan? lifetime = null)
+            => _inner.GetSelfRefreshingCache<TOwner, TValue>(partition, fetch, lifetime);
+
+        private sealed class Group(ICacheNamespace inner) : ICacheNamespace
+        {
+            public string Name => inner.Name;
+
+            public bool IsReleased => inner.IsReleased;
+
+            public ValueTask ReleaseAsync() => inner.ReleaseAsync();
+
+            public ICache<TValue> GetCache<TOwner, TValue>(string partition)
+                => inner.GetCache<TOwner, TValue>(partition);
+
+            public ICache<TValue> GetRollingCache<TOwner, TValue>(string partition, TimeSpan defaultLifetime)
+                => inner.GetRollingCache<TOwner, TValue>(partition, defaultLifetime);
+
+            public ISelfRefreshingCache<TValue> GetSelfRefreshingCache<TOwner, TValue>(
+                string partition,
+                Func<CancellationToken, Task<IReadOnlyDictionary<string, TValue>>> fetch,
+                TimeSpan? lifetime = null)
+                => inner.GetSelfRefreshingCache<TOwner, TValue>(partition, fetch, lifetime);
+        }
     }
 
     private sealed class SubstituteCacheProvider : ICacheProvider

@@ -289,21 +289,18 @@ internal sealed class HostCompositionTests
     }
 
     [Test]
-    public void TheHostSuppliesEveryPlatformServiceAnExtensionContextRequires()
+    public void TheCachingAndHostingContractsAreRegisteredAndTelemetryAndEventsAreNotYet()
     {
         using var provider = Build();
 
-        // The five services a package with an entry assembly cannot be activated without. A host missing
-        // any of them quarantines every such package before it contributes anything, so this is the
-        // registration list that decides whether an ordinary server can run the extension it ships with.
+        // Three of the five services a package with an entry assembly cannot be activated without. The
+        // other two land with their own slices, and until they do this host still refuses such a package.
         using (new AssertionScope())
         {
             provider.GetService<ICacheProvider>().Should().NotBeNull();
             provider.GetService<IHostRuntimeInfo>().Should().NotBeNull();
             provider.GetService<IOperatingSystemInfo>().Should().NotBeNull();
 
-            // Not yet: the telemetry pipeline and the event bus land with their own slices, and until they
-            // do this host still refuses to activate a package that carries an entry assembly.
             provider.GetRequiredService<PluginPlatformServices>()
                 .MissingRequiredServices()
                 .Should()

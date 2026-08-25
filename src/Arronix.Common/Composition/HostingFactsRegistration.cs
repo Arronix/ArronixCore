@@ -27,6 +27,10 @@ internal static class HostingFactsRegistration
         services.TryAddEnumerable(
             ServiceDescriptor.Singleton<IOsVersionProbe, OsReleaseProbe>(static _ => new OsReleaseProbe()));
 
+        // No detector by default. A host that can be started by the service control manager registers one;
+        // guessing from a missing console would make the answer mean something else entirely.
+        services.TryAddSingleton<IWindowsServiceDetector, UndetectedWindowsService>();
+
         services.TryAddSingleton<IOperatingSystemInfo, OperatingSystemInfo>();
         services.TryAddSingleton<IHostRuntimeInfo, HostRuntimeInfo>();
 

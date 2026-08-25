@@ -78,6 +78,22 @@ public class CacheProviderTests
     }
 
     [Test]
+    public void RollingExpiry_IsRestartedByEnumeratingValues()
+    {
+        var cache = _provider.GetRollingCache<Owner, string>("sessions", TimeSpan.FromMinutes(10));
+        cache.Set("k", "v");
+
+        for (var read = 0; read < 5; read++)
+        {
+            _clock.Advance(TimeSpan.FromMinutes(9));
+            Assert.That(cache.Values, Is.EquivalentTo(new[] { "v" }), "enumerating hands out the value");
+        }
+
+        _clock.Advance(TimeSpan.FromMinutes(11));
+        Assert.That(cache.Values, Is.Empty);
+    }
+
+    [Test]
     public void ExpiredEntries_AreCountedUntilSweptAndAreNeverReturned()
     {
         var cache = _provider.GetCache<Owner, string>("titles");

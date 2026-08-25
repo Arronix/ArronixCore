@@ -6,48 +6,46 @@ namespace Arronix.Common.Hosting;
 /// How this host process was started, read once at composition.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Immutable, as the contract requires. Mutable lifecycle state belongs to the framework's application
-/// lifetime; everything here is a fact about the process that was already true before the platform was
-/// composed.
-/// </para>
-/// <para>
-/// Containerization is not detected a second time. It is taken from <see cref="IOperatingSystemInfo"/>,
-/// which makes the two contracts' agreement structural rather than a coincidence two detectors happen to
-/// share — a disagreement between them would have an extension mapping paths one way and reporting health
-/// another.
-/// </para>
+/// Immutable, as the contract requires. Containerization is taken from <see cref="IOperatingSystemInfo"/>
+/// rather than detected again, so the two contracts agree structurally.
 /// </remarks>
 public sealed class HostRuntimeInfo : IHostRuntimeInfo
 {
     /// <summary>Initializes a new instance of the <see cref="HostRuntimeInfo"/> class.</summary>
     /// <param name="operatingSystem">The operating-system facts, which own containerization.</param>
     /// <param name="clock">The clock, used only when the process start time cannot be read.</param>
+    /// <param name="serviceDetector">Whether the service control manager started this process.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    public HostRuntimeInfo(IOperatingSystemInfo operatingSystem, TimeProvider clock)
-        : this(operatingSystem, clock, PlatformFacts.Instance)
+    public HostRuntimeInfo(
+        IOperatingSystemInfo operatingSystem,
+        TimeProvider clock,
+        IWindowsServiceDetector serviceDetector)
+        : this(operatingSystem, clock, serviceDetector, PlatformFacts.Instance)
     {
     }
 
-    internal HostRuntimeInfo(IOperatingSystemInfo operatingSystem, TimeProvider clock, IPlatformFacts facts)
+    internal HostRuntimeInfo(
+        IOperatingSystemInfo operatingSystem,
+        TimeProvider clock,
+        IWindowsServiceDetector serviceDetector,
+        IPlatformFacts facts)
     {
         ArgumentNullException.ThrowIfNull(operatingSystem);
         ArgumentNullException.ThrowIfNull(clock);
+        ArgumentNullException.ThrowIfNull(serviceDetector);
         ArgumentNullException.ThrowIfNull(facts);
 
-        // A host that cannot read its own process start time reports when the platform was composed, which
-        // is the earliest instant this code can honestly speak for. Reporting a default date would put a
-        // wrong uptime on every status page that subtracts it from now.
+        // A host that cannot read its process start time reports when the platform was composed: the
+        // earliest instant this code can speak for, and not a default date every status page would subtract.
         StartTime = facts.ProcessStartTime ?? clock.GetUtcNow();
         ExecutingApplication = facts.ProcessPath;
         IsAdministrator = facts.IsPrivilegedProcess;
         IsContainerized = operatingSystem.IsContainerized;
         IsUserInteractive = facts.IsUserInteractive;
 
-        // Windows services run in session 0 and the platform reports that directly. There is deliberately
-        // no equivalent derived elsewhere: a systemd unit is not a Windows service, and answering true for
-        // one here would make the property mean two different things on two platforms.
-        IsWindowsService = facts.IsWindows && !facts.IsUserInteractive;
+        // Answered by the registered detector, never derived from interactivity: a non-interactive Windows
+        // process may be a scheduled task or a container entry point. False off Windows by definition.
+        IsWindowsService = facts.IsWindows && serviceDetector.IsWindowsService;
     }
 
     /// <inheritdoc />
@@ -55,9 +53,8 @@ public sealed class HostRuntimeInfo : IHostRuntimeInfo
 
     /// <inheritdoc />
     /// <remarks>
-    /// The platform's own answer. On Windows a service reports false here, which is the same fact
-    /// <see cref="IsWindowsService"/> reports from the other side. On Unix the platform reports every
-    /// process as interactive, so the value there is what the platform said and not a derived claim.
+    /// The platform's own answer. On Unix every process is reported interactive, so the value there is
+    /// what the platform said rather than a derived claim.
     /// </remarks>
     public bool IsUserInteractive { get; }
 
@@ -66,9 +63,9 @@ public sealed class HostRuntimeInfo : IHostRuntimeInfo
 
     /// <inheritdoc />
     /// <remarks>
-    /// Windows only, as the member's name says. A process started by systemd or launchd is not a Windows
-    /// service and is reported as false; a host that needs to know about those needs a fact of its own
-    /// rather than this one widened to mean "started by something".
+    /// Windows only, as the member's name says, and answered by the registered
+    /// <see cref="IWindowsServiceDetector"/>. A host that registers none reports false, and a systemd or
+    /// launchd process reports false because it is not a Windows service.
     /// </remarks>
     public bool IsWindowsService { get; }
 

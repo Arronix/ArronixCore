@@ -7,17 +7,9 @@ namespace Arronix.Common.Hosting;
 /// The platform's answer to "what am I running on", read once at composition.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Immutable by construction. Every value is established when the host is composed and never re-read,
-/// because the operating system does not change under a running process and a property that re-probed on
-/// every access would put a file read behind an extension's property getter.
-/// </para>
-/// <para>
-/// The identity comes from the registered <see cref="IOsVersionProbe"/> chain first, in registration order,
-/// then from what the BCL can state about the platform it is running on. When neither can answer, the
-/// result is <see cref="UnknownName"/> rather than a guess: an extension that maps behaviour by
-/// distribution must be able to tell "I do not know" from "Ubuntu".
-/// </para>
+/// Established once at composition and never re-read, so no file read sits behind an extension's property
+/// getter. Identity comes from the registered <see cref="IOsVersionProbe"/> chain in registration order,
+/// then from the BCL; when neither answers the result is <see cref="UnknownName"/> rather than a guess.
 /// </remarks>
 public sealed class OperatingSystemInfo : IOperatingSystemInfo
 {
@@ -67,16 +59,11 @@ public sealed class OperatingSystemInfo : IOperatingSystemInfo
     /// <inheritdoc />
     public bool IsContainerized { get; }
 
-    /// <summary>
-    /// Takes the first answer from the first supported probe, in registration order.
-    /// </summary>
+    /// <summary>Takes the first answer from the first supported probe, in registration order.</summary>
     /// <remarks>
-    /// <see cref="IOsVersionProbe"/> requires a probe that ran and could not determine an identity to
-    /// return <see langword="null"/>, precisely so that "no answer" is ordinary and needs no exception.
-    /// A probe that throws has broken that contract, and probes are host-trusted platform-pack code rather
-    /// than extension code — so it is reported with the probe's identity rather than absorbed as another
-    /// way of saying nothing. Swallowing it would leave a host quietly misidentifying its own operating
-    /// system with no evidence anywhere that a probe was even installed.
+    /// The contract requires a probe that cannot answer to return <see langword="null"/>. A probe that
+    /// throws has broken it, and probes are host-trusted, so the failure is reported with the probe's
+    /// identity rather than absorbed as another way of saying nothing.
     /// </remarks>
     /// <exception cref="InvalidOperationException">A probe threw instead of answering.</exception>
     private static OsVersionDescriptor? FromProbes(IEnumerable<IOsVersionProbe> probes)
@@ -136,8 +123,7 @@ public sealed class OperatingSystemInfo : IOperatingSystemInfo
 
         if (facts.IsLinux)
         {
-            // The kernel version is the only thing left once no release file answered, and it is a
-            // truthful statement about a Linux system whose distribution is genuinely unidentified.
+            // No release file answered, so the kernel version is what is truthfully known.
             return OsVersionDescriptor.Create("Linux", version, description);
         }
 

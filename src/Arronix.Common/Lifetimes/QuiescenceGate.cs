@@ -1,21 +1,14 @@
-namespace Arronix.Common.Caching;
+namespace Arronix.Common.Lifetimes;
 
 /// <summary>
-/// Admits cache work while a namespace is open, and reports when the work that was admitted has finished.
+/// Admits work while it is open, and reports when the work it admitted has finished.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A cache entry produced by a plugin factory is a plugin object, and the closed generic cache instance
-/// holding it is a plugin type. Removing the caches is therefore not enough on its own: a factory still
-/// running holds both, and the collectible context cannot be unloaded while it does. This gate is the
-/// thing that makes "the namespace is released" mean "and nothing is still producing values into it".
-/// </para>
-/// <para>
-/// It is a counter rather than a lock because the operations it admits are awaited. Nothing here is
-/// thread-affine and nothing is held across a resumption on another thread.
-/// </para>
+/// The primitive behind "stop admitting, then wait for what is already running". A counter rather than a
+/// lock, because the admitted work is awaited: nothing here is thread-affine and an admission may be held
+/// across a resumption on another thread.
 /// </remarks>
-internal sealed class CacheOperationGate
+internal sealed class QuiescenceGate
 {
     private readonly object _gate = new();
     private TaskCompletionSource? _drained;
@@ -34,9 +27,21 @@ internal sealed class CacheOperationGate
         }
     }
 
-    /// <summary>Admits one operation, or reports that the namespace is closed.</summary>
+    /// <summary>Gets how many admitted operations are still running.</summary>
+    internal int Admitted
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _admitted;
+            }
+        }
+    }
+
+    /// <summary>Admits one operation, or reports that the gate is closed.</summary>
     /// <param name="ticket">The admission, released when disposed.</param>
-    /// <returns><see langword="false"/> when the namespace is closed to new work.</returns>
+    /// <returns><see langword="false"/> when the gate admits no further work.</returns>
     internal bool TryEnter(out IDisposable? ticket)
     {
         lock (_gate)
@@ -73,8 +78,9 @@ internal sealed class CacheOperationGate
         completed?.TrySetResult();
     }
 
-    /// <summary>Waits for every admitted operation to finish. Closes the gate first.</summary>
-    /// <returns>A task that completes when nothing is left running in this namespace.</returns>
+    /// <summary>Closes the gate, then waits for every admitted operation to finish.</summary>
+    /// <returns>A task that completes when nothing admitted is still running.</returns>
+    /// <remarks>Closing is part of the operation: a drain over an open gate need never end.</remarks>
     internal Task DrainAsync()
     {
         Close();
@@ -109,9 +115,10 @@ internal sealed class CacheOperationGate
         completed?.TrySetResult();
     }
 
-    private sealed class Ticket(CacheOperationGate owner) : IDisposable
+    /// <summary>One admission. Releasing twice releases once.</summary>
+    private sealed class Ticket(QuiescenceGate owner) : IDisposable
     {
-        private CacheOperationGate? _owner = owner;
+        private QuiescenceGate? _owner = owner;
 
         public void Dispose() => Interlocked.Exchange(ref _owner, null)?.Exit();
     }

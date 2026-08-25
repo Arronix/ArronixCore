@@ -7,9 +7,8 @@ namespace Arronix.Common.Hosting;
 /// <param name="IsDocker">Whether that runtime was identified as Docker.</param>
 /// <param name="IsPodman">Whether that runtime was identified as Podman.</param>
 /// <remarks>
-/// Containerized without either flag is a real and reportable answer: the process is demonstrably inside a
-/// container whose runtime left no marker this platform recognizes. Reporting Docker because something is
-/// a container would be a guess, and an extension mapping paths on that guess would map them wrongly.
+/// Containerized without either flag is a real answer: a container whose runtime left no marker this
+/// platform recognizes. Naming a runtime on that evidence would be a guess.
 /// </remarks>
 internal readonly record struct ContainerDetection(bool IsContainerized, bool IsDocker, bool IsPodman)
 {
@@ -21,17 +20,9 @@ internal readonly record struct ContainerDetection(bool IsContainerized, bool Is
 /// Decides whether the host is inside a container, and which runtime put it there.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The signals are the ones the runtimes themselves publish, in order of how specific they are. Podman
-/// writes <c>/run/.containerenv</c> and sets <c>container=podman</c>; Docker writes <c>/.dockerenv</c>;
-/// both, and every orchestrator built on them, set <c>DOTNET_RUNNING_IN_CONTAINER</c> when the image was
-/// built from Microsoft's base images. The cgroup path is the last resort and the least reliable, because
-/// cgroup v2 hosts routinely show nothing useful there.
-/// </para>
-/// <para>
-/// Podman is tested before Docker because a Podman container built from a Docker-compatible image can
-/// carry both markers, and in that case it is a Podman container.
-/// </para>
+/// The signals the runtimes publish, most specific first. Podman is tested before Docker because a Podman
+/// container built from a Docker-compatible image can carry both markers. The cgroup path is the last
+/// resort: cgroup v2 hosts routinely show nothing useful there.
 /// </remarks>
 internal static class ContainerDetector
 {
@@ -67,8 +58,7 @@ internal static class ContainerDetector
             || !string.IsNullOrWhiteSpace(declared)
             || HasContainerCgroup(facts))
         {
-            // Inside something, and nothing said what. That is the honest answer, and it is why the two
-            // runtime flags are separate from the containerized one rather than derived from it.
+            // Inside something, and nothing said what.
             return new ContainerDetection(IsContainerized: true, IsDocker: false, IsPodman: false);
         }
 

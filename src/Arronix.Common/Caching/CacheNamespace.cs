@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Linq;
 using Arronix.Abstractions.Caching;
+using Arronix.Common.Lifetimes;
 
 namespace Arronix.Common.Caching;
 
@@ -9,26 +10,20 @@ namespace Arronix.Common.Caching;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Release is a sequence, not a dictionary removal, because every step of it is load-bearing for
-/// unloadability. New work is refused first; everything already admitted — including a resolution that is
-/// halfway through registering a cache — is waited for; only then are the values, keys and fetch delegates
-/// dropped and the exact cache objects removed. Dropping references before the wait would not make them
-/// unreachable, it would only make them invisible.
+/// Release is a sequence: refuse new work, wait for everything already admitted, then drop the values and
+/// delegates and remove the exact cache objects. Dropping references before the wait would make them
+/// invisible rather than unreachable.
 /// </para>
 /// <para>
-/// Resolving a cache is itself an admitted operation, which is what makes creation and release
-/// linearizable: a caller either gets in before the close and is then waited for, or is refused. There is
-/// no third outcome in which a cache is registered into a namespace that has finished releasing.
+/// Resolving a cache is itself an admitted operation, so creation and release are linearizable: a caller
+/// gets in before the close and is waited for, or is refused.
 /// </para>
-/// <para>
-/// Handing this object to an extension would be a mistake, so nothing does. The extension receives it
-/// through the plain <see cref="ICacheProvider"/> face it has always had.
-/// </para>
+/// <para>An extension never sees this type; it holds the plain <see cref="ICacheProvider"/> face.</para>
 /// </remarks>
-public sealed class CacheNamespace : ICacheProvider
+internal sealed class CacheNamespace : ICacheNamespace
 {
     private readonly CacheProvider _owner;
-    private readonly CacheOperationGate _gate = new();
+    private readonly QuiescenceGate _gate = new();
     private readonly ConcurrentDictionary<string, byte> _caches = new(StringComparer.Ordinal);
     private readonly object _releaseGate = new();
     private Task? _release;
@@ -39,22 +34,17 @@ public sealed class CacheNamespace : ICacheProvider
         Name = name;
     }
 
-    /// <summary>Gets the group's name.</summary>
+    /// <inheritdoc />
     public string Name { get; }
 
-    /// <summary>
-    /// Gets a value indicating whether this namespace has stopped admitting work.
-    /// </summary>
-    /// <remarks>
-    /// True from the instant release begins rather than from the instant it finishes, because the
-    /// observable consequence — every cache in the group refuses — starts at the close.
-    /// </remarks>
+    /// <inheritdoc />
+    /// <remarks>True from the instant release begins, which is when its caches start refusing.</remarks>
     public bool IsReleased => _gate.IsClosed;
 
     /// <summary>Gets the number of caches currently held by this namespace.</summary>
-    public int CacheCount => _caches.Count;
+    internal int CacheCount => _caches.Count;
 
-    internal CacheOperationGate Gate => _gate;
+    internal QuiescenceGate Gate => _gate;
 
     /// <inheritdoc />
     public ICache<TValue> GetCache<TOwner, TValue>(string partition)
@@ -71,15 +61,10 @@ public sealed class CacheNamespace : ICacheProvider
         TimeSpan? lifetime = null)
         => _owner.GetSelfRefreshingCache<TOwner, TValue>(partition, fetch, lifetime, this);
 
-    /// <summary>
-    /// Closes the namespace to new work, waits for the work already running, drops what its caches held,
-    /// and removes them from the provider.
-    /// </summary>
-    /// <returns>A task that completes when nothing in this namespace is running or referenced any more.</returns>
+    /// <inheritdoc />
     /// <remarks>
-    /// Idempotent, and every caller awaits the same completion. A second caller returning early while the
-    /// first was still draining would report the namespace released while a factory was still running in
-    /// it, which is the exact claim teardown must not make.
+    /// A second caller awaits the same completion rather than returning early, which would report the
+    /// namespace released while a factory was still running in it.
     /// </remarks>
     public ValueTask ReleaseAsync()
     {
@@ -108,11 +93,10 @@ public sealed class CacheNamespace : ICacheProvider
 
     private async Task ReleaseCoreAsync()
     {
-        // Nothing new from here. Everything below runs against a set that can only shrink.
         _gate.Close();
 
-        // Includes any resolution that was mid-registration when the close landed, so the set read after
-        // this is the complete one.
+        // Waits for any resolution that was mid-registration when the close landed, so the set read below
+        // is the complete one.
         await _gate.DrainAsync().ConfigureAwait(false);
 
         foreach (var name in _caches.Keys.ToArray())

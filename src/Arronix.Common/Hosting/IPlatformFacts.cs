@@ -6,18 +6,9 @@ namespace Arronix.Common.Hosting;
 /// Everything the host reads about the machine it is running on, behind one seam.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The point of the seam is that the branches below it are provable. Docker, Podman, an ordinary host, an
-/// elevated process and a service are five different answers derived from environment variables and files
-/// that a test must not create on the developer's machine, so the reads are named here and substituted
-/// there. Without this, the only way to cover the container branches is to run the tests in a container,
-/// which means they are not covered.
-/// </para>
-/// <para>
-/// It is internal because it is a reading surface, not a platform abstraction. An extension asks
-/// <c>IHostRuntimeInfo</c> and <c>IOperatingSystemInfo</c> what is true; nothing outside this assembly needs
-/// to ask where the answer came from.
-/// </para>
+/// Docker, Podman, an ordinary host, an elevated process and a service are answers derived from files and
+/// environment variables a test must not create on the developer's machine, so the reads are named here and
+/// substituted there. Internal: it is a reading surface, not a platform abstraction.
 /// </remarks>
 internal interface IPlatformFacts
 {
