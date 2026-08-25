@@ -63,11 +63,11 @@ runtime assembly. Authors then add only the format, language, and media-domain p
 actually composes.
 
 An admitted package is handed five platform services and nothing more of the host: `ICacheProvider`,
-`ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`. Each is scoped to the
-package that receives it — its own cache namespace, its own attribution, its own publication and
-subscription rights — and each is a real implementation an ordinary server composes, not a seam a test fills
-in. `IHostRuntimeInfo` and `IOperatingSystemInfo` answer only what the host can establish; a fact it cannot
-establish is reported absent rather than guessed.
+`ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`. Three of them are
+wrapped in that package's authority — its own cache namespace, its own attribution, its own publication and
+subscription rights. The other two are immutable, shared, read-only facts about the process and the machine,
+and answer only what the host can establish: a fact it cannot establish is reported absent rather than
+guessed. All five are real implementations an ordinary server composes, not seams a test fills in.
 
 The CLR types needed to cross generated and Host assembly boundaries remain public only where the runtime
 requires that visibility. They and their erased members are `EditorBrowsable(Never)`, and concrete semantic
@@ -203,9 +203,15 @@ is resident. What a media contract *contains* is not discovered by enumeration.
 - An extension subscribes to its own event types and to a closed platform allow-list, proved against the
   assemblies its package actually owns. Absent ownership information refuses a non-platform subscription
   rather than permitting it, and delivery is by the event's runtime type.
-- A cache belongs to the namespace it was resolved through, and releasing that namespace drops its values,
-  its factory delegates and its constructed generic types. A provider outlives every extension, so nothing
-  it holds may name an extension's type.
+- A cache belongs to the namespace it was resolved through. An active extension's types, values and
+  delegates may be held inside that releasable namespace and nowhere else, and releasing it drops them —
+  a provider outlives every extension, so anything of an extension's that outlived its namespace would
+  outlive the extension.
+- Contributing a telemetry sink and shaping an extension's own telemetry are two privileges. A sink reads
+  the whole post-redaction stream, so it implies the network privilege and an operator grants it as well as
+  the package declaring it. An enricher or a filter is offered only the events its own extension raised and
+  no sink to send them to, so it implies neither; and a contributed filter cannot suppress an event at
+  error severity or above.
 - A media item type identifies exactly one media kind. Two admitted kinds closed over one item type are
   refused at kind admission, whether or not any provider pairs with it, because every lookup keyed on an
   item type would otherwise depend on iteration order.

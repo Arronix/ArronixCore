@@ -269,7 +269,8 @@ work does not substitute for closing an earlier dependency.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
-`IOperatingSystemInfo`, and activates the Movies package it ships with. The active G07 gate is again
+`IOperatingSystemInfo`, and activates an independently published Movies package installed beside it. The
+active G07 gate is again
 dynamic typed Client loading. Later gates cover compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
@@ -289,8 +290,9 @@ duplicated checklist drifting from current state.
   at registration; that is erasure at the sanctioned boundary, not authoring vocabulary.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
-- The five platform services are implemented and an ordinary `Arronix.Api` server now activates the Movies
-  package it ships with; `Arronix.Api.Tests` proves it through the real `Program` composition. Their residual
+- The five platform services are implemented and an ordinary `Arronix.Api` server now activates an
+  independently published Movies package installed beside it; `Arronix.Api.Tests` stages the published
+  Movies and Video packages and proves it through the real `Program` composition. Their residual
   debt is what the threat model already names and this work did not take: T-18, no quota on `ICacheProvider`,
   `IPluginPaths.TempFolder` or `IEventPublisher` publication rate, so a package can still exhaust memory,
   disk or the bus; and T-19, `IHostRuntimeInfo` tells a package more about the process than a package has
@@ -306,11 +308,10 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-26) reports 3,124 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,426 total cases across 14 test projects. Of the skips, 301 are Movies cases
-  and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
-  solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
-  claim must report its observed skip count and ratchet result.
+- The current one-command full-solution run (2026-08-26) reports 3,141 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,443 total cases across 14 test projects. Of the skips, 301 are Movies cases
+  and one is an architecture case; all are registered in the compatibility ledger. Every later
+  passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The
   regression sources that name `Movie` are locked by the compatibility ledger, so the import is stated once
   in `GlobalUsings.cs` rather than repeated per file; no locked source changed and no ledger transition was

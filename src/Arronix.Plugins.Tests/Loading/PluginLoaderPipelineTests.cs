@@ -267,6 +267,50 @@ public sealed class PluginLoaderPipelineTests
         result.Id.Should().BeNull("the declaration was too broken to yield an identifier");
     }
 
+    /// <remarks>
+    /// Refused before the entry assembly is staged or loaded, because a package that may not read the
+    /// diagnostic stream must not get to run a line first.
+    /// </remarks>
+    [Test]
+    public async Task AnUnapprovedSinkIsRefusedBeforeItRuns()
+    {
+        Install("collector", Manifest("collector", capabilities: "\"telemetry-sink\""));
+
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
+
+        using var assertions = new AssertionScope();
+        result.State.Should().Be(PluginState.Quarantined);
+        result.ErrorCode.Should().Be(CoreErrorCode.PluginCapabilityMissing);
+        result.Message.Should().Contain(nameof(PluginRuntimeOptions.TrustedSinks));
+    }
+
+    [Test]
+    public async Task AnApprovedSinkIsAdmitted()
+    {
+        Install("collector", Manifest("collector", capabilities: "\"telemetry-sink\""), ContractAssemblyPath);
+        _options.TrustedSinks.Add("collector");
+
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
+
+        result.ErrorCode.Should().NotBe(
+            CoreErrorCode.PluginCapabilityMissing,
+            "the operator named this extension, which is the whole of what the grant is");
+    }
+
+    /// <remarks>
+    /// The narrower privilege is the package's own to declare. It reads only the events that package
+    /// raised, so there is nothing for an operator to approve on anyone else's behalf.
+    /// </remarks>
+    [Test]
+    public async Task ShapingYourOwnTelemetryNeedsNoOperatorApproval()
+    {
+        Install("shaper", Manifest("shaper", capabilities: "\"telemetry-processing\""), ContractAssemblyPath);
+
+        var result = (await CreateLoader().LoadAllAsync(NoOpAdmission.Instance)).Should().ContainSingle().Which;
+
+        result.ErrorCode.Should().NotBe(CoreErrorCode.PluginCapabilityMissing);
+    }
+
     [Test]
     public async Task TwoExtensionsClaimingOneIdentifierAreBothQuarantined()
     {

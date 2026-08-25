@@ -109,7 +109,8 @@
           "network",
           "storage",
           "telemetry-sink",
-          "language"
+          "language",
+          "telemetry-processing"
         ]
       }
     },

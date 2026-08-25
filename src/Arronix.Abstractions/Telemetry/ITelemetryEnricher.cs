@@ -2,12 +2,19 @@
 namespace Arronix.Abstractions.Telemetry;
 
 /// <summary>
-/// Adds context to every telemetry event before it is handed to the sinks.
+/// Adds context to a telemetry event before it is handed to the sinks.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Enrichment is contributed by whoever owns the subsystem being described, because the platform cannot
-/// know what facts a given deployment wants attached. Enrichers run in registration order, each
-/// receiving the output of the previous one.
+/// know what facts a given deployment wants attached. Enrichers run in registration order, each receiving
+/// the output of the previous one.
+/// </para>
+/// <para>
+/// Which events one is offered depends on who registered it. A host-registered enricher is offered every
+/// event. One contributed by an extension is offered only the events that extension raised, and requires
+/// <see cref="Plugins.Capability.TelemetryProcessing"/>.
+/// </para>
 /// </remarks>
 public interface ITelemetryEnricher
 {
@@ -19,5 +26,9 @@ public interface ITelemetryEnricher
     /// The enriched event, or the argument unchanged when this enricher has nothing to add. Events are
     /// immutable, so implementations return a copy rather than mutating the argument.
     /// </returns>
+    /// <remarks>
+    /// The host restores what an event's identity is made of before the next enricher sees it: an
+    /// identifier, timestamp, severity, origin and correlation identifier are the host's to state.
+    /// </remarks>
     TelemetryEvent Enrich(TelemetryEvent telemetryEvent);
 }

@@ -5,10 +5,18 @@ namespace Arronix.Abstractions.Telemetry;
 /// Decides whether a telemetry event is worth sending.
 /// </summary>
 /// <remarks>
-/// Filters are contributed by whichever component understands the noise it produces — a storage
-/// provider knows which of its error codes are routine, an indexer knows which upstream responses are
-/// not worth reporting. That is what allows the telemetry pipeline itself to reference none of them.
-/// A single filter returning <see langword="false"/> drops the event for every sink.
+/// <para>
+/// Filters are contributed by whichever component understands the noise it produces — a storage provider
+/// knows which of its error codes are routine, an indexer knows which upstream responses are not worth
+/// reporting. That is what allows the telemetry pipeline itself to reference none of them.
+/// </para>
+/// <para>
+/// What a filter can suppress depends on who registered it. A host-registered filter returning
+/// <see langword="false"/> drops the event for every sink. One contributed by an extension requires
+/// <see cref="Plugins.Capability.TelemetryProcessing"/> and is asked only about the events that extension
+/// raised, and only below <see cref="TelemetrySeverity.Error"/>: an extension may quiet its own noise, not
+/// the host, another extension, or anything serious enough that an operator would be misled by its absence.
+/// </para>
 /// </remarks>
 public interface ITelemetryEventFilter
 {

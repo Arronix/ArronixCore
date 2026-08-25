@@ -56,6 +56,9 @@ public static class CapabilityNames
     /// <summary>The wire name of <see cref="Capability.Language"/>.</summary>
     public const string Language = "language";
 
+    /// <summary>The wire name of <see cref="Capability.TelemetryProcessing"/>.</summary>
+    public const string TelemetryProcessing = "telemetry-processing";
+
     /// <summary>
     /// Reads a wire name.
     /// </summary>
@@ -81,6 +84,7 @@ public static class CapabilityNames
             case Storage: capability = Capability.Storage; return true;
             case TelemetrySink: capability = Capability.TelemetrySink; return true;
             case Language: capability = Capability.Language; return true;
+            case TelemetryProcessing: capability = Capability.TelemetryProcessing; return true;
             default: capability = default; return false;
         }
     }
@@ -108,6 +112,7 @@ public static class CapabilityNames
         Capability.Storage => Storage,
         Capability.TelemetrySink => TelemetrySink,
         Capability.Language => Language,
+        Capability.TelemetryProcessing => TelemetryProcessing,
         _ => throw new ArgumentOutOfRangeException(nameof(capability))
     };
 }

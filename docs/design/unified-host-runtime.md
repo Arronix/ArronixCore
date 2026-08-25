@@ -977,7 +977,7 @@ public enum Capability
     /// plan's vocabulary entirely.</summary>
     ImportList = 10,
     // Infrastructure
-    Network = 11, Storage = 12, TelemetrySink = 13,
+    Network = 11, Storage = 12, TelemetrySink = 13, Language = 14, TelemetryProcessing = 15,
 }
 
 public static class CapabilityNames
@@ -996,6 +996,8 @@ public static class CapabilityNames
     public const string Network = "network";
     public const string Storage = "storage";
     public const string TelemetrySink = "telemetry-sink";
+    public const string Language = "language";
+    public const string TelemetryProcessing = "telemetry-processing";
 
     public static bool TryParse(string name, out Capability capability);
     public static string ToWireName(Capability capability);
@@ -1110,9 +1112,9 @@ public interface IPluginRegistry
     // --- platform participation -------------------------------------
     IPluginRegistry AddScheduledJob(IScheduledJob job, string schedule);      // (ungated)
     IPluginRegistry AddHealthContributor(IHealthContributor contributor);     // (ungated)
-    IPluginRegistry AddTelemetryEnricher(ITelemetryEnricher enricher);        // (ungated)
-    IPluginRegistry AddTelemetryEventFilter(ITelemetryEventFilter filter);    // (ungated)
-    IPluginRegistry AddTelemetrySink(ITelemetrySink sink);                    // TelemetrySink
+    IPluginRegistry AddTelemetryEnricher(ITelemetryEnricher enricher);        // TelemetryProcessing
+    IPluginRegistry AddTelemetryEventFilter(ITelemetryEventFilter filter);    // TelemetryProcessing
+    IPluginRegistry AddTelemetrySink(ITelemetrySink sink);                    // TelemetrySink + operator grant
     IPluginRegistry AddRedactionRules(IRedactionRuleProvider provider);       // (implied by the secret's owner)
     IPluginRegistry AddDiacriticFolding(IDiacriticFoldingProvider provider);  // Parsing | Renaming
     IPluginRegistry AddOutboundHttpInterceptor(IOutboundHttpInterceptor i);   // Indexing
@@ -1377,7 +1379,8 @@ contract in it has an `IPluginRegistry` method and vice versa.
 | `IOutboundHttpInterceptor` | `indexing` |
 | `IFileSystem` | `storage` (handed over as `ScopedFileSystem`) |
 | `IFileTransferService` | `import` |
-| `ITelemetrySink` | `telemetry-sink` |
+| `ITelemetrySink` | `telemetry-sink`, plus an operator naming the extension in `Arronix:Plugins:TrustedSinks` |
+| `ITelemetryEnricher`, `ITelemetryEventFilter` | `telemetry-processing` |
 | `IRedactionRuleProvider` | implied by the capability owning the secret |
 | `IDiacriticFoldingProvider` | `parsing` \| `renaming` |
 | `IMediaShapeProvider`, `IMediaItemSource` | `media-kind` |
@@ -1393,7 +1396,13 @@ contract in it has an `IPluginRegistry` method and vice versa.
 | `NotifierRegistration` | `notification` |
 | `MetadataSourceRegistration` | `metadata` |
 | `ImportListRegistration` | `import-list` |
-| **ungated** | `ITelemetryEmitter`, `ITelemetryEnricher`, `ITelemetryEventFilter`, `IHealthContributor`, `IPluginPaths`, the `ICacheProvider` family, `IProgressReporter`, `IEventPublisher`/`IEventHandler`, `IJsonSerializer`, `ArronixException`, `IOperatingSystemInfo`, `IHostRuntimeInfo`, `IScheduledJob`, `PluginIntentSurface` |
+| **ungated** | `ITelemetryEmitter`, `IHealthContributor`, `IPluginPaths`, the `ICacheProvider` family, `IProgressReporter`, `IEventPublisher`/`IEventHandler`, `IJsonSerializer`, `ArronixException`, `IOperatingSystemInfo`, `IHostRuntimeInfo`, `IScheduledJob`, `PluginIntentSurface` |
+
+`telemetry-sink` and `telemetry-processing` are two privileges rather than one. A sink reads the whole
+post-redaction stream — every extension's events and the host's — so it implies `network` and an operator
+grants it as well as the package declaring it. An enricher or a filter is offered only the events its own
+extension raised and no sink to send them to, so it implies neither; a contributed filter is also never
+asked about an event at error severity or above.
 
 `network` is expanded from `indexing | metadata | download | notification | import-list` before matching
 (§11.1).

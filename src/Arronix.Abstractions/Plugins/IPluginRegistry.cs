@@ -208,22 +208,26 @@ public interface IPluginRegistry
     IPluginRegistry AddHealthContributor(IHealthContributor contributor);
 
     /// <summary>
-    /// Registers telemetry enrichment. Ungated.
+    /// Registers telemetry enrichment. Requires <see cref="Capability.TelemetryProcessing"/>: an enricher
+    /// reads and rewrites the events it is offered, and the seam offers only this extension's own.
     /// </summary>
     /// <param name="enricher">The enricher.</param>
     /// <returns>This registry, for chaining.</returns>
     IPluginRegistry AddTelemetryEnricher(ITelemetryEnricher enricher);
 
     /// <summary>
-    /// Registers a telemetry filter. Ungated.
+    /// Registers a telemetry filter. Requires <see cref="Capability.TelemetryProcessing"/>: a filter
+    /// decides whether anyone sees an event. It decides that only for this extension's own events, and
+    /// never for one the host raised at error severity or above.
     /// </summary>
     /// <param name="filter">The filter.</param>
     /// <returns>This registry, for chaining.</returns>
     IPluginRegistry AddTelemetryEventFilter(ITelemetryEventFilter filter);
 
     /// <summary>
-    /// Registers a telemetry destination. Requires <see cref="Capability.TelemetrySink"/>, because
-    /// receiving the platform's telemetry stream is a privilege rather than a contribution.
+    /// Registers a telemetry destination. Requires <see cref="Capability.TelemetrySink"/> and an operator
+    /// naming this extension in the host's trusted-sink setting, because a sink reads the whole
+    /// post-redaction stream — every extension's events and the host's — and may take it anywhere.
     /// </summary>
     /// <param name="sink">The destination.</param>
     /// <returns>This registry, for chaining.</returns>

@@ -62,9 +62,19 @@ public enum Capability
     /// <summary>Reading and writing files on the platform's storage mounts.</summary>
     Storage = 12,
 
-    /// <summary>Receiving the platform's telemetry stream.</summary>
+    /// <summary>
+    /// Receiving the platform's whole telemetry stream, after redaction, from every extension and the host
+    /// itself. An operator grants it as well as the package declaring it.
+    /// </summary>
     TelemetrySink = 13,
 
     /// <summary>Contributing language-owned title comparison, query and sorting rules.</summary>
-    Language = 14
+    Language = 14,
+
+    /// <summary>
+    /// Shaping and suppressing this extension's own telemetry, through an enricher or an event filter.
+    /// The seam offers only the events this extension raised and exposes no sink, so it grants and implies
+    /// neither <see cref="TelemetrySink"/> nor <see cref="Network"/>.
+    /// </summary>
+    TelemetryProcessing = 15
 }

@@ -336,6 +336,15 @@ Three separate problems, in increasing order of seriousness:
   writing structured logs loses the object it never should have had.
 - Run **redaction before enrichment**, and assert the order in a test.
 
+> **Resolution as implemented (2026-08-26).** Everything above landed, with one deliberate departure from
+> the first bullet. Gating the enricher and the filter behind `Capability.TelemetrySink` would have made an
+> extension ask for the whole post-redaction stream, and the `network` implication and operator grant that
+> come with it, in order to shape the events it raised itself — a wider grant to obtain a narrower
+> privilege. The grant was therefore split: `Capability.TelemetryProcessing` (`telemetry-processing`) gates
+> `AddTelemetryEnricher` and `AddTelemetryEventFilter`, implies nothing, and needs no operator grant;
+> `Capability.TelemetrySink` keeps its original meaning and its trusted tier. The scoping, the suppression
+> floor, the `ExceptionSummary` replacement and the redaction ordering are all as recommended.
+
 **T-11 — `telemetry-sink` without `network`.** A sink receives (post-fix, all) events and needs somewhere to
 put them. A manifest reading `["telemetry-sink"]` therefore describes a plugin that reads the process's
 entire diagnostic stream and — via `new HttpClient()` today, or via `IHttpGateway` after the deny-list
@@ -343,6 +352,12 @@ lands — sends it anywhere. Add `TelemetrySink ⇒ Network` to `CapabilitySet.W
 is at least honest, and treat `telemetry-sink` as the system's one **trusted-tier** capability: the loader
 should refuse to grant it unless the operator has named that plugin id in
 `Arronix:Plugins:TrustedSinks`. Compare: it is strictly more powerful than `storage`.
+
+> **Resolution as implemented (2026-08-26).** Both landed as recommended: `TelemetrySink ⇒ Network` is in
+> `CapabilitySet.WithImplied()`, and the loader refuses a package declaring `telemetry-sink` that the
+> operator has not named in `Arronix:Plugins:TrustedSinks` — before its entry assembly is staged, so an
+> unapproved sink never runs a line. The narrower `telemetry-processing` capability added under T-02 is
+> deliberately outside this tier: it neither reads another extension's events nor implies the network.
 
 **T-04 — the process-wide HTTP interceptor.** `AddOutboundHttpInterceptor` requires only `indexing`. As
 specified, the interceptor is registered into the host's gateway, so it observes and can **rewrite** every

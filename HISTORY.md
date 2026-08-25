@@ -1,12 +1,40 @@
 # Arronix History
 
+## 2026-08-26 — Stop charging for the whole telemetry stream to shape your own events
+
+`ITelemetryEnricher` and `ITelemetryEventFilter` were gated by `Capability.TelemetrySink`, which is the
+privilege of reading every telemetry event in the process — every extension's and the host's — and which
+implies the network privilege and needs an operator's approval. An enricher shapes the events its own
+extension raised; a filter suppresses them, and cannot touch anything at error severity or above. Charging
+the first price for the second privilege is the opposite of least privilege, and the public
+`IPluginRegistry` documentation still described both as ungated, so the contract disagreed with itself as
+well.
+
+- **`Capability.TelemetryProcessing`, wire name `telemetry-processing`.** It gates the enricher and the
+  filter, implies nothing, and needs no operator grant. `TelemetrySink` keeps its meaning exactly: the whole
+  post-redaction stream, the `network` implication, and the operator naming the package in
+  `Arronix:Plugins:TrustedSinks`.
+- **`CapabilitySet` widened before it ran out.** Sixteen bit positions with fifteen capabilities in them is
+  not the state to add a capability in, so the mask is 32 bits, its bounds are read from the vocabulary
+  rather than written beside it, and both `Of` and `Has` are held to exactly the declared values — a shift
+  count C# masks would otherwise let ordinal 32 answer for `Indexing`.
+- The proofs are the three that matter: an extension holding only the narrower privilege registers its
+  enricher and filter and is refused a sink; one holding only the sink privilege is refused an enricher;
+  and a package declaring `telemetry-sink` is still quarantined before it runs a line unless the operator
+  named it.
+
+`docs/design/unified-host-runtime.md`, `docs/open-decisions.md` B1 and `docs/design/threat-model.md` are
+brought into line. The threat model keeps its original T-02 recommendation — gate both under
+`telemetry-sink` — and records beside it why the implementation split the grant instead.
+
 ## 2026-08-26 — Give the platform the five services a running host actually needs
 
 A production Arronix could not host the extension it ships with. `PluginPlatformServices` required
 `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`, and
 none had an implementation outside the test projects, so a real server quarantined Movies before it
 contributed anything. All five are now real, and `Arronix.Api.Tests` proves it through the ordinary
-`Program`: the active set is exactly `{arronix.format.video, movies}`, `/api/v1/kinds` answers `movies`, the
+`Program` over independently published Movies and Video packages staged beside the server: the active set
+is exactly `{arronix.format.video, movies}`, `/api/v1/kinds` answers `movies`, the
 client manifest names both packages by identifier with each package's own closure, every offered file
 hashes to its published content address, and a sink registered after `AddArronixHost` receives telemetry.
 
@@ -44,7 +72,7 @@ Every central guard is mutation-checked: removing it fails a named test. WP-T2's
 T-09, T-11, T-12) are closed; T-18 quotas and T-19 host-fact disclosure remain open and are recorded in
 `CONTEXT.md`.
 
-Full rail: 3,124 passed, 302 registered skips, zero failed and zero inconclusive from 3,426 cases across 14
+Full rail: 3,141 passed, 302 registered skips, zero failed and zero inconclusive from 3,443 cases across 14
 projects. Operator proof `eng/proofs/g07-client-contracts.sh`: 23 checks, all green.
 
 ## 2026-08-25 — Assert non-residency, and hold a refusal's file names to a declaration's shape

@@ -80,12 +80,13 @@ public static class CapabilityMatrix
             [typeof(ICataloger<>)] = [Capability.Metadata],
             [typeof(ICurator<>)] = [Capability.Curation],
 
-            // Platform participation that is a privilege rather than a contribution. An enricher and a
-            // filter read the events they are offered, and a filter decides whether anyone else sees them,
-            // so both are the same privilege a sink is rather than a contribution anyone may make.
+            // Platform participation that is a privilege rather than a contribution, and two privileges
+            // rather than one. A sink reads the whole post-redaction stream and can take it off the
+            // machine; an enricher or a filter shapes and suppresses only the events its own extension
+            // raised. Granting the first to get the second would hand over the process's diagnostics.
             [typeof(ITelemetrySink)] = [Capability.TelemetrySink],
-            [typeof(ITelemetryEnricher)] = [Capability.TelemetrySink],
-            [typeof(ITelemetryEventFilter)] = [Capability.TelemetrySink],
+            [typeof(ITelemetryEnricher)] = [Capability.TelemetryProcessing],
+            [typeof(ITelemetryEventFilter)] = [Capability.TelemetryProcessing],
             [typeof(IOutboundHttpInterceptor)] = [Capability.Indexing],
             [typeof(IDiacriticFoldingProvider)] = [Capability.Parsing, Capability.Renaming],
             [typeof(LanguageDefinitionRegistration)] = [Capability.Language]

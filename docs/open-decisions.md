@@ -1002,8 +1002,12 @@ owner questions.
   rows in `MoviesCatalogDeclaration.cs`, which itself moves into the TMDb plugin
 
 ### B · Security items dropped from tracking (🆕 all)
-- B1 T-02: `TelemetryEvent.Exception` → typed `ExceptionSummary`; gate `ITelemetryEnricher`/
-  `ITelemetryEventFilter` (currently ungated, process-wide); a filter may not suppress ≥ Error
+- B1 T-02 — APPLIED. `TelemetryEvent.Exception` never leaves the host boundary; what travels is the typed
+  `ExceptionSummary`. `ITelemetryEnricher` and `ITelemetryEventFilter` are gated by `telemetry-processing`
+  and are offered only the events their own extension raised, so they are neither ungated nor process-wide.
+  A filter still may not suppress ≥ Error. The audit's original proposal was to gate both under
+  `telemetry-sink`; that would have handed an extension the whole stream and the network implication to buy
+  the narrower privilege, so the grant was split instead
 - B2 T-01 mitigation: metadata deny-list (`TypeRef`/`MemberRef`/`ImplMap`) at plugin discovery; plus the
   ARCHITECTURE §11 honesty amendment (in-process gating is defense-in-depth, not a sandbox)
 - B3 `SecretRedactionFilter` fails OPEN for orphaned provider definitions (unloaded plugin → descriptor
