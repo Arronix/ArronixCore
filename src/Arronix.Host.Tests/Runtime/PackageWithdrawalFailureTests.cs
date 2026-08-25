@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Arronix.Abstractions.Caching;
@@ -10,7 +11,9 @@ using Arronix.Abstractions.Telemetry;
 using Arronix.Host.Composition;
 using Arronix.Host.Runtime;
 using Arronix.Host.Tests.Support;
+using Arronix.Plugins.Dependencies;
 using Arronix.Plugins.Loading;
+using Arronix.Plugins.Versioning;
 using Arronix.Plugins.Registry;
 using FluentAssertions;
 using FluentAssertions.Execution;
@@ -140,6 +143,74 @@ internal sealed class PackageWithdrawalFailureTests
         loader.Dependencies.RetainedPackages.Should().Contain(Fixture);
         loader.SharedContracts.UnloadRequested.Should().BeFalse(
             "nothing changed between the two passes, so nothing new can be claimed");
+    }
+
+    /// <remarks>
+    /// The retention claim, measured rather than described. The stopped result is deliberately free of
+    /// references — that is what makes it safe to publish — so if the dependency registry rooted only the
+    /// receipt, the lifetime holding this package's load context and instances would be collectible while
+    /// the platform reported them possibly resident.
+    /// </remarks>
+    [Test]
+    public async Task AFailedWithdrawalGoesOnHoldingTheExactLifetimeItCouldNotReleaseAsync()
+    {
+        var root = Install(dependantVersion: ThrowingUnloadVersion);
+        using var provider = BuildProvider(root);
+        var bootstrapper = Bootstrapper(provider);
+        var loader = provider.GetRequiredService<PluginLoader>();
+        var runtime = provider.GetRequiredService<PluginRuntimeRegistry>();
+
+        await bootstrapper.StartAsync(CancellationToken.None);
+
+        var held = Handles(runtime);
+        await bootstrapper.StopAsync(CancellationToken.None);
+
+        using var assertions = new AssertionScope();
+
+        runtime.TryGet(Fixture, out var stopped).Should().BeTrue();
+        stopped!.PackageLease.Should().BeNull("a stopped result carries no reference to what it could not release");
+        stopped.LoadContext.Should().BeNull();
+
+        loader.Dependencies.RetainedPackages.Should().Contain(Fixture);
+        Reachable(held.Lifetime).Should().BeTrue("the registry roots the lifetime that still owns the code");
+        Reachable(held.Context).Should().BeTrue("and the context it could not unload is under it");
+
+        // The other half of the same claim, asked of the live registry this withdrawal left behind: the
+        // identifier is refused before a replacement reads a byte or runs a line. What that refusal does to
+        // a whole load pass has its own proof in the dependency registry's tests, which reach it from a
+        // second installation rather than from a second pass over this one.
+        loader.Dependencies.TryPinDependencies(Replacement(), out var refusal).Should().BeFalse();
+        refusal.Should().ContainSingle().Which.Should().Contain("retained");
+    }
+
+    /// <summary>A second installation attempt of the same identifier, prepared but not yet pinned.</summary>
+    private PackageAdmissionReceipt Replacement()
+        => new(
+            new InstalledPackage(
+                Fixture,
+                SemanticVersion.Parse("0.2.0"),
+                Path.Combine(_stateRoot, "replacement", "plugin.json"),
+                Path.Combine(_stateRoot, "replacement")),
+            []);
+
+    /// <summary>Weak handles to the exact lifetime and context this package is active on.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference Lifetime, WeakReference Context) Handles(PluginRuntimeRegistry runtime)
+    {
+        runtime.TryGet(Fixture, out var active).Should().BeTrue();
+        return (new WeakReference(active!.PackageLease), new WeakReference(active.LoadContext));
+    }
+
+    private static bool Reachable(WeakReference held)
+    {
+        for (var attempt = 0; attempt < 12 && held.IsAlive; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }
+
+        return held.IsAlive;
     }
 
     /// <summary>
