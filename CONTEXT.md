@@ -267,8 +267,10 @@ work does not substitute for closing an earlier dependency.
   before the runtime sees the payload. See `docs/research/g07/client-contract-loading.md`. It does not claim
   typed deserialization or rendering (G07.2) or cache update, removal and stale-tab behaviour (G07.3).
 
-The active G07 gate covers dynamic typed Client loading; the five missing platform services come before
-G07.2. Later gates cover compatibility
+The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
+ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
+`IOperatingSystemInfo`, and activates the Movies package it ships with. The active G07 gate is again
+dynamic typed Client loading. Later gates cover compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
@@ -287,11 +289,12 @@ duplicated checklist drifting from current state.
   at registration; that is erasure at the sanctioned boundary, not authoring vocabulary.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
-- No production Arronix host can activate a package with an entry assembly. `PluginPlatformServices` requires
-  `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`, and
-  none of the five has an implementation outside the test projects, so a real server quarantines Movies before
-  it can contribute anything. Every packaged Movies proof therefore runs in `Arronix.Host.Tests`, which
-  supplies stubs for them. This blocks G07.2, whose subject is the Movies item graph.
+- The five platform services are implemented and an ordinary `Arronix.Api` server now activates the Movies
+  package it ships with; `Arronix.Api.Tests` proves it through the real `Program` composition. Their residual
+  debt is what the threat model already names and this work did not take: T-18, no quota on `ICacheProvider`,
+  `IPluginPaths.TempFolder` or `IEventPublisher` publication rate, so a package can still exhaust memory,
+  disk or the bus; and T-19, `IHostRuntimeInfo` tells a package more about the process than a package has
+  been shown to need. Both are WP-T5/WP-T1 work, not gaps in what landed here.
 - The trimmed client cannot start on .NET 11 preview 7: a trimmed publish fails during
   `WebAssemblyHost.RunAsyncCore` with an `InvalidCastException` from `PersistentServicesRegistry`, before any
   Arronix code runs. The pristine base commit `f943b8a0f` fails trimmed and starts untrimmed under the same
@@ -303,8 +306,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-25) reports 2,875 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,177 total cases across 13 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-26) reports 3,124 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,426 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

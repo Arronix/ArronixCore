@@ -62,6 +62,13 @@ runtime dependency and carries `Arronix.Generators` only under `analyzers/dotnet
 runtime assembly. Authors then add only the format, language, and media-domain packages their extension
 actually composes.
 
+An admitted package is handed five platform services and nothing more of the host: `ICacheProvider`,
+`ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`. Each is scoped to the
+package that receives it — its own cache namespace, its own attribution, its own publication and
+subscription rights — and each is a real implementation an ordinary server composes, not a seam a test fills
+in. `IHostRuntimeInfo` and `IOperatingSystemInfo` answer only what the host can establish; a fact it cannot
+establish is reported absent rather than guessed.
+
 The CLR types needed to cross generated and Host assembly boundaries remain public only where the runtime
 requires that visibility. They and their erased members are `EditorBrowsable(Never)`, and concrete semantic
 values implement visitor dispatch and `System.Type` carriers explicitly. Normal plugin authors neither see
@@ -183,6 +190,22 @@ is resident. What a media contract *contains* is not discovered by enumeration.
   from the contributing extension and the declared local name. No provider, declaration, or consumer
   restates any of the three, and a provider needing its own identifier during a call reads it from the
   invocation's definition.
+- Telemetry an extension raises is copied into host-owned values, cut to size and redacted before anything
+  else in the pipeline sees it, and a live `Exception` never travels: it is rendered to a summary of three
+  strings named for the failure that was raised. A live exception is a handle onto the assembly that defines
+  it, so carrying one past that boundary would keep an extension loaded for the life of the process.
+- Redaction is additive and owner-qualified. An extension's rules are admitted with its package and can only
+  mask more; no rule of any origin can reveal what another masked, and a pattern that cannot be compiled
+  under a non-backtracking engine with a match timeout fails admission rather than running.
+- An extension participates in telemetry only where it is entitled to: its enrichers and filters see the
+  events it raised and no others, and contributing a sink — which reads the whole post-redaction stream —
+  requires both the declared capability and an operator naming that package in `TrustedSinks`.
+- An extension subscribes to its own event types and to a closed platform allow-list, proved against the
+  assemblies its package actually owns. Absent ownership information refuses a non-platform subscription
+  rather than permitting it, and delivery is by the event's runtime type.
+- A cache belongs to the namespace it was resolved through, and releasing that namespace drops its values,
+  its factory delegates and its constructed generic types. A provider outlives every extension, so nothing
+  it holds may name an extension's type.
 - A media item type identifies exactly one media kind. Two admitted kinds closed over one item type are
   refused at kind admission, whether or not any provider pairs with it, because every lookup keyed on an
   item type would otherwise depend on iteration order.
@@ -378,6 +401,17 @@ dependency-bearing and withdrawable, with no load context, registration ledger o
 invented for it. One global contract context cannot physically unload one assembly, so a package's release
 is modelled as giving up a claim on that context, and unloading is requested only after every holder is
 gone. `AssemblyLoadContext.Unload()` is a request; collection is never claimed.
+
+The telemetry pipeline and the extension runtime are stopped by an explicit handshake rather than by
+hosted-service order, because a generic host may stop services concurrently. Extension participation is
+closed first, while those extensions can still be found and leased: no contributed enricher, filter or sink
+is entered for an event after that cutoff, the pipeline stops awaiting the ones it had started, and the
+contributed sinks are given one final flush. An event accepted before the cutoff but not yet begun is
+written off and counted rather than waited for, and still reaches the host's own sinks. A call the pipeline
+abandoned at its attempt bound may still be running; it holds its own package's lease until it returns,
+which is what keeps that package loaded underneath it. Only then do the extensions go, and only after they
+report gone does the queue close and the host's own sinks flush — so an extension's cleanup telemetry is
+still delivered.
 
 Replacement-grade execution must continue from those admitted types through catalog/curation, acquisition
 targeting, semantic queries, raw indexer listings, media interpretation plus format/language contributions,

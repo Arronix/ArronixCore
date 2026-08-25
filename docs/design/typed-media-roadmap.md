@@ -1323,16 +1323,15 @@ replacement.
 
 ## Current next task
 
-Take the **five missing platform services** first, then G07.2.
+The **five platform services** are done. `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`,
+`IHostRuntimeInfo` and `IOperatingSystemInfo` have production implementations that an ordinary
+`Arronix.Api` server composes, and that server activates the Movies package it ships with: `Arronix.Api.Tests`
+stands the real `Program` up over the staged packages and asserts the active set, the kinds, the client
+manifest and its content addresses, and telemetry reaching a sink registered after `AddArronixHost`. The
+threat model's WP-T2 telemetry items are closed with them; T-18 quotas and T-19 host-fact disclosure remain
+open and belong to WP-T5 and WP-T1.
 
-No production Arronix host can activate a package that carries an entry assembly, because `ICacheProvider`,
-`ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo` have no implementation
-outside the test projects. A real server therefore quarantines Movies before it contributes anything, and
-every packaged Movies proof runs against stubs. This is not a G07 concern that G07 deferred; it is the
-reason a running Arronix cannot yet host the extension it ships with, and G07.2's whole subject is the
-Movies item graph, which a real host cannot currently publish at all.
-
-Then take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The
+Take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The
 client-safe contract package arrives in a real browser with its bytes, CLR identity and build proved
 (G07.1), and the client deliberately discovers nothing by enumerating it. G07.2 gives a contract a
 generated, trimming/AOT-safe way to say what it holds, agrees a generated-metadata hash and a

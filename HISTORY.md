@@ -1,5 +1,52 @@
 # Arronix History
 
+## 2026-08-26 — Give the platform the five services a running host actually needs
+
+A production Arronix could not host the extension it ships with. `PluginPlatformServices` required
+`ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`, and
+none had an implementation outside the test projects, so a real server quarantined Movies before it
+contributed anything. All five are now real, and `Arronix.Api.Tests` proves it through the ordinary
+`Program`: the active set is exactly `{arronix.format.video, movies}`, `/api/v1/kinds` answers `movies`, the
+client manifest names both packages by identifier with each package's own closure, every offered file
+hashes to its published content address, and a sink registered after `AddArronixHost` receives telemetry.
+
+- **Caching.** One provider, namespaces per package, and a release that genuinely lets go: a released
+  namespace drops its values, factory delegates and constructed generic types, and a collectible context
+  that filled one unloads while the provider is still alive. Disposal refuses new namespaces and
+  resolutions, closes every gate, waits for every admitted factory and refresh, and only then clears — it is
+  joinable and idempotent rather than a truncation documented as a compromise. Expired entries stay counted
+  until a sweep removes them, and a self-refreshing cache with no lifetime still fetches once, because
+  contents never loaded are stale under any reading.
+- **Host and operating-system facts.** What the host can establish, and nothing else. `StartTime` is
+  nullable rather than composition time wearing a process's name, `IsUserInteractive` is
+  `Environment.UserInteractive`, and `IsWindowsService` means the service control manager specifically —
+  the Host registers a detector built on `WindowsServiceHelpers` ahead of Common's fallback. Container
+  evidence is read for what it says: `/libpod` and `/docker` name their runtime, `/containerd` and
+  `kubepods` say a container and no more.
+- **Events.** Fan-out with host handlers first, most-specific contract first, then each extension's
+  handlers by exact runtime type. An extension subscribes to types its own package owns — proved against
+  the entry assembly plus its published contract assemblies — or to a closed platform allow-list; absent
+  ownership refuses a non-platform subscription rather than permitting it. A handler's failure is reported
+  as host-owned text, cancellation is checked between handlers rather than only before the first, and a
+  type reaching collectible code is never cached.
+- **Telemetry.** The order is structural: snapshot, cap, render and redact on the caller's thread, then a
+  pump that enriches, filters, logs and delivers. Redaction is additive, owner-qualified, non-backtracking
+  and time-bounded, and an extension's rules are admitted transactionally with its package. An extension's
+  enrichers and filters see only the events it raised; contributing a sink needs the capability and an
+  operator naming it in `TrustedSinks`. No live exception ever leaves the host boundary.
+- **Lifetime.** One ownership path: from the instant a Host activation succeeds the object is on the
+  package's reverse-activation list, so no successfully constructed object exists unowned, and a retained
+  failed attempt roots the exact lifetime rather than a receipt that names it. Teardown is a containment
+  boundary in both directions — a hostile disposer, and a failure that will not describe itself, are
+  recorded and stepped over rather than allowed to abandon the packages behind them.
+
+Every central guard is mutation-checked: removing it fails a named test. WP-T2's telemetry findings (T-02,
+T-09, T-11, T-12) are closed; T-18 quotas and T-19 host-fact disclosure remain open and are recorded in
+`CONTEXT.md`.
+
+Full rail: 3,124 passed, 302 registered skips, zero failed and zero inconclusive from 3,426 cases across 14
+projects. Operator proof `eng/proofs/g07-client-contracts.sh`: 23 checks, all green.
+
 ## 2026-08-25 — Assert non-residency, and hold a refusal's file names to a declaration's shape
 
 Three narrow corrections to the G07.1 close.
