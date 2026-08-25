@@ -156,6 +156,20 @@ not a list of what to avoid.
   tells the author how to enable generation and explicitly says not to implement the Host projection.
 - The contract assembly and first-party manifests move together to `0.9.0` / `>=0.9 <0.10`.
 
+**Telemetry participation is split from telemetry collection.**
+
+- Added `Capability.TelemetryProcessing` and its wire name `telemetry-processing`. The vocabulary addition
+  is additive — the schema's capability list gains one entry — and a manifest that registers neither seam
+  is unaffected.
+- `AddTelemetryEnricher` and `AddTelemetryEventFilter` now require it, and the two halves of the contract
+  now agree: the public documentation described both as ungated while the capability matrix charged
+  `TelemetrySink` for them. A manifest registering either must declare `telemetry-processing`, which
+  implies nothing and needs no operator grant.
+- `Capability.TelemetrySink` is unchanged: the whole post-redaction stream, the `network` implication, and
+  the operator naming the extension in `Arronix:Plugins:TrustedSinks`.
+- `CapabilitySet` holds 32 bit positions rather than 16, and refuses a value the vocabulary does not
+  declare. The representation is private; the change is what keeps the next capability additive.
+
 ### 0.8.0
 
 **Released**: 0.8.0

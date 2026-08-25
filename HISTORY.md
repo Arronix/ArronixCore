@@ -29,7 +29,7 @@ brought into line. The threat model keeps its original T-02 recommendation — g
 
 ## 2026-08-26 — Give the platform the five services a running host actually needs
 
-A production Arronix could not host the extension it ships with. `PluginPlatformServices` required
+A production Arronix could not host an installed extension at all. `PluginPlatformServices` required
 `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`, and
 none had an implementation outside the test projects, so a real server quarantined Movies before it
 contributed anything. All five are now real, and `Arronix.Api.Tests` proves it through the ordinary

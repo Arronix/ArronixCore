@@ -284,8 +284,13 @@ public sealed class PluginLoaderPipelineTests
         result.Message.Should().Contain(nameof(PluginRuntimeOptions.TrustedSinks));
     }
 
+    /// <remarks>
+    /// The gate is what this asserts, not activation: the fixture's entry assembly carries no module, so
+    /// this package goes on to be quarantined for that instead — which is the point, because it means the
+    /// package got past the operator gate to reach it.
+    /// </remarks>
     [Test]
-    public async Task AnApprovedSinkIsAdmitted()
+    public async Task AnApprovedSinkPassesTheOperatorGate()
     {
         Install("collector", Manifest("collector", capabilities: "\"telemetry-sink\""), ContractAssemblyPath);
         _options.TrustedSinks.Add("collector");
@@ -298,11 +303,12 @@ public sealed class PluginLoaderPipelineTests
     }
 
     /// <remarks>
-    /// The narrower privilege is the package's own to declare. It reads only the events that package
-    /// raised, so there is nothing for an operator to approve on anyone else's behalf.
+    /// The narrower privilege is the package's own to declare: it reads only the events that package
+    /// raised, so there is nothing for an operator to approve on anyone else's behalf. As above, what is
+    /// asserted is the gate rather than activation.
     /// </remarks>
     [Test]
-    public async Task ShapingYourOwnTelemetryNeedsNoOperatorApproval()
+    public async Task ShapingYourOwnTelemetryPassesWithNoOperatorApproval()
     {
         Install("shaper", Manifest("shaper", capabilities: "\"telemetry-processing\""), ContractAssemblyPath);
 

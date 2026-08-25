@@ -269,10 +269,9 @@ work does not substitute for closing an earlier dependency.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
-`IOperatingSystemInfo`, and activates an independently published Movies package installed beside it. The
-active G07 gate is again
-dynamic typed Client loading. Later gates cover compatibility
-evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
+`IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
+it. The active G07 gate is again dynamic typed Client loading. Later gates cover compatibility evidence,
+format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
 duplicated checklist drifting from current state.
@@ -290,10 +289,10 @@ duplicated checklist drifting from current state.
   at registration; that is erasure at the sanctioned boundary, not authoring vocabulary.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
-- The five platform services are implemented and an ordinary `Arronix.Api` server now activates an
-  independently published Movies package installed beside it; `Arronix.Api.Tests` stages the published
-  Movies and Video packages and proves it through the real `Program` composition. Their residual
-  debt is what the threat model already names and this work did not take: T-18, no quota on `ICacheProvider`,
+- The five platform services are implemented and an ordinary `Arronix.Api` server now activates the
+  independently published Video and Movies packages installed beside it; `Arronix.Api.Tests` stages both
+  from their own publish and proves it through the real `Program` composition. Their residual debt is what
+  the threat model already names and this work did not take: T-18, no quota on `ICacheProvider`,
   `IPluginPaths.TempFolder` or `IEventPublisher` publication rate, so a package can still exhaust memory,
   disk or the bus; and T-19, `IHostRuntimeInfo` tells a package more about the process than a package has
   been shown to need. Both are WP-T5/WP-T1 work, not gaps in what landed here.

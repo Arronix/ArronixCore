@@ -1325,9 +1325,10 @@ replacement.
 
 The **five platform services** are done. `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`,
 `IHostRuntimeInfo` and `IOperatingSystemInfo` have production implementations that an ordinary
-`Arronix.Api` server composes, and that server activates the Movies package it ships with: `Arronix.Api.Tests`
-stands the real `Program` up over the staged packages and asserts the active set, the kinds, the client
-manifest and its content addresses, and telemetry reaching a sink registered after `AddArronixHost`. The
+`Arronix.Api` server composes, and that server activates independently published Movies and Video packages
+installed beside it: `Arronix.Api.Tests` stages both from their own publish, stands the real `Program` up
+over them, and asserts the active set, the kinds, the client manifest and its content addresses, and
+telemetry reaching a sink registered after `AddArronixHost`. The
 threat model's WP-T2 telemetry items are closed with them; T-18 quotas and T-19 host-fact disclosure remain
 open and belong to WP-T5 and WP-T1.
 
