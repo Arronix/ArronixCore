@@ -6,8 +6,12 @@ namespace Arronix.Abstractions.Events;
 /// </summary>
 /// <typeparam name="TEvent">The event type this handler consumes.</typeparam>
 /// <remarks>
-/// The type parameter is contravariant, so a handler written against a base event type also receives
-/// derived events. A handler that throws does not prevent the remaining handlers from running.
+/// The type parameter is contravariant, and what that buys depends on who registered the handler. A handler
+/// the host registers in its own container is resolved through the published event's whole contract chain,
+/// so one written against a base type does receive derived events. A handler an extension registers through
+/// <c>IPluginRegistry.AddEventHandler</c> receives the exact type it named and nothing else: isolation
+/// decides which events an extension may see, and a base subscription would widen that. A handler that
+/// throws does not prevent the remaining handlers from running.
 /// </remarks>
 public interface IEventHandler<in TEvent>
     where TEvent : IDomainEvent

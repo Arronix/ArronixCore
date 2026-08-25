@@ -60,6 +60,7 @@ public static class ArronixCommonServiceCollectionExtensions
         // in Composition/<Subsystem>Registration.cs. Nothing else belongs in this method.
         services.AddArchivesHashingAndNaming();
         services.AddCaching(configuration);
+        services.AddEvents();
         services.AddHostingFacts();
         services.AddSerialization();
 

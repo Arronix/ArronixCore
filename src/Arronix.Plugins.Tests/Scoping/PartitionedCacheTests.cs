@@ -1,4 +1,6 @@
 using System.IO;
+using System.Reflection;
+using System.Runtime.Loader;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Telemetry;
@@ -146,8 +148,11 @@ public sealed class PartitionedCacheTests
     [Test]
     public void APlatformEventIsAlwaysPublishableHoweverStrictTheBoundary()
     {
-        var context = new PluginLoadContext(Plugin, GetType().Assembly.Location, nativeLibraryResolver: null, PackageContractScope.Empty(Plugin));
-        var publisher = new FilteredEventPublisher(new RecordingEventPublisher(), Plugin, context);
+        var publisher = new FilteredEventPublisher(
+            new RecordingEventPublisher(),
+            Plugin,
+            new PackageOwnership(typeof(PluginLoadContext).Assembly, []),
+            invocation: null);
 
         publisher.MayPublish(typeof(IDomainEvent)).Should().BeTrue();
         publisher.MayPublish(typeof(ForeignEvent)).Should().BeFalse();
@@ -157,14 +162,76 @@ public sealed class PartitionedCacheTests
     public async Task AnEventTypeFromNeitherThePlatformNorTheExtensionIsRefused()
     {
         var inner = new RecordingEventPublisher();
-        var context = new PluginLoadContext(Plugin, GetType().Assembly.Location, nativeLibraryResolver: null, PackageContractScope.Empty(Plugin));
-        var publisher = new FilteredEventPublisher(inner, Plugin, context);
+        var publisher = new FilteredEventPublisher(
+            inner,
+            Plugin,
+            new PackageOwnership(typeof(PluginLoadContext).Assembly, []),
+            invocation: null);
 
         var publish = async () => await publisher.PublishAsync(new ForeignEvent());
 
         await publish.Should().ThrowAsync<PluginIsolationException>();
         inner.Published.Should().BeEmpty();
     }
+
+    [Test]
+    public async Task AnEventInAContractThePackagePublishesIsItsOwnToPublishAsync()
+    {
+        var inner = new RecordingEventPublisher();
+        var published = Emitted("Publishable.Owned.Contract");
+        var publisher = new FilteredEventPublisher(
+            inner,
+            Plugin,
+            new PackageOwnership(typeof(PluginLoadContext).Assembly, [published.Assembly]),
+            invocation: null);
+
+        await publisher.PublishAsync((IDomainEvent)Activator.CreateInstance(published.EventType)!);
+
+        inner.Published.Should().ContainSingle("a package owns the contracts it publishes, on both sides of the bus");
+    }
+
+    [Test]
+    public async Task AnEventInADependencysContractIsNotThePackagesToPublishAsync()
+    {
+        var inner = new RecordingEventPublisher();
+        var dependency = Emitted("Publishable.Dependency.Contract");
+        var publisher = new FilteredEventPublisher(
+            inner,
+            Plugin,
+            new PackageOwnership(typeof(PluginLoadContext).Assembly, []),
+            invocation: null);
+
+        var publish = async () => await publisher.PublishAsync((IDomainEvent)Activator.CreateInstance(dependency.EventType)!);
+
+        await publish.Should().ThrowAsync<PluginIsolationException>();
+        inner.Published.Should().BeEmpty("a visible contract belongs to whoever published it");
+    }
+
+    [Test]
+    public async Task APrivateAssemblySharingTheLoadContextIsNotThePackagesToPublishAsync()
+    {
+        var inner = new RecordingEventPublisher();
+        var context = new AssemblyLoadContext("publication-ownership", isCollectible: true);
+        var entry = context.LoadFromAssemblyPath(EmittedPath("Publishable.Entry.Assembly"));
+        var shipped = context.LoadFromAssemblyPath(EmittedPath("Publishable.Private.Assembly"));
+        var publisher = new FilteredEventPublisher(inner, Plugin, new PackageOwnership(entry, []), invocation: null);
+
+        var publish = async () => await publisher.PublishAsync(
+            (IDomainEvent)Activator.CreateInstance(shipped.GetType(EmittedEvent.TypeName)!)!);
+
+        await publish.Should().ThrowAsync<PluginIsolationException>();
+        inner.Published.Should().BeEmpty("sharing a load context is not owning");
+    }
+
+    private static (Assembly Assembly, Type EventType) Emitted(string assemblyName)
+    {
+        var context = new AssemblyLoadContext(assemblyName, isCollectible: true);
+        var assembly = context.LoadFromAssemblyPath(EmittedPath(assemblyName));
+        return (assembly, assembly.GetType(EmittedEvent.TypeName)!);
+    }
+
+    private static string EmittedPath(string assemblyName)
+        => EmittedEvent.Write(Path.Combine(Path.GetTempPath(), "arronix-publication", assemblyName), assemblyName);
 
     [Test]
     public async Task WithoutAnIsolationBoundaryOnlyThePlatformRuleApplies()

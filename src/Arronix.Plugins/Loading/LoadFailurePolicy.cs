@@ -1,7 +1,7 @@
 using System.Collections.Frozen;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
+using Arronix.Common.Lifetimes;
 
 namespace Arronix.Plugins.Loading;
 
@@ -60,23 +60,16 @@ internal static class LoadFailurePolicy
     /// <param name="failure">The failure.</param>
     /// <returns><see langword="true"/> when it must propagate.</returns>
     /// <remarks>
-    /// Cancellation belongs to the caller that requested it. The rest are exhausted memory, exhausted
-    /// stack, corrupted memory and structured native failures.
-    /// <see cref="AccessViolationException"/> is named separately because it does not derive from
-    /// <see cref="SEHException"/> on this runtime, and <see cref="InsufficientMemoryException"/> propagates
-    /// through its <see cref="OutOfMemoryException"/> base.
+    /// Cancellation belongs to the caller that requested it, and at this boundary the caller is the load
+    /// itself, so it is named here rather than in the shared rule. The rest — exhausted memory and stack,
+    /// corrupted memory, structured native failures — are <see cref="ProcessFailure"/>'s.
     /// </remarks>
     public static bool IsProcessFatal(Exception failure)
     {
         ArgumentNullException.ThrowIfNull(failure);
 
-        return Chain(failure).Any(inner => inner
-            is OperationCanceledException
-            or OutOfMemoryException
-            or StackOverflowException
-            or InsufficientExecutionStackException
-            or AccessViolationException
-            or SEHException);
+        return ProcessFailure.IsFatal(failure)
+            || Chain(failure).Any(static inner => inner is OperationCanceledException);
     }
 
     /// <summary>
@@ -108,37 +101,5 @@ internal static class LoadFailurePolicy
     public static bool IsContainablePackageFailure(Exception failure) => !IsProcessFatal(failure);
 
     /// <summary>Walks an exception and everything it wraps, aggregates included.</summary>
-    private static IEnumerable<Exception> Chain(Exception failure)
-    {
-        var pending = new Stack<Exception>();
-        var seen = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
-        pending.Push(failure);
-
-        while (pending.Count > 0)
-        {
-            var current = pending.Pop();
-
-            if (!seen.Add(current))
-            {
-                continue;
-            }
-
-            yield return current;
-
-            if (current is AggregateException aggregate)
-            {
-                foreach (var inner in aggregate.InnerExceptions)
-                {
-                    pending.Push(inner);
-                }
-
-                continue;
-            }
-
-            if (current.InnerException is { } wrapped)
-            {
-                pending.Push(wrapped);
-            }
-        }
-    }
+    private static IEnumerable<Exception> Chain(Exception failure) => ProcessFailure.Chain(failure);
 }

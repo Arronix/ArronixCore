@@ -1,4 +1,5 @@
 using System.Linq;
+using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
@@ -387,7 +388,7 @@ internal sealed class CatalogMaterializationTests
         internal static CatalogContext WithCatalogers(params StubCataloger[] catalogers)
         {
             var providers = new ProviderRegistry();
-            var definitions = new ProviderDefinitionStore(providers, [], TimeProvider.System);
+            var definitions = new ProviderDefinitionStore(providers, new UnusedBus(), TimeProvider.System);
             var status = new ProviderStatusStore(TimeProvider.System);
             var sessions = new ProviderSessionStore(TimeProvider.System);
             var tests = new ProviderTestService(providers, definitions, sessions, status);
@@ -468,5 +469,12 @@ internal sealed class CatalogMaterializationTests
             ProviderInvocation invocation,
             string optionSourceId,
             CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<FacetValue>>([]);
+    }
+
+    /// <summary>A bus for a fixture that never changes a definition.</summary>
+    private sealed class UnusedBus : IEventPublisher
+    {
+        public Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken = default)
+            where TEvent : IDomainEvent => Task.CompletedTask;
     }
 }

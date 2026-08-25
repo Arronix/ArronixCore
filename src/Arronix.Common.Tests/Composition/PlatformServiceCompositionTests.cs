@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Arronix.Abstractions.Caching;
+using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Hosting;
 using Arronix.Common.Caching;
 using Arronix.Common.Composition;
@@ -140,11 +141,75 @@ public class PlatformServiceCompositionTests
             Is.EqualTo(TimeSpan.FromMinutes(2)));
     }
 
+    [Test]
+    public void ThePlatformSuppliesTheEventBus()
+    {
+        using var provider = Build();
+
+        Assert.That(provider.GetService<IEventPublisher>(), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task HandlersRegisteredAfterTheCallStillReceiveEventsAsync()
+    {
+        // Ordinary composition: a host adds the platform first and its own subscribers as it goes on.
+        var order = new List<string>();
+        var services = new ServiceCollection();
+        services.AddArronixCommon(new ConfigurationBuilder().Build());
+        services.AddSingleton<IEventHandler<Started>>(new Subscriber<Started>("first", order));
+        services.AddSingleton<IEventHandler<IDomainEvent>>(new Subscriber<IDomainEvent>("everything", order));
+
+        using var provider = services.BuildServiceProvider();
+        await provider.GetRequiredService<IEventPublisher>().PublishAsync(new Started()).ConfigureAwait(false);
+
+        Assert.That(order, Is.EqualTo(new[] {"first", "everything"}));
+    }
+
+    [Test]
+    public void AHostThatRegistersItsOwnBusKeepsIt()
+    {
+        var services = new ServiceCollection();
+        var mine = new SilentBus();
+        services.AddSingleton<IEventPublisher>(mine);
+        services.AddArronixCommon(new ConfigurationBuilder().Build());
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.That(provider.GetRequiredService<IEventPublisher>(), Is.SameAs(mine), "the platform fills gaps rather than overruling");
+    }
+
     private static ServiceProvider Build()
     {
         var services = new ServiceCollection();
         services.AddArronixCommon(new ConfigurationBuilder().Build());
         return services.BuildServiceProvider();
+    }
+
+    /// <summary>An event the host raises about itself.</summary>
+    private sealed record Started : IDomainEvent
+    {
+        public Guid EventId { get; } = Guid.CreateVersion7();
+
+        public DateTimeOffset OccurredAt { get; } = DateTimeOffset.UnixEpoch;
+
+        public string? CorrelationId => null;
+    }
+
+    private sealed class Subscriber<TEvent>(string name, List<string> order) : IEventHandler<TEvent>
+        where TEvent : IDomainEvent
+    {
+        public Task HandleAsync(TEvent domainEvent, CancellationToken cancellationToken = default)
+        {
+            order.Add(name);
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>A bus a host brought with it.</summary>
+    private sealed class SilentBus : IEventPublisher
+    {
+        public Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken = default)
+            where TEvent : IDomainEvent => Task.CompletedTask;
     }
 
     /// <summary>

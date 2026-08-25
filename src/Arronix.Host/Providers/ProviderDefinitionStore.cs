@@ -31,7 +31,7 @@ public sealed class ProviderDefinitionStore
 {
     private readonly ConcurrentDictionary<int, ProviderDefinition> _definitions = new();
     private readonly ProviderRegistry _providers;
-    private readonly IEventPublisher? _events;
+    private readonly IEventPublisher _events;
     private readonly TimeProvider _clock;
     private int _nextId;
 
@@ -39,12 +39,16 @@ public sealed class ProviderDefinitionStore
     /// Creates a store.
     /// </summary>
     /// <param name="providers">The registry orphan detection compares against.</param>
-    /// <param name="events">The publisher changes are announced on, when the host has one.</param>
+    /// <param name="events">The bus changes are announced on.</param>
     /// <param name="clock">The clock announcements are stamped with.</param>
-    /// <exception cref="ArgumentNullException"><paramref name="providers"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The bus is required rather than optional: the platform supplies one to every host, and a store that
+    /// silently announced nothing would leave health, caches and schedules stale with nothing to say so.
+    /// </remarks>
     public ProviderDefinitionStore(
         ProviderRegistry providers,
-        IEnumerable<IEventPublisher> events,
+        IEventPublisher events,
         TimeProvider clock)
     {
         ArgumentNullException.ThrowIfNull(providers);
@@ -52,7 +56,7 @@ public sealed class ProviderDefinitionStore
         ArgumentNullException.ThrowIfNull(clock);
 
         _providers = providers;
-        _events = events.FirstOrDefault();
+        _events = events;
         _clock = clock;
     }
 
@@ -215,11 +219,6 @@ public sealed class ProviderDefinitionStore
         ProviderChangeKind change,
         CancellationToken cancellationToken)
     {
-        if (_events is null)
-        {
-            return;
-        }
-
         var announcement = new ProviderDefinitionChanged(
             Guid.NewGuid(),
             _clock.GetUtcNow(),

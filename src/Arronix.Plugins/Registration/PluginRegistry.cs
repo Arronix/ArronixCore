@@ -14,7 +14,7 @@ using Arronix.Abstractions.Quality;
 using Arronix.Abstractions.Scheduling;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Telemetry;
-
+using Arronix.Plugins.Loading;
 
 namespace Arronix.Plugins.Registration;
 
@@ -44,6 +44,7 @@ public sealed class PluginRegistry : IPluginRegistry
 {
     private readonly CapabilitySet _granted;
     private readonly IMediaTypeCapabilityReader? _mediaTypes;
+    private readonly PackageOwnership? _ownership;
     private readonly object _gate = new();
     private bool _sealed;
 
@@ -58,11 +59,34 @@ public sealed class PluginRegistry : IPluginRegistry
     /// one; <see cref="AddMediaType{TType}"/> refuses rather than guessing when it is.
     /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="ledger"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// A registry built this way owns nothing, so every event subscription outside
+    /// <see cref="PlatformEvents"/> is refused. The loader uses the ownership-bearing overload.
+    /// </remarks>
     public PluginRegistry(
         PluginId plugin,
         CapabilitySet granted,
         PluginRegistrationLedger ledger,
         IMediaTypeCapabilityReader? mediaTypes = null)
+        : this(plugin, granted, ledger, mediaTypes, ownership: null)
+    {
+    }
+
+    /// <summary>Initializes a new instance of the <see cref="PluginRegistry"/> class for a loaded package.</summary>
+    /// <param name="plugin">The extension registering.</param>
+    /// <param name="granted">What its declaration was granted.</param>
+    /// <param name="ledger">Where its registrations are recorded.</param>
+    /// <param name="mediaTypes">The reader media-kind demands are read through.</param>
+    /// <param name="ownership">
+    /// What this package owns, which is what proves an event type is its own.
+    /// </param>
+    /// <exception cref="ArgumentNullException"><paramref name="ledger"/> is <see langword="null"/>.</exception>
+    internal PluginRegistry(
+        PluginId plugin,
+        CapabilitySet granted,
+        PluginRegistrationLedger ledger,
+        IMediaTypeCapabilityReader? mediaTypes,
+        PackageOwnership? ownership)
     {
         ArgumentNullException.ThrowIfNull(ledger);
 
@@ -70,6 +94,7 @@ public sealed class PluginRegistry : IPluginRegistry
         _granted = granted;
         Ledger = ledger;
         _mediaTypes = mediaTypes;
+        _ownership = ownership;
     }
 
     /// <summary>
@@ -268,20 +293,31 @@ public sealed class PluginRegistry : IPluginRegistry
 
     /// <inheritdoc />
     /// <remarks>
-    /// The invocation delegate is captured here, where <typeparamref name="TEvent"/> is still a type
-    /// argument. Dispatch then calls a delegate rather than rediscovering <c>HandleAsync</c> on every
-    /// published event.
+    /// A subscription names one exact event the extension may see: an event on <see cref="PlatformEvents"/>
+    /// or one an assembly this package owns declares. An interface or abstract type would subscribe to every
+    /// event derived from it — <c>IDomainEvent</c> to the whole bus — and unproved ownership is refused
+    /// rather than assumed. The invocation delegate is captured here, while <typeparamref name="TEvent"/> is
+    /// still a type argument, so dispatch calls a delegate instead of rediscovering <c>HandleAsync</c>.
     /// </remarks>
+    /// <exception cref="PluginCapabilityException">
+    /// The subscription names a class of events rather than one event.
+    /// </exception>
+    /// <exception cref="PluginIsolationException">
+    /// The event belongs to another extension, or ownership cannot be established.
+    /// </exception>
     public IPluginRegistry AddEventHandler<TEvent>(IEventHandler<TEvent> handler)
         where TEvent : IDomainEvent
     {
         ArgumentNullException.ThrowIfNull(handler);
 
+        var eventType = typeof(TEvent);
+
         lock (_gate)
         {
             ThrowIfSealed();
+            AdmitSubscription(eventType);
             Ledger.RecordEventHandler(
-                typeof(TEvent),
+                eventType,
                 handler,
                 (domainEvent, token) => handler.HandleAsync((TEvent)domainEvent, token));
             return this;
@@ -321,6 +357,52 @@ public sealed class PluginRegistry : IPluginRegistry
 
             Ledger.Record(contract, instance);
             return this;
+        }
+    }
+
+    /// <summary>Holds one subscription to what it names, and to what this extension may see.</summary>
+    private void AdmitSubscription(Type eventType)
+    {
+        if (eventType.IsInterface || eventType.IsAbstract)
+        {
+            throw new PluginCapabilityException(
+                $"Extension '{Plugin}' subscribed to '{eventType.Name}', which is not a concrete event. "
+                + "Subscribing to an interface or an abstract base subscribes to every event derived from "
+                + "it, including facts raised by the host and by other extensions.");
+        }
+
+        if (eventType.ContainsGenericParameters)
+        {
+            throw new PluginCapabilityException(
+                $"Extension '{Plugin}' subscribed to the open generic type '{eventType.Name}'. A "
+                + "subscription names one closed event type.");
+        }
+
+        if (PlatformEvents.Admits(eventType))
+        {
+            return;
+        }
+
+        if (PlatformEvents.IsContractEvent(eventType))
+        {
+            throw new PluginIsolationException(
+                $"Extension '{Plugin}' subscribed to the platform event '{eventType.Name}', which is not on "
+                + "the list of platform events extensions may receive.");
+        }
+
+        if (_ownership is null)
+        {
+            throw new PluginIsolationException(
+                $"Extension '{Plugin}' subscribed to '{eventType.Name}' and the host holds no record of what "
+                + "this package owns, so the type cannot be proved to be the extension's.");
+        }
+
+        if (!_ownership.Owns(eventType))
+        {
+            throw new PluginIsolationException(
+                $"Extension '{Plugin}' subscribed to '{eventType.Name}', which is declared by "
+                + $"'{eventType.Assembly.GetName().Name}'. A package owns its entry assembly and the "
+                + "contracts it publishes; an assembly it can merely see belongs to whoever published it.");
         }
     }
 

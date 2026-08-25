@@ -1,7 +1,9 @@
 using System.IO;
 using System.Reflection;
 using System.Reflection.Emit;
+using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
+using Arronix.Abstractions.Providers;
 
 
 namespace Arronix.Plugins.Tests.Support;
@@ -18,7 +20,10 @@ internal enum EmittedBehavior
     ReachForTheNetwork = 1,
 
     /// <summary>Throw, to prove a failing extension quarantines itself rather than the host.</summary>
-    Throw = 2
+    Throw = 2,
+
+    /// <summary>Subscribe twice to a platform event, so contributed order can be observed.</summary>
+    SubscribeTwiceToAPlatformEvent = 3
 }
 
 /// <summary>
@@ -98,10 +103,11 @@ internal static class EmittedPlugin
         var builder = new PersistedAssemblyBuilder(new AssemblyName(assemblyName), typeof(object).Assembly);
         var module = builder.DefineDynamicModule(assemblyName);
         var novel = DefineNovelException(module);
+        var handler = behavior == EmittedBehavior.SubscribeTwiceToAPlatformEvent ? DefineEventHandler(module) : null;
 
         for (var index = 0; index < moduleCount; index++)
         {
-            DefineModuleType(module, $"Emitted.PluginModule{index}", pluginId, behavior, fault, novel, disposalMarker);
+            DefineModuleType(module, $"Emitted.PluginModule{index}", pluginId, behavior, fault, novel, handler, disposalMarker);
         }
 
         Directory.CreateDirectory(folder);
@@ -139,6 +145,41 @@ internal static class EmittedPlugin
         return constructor;
     }
 
+    /// <summary>
+    /// Declares a handler of a platform event in the fixture's own assembly.
+    /// </summary>
+    /// <remarks>
+    /// A platform event rather than one of the fixture's own, because two extensions can only be observed in
+    /// order on an event they can both subscribe to.
+    /// </remarks>
+    private static ConstructorInfo DefineEventHandler(ModuleBuilder module)
+    {
+        var contract = typeof(IEventHandler<ProviderDefinitionChanged>);
+        var type = module.DefineType(
+            "Emitted.PlatformEventHandler",
+            TypeAttributes.Public | TypeAttributes.Class | TypeAttributes.Sealed | TypeAttributes.BeforeFieldInit,
+            typeof(object));
+
+        type.AddInterfaceImplementation(contract);
+
+        var handle = type.DefineMethod(
+            nameof(IEventHandler<ProviderDefinitionChanged>.HandleAsync),
+            MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig
+                | MethodAttributes.NewSlot | MethodAttributes.Final,
+            typeof(Task),
+            [typeof(ProviderDefinitionChanged), typeof(CancellationToken)]);
+
+        var il = handle.GetILGenerator();
+        il.Emit(OpCodes.Call, typeof(Task).GetProperty(nameof(Task.CompletedTask))!.GetMethod!);
+        il.Emit(OpCodes.Ret);
+
+        type.DefineMethodOverride(handle, contract.GetMethod(nameof(IEventHandler<ProviderDefinitionChanged>.HandleAsync))!);
+
+        var constructor = type.DefineDefaultConstructor(MethodAttributes.Public);
+        type.CreateType();
+        return constructor;
+    }
+
     private static void DefineModuleType(
         ModuleBuilder module,
         string typeName,
@@ -146,6 +187,7 @@ internal static class EmittedPlugin
         EmittedBehavior behavior,
         EmittedFault fault,
         ConstructorBuilder novel,
+        ConstructorInfo? handler,
         string? disposalMarker)
     {
         var type = module.DefineType(
@@ -163,7 +205,7 @@ internal static class EmittedPlugin
 
         EmitConstructor(type, fault, novel);
         EmitIdProperty(type, pluginId, fault, novel);
-        EmitConfigure(type, behavior);
+        EmitConfigure(type, behavior, handler);
 
         type.CreateType();
     }
@@ -267,7 +309,7 @@ internal static class EmittedPlugin
         type.DefineMethodOverride(getter, typeof(IPluginModule).GetProperty(nameof(IPluginModule.Id))!.GetMethod!);
     }
 
-    private static void EmitConfigure(TypeBuilder type, EmittedBehavior behavior)
+    private static void EmitConfigure(TypeBuilder type, EmittedBehavior behavior, ConstructorInfo? handler)
     {
         var configure = type.DefineMethod(
             nameof(IPluginModule.Configure),
@@ -291,6 +333,23 @@ internal static class EmittedPlugin
                 il.Emit(OpCodes.Ldstr, "this extension is broken");
                 il.Emit(OpCodes.Newobj, typeof(InvalidOperationException).GetConstructor([typeof(string)])!);
                 il.Emit(OpCodes.Throw);
+                break;
+
+            case EmittedBehavior.SubscribeTwiceToAPlatformEvent:
+                var subscribe = typeof(IPluginRegistry)
+                    .GetMethod(nameof(IPluginRegistry.AddEventHandler))!
+                    .MakeGenericMethod(typeof(ProviderDefinitionChanged));
+
+                for (var registration = 0; registration < 2; registration++)
+                {
+                    il.Emit(OpCodes.Ldarg_1);
+                    il.Emit(OpCodes.Callvirt, typeof(IPluginContext).GetProperty(nameof(IPluginContext.Registry))!.GetMethod!);
+                    il.Emit(OpCodes.Newobj, handler!);
+                    il.Emit(OpCodes.Callvirt, subscribe);
+                    il.Emit(OpCodes.Pop);
+                }
+
+                il.Emit(OpCodes.Ret);
                 break;
 
             default:

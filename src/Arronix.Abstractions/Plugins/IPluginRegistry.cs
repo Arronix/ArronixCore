@@ -262,12 +262,24 @@ public interface IPluginRegistry
     IPluginRegistry AddOutboundHttpInterceptor(IOutboundHttpInterceptor interceptor);
 
     /// <summary>
-    /// Subscribes to a platform event. Ungated, and filtered: an extension sees the platform's events and
-    /// its own, never another extension's.
+    /// Subscribes to one exact event. Ungated, and filtered: an extension sees the platform events the host
+    /// admits and the ones its own package declares, never another extension's.
     /// </summary>
-    /// <typeparam name="TEvent">The event type subscribed to.</typeparam>
+    /// <typeparam name="TEvent">
+    /// The exact event type. It must be a concrete closed type — an interface or abstract base would
+    /// subscribe to every event derived from it — declared either by the host on its admitted list or by an
+    /// assembly this package owns: its entry assembly or a contract assembly it publishes. Delivery is by
+    /// that exact type, so a base subscription never receives a derived event.
+    /// </typeparam>
     /// <param name="handler">The handler.</param>
     /// <returns>This registry, for chaining.</returns>
+    /// <exception cref="PluginCapabilityException">
+    /// <typeparamref name="TEvent"/> names a class of events rather than one event.
+    /// </exception>
+    /// <remarks>
+    /// An event type belonging to another package is refused as an isolation violation, carrying
+    /// <see cref="CoreErrorCode.PluginIsolationViolation"/>.
+    /// </remarks>
     IPluginRegistry AddEventHandler<TEvent>(IEventHandler<TEvent> handler)
         where TEvent : IDomainEvent;
 

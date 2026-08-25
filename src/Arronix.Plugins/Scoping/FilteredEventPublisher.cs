@@ -1,4 +1,3 @@
-using System.Runtime.Loader;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Loading;
@@ -18,15 +17,11 @@ namespace Arronix.Plugins.Scoping;
 /// belonging to another extension could make the platform act on a fact that extension never asserted.
 /// </para>
 /// <para>
-/// The test is where the event type came from, not what it is called. A type defined in the contract
-/// assembly is a platform event and is always publishable; a type that came out of this extension's own
-/// load context is its own; anything else is a forgery, and is refused as an isolation violation rather
-/// than as a missing privilege, because no capability would make it acceptable.
-/// </para>
-/// <para>
-/// A publisher constructed without a load context imposes only the first rule. That is the in-process case
-/// — a module the host constructed itself, or a test — where there is no isolation boundary to enforce and
-/// pretending otherwise would be theater.
+/// The test is where the event type came from, not what it is called. A type the contract assembly defines
+/// is a platform event and is always publishable; so is one declared by an assembly this package owns. An
+/// assembly it can merely see — a dependency's published contract, or a private assembly that happens to
+/// share its load context — belongs to somebody else, so publishing its events is a forgery, refused as an
+/// isolation violation rather than as a missing privilege: no capability would make it acceptable.
 /// </para>
 /// </remarks>
 public sealed class FilteredEventPublisher : IEventPublisher
@@ -34,7 +29,7 @@ public sealed class FilteredEventPublisher : IEventPublisher
     private static readonly System.Reflection.Assembly ContractAssembly = typeof(IDomainEvent).Assembly;
 
     private readonly IEventPublisher _inner;
-    private readonly AssemblyLoadContext? _owningContext;
+    private readonly PackageOwnership? _ownership;
     private readonly PluginInvocationLifetime? _invocation;
 
     /// <summary>
@@ -42,26 +37,27 @@ public sealed class FilteredEventPublisher : IEventPublisher
     /// </summary>
     /// <param name="inner">The platform's publisher.</param>
     /// <param name="plugin">The extension publishing.</param>
-    /// <param name="owningContext">
-    /// The extension's load context, or <see langword="null"/> when it was not loaded in isolation.
-    /// </param>
     /// <exception cref="ArgumentNullException"><paramref name="inner"/> is <see langword="null"/>.</exception>
-    public FilteredEventPublisher(IEventPublisher inner, PluginId plugin, AssemblyLoadContext? owningContext = null)
-        : this(inner, plugin, owningContext, invocation: null)
+    /// <remarks>
+    /// A publisher built this way imposes only the platform rule. That is the in-process case — a module the
+    /// host constructed itself, or a test — where there is no package to own anything.
+    /// </remarks>
+    public FilteredEventPublisher(IEventPublisher inner, PluginId plugin)
+        : this(inner, plugin, ownership: null, invocation: null)
     {
     }
 
     internal FilteredEventPublisher(
         IEventPublisher inner,
         PluginId plugin,
-        AssemblyLoadContext? owningContext,
+        PackageOwnership? ownership,
         PluginInvocationLifetime? invocation)
     {
         ArgumentNullException.ThrowIfNull(inner);
 
         _inner = inner;
         Plugin = plugin;
-        _owningContext = owningContext;
+        _ownership = ownership;
         _invocation = invocation;
     }
 
@@ -85,7 +81,7 @@ public sealed class FilteredEventPublisher : IEventPublisher
             return true;
         }
 
-        return _owningContext is null || AssemblyLoadContext.GetLoadContext(eventType.Assembly) == _owningContext;
+        return _ownership is null || _ownership.Owns(eventType);
     }
 
     /// <inheritdoc />

@@ -289,22 +289,23 @@ internal sealed class HostCompositionTests
     }
 
     [Test]
-    public void TheCachingAndHostingContractsAreRegisteredAndTelemetryAndEventsAreNotYet()
+    public void TheCachingHostingAndEventContractsAreRegisteredAndTelemetryIsNotYet()
     {
         using var provider = Build();
 
-        // Three of the five services a package with an entry assembly cannot be activated without. The
-        // other two land with their own slices, and until they do this host still refuses such a package.
+        // Four of the five services a package with an entry assembly cannot be activated without. The last
+        // lands with its own slice, and until it does this host still refuses such a package.
         using (new AssertionScope())
         {
             provider.GetService<ICacheProvider>().Should().NotBeNull();
             provider.GetService<IHostRuntimeInfo>().Should().NotBeNull();
             provider.GetService<IOperatingSystemInfo>().Should().NotBeNull();
+            provider.GetService<IEventPublisher>().Should().NotBeNull();
 
             provider.GetRequiredService<PluginPlatformServices>()
                 .MissingRequiredServices()
                 .Should()
-                .BeEquivalentTo([nameof(ITelemetryEmitter), nameof(IEventPublisher)]);
+                .BeEquivalentTo([nameof(ITelemetryEmitter)]);
         }
     }
 }

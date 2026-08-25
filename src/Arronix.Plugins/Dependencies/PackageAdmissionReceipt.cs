@@ -181,6 +181,7 @@ internal sealed class PackageAdmissionReceipt
 internal sealed class PackageAdmissionLease
 {
     private PluginRuntimeLease? _runtime;
+    private PackageOwnership? _ownership;
     private int _disposed;
 
     internal PackageAdmissionLease(PackageAdmissionReceipt receipt, PackageContractScope contracts)
@@ -200,6 +201,27 @@ internal sealed class PackageAdmissionLease
 
     /// <summary>Gets the executable runtime this package wraps, or <see langword="null"/> when it has none.</summary>
     internal PluginRuntimeLease? Runtime => _runtime;
+
+    /// <summary>
+    /// Gets what this package owns, once its entry assembly is loaded, or <see langword="null"/> when it
+    /// runs no code and therefore owns nothing an extension boundary asks about.
+    /// </summary>
+    internal PackageOwnership? Ownership => _ownership;
+
+    /// <summary>Records what this package owns, exactly once.</summary>
+    /// <param name="ownership">Its entry assembly and the contracts it publishes.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="ownership"/> is <see langword="null"/>.</exception>
+    /// <exception cref="InvalidOperationException">Ownership is already recorded.</exception>
+    internal void AttachOwnership(PackageOwnership ownership)
+    {
+        ArgumentNullException.ThrowIfNull(ownership);
+
+        if (Interlocked.CompareExchange(ref _ownership, ownership, null) is not null)
+        {
+            throw new InvalidOperationException(
+                $"Package '{Receipt.Id}' already recorded what it owns. One load attempt owns one set.");
+        }
+    }
 
     /// <summary>Couples the executable runtime lease to this package lease, exactly once.</summary>
     /// <param name="runtime">The prepared runtime lease.</param>

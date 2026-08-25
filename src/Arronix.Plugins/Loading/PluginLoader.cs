@@ -689,7 +689,17 @@ public sealed class PluginLoader
 
                 // Step 12: everything the extension registers is admitted or refused as it registers it.
                 ledger = new PluginRegistrationLedger(package.Id);
-                var registry = new PluginRegistry(package.Id, manifest.GrantedCapabilities, ledger, _mediaTypes);
+
+                // Its entry assembly and the contracts it publishes. Subscription, publication and delivery
+                // are all decided against this one object, which the package lifetime then owns.
+                var owned = PackageOwnership.Of(assembly, lease);
+                lease.AttachOwnership(owned);
+                var registry = new PluginRegistry(
+                    package.Id,
+                    manifest.GrantedCapabilities,
+                    ledger,
+                    _mediaTypes,
+                    owned);
 
                 // Created before the extension is configured, so its cache, telemetry and event wrappers all
                 // hold this exact retention authority from the first call it makes — configuration-time
@@ -698,7 +708,7 @@ public sealed class PluginLoader
 
                 ledger.Invocation = invocation;
 
-                var pluginContext = BuildContext(manifest, registry, context, receipt, invocation, out caches);
+                var pluginContext = BuildContext(manifest, registry, context, receipt, invocation, owned, out caches);
                 ledger.ActivationContext = pluginContext;
 
                 try
@@ -707,6 +717,12 @@ public sealed class PluginLoader
                 }
                 catch (PluginCapabilityException failure)
                 {
+                    return Quarantine(source, package.Id, manifest, failure.ErrorCode, failure.Message, defects: []);
+                }
+                catch (PluginIsolationException failure)
+                {
+                    // Reaching for another extension's type is an isolation violation, and the quarantine
+                    // record has to say so rather than call it a load failure.
                     return Quarantine(source, package.Id, manifest, failure.ErrorCode, failure.Message, defects: []);
                 }
 // A throwing extension quarantines itself; it never brings down the host. A process-fatal condition is
@@ -1119,6 +1135,7 @@ public sealed class PluginLoader
         PluginLoadContext loadContext,
         PackageAdmissionReceipt receipt,
         PluginInvocationLifetime invocation,
+        PackageOwnership owned,
         out PartitionedCacheProvider caches)
     {
         var options = _options.Value;
@@ -1160,7 +1177,7 @@ public sealed class PluginLoader
             caches,
             _platform.Json,
             new PluginTelemetryEmitter(_platform.Telemetry!, manifest.Id, invocation),
-            new FilteredEventPublisher(_platform.Events!, manifest.Id, loadContext, invocation),
+            new FilteredEventPublisher(_platform.Events!, manifest.Id, owned, invocation),
             _platform.Runtime!,
             _platform.OperatingSystem!,
             _platform.Clock,

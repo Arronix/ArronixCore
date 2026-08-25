@@ -1,9 +1,9 @@
 using System.Linq;
 using System.Runtime.Loader;
-using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Plugins;
 using Arronix.Common.Contributions;
 using Arronix.Plugins.Loading;
+using Arronix.Plugins.Registration;
 
 namespace Arronix.Plugins.Registry;
 
@@ -11,15 +11,20 @@ namespace Arronix.Plugins.Registry;
 /// Projects the Active extension registry into leased contributions for the platform's dispatch paths.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Selection happens under the publication read gate and every selected runtime is leased before the gate
 /// is released, so a runtime cannot be withdrawn between being chosen and being called. Withdrawal closes a
 /// runtime and removes its published result under one write lease, so an Active result whose lifetime
 /// refuses a lease is a broken invariant and is reported as one.
+/// </para>
+/// <para>
+/// An event reaches an extension's handler by exact type. A subscription names one event, which is what
+/// admission holds it to, so widening here would deliver facts the extension never asked for and was never
+/// entitled to see.
+/// </para>
 /// </remarks>
 internal sealed class PluginContributionSource : IPluginContributionSource
 {
-    private static readonly System.Reflection.Assembly ContractAssembly = typeof(IDomainEvent).Assembly;
-
     private readonly PluginRuntimeRegistry _registry;
 
     internal PluginContributionSource(PluginRuntimeRegistry registry)
@@ -58,7 +63,7 @@ internal sealed class PluginContributionSource : IPluginContributionSource
                 return
                 [
                     .. ledger.EventHandlers
-                        .Where(handler => handler.EventType.IsAssignableFrom(published))
+                        .Where(handler => handler.EventType == published)
                         .Select(handler => (
                             handler.Ordinal,
                             new EventHandlerContribution(handler.Handler, handler.EventType, handler.Invoke))),
@@ -102,12 +107,15 @@ internal sealed class PluginContributionSource : IPluginContributionSource
     }
 
     /// <summary>
-    /// The subscription boundary: an extension sees platform-contract events and its own, never another's.
+    /// The subscription boundary: an extension sees admitted platform events and its own, never another's.
     /// </summary>
+    /// <remarks>
+    /// The same authority admission decided against, read again at the moment of delivery, so a handler
+    /// recorded by a path that did not go through admission is still not handed another package's event.
+    /// </remarks>
     private static bool MaySubscribe(PluginLoadResult result, Type eventType)
-        => eventType.Assembly == ContractAssembly
-            || result.LoadContext is null
-            || ReferenceEquals(AssemblyLoadContext.GetLoadContext(eventType.Assembly), result.LoadContext);
+        => PlatformEvents.Admits(eventType)
+            || result.PackageLease?.Ownership?.Owns(eventType) == true;
 
     private static PluginId RequireOwner(PluginLoadResult result)
         => result.Id

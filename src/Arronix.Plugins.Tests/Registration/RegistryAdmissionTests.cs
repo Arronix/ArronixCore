@@ -3,6 +3,7 @@ using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Scheduling;
+using Arronix.Plugins.Loading;
 using Arronix.Plugins.Registration;
 using Arronix.Plugins.Tests.Support;
 
@@ -20,7 +21,14 @@ public sealed class RegistryAdmissionTests
     private static (PluginRegistry Registry, PluginRegistrationLedger Ledger) Create(params Capability[] granted)
     {
         var ledger = new PluginRegistrationLedger(Plugin);
-        return (new PluginRegistry(Plugin, CapabilitySet.Of(granted), ledger), ledger);
+        return (
+            new PluginRegistry(
+                Plugin,
+                CapabilitySet.Of(granted),
+                ledger,
+                null,
+                new PackageOwnership(typeof(RegistryAdmissionTests).Assembly, [])),
+            ledger);
     }
 
     [Test]
