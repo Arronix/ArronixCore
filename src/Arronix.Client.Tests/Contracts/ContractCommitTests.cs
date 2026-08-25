@@ -26,8 +26,10 @@ namespace Arronix.Client.Tests.Contracts;
 /// residency question answer wrongly.
 /// </para>
 /// <para>
-/// It is the only place the post-load proof runs. That proof's refusal branch is unreachable through this
-/// interface once a manifest is valid, so it is covered by a mutation recorded in docs/research/g07.
+/// It is the only place the post-load proof runs, in both directions: the ordinary narrative proves it
+/// accepts a real load, and the first part proves it refuses a runtime that returns an assembly other than
+/// the bytes it was handed. Nothing outside the runtime can provoke that, so the load is supplied through
+/// the loader's internal seam.
 /// </para>
 /// </remarks>
 [TestFixture]
@@ -40,10 +42,9 @@ public sealed class ContractCommitTests
     /// One narrative, in order, because a load context cannot be rewound between tests.
     /// </summary>
     /// <remarks>
-    /// Load, reuse, and then the host publishing a different build of the same assembly. Splitting these
-    /// into separate cases would make them order-dependent on each other in a way NUnit does not promise,
-    /// and the sequence is the behaviour anyway: what a page does on a second pass is only meaningful
-    /// against what it did on the first.
+    /// A runtime that returns the wrong assembly, then load, reuse, and the host publishing a different
+    /// build. Splitting these into separate cases would make them order-dependent on each other in a way
+    /// NUnit does not promise, and the sequence is the behaviour anyway.
     /// </remarks>
     [Test]
     public async Task AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn()
@@ -64,6 +65,80 @@ public sealed class ContractCommitTests
             metadata.ModuleVersionId,
             content.Length);
 
+        // Part one: the runtime returns something other than the bytes it was handed. Two truthful
+        // assemblies are preflighted; the seam answers the first load with an assembly that is real,
+        // already loaded, and not this one.
+        var movies = Path.Combine(AppContext.BaseDirectory, "ClientContractFixtures", "Arronix.Media.Movies.dll");
+        var moviesContent = await File.ReadAllBytesAsync(movies);
+        ContractMetadataReader
+            .TryRead(moviesContent, MediaContractLoader.ContractAssemblyName, out var moviesMetadata, out _)
+            .Should().BeTrue();
+
+        var moviesPublished = new ClientContractAssembly(
+            "Arronix.Media.Movies",
+            "Arronix.Media.Movies.dll",
+            moviesMetadata!.Identity,
+            Convert.ToHexString(SHA256.HashData(moviesContent)),
+            moviesMetadata.ModuleVersionId,
+            moviesContent.Length);
+
+        var twoPackages = new ClientContractManifest(
+            MediaContractLoader.ClientContractIdentity,
+            new string('B', 64),
+            [
+                new ClientContractPackage(
+                    PluginId.FromString("commit.first"), "1.0.0", "First",
+                    [moviesPublished], [PluginId.FromString("commit.first")], new string('C', 64)),
+                new ClientContractPackage(
+                    PluginId.FromString("commit.second"), "1.0.0", "Second",
+                    [truthful], [PluginId.FromString("commit.second")], new string('C', 64)),
+            ],
+            []);
+
+        using (var wrongHandler = new StubHandler(requestPath =>
+            requestPath.EndsWith("client-contracts", StringComparison.Ordinal)
+                ? Json(twoPackages)
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(
+                        requestPath.Contains("Arronix.Media.Movies", StringComparison.Ordinal)
+                            ? moviesContent
+                            : content),
+                }))
+        {
+            using var wrongHttp = new HttpClient(wrongHandler) { BaseAddress = new Uri("https://host.invalid/") };
+
+            // A real assembly, already loaded, and not the one whose bytes were verified.
+            var impostor = typeof(ClientContractManifest).Assembly;
+            var wrongLoader = new MediaContractLoader(
+                wrongHttp,
+                new ContractStore(new RefusingJsRuntime()),
+                _ => impostor);
+
+            var wrong = await wrongLoader.LoadAsync();
+            var byWrongPackage = wrong.Packages.ToDictionary(package => package.Id.Value, StringComparer.Ordinal);
+
+            using (new AssertionScope())
+            {
+                wrong.Compatibility.Should().Be(ContractCompatibility.Terminal);
+                wrong.CanProject.Should().BeFalse();
+                wrong.Failure.Should().Contain("Reload");
+
+                var refused = byWrongPackage["commit.first"].Assemblies.Single();
+                refused.Outcome.Should().Be(ContractLoadOutcome.RuntimeRefused);
+                refused.Failure.Should().Contain("loaded as");
+
+                byWrongPackage["commit.second"].Assemblies.Single().Outcome.Should().Be(
+                    ContractLoadOutcome.Verified,
+                    "the commit stopped at the first entry, so the second is verified and not loaded");
+
+                wrongLoader.Find("Arronix.Media.Movies").Should().BeNull();
+                wrongLoader.Find(FixtureAssemblyName).Should().BeNull();
+                Resident("Arronix.Media.Movies").Should().BeFalse();
+            }
+        }
+
+        // Part two: the ordinary narrative, over the real default-context load.
         var published = truthful;
 
         using var handler = new StubHandler(requestPath =>
@@ -134,6 +209,15 @@ public sealed class ContractCommitTests
         published = truthful;
         (await loader.LoadAsync()).Compatibility.Should().Be(ContractCompatibility.Terminal);
     }
+
+    private static HttpResponseMessage Json(ClientContractManifest manifest)
+        => new(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                JsonSerializer.Serialize(manifest, ApiJsonOptions.Default),
+                Encoding.UTF8,
+                "application/json"),
+        };
 
     private static ClientContractManifest Manifest(ClientContractAssembly assembly)
         => new(

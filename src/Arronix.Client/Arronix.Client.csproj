@@ -65,7 +65,7 @@
   <!--
        TRIMMING IS OFF. RECORDED DEBT, NOT A PREFERENCE.
 
-       A trimmed publish of this client cannot start on .NET 11 preview 7: InvalidCastException from
+       The trimmed client cannot start on .NET 11 preview 7: InvalidCastException from
        MemberAssignment.GetPropertiesIncludingInherited, reached from PersistentServicesRegistry during
        WebAssemblyHost.RunAsyncCore, before any Arronix code runs. The same commit published untrimmed
        starts, and a default Blazor WebAssembly template publishes and starts trimmed on the same SDK.

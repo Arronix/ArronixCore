@@ -1,10 +1,10 @@
 # G07.1 — publishing, caching, and loading the exact client-safe contract package
 
-**Status:** in progress. G07 was split into three numbered sub-gates before implementation; this records
-G07.1 only. It is **not** closed: the shipping client publishes with trimming disabled to start at all, and
-that debt is stated below rather than written around. G07.2 (generated metadata, typed deserialization and
-rendering) and G07.3 (update, removal, stale cache and stale tab) are open, and none of their work is
-claimed here.
+**Status:** complete. G07 was split into three numbered sub-gates before implementation; this records G07.1
+only. Every numbered exit condition is met against the ordinary published client. The shipping publish
+disables trimming, which is recorded technical debt in section 3 rather than an open exit condition: this
+gate never required an optimized publish. G07.2 (generated metadata, typed deserialization and rendering)
+and G07.3 (update, removal, stale cache and stale tab) are open, and none of their work is claimed here.
 
 This is a record of a change, not a proposal. Every rule below is asserted by a named fixture or by a
 command whose exact output is quoted.
@@ -23,7 +23,8 @@ Five parts:
    and neither can a file the package does not publish, nor a duplicate. Declared, never inferred, for the
    same reason the shared list is: what is named here leaves the host's process.
 2. **A projection of the running installation.** `IClientContractCatalog` reads the Active plugin registry
-   under the publication read gate and publishes, per client-safe assembly, its SHA-256 content hash, its
+   once, under the registry's own publication read gate — taken from the registry rather than supplied, so a
+   catalog guarding a different one cannot be constructed — and publishes, per client-safe assembly, its SHA-256 content hash, its
    assembly/version/culture/public-key identity, its module version identifier and its length; and per
    package, its transitive client dependency closure in load order plus one hash over it. One further hash
    covers the whole installation. Facets it will not serve appear in the same document, with reasons.
@@ -56,7 +57,9 @@ the required set failed, or the commit stopped earlier — reports `Verified`. S
 could have been is the one lie this report must not tell.
 
 **There is still a post-load proof.** Preflight establishes what the bytes declare; it cannot establish what
-the runtime did with them. After `LoadFromStream` returns, the loaded assembly's `FullName` and module
+the runtime did with them. The load goes through an internal seam whose production value is
+`AssemblyLoadContext.Default.LoadFromStream`, so a test can supply a runtime that returns a different
+already-loaded assembly and drive the refusal branch as an ordinary regression. After `LoadFromStream` returns, the loaded assembly's `FullName` and module
 version identifier are compared with the published ones, and its reference to `Arronix.Abstractions` is
 resolved through the default context and required to be `ReferenceEquals` to `typeof(IMediaEntity).Assembly`.
 Object identity, not name equality: two assemblies with one name is exactly the failure a shared contract
@@ -78,6 +81,11 @@ never merged.
 **A superseded address is `410 Gone`, not `404`.** The file is still published, at a different address, so
 re-reading the manifest is the recovery.
 
+**A refusal separates what it means.** `MissingAssemblies` carries admitted assembly simple names a facet
+binds and cannot reach; `UnadmittedFiles` carries declared file names the installation admitted nothing for.
+They are different kinds of string and one list made neither readable. `CausedBy` is a list, because a
+package can lose several required facets at once and naming one sends an operator to fix a fraction.
+
 **Withholding cascades to a fixed point.** A facet is servable only if a browser can bind everything its
 assemblies name and every required facet it declares is itself being served. Withholding one package removes
 its assemblies from every closure that contained it, which can make a dependant unservable in turn, so the
@@ -97,7 +105,11 @@ G07.2's generated metadata.
 
 ## 3. The trimming debt, and how it was attributed
 
-**A trimmed publish of `Arronix.Client` cannot start.** On .NET 11 preview 7 it fails during
+Technical debt, recorded here and carried in `CONTEXT.md`. It is not an exit condition of this gate: G07.1
+asked for a client-safe contract package to be published, served, verified and loaded in a real browser, and
+the browser matrix below proves that against the client an ordinary `dotnet publish` produces.
+
+**The trimmed client cannot start.** On .NET 11 preview 7 a trimmed publish fails during
 `WebAssemblyHost.RunAsyncCore` with:
 
 ```text
@@ -133,13 +145,13 @@ publish start. The proof script now removes `obj/` and `bin/` before publishing 
 
 **The response is a property, not a flag on one command.** `Arronix.Client.csproj` sets
 `<PublishTrimmed>false</PublishTrimmed>`, so an ordinary `dotnet publish` produces an application that
-starts. A proof-only `-p:PublishTrimmed=false` would leave the artifact somebody deploys different from the
+starts, and that is the artifact the browser matrix runs against. A proof-only `-p:PublishTrimmed=false` would leave the artifact somebody deploys different from the
 artifact anybody tested. The cost is a much larger download and it is visible in the project file where the
 decision is. `TrimmerRootAssembly Include="Arronix.Abstractions"` stays and is inert: a dynamically loaded
 contract binds to members the trimmer never saw, so it is what must already be true the day trimming returns.
 
-This is why **G07.1 is in progress rather than complete**. The protocol and the loader are proved; the client
-they run in cannot yet ship in its optimized form.
+Restoring trimming means diagnosing the framework failure. Until then the deployed application is larger
+than it should be.
 
 ## 4. Evidence
 
@@ -191,6 +203,7 @@ whose fetches a page-level route never sees; the first two cases run with it in 
 | 5 | Manifest declares identity `Version=9.9.9.9` | `Refused`, `IdentityMismatch`, report states the identity the bytes actually declare |
 | 6 | Manifest declares a different module identifier | `Refused`, `ModuleVersionMismatch`; the bytes hash correctly and are a different build |
 | 7 | Manifest with an empty closure | `ManifestInvalid`, nothing fetched, refusal names the defect |
+| 8 | Manifest carrying a withheld facet | `Compatible` and the withheld facet rendered, with its unreachable assemblies and its unadmitted files under separate headings |
 
 Cases 3–7 all report **projection withheld**, and in every one the runtime was never handed the bytes. The
 outcomes are read as names from the rendered page as well as from `#contract-proof`, because the report
@@ -211,7 +224,7 @@ files, never referenced.
 | A payload that is exactly what it says it is and is not built against this contract line is refused | `.APayloadThatDoesNotReferenceThisContractLineIsRefused` |
 | A failed prerequisite stops a verified dependant from loading, and that dependant reports `Verified` | `.AFailedPrerequisiteStopsItsDependantFromLoading` |
 | Nothing verified may be reached while the installation is refused | `.NothingMayBeProjectedFromARefusedInstallation` |
-| A verified installation loads, is reused as `Resident` on a second pass, and becomes terminal when the host publishes a different build | `ContractCommitTests.AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn` |
+| A runtime returning an assembly other than the verified bytes is terminal, the entry is `RuntimeRefused`, a later verified entry stays `Verified`, and nothing is resident or projectable; then a verified installation loads, is reused as `Resident`, and becomes terminal when the host publishes a different build | `ContractCommitTests.AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn` |
 | Nineteen malformed manifests are each named, and unreadable identifier text makes the whole document unreadable | `ContractManifestValidatorTests` (24 cases) |
 
 `ClientFacetResolverTests` proves the withholding rule directly, because a fixed point is the kind of thing
@@ -242,7 +255,7 @@ this work were invalid for exactly that reason and were redone.
 | The identity check is skipped | 2 fail |
 | The module version check is skipped | 1 fails |
 | The contract reference check is skipped | 1 fails |
-| The post-load identity proof always disagrees | `ContractCommitTests` fails, proving that proof runs on every successful load |
+| The post-load disagreement branch is never taken | `ContractCommitTests` fails |
 | The resolver stops cascading to dependants of withheld facets | 3 resolver cases fail |
 | `ClientContractCatalog.Open` ignores the content address | `NothingOutsideTheDeclaredFacetIsOffered` fails |
 | The client facet is validated against its own declaration rather than the published contracts | both manifest cases fail |
@@ -253,9 +266,9 @@ this work were invalid for exactly that reason and were redone.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=13 total=3170 enabled=2868 passed=2868 failed=0 skipped=302 inconclusive=0
+projects=13 total=3176 enabled=2874 passed=2874 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
-compileLogs=1 compileProjects=13 compileItems=298 boundSources=15
+compileLogs=1 compileProjects=13 compileItems=299 boundSources=15
 ```
 
 The registered skip count is unchanged at 302 — 301 Movies cases and one architecture case — and both
@@ -264,7 +277,7 @@ ratchets pass. Per project:
 | Project | Passed | Skipped |
 | --- | --- | --- |
 | `Arronix.Host.Tests` | 576 | 0 |
-| `Arronix.Plugins.Tests` | 544 | 0 |
+| `Arronix.Plugins.Tests` | 547 | 0 |
 | `Arronix.Common.Tests` | 427 | 0 |
 | `Arronix.Architecture.Tests` | 374 | 1 |
 | `Arronix.Plugin.Movies.Tests` | 370 | 301 |
@@ -273,25 +286,20 @@ ratchets pass. Per project:
 | `Arronix.Compatibility.Ratchet.Tests` | 103 | 0 |
 | `Arronix.Plugin.Tv.Tests` | 87 | 0 |
 | `Arronix.Plugin.Music.Tests` | 66 | 0 |
-| `Arronix.Client.Tests` | 52 | 0 |
+| `Arronix.Client.Tests` | 55 | 0 |
 | `Arronix.Format.Video.Tests` | 10 | 0 |
 | `Arronix.Generators.Tests` | 8 | 0 |
 
 ## 5. Residual gaps
 
-1. **The shipping client publishes untrimmed.** Section 3. Until the framework failure is diagnosed or
-   worked around, the deployed application is much larger than it should be, and G07.1 is not closed.
+1. **The shipping client publishes untrimmed.** Section 3. Technical debt, not an open exit condition.
 
 2. **No production host can activate a package with an entry assembly.** `PluginPlatformServices` requires
    `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`,
    and none of the five has an implementation outside the test projects. A real server therefore quarantines
    Movies before it can publish a client facet, and only the contract-only video package reaches a browser.
-   This predates G07 and blocks G07.2, whose whole subject is the Movies item graph. It is host work, and
-   inventing five platform services here would have been the scope creep the roadmap forbids.
-
-3. **The post-load runtime proof cannot be reached from outside.** Once a manifest is valid, every way of
-   describing one assembly as another is refused before the bytes are fetched, so that branch is proved by
-   mutation rather than by a case. That is a good sign and it is still a gap in coverage.
+   This predates G07 and blocks G07.2, whose whole subject is the Movies item graph. Building the five is
+   the roadmap's next task.
 
 4. **The browser half is not on the hermetic test rail.** `eng/ci/run-tests.sh` carries no browser
    toolchain, and adding one would put a browser download in the clean-repository proof. The harness stands

@@ -42,7 +42,7 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `ILanguageDefinition` owns one language's title comparison, provider-query, file-name spelling, and sort transformations.
 - `StandardMediaAction` names platform operations independently of their string wire identifiers. Host derives their `ActionDescriptor` values from a media type's compiled shape.
 - `ActionRequest` carries typed item references plus descriptor-defined textual parameter values across Client and API.
-- `ClientContractManifest`, `ClientContractPackage`, `ClientContractAssembly`, and `ClientContractRefusal` state what a browser may load from a running installation and what it may not: the universal contract identity it must already carry, one hash over the whole installation, per package its client-safe assemblies with their exact content hash, CLR identity, module version identifier and length plus its transitive client dependency closure in load order and one hash over it, and per withheld facet the reason and the package whose withdrawal caused it. Package identifiers are `PluginId`, not text.
+- `ClientContractManifest`, `ClientContractPackage`, `ClientContractAssembly`, and `ClientContractRefusal` state what a browser may load from a running installation and what it may not: the universal contract identity it must already carry, one hash over the whole installation, per package its client-safe assemblies with their exact content hash, CLR identity, module version identifier and length plus its transitive client dependency closure in load order and one hash over it, and per withheld facet the reason, the admitted assemblies it cannot reach, the declared files nothing admitted, and every required package whose withdrawal caused it. Package identifiers are `PluginId`, not text.
 
 ## 4. Public interfaces
 
@@ -142,7 +142,7 @@ A package declares which of its published shared contract assemblies a browser m
 `clientContracts` in its manifest. The list is validated as a subset of `contractAssemblies`, so an entry
 assembly can never appear in it and neither can a file the package does not publish or a duplicate; a package
 that offers a client nothing is ordinary. `IClientContractCatalog` projects the Active plugin registry — one
-snapshot, under the publication read gate — into `ClientContractManifest`, and serves the exact admitted
+snapshot, under that registry's own publication read gate — into `ClientContractManifest`, and serves the exact admitted
 bytes of one offered assembly, or refuses with `NotOffered` or `Superseded`. A facet is servable only when a
 browser can bind everything its assemblies name and every required facet it declares is itself served;
 withholding cascades to a fixed point, and withheld facets are published on the same manifest and reported by

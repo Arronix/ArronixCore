@@ -75,30 +75,32 @@ public sealed record ClientContractPackage(
 /// </summary>
 /// <param name="Package">The package whose facet is withheld.</param>
 /// <param name="Reason">The sentence an operator reads first.</param>
-/// <param name="Assemblies">
-/// The admitted assembly names the facet needs and cannot reach, in a deterministic order.
+/// <param name="MissingAssemblies">
+/// Simple names of admitted contract assemblies this facet binds and its client closure does not offer, in
+/// a deterministic order.
+/// </param>
+/// <param name="UnadmittedFiles">
+/// Bare file names this facet declares which the installation admitted no shared contract for, in a
+/// deterministic order. A separate list from <paramref name="MissingAssemblies"/> because these are
+/// declaration text rather than assembly identities, and mixing the two makes neither readable.
 /// </param>
 /// <param name="CausedBy">
-/// The package whose own withdrawal caused this one, when the refusal cascaded; otherwise
-/// <see langword="null"/>.
+/// Every required package whose own withdrawal contributed to this one, in identifier order; empty when the
+/// refusal did not cascade. Plural because a package may lose several required facets at once, and naming
+/// one of them would send an operator to fix a fraction of the problem.
 /// </param>
 /// <remarks>
-/// <para>
 /// A package reaches this list after admission, so it cannot be quarantined for it. Withholding its facet
 /// and saying so is the honest outcome: a browser handed part of a closure fails at whichever type it
-/// touches first, which is a much harder failure to read than an absent package.
-/// </para>
-/// <para>
-/// It is on the manifest rather than behind a separate query because it is the other half of the same
-/// answer. A client asking what it may load is entitled to know what it may not, and an operator looking
-/// at a missing media kind needs the reason in the same place as the list it is missing from.
-/// </para>
+/// touches first. It travels on the manifest rather than behind a separate query because a client asking
+/// what it may load is entitled to know what it may not.
 /// </remarks>
 public sealed record ClientContractRefusal(
     PluginId Package,
     string Reason,
-    IReadOnlyList<string> Assemblies,
-    PluginId? CausedBy);
+    IReadOnlyList<string> MissingAssemblies,
+    IReadOnlyList<string> UnadmittedFiles,
+    IReadOnlyList<PluginId> CausedBy);
 
 /// <summary>
 /// What a browser client may load from this host, and the contract identity it must already have.

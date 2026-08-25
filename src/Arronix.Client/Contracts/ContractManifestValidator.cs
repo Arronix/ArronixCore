@@ -131,9 +131,10 @@ internal static class ContractManifestValidator
 
         foreach (var refusal in manifest.Refused)
         {
-            if (refusal is null || refusal.Assemblies is null)
+            if (refusal is null || refusal.MissingAssemblies is null || refusal.UnadmittedFiles is null
+                || refusal.CausedBy is null)
             {
-                return "one of its refusals is null or has an absent assembly list.";
+                return "one of its refusals is null or has an absent list.";
             }
 
             if (refusal.Package == default || string.IsNullOrWhiteSpace(refusal.Reason))
@@ -152,41 +153,67 @@ internal static class ContractManifestValidator
                 return $"package '{refusal.Package}' is both published to clients and withheld from them.";
             }
 
-            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var name in refusal.Assemblies)
+            if (Describe(refusal.Package, "assembly", refusal.MissingAssemblies) is { } missingDefect)
             {
-                if (string.IsNullOrWhiteSpace(name))
+                return missingDefect;
+            }
+
+            if (Describe(refusal.Package, "file", refusal.UnadmittedFiles) is { } fileDefect)
+            {
+                return fileDefect;
+            }
+        }
+
+        // Blame is checked after every refusal is known, because a cascade names packages that may appear
+        // later in the list.
+        foreach (var refusal in manifest.Refused)
+        {
+            var causes = new HashSet<PluginId>();
+
+            foreach (var cause in refusal.CausedBy)
+            {
+                if (cause == default)
                 {
-                    return $"refusal of '{refusal.Package}' names a blank assembly.";
+                    return $"refusal of '{refusal.Package}' names an empty cause.";
                 }
 
-                if (!names.Add(name))
+                if (cause == refusal.Package)
                 {
-                    return $"refusal of '{refusal.Package}' names '{name}' more than once.";
+                    return $"refusal of '{refusal.Package}' blames itself, which explains nothing.";
+                }
+
+                if (!causes.Add(cause))
+                {
+                    return $"refusal of '{refusal.Package}' blames '{cause}' more than once.";
+                }
+
+                // A cause is a package that was itself withheld. A published package cannot be the reason
+                // another one is not: it is in the list a client is being handed.
+                if (!refused.Contains(cause))
+                {
+                    return $"refusal of '{refusal.Package}' blames '{cause}', which this host did not withhold.";
                 }
             }
         }
 
-        // Blame is checked after every refusal is known, because a cascade names a package that may appear
-        // later in the list.
-        foreach (var refusal in manifest.Refused)
+        return null;
+    }
+
+    /// <summary>Proves one refusal's name list is present, non-blank and free of duplicates.</summary>
+    private static string? Describe(PluginId package, string kind, IReadOnlyList<string> names)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in names)
         {
-            if (refusal.CausedBy is not { } cause)
+            if (string.IsNullOrWhiteSpace(name))
             {
-                continue;
+                return $"refusal of '{package}' names a blank {kind}.";
             }
 
-            if (cause == refusal.Package)
+            if (!seen.Add(name))
             {
-                return $"refusal of '{refusal.Package}' blames itself, which explains nothing.";
-            }
-
-            // A cause is a package that was itself withheld. A published package cannot be the reason
-            // another one is not: it is right there in the list a client is being handed.
-            if (!refused.Contains(cause))
-            {
-                return $"refusal of '{refusal.Package}' blames '{cause}', which this host did not withhold.";
+                return $"refusal of '{package}' names {kind} '{name}' more than once.";
             }
         }
 

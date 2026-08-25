@@ -85,18 +85,29 @@ else
                     <li class="plugin tone-problem contract-refusal" data-package="@refusal.Package.Value">
                         <div class="plugin-head">
                             <p class="plugin-name">@refusal.Package.Value</p>
-                            @if (refusal.CausedBy is { } cause)
+                            @foreach (var cause in refusal.CausedBy)
                             {
                                 <span class="chip">caused by @cause.Value</span>
                             }
                         </div>
                         <p class="plugin-message">@refusal.Reason</p>
-                        @if (refusal.Assemblies.Count > 0)
+                        @if (refusal.MissingAssemblies.Count > 0)
                         {
                             <p class="plugin-capabilities">
-                                @foreach (var assembly in refusal.Assemblies)
+                                <span class="plugin-version">cannot reach</span>
+                                @foreach (var assembly in refusal.MissingAssemblies)
                                 {
                                     <span class="chip chip-quiet">@assembly</span>
+                                }
+                            </p>
+                        }
+                        @if (refusal.UnadmittedFiles.Count > 0)
+                        {
+                            <p class="plugin-capabilities">
+                                <span class="plugin-version">never admitted</span>
+                                @foreach (var file in refusal.UnadmittedFiles)
+                                {
+                                    <span class="chip chip-quiet">@file</span>
                                 }
                             </p>
                         }

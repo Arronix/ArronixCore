@@ -1,5 +1,34 @@
 # Arronix History
 
+## 2026-08-25 — Close G07.1 and stop a refusal from mixing two kinds of name
+
+- **`ClientContractCatalog` takes only the registry** and derives the publication gate from it. A catalog
+  could previously be handed a gate guarding a different registry, which is a read that looks synchronised
+  and is not; no assertion about one read can show the gate was the right one, so the second parameter is
+  gone and the composition asserts the single-parameter shape.
+- **The post-load disagreement branch has a real regression.** The load goes through an internal seam whose
+  production value is `AssemblyLoadContext.Default.LoadFromStream`. A test supplies a runtime that honestly
+  returns a different already-loaded assembly, and the existing single commit narrative now proves the whole
+  shape: terminal, the first entry `RuntimeRefused`, a later verified entry still `Verified`, and nothing
+  resident or projectable. It is no longer a branch defended only by mutation.
+- **`ClientContractRefusal` stopped mixing two kinds of string.** `MissingAssemblies` carries admitted
+  assembly simple names a facet binds and cannot reach; `UnadmittedFiles` carries declared file names the
+  installation admitted nothing for. `CausedBy` became a list, because a package can lose several required
+  facets at once and naming one sends an operator to fix a fraction of the problem.
+- **Removed the unused `MediaContractLoader.Loaded` event**, which invoked external code while the loader's
+  semaphore was held.
+
+**G07.1 is complete.** Its exit conditions were about publishing, serving, verifying and loading a
+client-safe contract package in a real browser, and the browser matrix proves all of them against the client
+an ordinary `dotnet publish` produces. That the *trimmed* client cannot start on .NET 11 preview 7 is
+technical debt, recorded in `CONTEXT.md` and in the research note; it predates this work and is not grounds
+to reopen the gate. The roadmap's next task is the five platform services no production host implements —
+`ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo`, `IOperatingSystemInfo` —
+without which a running Arronix cannot host the extension it ships with, and G07.2 follows.
+
+Full rail: 2,874 passed, 302 registered skips, zero failed and zero inconclusive from 3,176 cases across 13
+projects.
+
 ## 2026-08-25 — Prove a contract before the browser runtime can ever see it
 
 The first pass of this loader verified after loading. It called `LoadFromStream`, then compared the loaded

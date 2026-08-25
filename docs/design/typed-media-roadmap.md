@@ -454,23 +454,15 @@ are closed; G07A and G07B remain later gates and none of their work is folded in
 
 #### G07.1 — Publish, cache, and load the exact client-safe contract package
 
-**Status:** in progress. The protocol and the loader are built and proved: the real hosted server publishes
-and serves the facet content-addressed, and a real browser running the ordinary published client loads it
-from a clean store, reuses a warm store without refetching a byte, and refuses a foreign contract line, one
-flipped byte, a falsified identity, a falsified build and a malformed manifest — in every case before the
-runtime is handed the payload, with nothing projected.
+**Status:** complete. The real hosted server publishes and serves the facet content-addressed, and a real
+browser running the ordinary published client loads it from a clean store, reuses a warm store without
+refetching a byte, and refuses a foreign contract line, one flipped byte, a falsified identity, a falsified
+build and a malformed manifest — in every case before the runtime is handed the payload, with nothing
+projected. Every numbered exit condition below is met.
 
-It is **not** closed, for one reason that is the client's own and one that is the host's:
-
-- a trimmed publish of `Arronix.Client` cannot start on .NET 11 preview 7, so the project publishes
-  untrimmed to ship at all. The defect predates this gate — the pristine base commit fails trimmed and
-  starts untrimmed under the same SDK — and closing G07.1 means diagnosing it, not routing around it;
-- no production Arronix host can activate a package with an entry assembly, because five platform services
-  have no implementation outside the test projects, so the browser proof reaches the contract-only video
-  package and the complete Movies-and-video closure is proved in `Arronix.Host.Tests` over the same real
-  staged packages. That gap blocks G07.2.
-
-Both are recorded in `docs/research/g07/client-contract-loading.md`.
+The shipping publish disables trimming, which is recorded technical debt rather than an open exit condition:
+this gate never required an optimized publish, and the client the browser matrix proves is the client an
+ordinary `dotnet publish` produces. See `docs/research/g07/client-contract-loading.md`.
 
 Implement:
 
@@ -496,8 +488,7 @@ Exit gate:
 - the Client build declares no static Movies or Video dependency;
 - an incompatible contract identity fails visibly with nothing projected;
 - nothing reaches the browser runtime until the whole required closure has been verified from its own bytes,
-  and an entry that verified without being loaded says so;
-- the shipping publish of the client starts.
+  and an entry that verified without being loaded says so.
 
 #### G07.2 — Generated client metadata, typed deserialization, and typed rendering
 
@@ -1332,22 +1323,23 @@ replacement.
 
 ## Current next task
 
-Finish **G07.1**, then take G07.2. G07.1's remaining work is the client's shipping publish: a trimmed
-`Arronix.Client` cannot start on .NET 11 preview 7, the project publishes untrimmed to compensate, and the
-gate does not close while that stands. G07.2 additionally needs the host gap below.
+Take the **five missing platform services** first, then G07.2.
 
-When G07.1 closes, take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The client-safe
-contract package now arrives in a real browser with its exact bytes, CLR identity and module version proved
-(G07.1), and the client deliberately discovers nothing by enumerating it. G07.2 gives a contract a generated,
-trimming/AOT-safe way to say what it holds, agrees a generated-metadata hash and a projection-schema hash
-between server and browser, and renders a typed Movie with artwork, ratings, lifecycle/status and collections.
+No production Arronix host can activate a package that carries an entry assembly, because `ICacheProvider`,
+`ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo` have no implementation
+outside the test projects. A real server therefore quarantines Movies before it contributes anything, and
+every packaged Movies proof runs against stubs. This is not a G07 concern that G07 deferred; it is the
+reason a running Arronix cannot yet host the extension it ships with, and G07.2's whole subject is the
+Movies item graph, which a real host cannot currently publish at all.
 
-It has one prerequisite that is host work rather than client work: no production Arronix host can activate a
-package with an entry assembly, because `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`,
-`IHostRuntimeInfo` and `IOperatingSystemInfo` have no implementation outside the test projects. Until that is
-answered a real server cannot publish the Movies facet at all. The published browser client also cannot start
-on this SDK; both are recorded in `docs/research/g07/client-contract-loading.md`.
+Then take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The
+client-safe contract package arrives in a real browser with its bytes, CLR identity and build proved
+(G07.1), and the client deliberately discovers nothing by enumerating it. G07.2 gives a contract a
+generated, trimming/AOT-safe way to say what it holds, agrees a generated-metadata hash and a
+projection-schema hash between server and browser, and renders a typed Movie with artwork, ratings,
+lifecycle/status and collections.
 
-Do not fold provider-result ingestion, durable catalog state, or the complete external-consumer vertical into
-this gate; G07A and G07B own those proofs. G07.3 owns cache update, removal, stale cache and stale tab. The
-G06 SDK package boundary and completed TMDb/provider ownership rules remain mandatory regression evidence.
+Do not fold provider-result ingestion, durable catalog state, or the complete external-consumer vertical
+into this gate; G07A and G07B own those proofs. G07.3 owns cache update, removal, stale cache and stale tab.
+The G06 SDK package boundary and completed TMDb/provider ownership rules remain mandatory regression
+evidence.

@@ -45,8 +45,8 @@ public sealed class ClientFacetResolverTests
             Assert.That(resolved.Offering.Keys.Select(id => id.Value), Is.EqualTo(new[] { "b" }));
 
             var refused = Refusal(resolved, "a");
-            Assert.That(refused.Assemblies, Is.EqualTo(new[] { "Beta" }));
-            Assert.That(refused.CausedBy, Is.Null, "nothing was withdrawn; the package never declared it");
+            Assert.That(refused.MissingAssemblies, Is.EqualTo(new[] { "Beta" }));
+            Assert.That(refused.CausedBy, Is.Empty, "nothing was withdrawn; the package never declared it");
             Assert.That(refused.Reason, Does.Contain("client closure"));
         });
     }
@@ -74,9 +74,9 @@ public sealed class ClientFacetResolverTests
         {
             Assert.That(resolved.Offering, Is.Empty);
             Assert.That(resolved.Refusals.Select(refusal => refusal.Package.Value), Is.EqualTo(new[] { "a", "b", "c" }));
-            Assert.That(Refusal(resolved, "a").CausedBy?.Value, Is.EqualTo("b"));
-            Assert.That(Refusal(resolved, "b").CausedBy?.Value, Is.EqualTo("c"));
-            Assert.That(Refusal(resolved, "c").CausedBy, Is.Null);
+            Assert.That(Refusal(resolved, "a").CausedBy.Select(id => id.Value), Is.EqualTo(new[] { "b" }));
+            Assert.That(Refusal(resolved, "b").CausedBy.Select(id => id.Value), Is.EqualTo(new[] { "c" }));
+            Assert.That(Refusal(resolved, "c").CausedBy, Is.Empty);
         });
     }
 
@@ -106,8 +106,8 @@ public sealed class ClientFacetResolverTests
         {
             Assert.That(resolved.Offering, Is.Empty);
             Assert.That(resolved.Refusals.Select(refusal => refusal.Package.Value), Is.EqualTo(new[] { "a", "b" }));
-            Assert.That(Refusal(resolved, "a").CausedBy?.Value, Is.EqualTo("b"));
-            Assert.That(Refusal(resolved, "a").Assemblies, Is.Empty);
+            Assert.That(Refusal(resolved, "a").CausedBy.Select(id => id.Value), Is.EqualTo(new[] { "b" }));
+            Assert.That(Refusal(resolved, "a").MissingAssemblies, Is.Empty);
         });
     }
 
@@ -189,7 +189,8 @@ public sealed class ClientFacetResolverTests
         {
             Assert.That(resolved.Offering, Is.Empty);
             Assert.That(refusal.Package.Value, Is.EqualTo("a"));
-            Assert.That(refusal.Assemblies, Is.EqualTo(new[] { "Ghost.dll" }));
+            Assert.That(refusal.UnadmittedFiles, Is.EqualTo(new[] { "Ghost.dll" }));
+            Assert.That(refusal.MissingAssemblies, Is.Empty);
             Assert.That(refusal.Reason, Does.Contain("admitted no shared contract"));
         });
     }
@@ -234,9 +235,33 @@ public sealed class ClientFacetResolverTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(refused.CausedBy?.Value, Is.EqualTo("b"), "the required facet it lost");
-            Assert.That(refused.Assemblies, Is.EqualTo(new[] { "Gamma" }), "and the contract it binds anyway");
+            Assert.That(refused.CausedBy.Select(id => id.Value), Is.EqualTo(new[] { "b" }), "the required facet it lost");
+            Assert.That(refused.MissingAssemblies, Is.EqualTo(new[] { "Gamma" }), "and the contract it binds anyway");
             Assert.That(refused.Reason, Does.Contain("withheld").And.Contain("It also"));
+        });
+    }
+
+    /// <summary>Every withheld requirement is named, not one of them.</summary>
+    [Test]
+    public void ARefusalNamesEveryRequiredFacetItLost()
+    {
+        var resolved = ClientFacetResolver.Resolve(
+            [
+                Candidate("a", ["b", "c"], Offers("Alpha")),
+                Candidate("b", [], Offers("Beta"), unadmitted: ["Missing.dll"]),
+                Candidate("c", [], Offers("Gamma"), unadmitted: ["Missing.dll"]),
+            ],
+            Admitted);
+
+        var refused = Refusal(resolved, "a");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                refused.CausedBy.Select(id => id.Value),
+                Is.EqualTo(new[] { "b", "c" }),
+                "naming one of two would send an operator to fix half the problem");
+            Assert.That(refused.Reason, Does.Contain("'b'").And.Contain("'c'"));
         });
     }
 

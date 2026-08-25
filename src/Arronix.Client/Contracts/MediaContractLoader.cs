@@ -38,6 +38,7 @@ public sealed class MediaContractLoader
 
     private readonly HttpClient _http;
     private readonly ContractStore _store;
+    private readonly Func<byte[], Assembly> _load;
     private readonly Dictionary<string, ResidentContract> _resident = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private string? _terminal;
@@ -49,13 +50,35 @@ public sealed class MediaContractLoader
     /// <param name="store">This browser's contract store.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
     public MediaContractLoader(HttpClient http, ContractStore store)
+        : this(http, store, LoadIntoDefaultContext)
+    {
+    }
+
+    /// <summary>
+    /// Initializes a loader over a supplied runtime load.
+    /// </summary>
+    /// <param name="http">The connection to the host that served this client.</param>
+    /// <param name="store">This browser's contract store.</param>
+    /// <param name="load">
+    /// How verified bytes become an assembly. The production value is
+    /// <see cref="AssemblyLoadContext.LoadFromStream(System.IO.Stream)"/> on the default context; a test
+    /// substitutes a runtime that returns an assembly other than the bytes it was handed, which is the only
+    /// way to drive the post-load disagreement branch.
+    /// </param>
+    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    internal MediaContractLoader(HttpClient http, ContractStore store, Func<byte[], Assembly> load)
     {
         ArgumentNullException.ThrowIfNull(http);
         ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(load);
 
         _http = http;
         _store = store;
+        _load = load;
     }
+
+    private static Assembly LoadIntoDefaultContext(byte[] content)
+        => AssemblyLoadContext.Default.LoadFromStream(new MemoryStream(content, writable: false));
 
     /// <summary>
     /// Gets the universal contract identity this client was compiled against.
@@ -73,9 +96,6 @@ public sealed class MediaContractLoader
 
     /// <summary>Gets the result of the last load, or <see langword="null"/> before the first.</summary>
     public ContractLoadReport? Report { get; private set; }
-
-    /// <summary>Occurs when a load has completed and <see cref="Report"/> has been replaced.</summary>
-    public event EventHandler? Loaded;
 
     /// <summary>
     /// Gets the assembly verified and loaded for a simple name, or <see langword="null"/>.
@@ -109,7 +129,6 @@ public sealed class MediaContractLoader
         {
             var report = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
             Report = report;
-            Loaded?.Invoke(this, EventArgs.Empty);
             return report;
         }
         finally
@@ -246,8 +265,7 @@ public sealed class MediaContractLoader
 
             try
             {
-                assembly = AssemblyLoadContext.Default.LoadFromStream(
-                    new MemoryStream(entry.Content!, writable: false));
+                assembly = _load(entry.Content!);
             }
             catch (Exception failure)
             {

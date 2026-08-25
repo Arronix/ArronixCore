@@ -259,17 +259,16 @@ work does not substitute for closing an earlier dependency.
   declaration. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
   repository project reference, and the packed SDK contains only its readme, metapackage marker, and analyzer.
 
-- G07 is split into three numbered sub-gates. G07.1 is **in progress**: the protocol and the loader are built
-  and proved — a package declares a client facet, the running installation publishes each offered assembly's
-  exact bytes, identity, module and closure, the hosted server serves them content-addressed, and a real
-  browser serving the ordinary published client loads them from a clean store, reuses a warm store without
-  refetching, and refuses an incompatible contract line, a corrupted byte, a falsified identity, a falsified
-  build and a malformed manifest, in every case before the runtime sees the payload. It is not closed,
-  because the client only starts when it publishes untrimmed. See
-  `docs/research/g07/client-contract-loading.md`. It does not claim typed deserialization or rendering
-  (G07.2) or cache update, removal and stale-tab behaviour (G07.3).
+- G07 is split into three numbered sub-gates. G07.1 is complete: a package declares a client facet, the
+  running installation publishes each offered assembly's exact bytes, identity, module and closure, the
+  hosted server serves them content-addressed, and a real browser running the ordinary published client
+  loads them from a clean store, reuses a warm store without refetching, and refuses a foreign contract
+  line, a corrupted byte, a falsified identity, a falsified build and a malformed manifest — in every case
+  before the runtime sees the payload. See `docs/research/g07/client-contract-loading.md`. It does not claim
+  typed deserialization or rendering (G07.2) or cache update, removal and stale-tab behaviour (G07.3).
 
-The active G07 gate covers dynamic typed Client loading; G07.2 is next. Later gates cover compatibility
+The active G07 gate covers dynamic typed Client loading; the five missing platform services come before
+G07.2. Later gates cover compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
@@ -293,20 +292,19 @@ duplicated checklist drifting from current state.
   none of the five has an implementation outside the test projects, so a real server quarantines Movies before
   it can contribute anything. Every packaged Movies proof therefore runs in `Arronix.Host.Tests`, which
   supplies stubs for them. This blocks G07.2, whose subject is the Movies item graph.
-- A **trimmed** publish of `Arronix.Client` cannot start on .NET 11 preview 7: it fails during
+- The trimmed client cannot start on .NET 11 preview 7: a trimmed publish fails during
   `WebAssemblyHost.RunAsyncCore` with an `InvalidCastException` from `PersistentServicesRegistry`, before any
-  Arronix code runs. It was attributed by A/B against the pristine base commit `f943b8a0f`, which fails
-  trimmed and starts untrimmed under the same SDK on a fresh origin, so the defect predates G07 and trimming
-  is the variable; a default template application publishes and starts trimmed. `Arronix.Client.csproj`
-  therefore sets `PublishTrimmed=false`, so an ordinary `dotnet publish` produces an application that starts,
-  at the cost of a much larger download. `TrimmerRootAssembly` for `Arronix.Abstractions` remains, inert,
-  because a dynamically loaded contract binds to members the trimmer never saw. Restoring trimming needs the
-  framework failure diagnosed first, and until then G07.1 stays open.
+  Arronix code runs. The pristine base commit `f943b8a0f` fails trimmed and starts untrimmed under the same
+  SDK on a fresh origin, and a default template application publishes and starts trimmed, so trimming is the
+  variable and the defect predates G07. `Arronix.Client.csproj` sets `PublishTrimmed=false`, so an ordinary
+  `dotnet publish` produces an application that starts, at the cost of a much larger download.
+  `TrimmerRootAssembly` for `Arronix.Abstractions` remains, inert, because a dynamically loaded contract
+  binds to members the trimmer never saw. Restoring trimming needs the framework failure diagnosed first.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-25) reports 2,868 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,170 total cases across 13 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-25) reports 2,874 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,176 total cases across 13 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

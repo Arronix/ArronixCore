@@ -155,6 +155,14 @@ internal sealed class HostCompositionTests
         provider.GetRequiredService<MediaTypeBinder>().Uses(kinds, providers).Should().BeTrue();
         provider.GetRequiredService<ProviderDefinitionStore>().Uses(providers).Should().BeTrue();
         pluginHealth.UsesRuntime(runtime).Should().BeTrue();
+
+        // The client contract catalog reads the Active set under a gate. Taking that gate from the registry
+        // rather than from the container is what makes a catalog guarding a different registry
+        // unconstructable, so the composition asserts both halves.
+        var contracts = provider.GetRequiredService<ClientContractCatalog>();
+        contracts.PublicationGate.Should().BeSameAs(publication);
+        contracts.UsesRuntime(runtime).Should().BeTrue();
+        provider.GetRequiredService<IClientContractCatalog>().Should().BeSameAs(contracts);
         provider.GetRequiredService<JobScheduler>().UsesRegistry(jobs).Should().BeTrue();
     }
 

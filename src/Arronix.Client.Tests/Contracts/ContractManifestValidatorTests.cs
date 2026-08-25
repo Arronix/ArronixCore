@@ -47,6 +47,9 @@ public sealed class ContractManifestValidatorTests
     [TestCase("refusal-blames-a-published-package", "did not withhold")]
     [TestCase("refusal-blank-assembly", "names a blank assembly")]
     [TestCase("refusal-duplicate-assembly", "more than once")]
+    [TestCase("refusal-blank-file", "names a blank file")]
+    [TestCase("refusal-duplicate-cause", "more than once")]
+    [TestCase("refusal-empty-cause", "names an empty cause")]
     [TestCase("null-package-list", "absent rather than empty")]
     [TestCase("null-refused-list", "absent rather than empty")]
     [TestCase("null-package-entry", "one of its packages is null")]
@@ -150,14 +153,22 @@ public sealed class ContractManifestValidatorTests
             [Package("one.package", Assembly("One"), [PluginId.FromString("ghost.package"), PluginId.FromString("one.package")])]),
         "refusal-duplicate" => Manifest(null, [Refusal("bad.package"), Refusal("bad.package")]),
         "refusal-overlaps-published" => Manifest(null, [Refusal("one.package")]),
-        "refusal-blames-nobody" => Manifest(null, [Refusal("bad.package") with { CausedBy = PluginId.FromString("ghost.package") }]),
-        "refusal-blames-itself" => Manifest(null, [Refusal("bad.package") with { CausedBy = PluginId.FromString("bad.package") }]),
+        "refusal-blames-nobody" => Manifest(null, [Refusal("bad.package") with { CausedBy = [PluginId.FromString("ghost.package")] }]),
+        "refusal-blames-itself" => Manifest(null, [Refusal("bad.package") with { CausedBy = [PluginId.FromString("bad.package")] }]),
 
         // A package a client can see in the published list cannot be the reason another one is missing.
         "refusal-blames-a-published-package" => Manifest(
             null,
-            [Refusal("bad.package") with { CausedBy = PluginId.FromString("one.package") }]),
-        "refusal-blank-assembly" => Manifest(null, [Refusal("bad.package") with { Assemblies = ["  "] }]),
+            [Refusal("bad.package") with { CausedBy = [PluginId.FromString("one.package")] }]),
+        "refusal-blank-assembly" => Manifest(null, [Refusal("bad.package") with { MissingAssemblies = ["  "] }]),
+        "refusal-blank-file" => Manifest(null, [Refusal("bad.package") with { UnadmittedFiles = [" "] }]),
+        "refusal-duplicate-cause" => Manifest(
+            null,
+            [
+                Refusal("bad.package") with { CausedBy = [PluginId.FromString("other.bad"), PluginId.FromString("other.bad")] },
+                Refusal("other.bad"),
+            ]),
+        "refusal-empty-cause" => Manifest(null, [Refusal("bad.package") with { CausedBy = [default] }]),
         "null-package-list" => Manifest() with { Packages = null! },
         "null-refused-list" => Manifest() with { Refused = null! },
         "null-package-entry" => Manifest([null!]),
@@ -173,7 +184,7 @@ public sealed class ContractManifestValidatorTests
                     Assemblies = [Assembly("One"), Assembly("Two") with { FileName = "One.dll" }],
                 },
             ]),
-        "refusal-duplicate-assembly" => Manifest(null, [Refusal("bad.package") with { Assemblies = ["One", "one"] }]),
+        "refusal-duplicate-assembly" => Manifest(null, [Refusal("bad.package") with { MissingAssemblies = ["One", "one"] }]),
         _ => throw new ArgumentOutOfRangeException(nameof(defect), defect, "Unknown defect."),
     };
 
@@ -182,12 +193,12 @@ public sealed class ContractManifestValidatorTests
     public void ADefaultPackageIdentifierIsNeverWritten()
     {
         var write = () => JsonSerializer.Serialize(
-            new ClientContractRefusal(default, "withheld", [], null),
+            new ClientContractRefusal(default, "withheld", [], [], []),
             ApiJsonOptions.Default);
 
         write.Should().Throw<JsonException>();
     }
 
     private static ClientContractRefusal Refusal(string id)
-        => new(PluginId.FromString(id), "withheld", [], null);
+        => new(PluginId.FromString(id), "withheld", [], [], []);
 }

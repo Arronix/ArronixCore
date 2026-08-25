@@ -85,22 +85,28 @@ public interface IClientContractCatalog
 public sealed class ClientContractCatalog : IClientContractCatalog
 {
     private readonly PluginRuntimeRegistry _registry;
-    private readonly PluginPublicationGate _publication;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ClientContractCatalog"/> class.
     /// </summary>
     /// <param name="registry">The registry whose Active packages are projected.</param>
-    /// <param name="publication">The boundary a package is published and withdrawn across.</param>
-    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
-    public ClientContractCatalog(PluginRuntimeRegistry registry, PluginPublicationGate publication)
+    /// <exception cref="ArgumentNullException"><paramref name="registry"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// The publication boundary is taken from the registry rather than supplied, so a catalog holding a gate
+    /// that guards a different registry cannot be constructed. A read under the wrong gate is a read that
+    /// looks synchronised and is not.
+    /// </remarks>
+    public ClientContractCatalog(PluginRuntimeRegistry registry)
     {
         ArgumentNullException.ThrowIfNull(registry);
-        ArgumentNullException.ThrowIfNull(publication);
-
         _registry = registry;
-        _publication = publication;
     }
+
+    /// <summary>Gets the boundary this catalog reads under, which is the registry's own.</summary>
+    internal PluginPublicationGate PublicationGate => _registry.PublicationGate;
+
+    /// <summary>Determines whether this catalog observes the exact runtime authority supplied.</summary>
+    internal bool UsesRuntime(PluginRuntimeRegistry runtime) => ReferenceEquals(_registry, runtime);
 
     /// <summary>
     /// Gets the complete CLR identity of the universal contract assembly this host is running.
@@ -118,7 +124,7 @@ public sealed class ClientContractCatalog : IClientContractCatalog
     {
         // Held for the whole projection. A package's lease owns its admitted contracts, and reading half an
         // installation either side of a withdrawal would describe one that never existed.
-        using var read = _publication.EnterRead();
+        using var read = PublicationGate.EnterRead();
 
         var resolved = Resolve();
         var packages = new List<ClientContractPackage>(resolved.Offering.Count);
@@ -150,7 +156,7 @@ public sealed class ClientContractCatalog : IClientContractCatalog
 
         // Held across the projection AND the byte copy below. Releasing between them would hand out a view
         // over bytes whose lease had already been released.
-        using var read = _publication.EnterRead();
+        using var read = PublicationGate.EnterRead();
 
         var resolved = Resolve();
 
@@ -460,8 +466,9 @@ internal static class ClientFacetResolver
                 $"Package '{candidate.Id}' offers a client facet this host cannot serve: this installation "
                 + "admitted no shared contract under "
                 + string.Join(", ", candidate.Unadmitted.Select(name => $"'{name}'")) + ".",
+                new ReadOnlyCollection<string>([]),
                 candidate.Unadmitted,
-                null));
+                new ReadOnlyCollection<PluginId>([])));
 
             withheld.Add(candidate.Id);
         }
@@ -474,21 +481,18 @@ internal static class ClientFacetResolver
 
             foreach (var candidate in view.InIdentifierOrder().ToArray())
             {
-                // Two ways one facet can stop being servable, computed together so a refusal can say
-                // everything that is wrong with it rather than whichever check happened to run first.
+                // Two ways one facet stops being servable, computed together so a refusal states everything
+                // wrong with it rather than whichever check ran first.
                 //
                 // A required package that declared a client facet and lost it takes its dependants with it,
-                // whether or not this package's own assemblies happen to name anything of that package's. A
-                // client closure is what a browser is told to load; serving a dependant out of a closure this
-                // host has already refused would publish an installation the host does not stand behind, and
-                // "it does not bind that assembly today" is a property of the current build rather than of
-                // the dependency.
+                // whether or not this package binds anything of that package's: the closure a browser is
+                // told to load contains it either way.
                 var lost = candidate.Requires
                     .Where(requirement => declared.Contains(requirement) && withheld.Contains(requirement))
                     .OrderBy(requirement => requirement.Value, StringComparer.Ordinal)
                     .ToList();
 
-                // And an assembly this facet binds which nothing in its closure offers, which is a
+                // And an admitted contract this facet binds which nothing in its closure offers, which is a
                 // server-only contract leaking into a browser whether or not anything was withdrawn.
                 var reachable = new HashSet<string>(
                     view.ClosureOf(candidate).SelectMany(member =>
@@ -527,7 +531,8 @@ internal static class ClientFacetResolver
                     candidate.Id,
                     reason.ToString(),
                     new ReadOnlyCollection<string>(unreachable),
-                    lost.Count > 0 ? lost[0] : null));
+                    new ReadOnlyCollection<string>([]),
+                    new ReadOnlyCollection<PluginId>(lost)));
 
                 offering.Remove(candidate.Id);
                 withheld.Add(candidate.Id);

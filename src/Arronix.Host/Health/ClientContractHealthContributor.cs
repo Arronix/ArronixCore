@@ -50,8 +50,8 @@ public sealed class ClientContractHealthContributor(IClientContractCatalog contr
                 $"Client contract withheld: {refusal.Package}",
                 HealthSeverity.Warning,
                 refusal.Reason,
-                refusal.CausedBy is { } cause
-                    ? $"Fix package '{cause}' first; this package's facet was withheld because of it."
+                refusal.CausedBy.Count > 0
+                    ? $"Fix {string.Join(", ", refusal.CausedBy.Select(cause => $"'{cause}'"))} first; this package's facet was withheld because of them."
                     : "Correct the package's clientContracts declaration, or ship the contracts it references.")),
         ]);
     }
