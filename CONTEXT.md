@@ -303,8 +303,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-25) reports 2,874 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,176 total cases across 13 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-25) reports 2,875 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,177 total cases across 13 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

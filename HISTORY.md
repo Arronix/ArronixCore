@@ -1,5 +1,24 @@
 # Arronix History
 
+## 2026-08-25 — Assert non-residency, and hold a refusal's file names to a declaration's shape
+
+Three narrow corrections to the G07.1 close.
+
+- The runtime-disagreement case asserted that the loader would not hand either assembly out, and the commit
+  message claimed neither was resident. `Find` returning null says only the first. It now asserts residency
+  directly for both, and the test's runtime seam answers wrongly on the first load and ordinarily
+  afterwards, so a commit that continued past the disagreement would genuinely load the next assembly and
+  fail the assertion.
+- `ClientContractRefusal.UnadmittedFiles` documents bare file names and arrives on an untrusted manifest,
+  and the validator only checked for blanks and duplicates. A refusal is rendered to an operator, so a path
+  there is a path this client would print as though a package had declared it. Non-bare entries are now
+  refused, by the same rule the declaration side uses.
+- Renumbered the residual gaps in the research note, which skipped from 2 to 4 after an earlier gap was
+  resolved.
+
+Full rail: 2,875 passed, 302 registered skips, zero failed and zero inconclusive from 3,177 cases across 13
+projects.
+
 ## 2026-08-25 — Close G07.1 and stop a refusal from mixing two kinds of name
 
 - **`ClientContractCatalog` takes only the registry** and derives the publication gate from it. A catalog

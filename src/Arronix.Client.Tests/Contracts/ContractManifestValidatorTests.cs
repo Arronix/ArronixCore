@@ -48,6 +48,7 @@ public sealed class ContractManifestValidatorTests
     [TestCase("refusal-blank-assembly", "names a blank assembly")]
     [TestCase("refusal-duplicate-assembly", "more than once")]
     [TestCase("refusal-blank-file", "names a blank file")]
+    [TestCase("refusal-unbare-file", "not a bare file name")]
     [TestCase("refusal-duplicate-cause", "more than once")]
     [TestCase("refusal-empty-cause", "names an empty cause")]
     [TestCase("null-package-list", "absent rather than empty")]
@@ -162,6 +163,11 @@ public sealed class ContractManifestValidatorTests
             [Refusal("bad.package") with { CausedBy = [PluginId.FromString("one.package")] }]),
         "refusal-blank-assembly" => Manifest(null, [Refusal("bad.package") with { MissingAssemblies = ["  "] }]),
         "refusal-blank-file" => Manifest(null, [Refusal("bad.package") with { UnadmittedFiles = [" "] }]),
+
+        // Rendered to an operator, so a path here is a path this client would print as a declaration.
+        "refusal-unbare-file" => Manifest(
+            null,
+            [Refusal("bad.package") with { UnadmittedFiles = ["../escape.dll"] }]),
         "refusal-duplicate-cause" => Manifest(
             null,
             [

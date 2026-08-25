@@ -225,7 +225,7 @@ files, never referenced.
 | A failed prerequisite stops a verified dependant from loading, and that dependant reports `Verified` | `.AFailedPrerequisiteStopsItsDependantFromLoading` |
 | Nothing verified may be reached while the installation is refused | `.NothingMayBeProjectedFromARefusedInstallation` |
 | A runtime returning an assembly other than the verified bytes is terminal, the entry is `RuntimeRefused`, a later verified entry stays `Verified`, and nothing is resident or projectable; then a verified installation loads, is reused as `Resident`, and becomes terminal when the host publishes a different build | `ContractCommitTests.AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn` |
-| Nineteen malformed manifests are each named, and unreadable identifier text makes the whole document unreadable | `ContractManifestValidatorTests` (24 cases) |
+| Malformed manifests are each named — including a refusal naming an unadmitted file that is not a bare name — and unreadable identifier text makes the whole document unreadable | `ContractManifestValidatorTests` |
 
 `ClientFacetResolverTests` proves the withholding rule directly, because a fixed point is the kind of thing
 that is either tested or believed: a direct binding outside the closure, a chain that only a fixed point
@@ -256,6 +256,8 @@ this work were invalid for exactly that reason and were redone.
 | The module version check is skipped | 1 fails |
 | The contract reference check is skipped | 1 fails |
 | The post-load disagreement branch is never taken | `ContractCommitTests` fails |
+| The commit continues past a runtime disagreement instead of stopping | `ContractCommitTests` fails: the next entry becomes resident |
+| An unadmitted file name in a refusal need not be bare | the malformed-manifest case fails |
 | The resolver stops cascading to dependants of withheld facets | 3 resolver cases fail |
 | `ClientContractCatalog.Open` ignores the content address | `NothingOutsideTheDeclaredFacetIsOffered` fails |
 | The client facet is validated against its own declaration rather than the published contracts | both manifest cases fail |
@@ -266,7 +268,7 @@ this work were invalid for exactly that reason and were redone.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=13 total=3176 enabled=2874 passed=2874 failed=0 skipped=302 inconclusive=0
+projects=13 total=3177 enabled=2875 passed=2875 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=13 compileItems=299 boundSources=15
 ```
@@ -286,7 +288,7 @@ ratchets pass. Per project:
 | `Arronix.Compatibility.Ratchet.Tests` | 103 | 0 |
 | `Arronix.Plugin.Tv.Tests` | 87 | 0 |
 | `Arronix.Plugin.Music.Tests` | 66 | 0 |
-| `Arronix.Client.Tests` | 55 | 0 |
+| `Arronix.Client.Tests` | 56 | 0 |
 | `Arronix.Format.Video.Tests` | 10 | 0 |
 | `Arronix.Generators.Tests` | 8 | 0 |
 
@@ -301,22 +303,22 @@ ratchets pass. Per project:
    This predates G07 and blocks G07.2, whose whole subject is the Movies item graph. Building the five is
    the roadmap's next task.
 
-4. **The browser half is not on the hermetic test rail.** `eng/ci/run-tests.sh` carries no browser
+3. **The browser half is not on the hermetic test rail.** `eng/ci/run-tests.sh` carries no browser
    toolchain, and adding one would put a browser download in the clean-repository proof. The harness stands
    the real thing up and proves the server half; the browser half is operator-run and its exact output is
    quoted above. `#contract-proof` exists so any browser driver can read the client's complete report.
 
-5. **No provenance.** Content hashes say which bytes; no signature says who vouched for them. Package
+4. **No provenance.** Content hashes say which bytes; no signature says who vouched for them. Package
    signing remains unbuilt, as recorded for G03.
 
-6. **One store, one page, no unload.** A browser cannot unload an assembly, so a second pass reuses what a
+5. **One store, one page, no unload.** A browser cannot unload an assembly, so a second pass reuses what a
    first pass loaded and a page holding a contract the host has stopped publishing is terminal until
    reloaded. Update, removal and stale-cache handling are G07.3.
 
-7. **`Cache Storage` is not universally available.** Outside a secure context the store is absent and the
+6. **`Cache Storage` is not universally available.** Outside a secure context the store is absent and the
    loader refetches — slower and exactly as correct — and the page says which mode it is in.
 
-8. **The API had never been started.** `src/Arronix.Api/appsettings.json` declared no
+7. **The API had never been started.** `src/Arronix.Api/appsettings.json` declared no
    `Arronix:Identity:ApplicationName`, which `HostIdentityOptions` requires, so `dotnet run` on the server
    failed options validation at startup. One line was added. Nothing else in the API's shipped configuration
    has been exercised against a running process.

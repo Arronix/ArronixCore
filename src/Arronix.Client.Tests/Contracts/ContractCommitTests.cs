@@ -108,12 +108,17 @@ public sealed class ContractCommitTests
         {
             using var wrongHttp = new HttpClient(wrongHandler) { BaseAddress = new Uri("https://host.invalid/") };
 
-            // A real assembly, already loaded, and not the one whose bytes were verified.
+            // The first load answers with a real assembly that is already loaded and is not the one whose
+            // bytes were verified; any later load is the ordinary one. A correct commit never makes the
+            // second call, which is what the residency assertions below rely on.
             var impostor = typeof(ClientContractManifest).Assembly;
+            var loads = 0;
             var wrongLoader = new MediaContractLoader(
                 wrongHttp,
                 new ContractStore(new RefusingJsRuntime()),
-                _ => impostor);
+                bytes => ++loads == 1
+                    ? impostor
+                    : AssemblyLoadContext.Default.LoadFromStream(new MemoryStream(bytes, writable: false)));
 
             var wrong = await wrongLoader.LoadAsync();
             var byWrongPackage = wrong.Packages.ToDictionary(package => package.Id.Value, StringComparer.Ordinal);
@@ -134,7 +139,12 @@ public sealed class ContractCommitTests
 
                 wrongLoader.Find("Arronix.Media.Movies").Should().BeNull();
                 wrongLoader.Find(FixtureAssemblyName).Should().BeNull();
+
+                // Residency, not just an absent projection: Find answering null says the loader will not
+                // hand the assembly out, and says nothing about whether the runtime holds it.
                 Resident("Arronix.Media.Movies").Should().BeFalse();
+                Resident(FixtureAssemblyName).Should().BeFalse();
+                loads.Should().Be(1, "the commit stopped at the entry the runtime got wrong");
             }
         }
 

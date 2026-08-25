@@ -153,12 +153,14 @@ internal static class ContractManifestValidator
                 return $"package '{refusal.Package}' is both published to clients and withheld from them.";
             }
 
-            if (Describe(refusal.Package, "assembly", refusal.MissingAssemblies) is { } missingDefect)
+            if (Describe(refusal.Package, "assembly", refusal.MissingAssemblies, mustBeBare: false)
+                is { } missingDefect)
             {
                 return missingDefect;
             }
 
-            if (Describe(refusal.Package, "file", refusal.UnadmittedFiles) is { } fileDefect)
+            if (Describe(refusal.Package, "file", refusal.UnadmittedFiles, mustBeBare: true)
+                is { } fileDefect)
             {
                 return fileDefect;
             }
@@ -199,8 +201,18 @@ internal static class ContractManifestValidator
         return null;
     }
 
-    /// <summary>Proves one refusal's name list is present, non-blank and free of duplicates.</summary>
-    private static string? Describe(PluginId package, string kind, IReadOnlyList<string> names)
+    /// <summary>
+    /// Proves one refusal's name list is non-blank, free of duplicates, and — for the file list — bare.
+    /// </summary>
+    /// <remarks>
+    /// A refusal is rendered to an operator, so an unadmitted file name that is a path is a path this client
+    /// would print as if the package had declared it. The declaration side rejects the same shape.
+    /// </remarks>
+    private static string? Describe(
+        PluginId package,
+        string kind,
+        IReadOnlyList<string> names,
+        bool mustBeBare)
     {
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -209,6 +221,11 @@ internal static class ContractManifestValidator
             if (string.IsNullOrWhiteSpace(name))
             {
                 return $"refusal of '{package}' names a blank {kind}.";
+            }
+
+            if (mustBeBare && !IsBareFileName(name))
+            {
+                return $"refusal of '{package}' names '{name}', which is not a bare {kind} name.";
             }
 
             if (!seen.Add(name))
