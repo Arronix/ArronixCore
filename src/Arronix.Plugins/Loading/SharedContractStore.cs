@@ -19,6 +19,12 @@ namespace Arronix.Plugins.Loading;
 /// <param name="SourcePath">The file the bytes were staged from.</param>
 /// <param name="ContentHash">The SHA-256 of the staged bytes.</param>
 /// <param name="ModuleVersionId">The module identifier of that exact build.</param>
+/// <param name="Content">
+/// The exact bytes that were staged, loaded, and hashed. Retained rather than re-read: everything this
+/// installation asserts about the assembly was derived from these bytes once, and a second read of a path
+/// the package owns is a race in which the file inspected and the file handed on need not be the same file.
+/// The set is bounded by the shared contract assemblies of an installation, which are domain contracts.
+/// </param>
 /// <param name="Assembly">The one loaded assembly object every dependant must receive.</param>
 internal sealed record AdmittedContract(
     PluginId Publisher,
@@ -26,6 +32,7 @@ internal sealed record AdmittedContract(
     string SourcePath,
     string ContentHash,
     Guid ModuleVersionId,
+    ReadOnlyMemory<byte> Content,
     Assembly Assembly);
 
 /// <summary>Why a package's shared-contract declaration was refused.</summary>
@@ -967,6 +974,7 @@ internal sealed class SharedContractStore
                     contract.Path,
                     contract.Staged.ContentHash,
                     contract.Staged.ModuleVersionId,
+                    contract.Staged.Content,
                     assembly));
             }
         }

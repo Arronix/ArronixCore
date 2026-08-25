@@ -1,0 +1,203 @@
+@page "/contracts"
+@{
+}
+@using Arronix.Client.Contracts
+@using Arronix.Client.Serialization
+@inject MediaContractLoader Contracts
+@inject ContractStore Store
+@*
+    What this browser has actually loaded, and what the host said it should be.
+
+    Every row states both sides. That is the whole purpose of the page: the failure this design exists to
+    prevent is a browser rendering something plausible out of a contract that is not the one the host
+    admitted, and the only way to see that has not happened is to be able to read what each side said and
+    compare them. Nothing here is a summary of a check performed elsewhere.
+
+    This page names no media kind and no media assembly. It renders whatever the installation published.
+*@
+
+<h1>Media contracts</h1>
+
+<p class="page-lead">
+    The client compiles against the universal contract assembly and nothing else. Installed media contracts
+    arrive from this host at run time, are proved against what it published, and are loaded into this page.
+</p>
+
+<div class="page-actions">
+    <button class="button" type="button" disabled="@_busy" @onclick="ReloadAsync">Reload contracts</button>
+    <button class="button button-quiet" type="button" disabled="@_busy" @onclick="ClearStoreAsync">Discard stored bytes</button>
+    <span class="chip chip-quiet" id="contract-store-mode">@StoreMode</span>
+</div>
+
+@if (_report is null)
+{
+    <LoadingIndicator Message="Reading what this host publishes…" />
+}
+else
+{
+    @*
+        The same report, verbatim, for a browser driver to read. Rendered rather than exposed through
+        script interop so that what a proof harness reads is exactly what a person on this page is looking
+        at: a surface that could disagree with the rendered one would be proving itself.
+    *@
+    <pre id="contract-proof" hidden>@ProofText</pre>
+
+    <section class="panel" id="contract-summary">
+        <header class="panel-head">
+            <h2>Installation</h2>
+            <span class="chip" id="contract-compatibility">@_report.Compatibility</span>
+        </header>
+
+        <dl class="contract-facts">
+            <dt>Client contract</dt>
+            <dd id="client-contract-identity">@_report.ClientContractIdentity</dd>
+
+            <dt>Host contract</dt>
+            <dd id="host-contract-identity">@(_report.PublishedContractIdentity ?? "—")</dd>
+
+            <dt>Installation hash</dt>
+            <dd id="installation-hash">@(_report.InstallationHash ?? "—")</dd>
+
+            <dt>Stored keys</dt>
+            <dd id="stored-key-count">@_storedKeys.Count</dd>
+        </dl>
+
+        @if (_report.Failure is { Length: > 0 } failure)
+        {
+            <p class="panel-detail tone-problem" id="contract-failure">@failure</p>
+        }
+    </section>
+
+    @if (_report.Packages.Count == 0)
+    {
+        <EmptyState Title="No media contracts"
+                    Detail="This host publishes no contract assembly a client may load." />
+    }
+
+    @foreach (var package in _report.Packages)
+    {
+        <section class="panel contract-package" id="@($"contract-package-{package.Id}")">
+            <header class="panel-head">
+                <h2>@package.Name</h2>
+                <span class="chip">@package.Id</span>
+                <span class="plugin-version">@package.Version</span>
+            </header>
+
+            <dl class="contract-facts">
+                <dt>Closure</dt>
+                <dd class="contract-closure">@string.Join(" → ", package.Closure)</dd>
+
+                <dt>Closure hash</dt>
+                <dd class="contract-closure-hash">@package.ClosureHash</dd>
+            </dl>
+
+            <ul class="plugin-list">
+                @foreach (var assembly in package.Assemblies)
+                {
+                    <li class="plugin contract-assembly @(IsProved(assembly) ? "tone-positive" : "tone-problem")"
+                        data-assembly="@assembly.Published.AssemblyName"
+                        data-outcome="@assembly.Outcome"
+                        data-source="@assembly.Source"
+                        data-binds="@assembly.BindsToClientContract.ToString().ToLowerInvariant()">
+                        <div class="plugin-head">
+                            <p class="plugin-name">@assembly.Published.FileName</p>
+                            <span class="chip">@assembly.Outcome</span>
+                            <span class="chip chip-quiet">@assembly.Source</span>
+                        </div>
+
+                        <dl class="contract-facts">
+                            <dt>Published identity</dt>
+                            <dd>@assembly.Published.Identity</dd>
+
+                            <dt>Loaded identity</dt>
+                            <dd>@(assembly.ObservedIdentity ?? "—")</dd>
+
+                            <dt>Published content hash</dt>
+                            <dd>@assembly.Published.ContentHash</dd>
+
+                            <dt>Observed content hash</dt>
+                            <dd>@(assembly.ObservedContentHash ?? "—")</dd>
+
+                            <dt>Published module</dt>
+                            <dd>@assembly.Published.ModuleVersionId</dd>
+
+                            <dt>Loaded module</dt>
+                            <dd>@(assembly.ObservedModuleVersionId?.ToString() ?? "—")</dd>
+
+                            <dt>Bytes</dt>
+                            <dd>@assembly.Published.Length</dd>
+
+                            <dt>Binds to this client's contract</dt>
+                            <dd>@(assembly.BindsToClientContract ? "yes" : "no")</dd>
+                        </dl>
+
+                        @if (assembly.Failure is { Length: > 0 } assemblyFailure)
+                        {
+                            <p class="plugin-message">@assemblyFailure</p>
+                        }
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+}
+
+@code {
+    private ContractLoadReport? _report;
+    private IReadOnlyList<string> _storedKeys = [];
+    private bool _busy;
+
+    private string StoreMode => _report?.StoreAvailable == true
+        ? "persistent store"
+        : "no persistent store";
+
+    private string ProofText => _report is null
+        ? string.Empty
+        : System.Text.Json.JsonSerializer.Serialize(_report, ApiJsonOptions.Default);
+
+    /// <inheritdoc />
+    protected override async Task OnInitializedAsync()
+    {
+        _report = Contracts.Report;
+        await ReloadAsync();
+    }
+
+    private static bool IsProved(LoadedContractAssembly assembly)
+        => assembly.Outcome is ContractLoadOutcome.Loaded or ContractLoadOutcome.AlreadyLoaded
+            && assembly.BindsToClientContract;
+
+    private async Task ReloadAsync()
+    {
+        _busy = true;
+
+        try
+        {
+            _report = await Contracts.LoadAsync();
+            _storedKeys = await Store.KeysAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    /// <remarks>
+    /// Discards the bytes, not the assemblies. A browser cannot unload one, so this makes the next load a
+    /// clean-store load and leaves whatever this page already loaded exactly where it is — which is the
+    /// honest behavior and the one a test of a clean start needs.
+    /// </remarks>
+    private async Task ClearStoreAsync()
+    {
+        _busy = true;
+
+        try
+        {
+            await Store.ClearAsync();
+            _storedKeys = await Store.KeysAsync();
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -78,6 +78,12 @@ public static class ArronixPluginsServiceCollectionExtensions
 
         services.TryAddSingleton<PackageDependencyRegistry>();
 
+        // What a browser may load. A projection of the Active registry rather than a second registry, so a
+        // package's client facet appears and disappears with the package itself.
+        services.TryAddSingleton<ClientContractCatalog>();
+        services.TryAddSingleton<IClientContractCatalog>(
+            provider => provider.GetRequiredService<ClientContractCatalog>());
+
         // The one authority on what the installation requires of itself, and the one authority on the
         // shared contract assemblies it admits. Both are required: an installation that declares no
         // dependency resolves to an empty graph and an installation that shares nothing admits an empty

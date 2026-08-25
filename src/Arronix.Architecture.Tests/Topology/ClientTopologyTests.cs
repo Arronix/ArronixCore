@@ -59,6 +59,52 @@ public class ClientTopologyTests
             + "the output reference switched off, that is a reference a future edit can turn real.");
     }
 
+    /// <summary>
+    /// Members whose whole purpose is to enumerate a type surface the compiler never saw.
+    /// </summary>
+    /// <remarks>
+    /// The client loads media contract assemblies at run time, so it is permanently one careless call away
+    /// from being a reflection host. Two consequences, and both are why this rule exists rather than a
+    /// review convention: an application that enumerates an unknown assembly's members cannot be trimmed
+    /// or compiled ahead of time, and discovery by enumeration is a second, undeclared media schema - the
+    /// client would be deciding what a media kind contains by reading its properties, which is exactly the
+    /// string-bag model the typed contracts exist to replace.
+    ///
+    /// What the loader may do is bounded and named: read an assembly's identity, its manifest module and
+    /// its reference table. None of those describes a type, and all three are what proving an identity
+    /// needs.
+    /// </remarks>
+    private static readonly string[] ForbiddenReflection =
+    [
+        ".GetTypes(",
+        ".GetExportedTypes(",
+        ".GetProperties(",
+        ".GetFields(",
+        ".GetMethods(",
+        ".GetMembers(",
+        "Activator.CreateInstance"
+    ];
+
+    [Test]
+    public void ClientDiscoversNothingByEnumeratingALoadedAssembly()
+    {
+        var offenders = SourceScanner
+            .Lines(RepositoryLayout.Client, "*.cs", "*.razor")
+            .Where(entry => !entry.Text.TrimStart().StartsWith("///", StringComparison.Ordinal)
+                && !entry.Text.TrimStart().StartsWith("//", StringComparison.Ordinal)
+                && ForbiddenReflection.Any(member => entry.Text.Contains(member, StringComparison.Ordinal)))
+            .Select(entry => $"{entry.File}:{entry.Line}: {entry.Text.Trim()}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(
+            offenders,
+            Is.Empty,
+            "The client acquires media contracts at run time. Enumerating what one contains would make the "
+            + "client untrimmable and would make property reflection a second media schema beside the typed "
+            + "contracts. Generated metadata is how a contract says what it holds.");
+    }
+
     [Test]
     public void ClientReferencesNoHostSideNamespaceInItsSource()
     {

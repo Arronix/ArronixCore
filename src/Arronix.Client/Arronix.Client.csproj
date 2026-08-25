@@ -62,6 +62,23 @@
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
   </ItemGroup>
 
+  <!--
+       LOAD-BEARING, AND NOT AN OPTIMIZATION OPT-OUT.
+
+       Media contract assemblies are downloaded and loaded at run time, so the trimmer never sees them and
+       cannot know which members of the contract assembly they bind to. A trimmed contract assembly is one
+       whose surviving surface is whatever THIS project happened to call, and a media contract compiled
+       against the full surface then fails at whichever member it touches first - at run time, in a browser,
+       with a MissingMethodException naming a member that was present when the extension was built.
+
+       Rooting the contract assembly is the only correct answer: it is a published contract, its whole
+       surface is its point, and its size is the price of being one. Nothing else is rooted, so every other
+       assembly in this application is still trimmed to what it uses.
+  -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Arronix.Abstractions" />
+  </ItemGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />

@@ -68,6 +68,7 @@ internal static class ApiEndpoints
         v1.MapWorkbenchEndpoints();
         v1.MapProviderEndpoints();
         v1.MapPluginEndpoints();
+        v1.MapClientContractEndpoints();
         v1.MapJobEndpoints();
         v1.MapQueueEndpoints();
         v1.MapHealthEndpoints();

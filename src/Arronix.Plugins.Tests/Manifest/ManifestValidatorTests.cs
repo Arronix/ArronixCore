@@ -203,6 +203,78 @@ public sealed class ManifestValidatorTests
             "contractAssemblies[0]",
             CoreErrorCode.PluginManifestInvalid);
 
+    /// <summary>
+    /// A client facet is a subset of what the package publishes, and the validator proves that here rather
+    /// than leaving a browser to discover it.
+    /// </summary>
+    /// <remarks>
+    /// The rule is the whole facet. Host admits a shared contract assembly once per installation and hands
+    /// every dependant the same assembly object; a browser given a file outside that set would hold a type
+    /// identity nothing else in the installation is bound to.
+    /// </remarks>
+    [Test]
+    public void AClientFacetIsProvedAsASubsetOfThePublishedContracts()
+    {
+        var manifest = Valid(builder =>
+        {
+            builder.ContractAssemblies = ["Example.Contracts.dll", "Example.Server.dll"];
+            builder.ClientContracts = ["Example.Contracts.dll"];
+        });
+
+        TryValidate(manifest, out var validated, out var defects).Should().BeTrue();
+
+        defects.Should().BeEmpty();
+        validated!.ClientContracts.Should().Equal("Example.Contracts.dll");
+    }
+
+    [Test]
+    public void APackageThatOffersAClientNothingIsOrdinary()
+    {
+        TryValidate(Valid(builder => builder.ContractAssemblies = ["Example.Contracts.dll"]), out var validated, out var defects)
+            .Should().BeTrue();
+
+        defects.Should().BeEmpty();
+        validated!.ClientContracts.Should().BeEmpty();
+    }
+
+    [TestCase("Example.Server.dll")]
+    [TestCase("Arronix.Plugin.Example.dll")]
+    public void AClientFacetNamingAFileThePackageDoesNotPublishIsRefused(string offered)
+        => ShouldHaveDefect(
+            Valid(builder =>
+            {
+                builder.ContractAssemblies = ["Example.Contracts.dll"];
+                builder.ClientContracts = [offered];
+            }),
+            "clientContracts[0]",
+            CoreErrorCode.PluginManifestInvalid);
+
+    [TestCase("../escape.dll")]
+    [TestCase("sub/dir.dll")]
+    [TestCase("sub\\dir.dll")]
+    [TestCase("")]
+    public void AClientFacetThatCouldLeaveThePackageFolderIsRefused(string offered)
+        => ShouldHaveDefect(
+            Valid(builder =>
+            {
+                builder.ContractAssemblies = ["Example.Contracts.dll"];
+                builder.ClientContracts = [offered];
+            }),
+            "clientContracts[0]",
+            CoreErrorCode.PluginManifestInvalid);
+
+    [TestCase("Example.Contracts.dll")]
+    [TestCase("EXAMPLE.contracts.DLL")]
+    public void ADuplicateClientFacetEntryIsRefused(string second)
+        => ShouldHaveDefect(
+            Valid(builder =>
+            {
+                builder.ContractAssemblies = ["Example.Contracts.dll"];
+                builder.ClientContracts = ["Example.Contracts.dll", second];
+            }),
+            "clientContracts[1]",
+            CoreErrorCode.PluginManifestInvalid);
+
     [Test]
     public void ADependencyIsProvedIntoAnExactPackageAndOneRange()
     {
@@ -455,6 +527,8 @@ public sealed class ManifestValidatorTests
 
         public IReadOnlyList<string> ContractAssemblies { get; set; } = [];
 
+        public IReadOnlyList<string> ClientContracts { get; set; } = [];
+
         public IReadOnlyList<PackageDependencyDeclaration> Dependencies { get; set; } = [];
 
         public IReadOnlyList<string> Capabilities { get; set; } = ["parsing"];
@@ -476,6 +550,7 @@ public sealed class ManifestValidatorTests
             Contracts = new ContractRequirements { Arronix = Range },
             EntryAssembly = Entry,
             ContractAssemblies = ContractAssemblies,
+            ClientContracts = ClientContracts,
             Dependencies = Dependencies,
             Capabilities = Capabilities,
             MediaKinds = MediaKinds,

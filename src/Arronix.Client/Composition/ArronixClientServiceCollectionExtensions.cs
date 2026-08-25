@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net.Http;
 using Arronix.Client.Configuration;
+using Arronix.Client.Contracts;
 using Arronix.Client.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,6 +51,12 @@ public static class ArronixClientServiceCollectionExtensions
         services.TryAddSingleton<EventStream>();
         services.TryAddSingleton<ActionDispatcher>();
         services.TryAddSingleton<ActivityLog>();
+
+        // The media contracts this host admitted, acquired at run time rather than compiled in. Singleton
+        // for the same reason the rest are, and for one more: a browser cannot unload an assembly, so the
+        // record of what this page has already loaded has to be the one record.
+        services.TryAddSingleton<ContractStore>();
+        services.TryAddSingleton<MediaContractLoader>();
 
         return services;
     }

@@ -71,6 +71,27 @@ public sealed record PluginManifest
     public IReadOnlyList<string> ContractAssemblies { get; init; } = [];
 
     /// <summary>
+    /// Gets the file names of the published contract assemblies this package permits a browser client to
+    /// download and load.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Zero or more, and each must also appear in <see cref="ContractAssemblies"/>: a client contract is a
+    /// shared contract seen from the outside, so declaring one that is not shared would give the browser a
+    /// second identity for a type Host already admitted exactly once.
+    /// </para>
+    /// <para>
+    /// Declared, never inferred, and for the same reason the shared list is. Whatever is named here leaves
+    /// the host's process and is readable by anyone the client is served to, so deciding that an assembly
+    /// "looks safe" is exactly the judgement a package author must make explicitly and a reviewer must be
+    /// able to see in a diff. An entry assembly can never be named: it is refused as a shared contract one
+    /// rule earlier, and it holds the module, parser and provider implementations a browser must never
+    /// receive.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string> ClientContracts { get; init; } = [];
+
+    /// <summary>
     /// Gets the packages this package requires, each an exact identifier and one compatible version range.
     /// </summary>
     /// <remarks>

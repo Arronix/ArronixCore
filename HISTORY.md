@@ -1,5 +1,58 @@
 # Arronix History
 
+## 2026-08-25 — Give a browser the exact contract assembly the host admitted
+
+G07 asked for typed media loading in Blazor as one gate: identity and cache protocol, real serving, real
+browser loading, typed deserialization and rendering, and update/removal/stale behaviour. That is not one
+coherent outcome, so it was split into three numbered sub-gates before any code was written — G07.1 publish
+and load, G07.2 generated metadata and typed rendering, G07.3 cache lifecycle — and only G07.1 is claimed.
+
+- **A package declares a client facet.** `plugin.json` gains `clientContracts`, validated as a subset of the
+  package's own published shared contract assemblies. An entry assembly cannot appear in it, because it is
+  already refused as a shared contract one rule earlier, and neither can a file the package does not publish:
+  a browser receives the identity this installation admitted once, or nothing. Declared and never inferred,
+  for the same reason the shared list is — what is named here leaves the host's process.
+- **The catalog is a projection, not a second registry.** `IClientContractCatalog` reads the Active plugin
+  registry. A package appears because it is Active and declared a facet, and disappears the moment either
+  stops being true, so a stopped installation offers a browser nothing without anything having to remember to
+  withdraw it. It also withholds, with a reason, a facet whose assemblies reference an admitted contract no
+  package in its client closure offers: a browser given half a closure fails at whichever type it touches
+  first, which is a far harder failure to read than an absent package.
+- **The bytes served are the bytes admitted.** `AdmittedContract` retains its staged bytes rather than the
+  catalog re-reading the file. The loader's rule is that a file a package owns is read once, because a second
+  read is a race in which the file inspected and the file served need not be the same file — and here that
+  race ends with a browser holding an assembly the host never proved.
+- **The byte route is content addressed.** An address names bytes, so it is served `immutable` and a client
+  may hold it forever; an installation that changes mints new addresses instead of changing what an old one
+  means, which is why there is no invalidation message anywhere in the protocol. A superseded address is
+  `410 Gone` rather than `404`, because the file is still published and re-reading the manifest is the
+  recovery.
+- **The browser verifies three independent things and refuses on any one.** The content hash it computed over
+  whatever it received, from network or from its own store; the CLR identity the runtime bound those bytes as;
+  and the module version identifier of the build that actually loaded. It also proves the loaded assembly's
+  reference to `Arronix.Abstractions` resolves, by object identity, to the client's own compiled contract
+  assembly — two assemblies with one name being exactly the failure a shared contract exists to prevent.
+- **An incompatible installation is refused whole.** A host publishing a different universal contract identity
+  gets nothing loaded and a sentence on the page. Loading the part of an installation that happens to resolve
+  would render values whose meaning nothing has agreed on.
+- **The client discovers nothing by enumeration.** The loader reads an assembly's identity, manifest module
+  and reference table, and an architecture rule rejects `GetTypes`, `GetExportedTypes`, `GetProperties`,
+  `GetFields`, `GetMethods`, `GetMembers` and `Activator.CreateInstance` anywhere in the client's source.
+  Enumerating a loaded contract would make the client untrimmable and would make property reflection a second
+  media schema beside the typed contracts; saying what a contract holds is generated metadata's job, in G07.2.
+  `Arronix.Abstractions` became a trimmer root for the matching reason: a dynamically loaded contract binds to
+  members the trimmer never saw.
+
+Proved in a real Chromium against the real server: a clean store loads over the network with all three facts
+agreeing and the reference resolving to the client's own contract; a warm store reuses the bytes and fetches
+only the manifest; a manifest declaring another contract line loads nothing and says so; and one flipped byte
+is refused before the runtime sees it. The complete two-package Movies-and-video closure is proved in
+`Arronix.Host.Tests` over the same real staged packages, because no production Arronix host can activate a
+package with an entry assembly yet — `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`,
+`IHostRuntimeInfo` and `IOperatingSystemInfo` have no implementation outside the test projects. That gap, and
+a .NET 11 preview defect that stops the *published* client starting at all, are recorded in
+`docs/research/g07/client-contract-loading.md` rather than worked around.
+
 ## 2026-08-25 — Apply the containment policy to the two boundaries that still bypassed it
 
 `LoadFailurePolicy` already split containment by boundary: staging and loading a file uses a closed allowlist,

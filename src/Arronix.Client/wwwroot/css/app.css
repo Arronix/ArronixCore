@@ -802,3 +802,36 @@ tbody tr:hover { background: var(--surface-2); }
 .variants { display: flex; flex-direction: column; gap: 0.25rem; }
 .variants-label { color: var(--text-quiet); font-size: 0.85rem; }
 .variants-note { margin: 0; color: var(--text-faint); font-size: 0.78rem; max-width: 22rem; }
+
+/* --- media contracts ------------------------------------------------------------------------------ */
+/* Two columns of facts per row, because every fact on this page exists to be compared with the one the
+   host published beside it. Monospaced values: these are hashes, module identifiers and assembly
+   identities, and a proportional font makes two that differ in one character look the same. */
+
+.page-lead { color: var(--text-quiet); max-width: 60rem; }
+
+.page-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-small);
+    margin-bottom: var(--gap);
+}
+
+.contract-facts {
+    display: grid;
+    grid-template-columns: minmax(10rem, 16rem) 1fr;
+    gap: 0.15rem var(--gap);
+    margin: 0.4rem 0 0;
+}
+
+.contract-facts dt { color: var(--text-quiet); font-size: 0.85rem; }
+
+.contract-facts dd {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    overflow-wrap: anywhere;
+}
+
+.contract-package { margin-bottom: var(--gap); }

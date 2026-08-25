@@ -47,6 +47,12 @@ public class ManifestOwnershipTests
     /// Everything the manifest genuinely owns: what the loader cannot learn from code it has not been
     /// allowed to run yet.
     /// </summary>
+    /// <remarks>
+    /// <c>clientContracts</c> belongs here for the same reason <c>capabilities</c> does. It is a decision
+    /// about what leaves the host's process and is readable by anyone the client is served to, and a
+    /// decision of that kind cannot be derived from the code it governs — it has to be stated by the author
+    /// and visible in a review.
+    /// </remarks>
     private static readonly string[] ManifestOwnedProperties =
     [
         "schemaVersion",
@@ -57,6 +63,7 @@ public class ManifestOwnershipTests
         "contracts",
         "entryAssembly",
         "contractAssemblies",
+        "clientContracts",
         "dependencies",
         "capabilities"
     ];
@@ -106,6 +113,16 @@ public class ManifestOwnershipTests
                     .Select(static entry => entry.GetString()),
                 Is.EqualTo(new[] { "Arronix.Media.Movies.dll" }),
                 "the movies package publishes its media domain for a paired provider to bind to");
+
+            // The same assembly, offered to a browser as well. The entry assembly is never in this list:
+            // it carries the module, the parser and the generated projections, and the loader refuses it as
+            // a shared contract one rule earlier, which is what makes this list a subset by construction.
+            Assert.That(
+                Manifest.GetProperty("clientContracts")
+                    .EnumerateArray()
+                    .Select(static entry => entry.GetString()),
+                Is.EqualTo(new[] { "Arronix.Media.Movies.dll" }),
+                "a browser receives the movies domain and nothing else this package ships");
 
             var dependency = Manifest.GetProperty("dependencies").EnumerateArray().Single();
 

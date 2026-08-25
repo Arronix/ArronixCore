@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Linq;
 using Arronix.Abstractions.Plugins;
 using Arronix.Plugins.Versioning;
 
@@ -37,6 +38,10 @@ internal sealed class InstalledPackage
     /// <param name="contractAssemblies">The bare file names it publishes as shared contracts.</param>
     /// <param name="requirements">Its direct requirements, exactly as declared.</param>
     /// <param name="availability">Whether it can be activated at all.</param>
+    /// <param name="clientContractAssemblies">
+    /// The bare file names it permits a browser client to download, always a subset of
+    /// <paramref name="contractAssemblies"/>.
+    /// </param>
     /// <exception cref="ArgumentException">
     /// An argument is blank or default, a declared file name is not bare, or a collection contains a null entry.
     /// </exception>
@@ -49,7 +54,8 @@ internal sealed class InstalledPackage
         string? entryAssemblyFileName = null,
         IReadOnlyList<string>? contractAssemblies = null,
         IReadOnlyList<PackageRequirement>? requirements = null,
-        PackageAvailability availability = PackageAvailability.Available)
+        PackageAvailability availability = PackageAvailability.Available,
+        IReadOnlyList<string>? clientContractAssemblies = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
         ArgumentException.ThrowIfNullOrWhiteSpace(folder);
@@ -94,8 +100,28 @@ internal sealed class InstalledPackage
                     nameof(requirements)));
         }
 
+        var offered = new List<string>(clientContractAssemblies?.Count ?? 0);
+
+        foreach (var assembly in clientContractAssemblies ?? [])
+        {
+            var name = PackageFileName.Required(assembly, nameof(clientContractAssemblies));
+
+            // A client contract is a shared contract seen from outside the process. Offering a file the
+            // package does not also publish would hand a browser a second identity for a type this
+            // installation admitted exactly once, which is the failure sharing a contract exists to prevent.
+            if (!contracts.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"'{name}' is offered to clients but is not one of this package's shared contract assemblies.",
+                    nameof(clientContractAssemblies));
+            }
+
+            offered.Add(name);
+        }
+
         ContractAssemblies = contracts.AsReadOnly();
         Requirements = declared.AsReadOnly();
+        ClientContractAssemblies = offered.AsReadOnly();
     }
 
     /// <summary>Gets the package identifier.</summary>
@@ -125,6 +151,14 @@ internal sealed class InstalledPackage
     /// another name and would let a package globalize executable code by accident.
     /// </remarks>
     public ReadOnlyCollection<string> ContractAssemblies { get; }
+
+    /// <summary>Gets the bare file names this package permits a browser client to download.</summary>
+    /// <remarks>
+    /// Always a subset of <see cref="ContractAssemblies"/>, and empty for a package that offers a client
+    /// nothing. Declared rather than inferred: whatever is named here leaves the host's process, so the
+    /// decision belongs to the package author and has to be visible in a review.
+    /// </remarks>
+    public ReadOnlyCollection<string> ClientContractAssemblies { get; }
 
     /// <summary>Gets the direct requirements exactly as declared, including any repetition.</summary>
     /// <remarks>

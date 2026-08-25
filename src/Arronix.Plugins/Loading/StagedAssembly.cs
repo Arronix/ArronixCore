@@ -76,6 +76,15 @@ internal sealed class StagedAssembly
     /// <summary>Gets the number of staged bytes.</summary>
     public int Length => _bytes.Length;
 
+    /// <summary>Gets the staged bytes, as read once from the file.</summary>
+    /// <remarks>
+    /// Exposed as read-only memory rather than as the array. Everything this type asserts about the
+    /// assembly — its identity, its content hash, its module identifier, its reference table — is derived
+    /// from these exact bytes, so a caller that could edit them could make every one of those assertions
+    /// describe something else.
+    /// </remarks>
+    public ReadOnlyMemory<byte> Content => _bytes;
+
     /// <summary>
     /// Reads an assembly file once and derives everything decidable about it before it is loaded.
     /// </summary>

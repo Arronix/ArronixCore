@@ -447,6 +447,95 @@ Exit gate:
 - update, removal, stale-cache, and incompatibility behaviour is exercised in the real browser and fails
   visibly instead of silently projecting partial data.
 
+The gate is larger than one coherent outcome, so it is split into the three numbered sub-gates below. They
+are dependency-ordered: nothing can be deserialized before the exact assembly is loaded, and nothing can be
+loaded before the server publishes the identity it must be loaded against. G07 is closed only when all three
+are closed; G07A and G07B remain later gates and none of their work is folded into these.
+
+#### G07.1 — Publish, cache, and load the exact client-safe contract package
+
+**Status:** complete, with two host limits stated rather than worked around. The real hosted server publishes
+and serves the facet, and a real browser loads it, proves content hash, CLR identity and module version
+identifier, reuses a warm store without refetching, refuses another contract line whole, and refuses one
+corrupted byte. Two things the browser half could not reach are properties of the host: no production
+Arronix host can activate a package with an entry assembly yet, so the browser proof runs against the
+contract-only video package and the complete two-package Movies closure is proved in `Arronix.Host.Tests`
+over the same real staged packages; and the published client cannot start at all on .NET 11 preview 7, so
+the client was served by the WebAssembly development host on an admitted origin. Both are recorded in
+`docs/research/g07/client-contract-loading.md`, and the first blocks G07.2.
+
+**Outcome:** the browser holds the exact bytes, CLR identity, and dependency closure the running host
+admitted, and refuses anything else.
+
+Implement:
+
+- a declared client-safe facet on an installed package, validated as a subset of its shared contract
+  assemblies, so that an entry assembly or an undeclared file can never be served to a browser;
+- a projection of the running installation carrying, per client-safe assembly, its exact SHA-256 content
+  hash, its assembly/version/culture/public-key identity, and its module version identifier, and per
+  package, its transitive client dependency closure and one closure hash over it;
+- content-addressed serving of that metadata and those bytes through the hosted server path, from the
+  admitted bytes rather than from a re-read of a file the package owns;
+- a browser-side contract cache keyed by content hash, and a loader which verifies the hash it received,
+  loads the exact assembly, and proves the loaded module identifier against the published one;
+- one compatible contract identity between server and browser, with an incompatible client refused visibly
+  and completely rather than projecting part of an installation.
+
+Exit gate:
+
+- a hosted server publishes the metadata from real admitted packages and refuses every file outside the
+  declared client-safe facet;
+- an actual WASM browser loads the closure from a clean cache over serialized network payloads, and a
+  second navigation is served from that cache without refetching the bytes;
+- content hash, assembly identity, and module version identifier agree between server and browser;
+- the Client build declares no static Movies or Video dependency;
+- an incompatible contract identity fails visibly with nothing projected.
+
+#### G07.2 — Generated client metadata, typed deserialization, and typed rendering
+
+**Status:** not started.
+
+**Outcome:** the browser reads an actual typed Movie graph out of the assembly it loaded, and renders its
+common and Movies-owned values, using generated metadata rather than property reflection.
+
+Implement:
+
+- generated client contract metadata in the client-safe assembly: a declared entry point, trimming/AOT-safe
+  serialization metadata for the item graph, and a projection schema, with a generated-metadata hash and a
+  projection-schema hash the server publishes and the browser agrees on;
+- typed deserialization of a Movie graph, and rendering of common plus Movies-owned values including
+  artwork, ratings, lifecycle and status, and collections;
+- the serialized fixture G07A later reuses.
+
+Exit gate:
+
+- discovery, deserialization, and rendering use generated metadata; the Client performs no open-ended
+  property reflection over a loaded assembly;
+- generated-metadata and projection-schema hashes agree between server and browser;
+- the browser renders a typed Movie with artwork, ratings, lifecycle/status, and collections, with no static
+  Movies or Video dependency in the Client build;
+- generic descriptors remain one-way presentation/wire data rather than an alternative media definition.
+
+#### G07.3 — Contract cache lifecycle in the browser
+
+**Status:** not started.
+
+**Outcome:** installing, updating, and removing a package, and holding a tab open across those changes, all
+behave predictably in the browser and fail visibly rather than projecting partial data.
+
+Implement:
+
+- update to a new content hash, removal of an uninstalled package, and eviction of the entries neither
+  names;
+- stale-cache and stale-tab behaviour, including the honest consequence that an assembly already loaded into
+  a browser page cannot be unloaded from it.
+
+Exit gate:
+
+- update, removal, stale cache, and stale tab are each exercised in the real browser;
+- a tab holding a withdrawn contract refuses to project it and says so, rather than continuing to render
+  from a contract the host no longer admits.
+
 ### G07A — Prove a package-only external consumer early
 
 **Outcome:** package assets, analyzer packaging, generated accessibility, and admission work without a source
@@ -1235,10 +1324,18 @@ replacement.
 
 ## Current next task
 
-Take **G07 only**: define and prove the exact client-safe contract package identity and cache/update protocol,
-then load and render the admitted typed Movie shape in an actual Blazor WebAssembly browser without a static
-Movies or Video dependency and without reducing it to a string bag. Include clean-cache, update, removal,
-stale-tab, and incompatibility failures, plus generated trimming/AOT-safe metadata. Do not fold provider-result
-ingestion, durable catalog state, or the complete external-consumer vertical into this gate; G07A and G07B own
-those proofs. The G06 SDK package boundary and completed TMDb/provider ownership rules remain mandatory
-regression evidence.
+Take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The client-safe
+contract package now arrives in a real browser with its exact bytes, CLR identity and module version proved
+(G07.1), and the client deliberately discovers nothing by enumerating it. G07.2 gives a contract a generated,
+trimming/AOT-safe way to say what it holds, agrees a generated-metadata hash and a projection-schema hash
+between server and browser, and renders a typed Movie with artwork, ratings, lifecycle/status and collections.
+
+It has one prerequisite that is host work rather than client work: no production Arronix host can activate a
+package with an entry assembly, because `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`,
+`IHostRuntimeInfo` and `IOperatingSystemInfo` have no implementation outside the test projects. Until that is
+answered a real server cannot publish the Movies facet at all. The published browser client also cannot start
+on this SDK; both are recorded in `docs/research/g07/client-contract-loading.md`.
+
+Do not fold provider-result ingestion, durable catalog state, or the complete external-consumer vertical into
+this gate; G07A and G07B own those proofs. G07.3 owns cache update, removal, stale cache and stale tab. The
+G06 SDK package boundary and completed TMDb/provider ownership rules remain mandatory regression evidence.

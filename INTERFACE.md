@@ -42,6 +42,7 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `ILanguageDefinition` owns one language's title comparison, provider-query, file-name spelling, and sort transformations.
 - `StandardMediaAction` names platform operations independently of their string wire identifiers. Host derives their `ActionDescriptor` values from a media type's compiled shape.
 - `ActionRequest` carries typed item references plus descriptor-defined textual parameter values across Client and API.
+- `ClientContractManifest`, `ClientContractPackage`, and `ClientContractAssembly` state what a browser may load from a running installation: the universal contract identity it must already carry, one hash over the whole installation, and per package its client-safe assemblies with their exact content hash, CLR identity, module version identifier and length, plus its transitive client dependency closure in load order and one hash over it.
 
 ## 4. Public interfaces
 
@@ -136,6 +137,24 @@ implementation. This executable composition is an incomplete migration boundary 
 Standard action descriptors are always derived for typed media. Execution is resolved separately through
 Host capabilities. Monitoring is currently executable; an unimplemented standard operation returns 501
 and is never reported as accepted.
+
+A package declares which of its published shared contract assemblies a browser may download, as
+`clientContracts` in its manifest. The list is validated as a subset of `contractAssemblies`, so an entry
+assembly can never appear in it and neither can a file the package does not publish; a package that offers a
+client nothing is ordinary. `IClientContractCatalog` projects the Active plugin registry into
+`ClientContractManifest` and serves the exact admitted bytes of one offered assembly, or refuses with
+`NotOffered` or `Superseded`. Two routes publish it: `GET /api/v1/client-contracts`, uncacheable, and
+`GET /api/v1/client-contracts/{package}/{contentHash}/{fileName}`, immutable. The byte route is content
+addressed, so an address names bytes and an installation that changes mints new addresses rather than
+changing what an old one means; a stale address is `410 Gone`, because the file is still published elsewhere
+and re-reading the manifest is the recovery.
+
+The Client loads those assemblies into its own default load context at run time. It compares the host's
+universal contract identity with its own before anything else and refuses a whole installation that does not
+match; it hashes every payload wherever it came from; and it proves the loaded assembly's CLR identity, its
+module version identifier, and that its reference to the universal contract resolves by object identity to
+the client's own compiled contract assembly. It reads an assembly's identity, manifest module and reference
+table and nothing more: what a media contract *contains* is not discovered by enumeration.
 
 ## 5. Invariants
 
@@ -299,8 +318,16 @@ is refused before it loads, and a runtime request for an admitted contract a pac
 refused rather than resolved from its own payload or the default context. A package carrying a private copy
 of an admitted contract is refused with both module identifiers and both content hashes.
 
-Still open: one CLR identity across Host and dynamically loaded Client code (G07 owns the browser half),
-signing and package integrity, side-by-side contract versions, and any reload that involves shared contracts
+One CLR identity now reaches a browser as well. A client-safe contract assembly is downloaded from the
+running host, verified against the content hash, CLR identity and module version identifier that host
+published, and loaded into the browser's default context, where its reference to `Arronix.Abstractions`
+resolves to the client's own compiled copy by object identity. The Client's build still declares exactly one
+project reference, on Abstractions, and roots that assembly for the trimmer because a dynamically loaded
+contract binds to members the trimmer never saw.
+
+Still open: typed deserialization and rendering of a loaded contract through generated metadata (G07.2),
+cache update, removal and stale-tab behaviour (G07.3), signing and package integrity, side-by-side contract
+versions, and any reload that involves shared contracts
 — an admitted store takes a second graph only when neither shares anything, because matching identifiers,
 versions and file names do not prove matching bytes, identities or dependency closures.
 

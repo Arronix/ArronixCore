@@ -17,7 +17,9 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
   admission, assembly isolation, registration capture, and the attempt-scoped transaction through which Host
   prepares an admitted inventory for the loader to publish.
 - `Arronix.Host` owns DI composition, generic engines, registries, scheduling, storage, and plugin activation.
-- `Arronix.Api` and `Arronix.Client` are the HTTP and Blazor WebAssembly edges.
+- `Arronix.Api` and `Arronix.Client` are the HTTP and Blazor WebAssembly edges. The Client references
+  Abstractions only and acquires installed media contract assemblies from the host it was served by, at
+  run time, over content-addressed HTTP.
 - The video package is two assemblies. `Arronix.Format.Video` is the shared domain surface and owns video's owner semantics: the representation and quality facts a `Release<Video>` carries, the format family a media type names in its constructor, and the release preferences video contributes to a dependant's compiled policy. `Arronix.Format.Video.Contributions` is the isolated half and owns video's executable work, currently the release-term recognition vocabulary. A media declaration references only the domain assembly.
 - The movies package is two assemblies. `Arronix.Media.Movies` is the shared half and owns `Movie`, `MovieReleaseStage`, and `MovieReleaseTimeline`; `Arronix.Plugin.Movies` is the isolated entry assembly and owns the `Movies` definition, `MovieReleaseParser`, the plugin module, and the generated projections.
 - `Arronix.Language.Reference` is a separately loadable language capability with English, German, and French implementations.
@@ -175,6 +177,20 @@ coverage.
   that full generic path, but no API/Client user workflow reaches it yet. `CatalogIdentity` and `IMediaStore`
   remain in memory, and a merge does not move library rows already keyed by a superseded reference.
 - Typed workbench proposal/commit values and generic standard rows exist, but the current `IMediaItemSource` execution seam still projects proposals and commits through the kind-blind wire form.
+- A package declares a client facet: `clientContracts` names zero or more of its own published shared
+  contract assemblies a browser may download, validated as a subset so an entry assembly or an unpublished
+  file can never appear. `IClientContractCatalog` projects the Active plugin registry into that offer,
+  carrying each assembly's SHA-256 content hash, complete CLR identity, module version identifier and length,
+  and each package's transitive client closure in load order with one hash over it. The bytes served are the
+  bytes admitted, retained from admission rather than re-read. `GET /api/v1/client-contracts` publishes the
+  manifest uncacheable; `GET /api/v1/client-contracts/{package}/{contentHash}/{fileName}` serves one assembly
+  immutable, and a superseded address is `410 Gone` rather than `404`.
+- The Client verifies before it loads. The host's universal contract identity must be exactly the client's or
+  nothing is loaded; every payload is hashed wherever it came from; and the loaded assembly's identity, module
+  version identifier and object-identity binding to the client's own `Arronix.Abstractions` are all proved.
+  The client keeps bytes in a content-hash-keyed browser store and discovers nothing by enumerating a loaded
+  assembly — an architecture rule rejects type, property, field, method and member enumeration and
+  `Activator.CreateInstance` anywhere in its source.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -235,7 +251,15 @@ work does not substitute for closing an earlier dependency.
   declaration. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
   repository project reference, and the packed SDK contains only its readme, metapackage marker, and analyzer.
 
-The active G07 gate covers dynamic typed Client loading. Later gates cover compatibility
+- G07 is split into three numbered sub-gates. G07.1 is complete: a package declares a client facet, the
+  running installation publishes each offered assembly's exact bytes, identity, module and closure, the
+  hosted server serves them content-addressed, and a real browser loads them from a clean store, proves all
+  three facts, reuses a warm store without refetching, refuses an incompatible contract line whole, and
+  refuses one corrupted byte before the runtime sees it. See
+  `docs/research/g07/client-contract-loading.md`. It does not claim typed deserialization or rendering
+  (G07.2) or cache update, removal and stale-tab behaviour (G07.3).
+
+The active G07 gate covers dynamic typed Client loading; G07.2 is next. Later gates cover compatibility
 evidence, format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
@@ -254,8 +278,23 @@ duplicated checklist drifting from current state.
   at registration; that is erasure at the sanctioned boundary, not authoring vocabulary.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
-- The current one-command full-solution run (2026-08-25) reports 2,771 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,073 total cases across 12 test projects. Of the skips, 301 are Movies cases
+- No production Arronix host can activate a package with an entry assembly. `PluginPlatformServices` requires
+  `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and `IOperatingSystemInfo`, and
+  none of the five has an implementation outside the test projects, so a real server quarantines Movies before
+  it can contribute anything. Every packaged Movies proof therefore runs in `Arronix.Host.Tests`, which
+  supplies stubs for them. This blocks G07.2, whose subject is the Movies item graph.
+- The published browser client cannot start on .NET 11 preview 7. A `dotnet publish` output of
+  `Arronix.Client` fails during `WebAssemblyHost.RunAsyncCore` with an `InvalidCastException` from
+  `PersistentServicesRegistry`, trimmed or not, self-contained or not, served by the API or by a plain static
+  server. The same build served by the WebAssembly development host starts normally and a default template
+  application publishes and starts normally, and it reproduces with every Arronix service registration
+  removed. Until it is fixed the client cannot ship. The exact stack and the eliminated causes are in
+  `docs/research/g07/client-contract-loading.md`.
+- `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
+  `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
+  other part of the API's shipped configuration has been exercised against a running process.
+- The current one-command full-solution run (2026-08-25) reports 2,787 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,089 total cases across 12 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. This verifies the current
   solution graph and enabled tests, not the unwired production capabilities above; every later passing-suite
   claim must report its observed skip count and ratchet result.

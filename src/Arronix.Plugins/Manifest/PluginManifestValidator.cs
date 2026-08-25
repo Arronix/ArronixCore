@@ -128,6 +128,12 @@ public sealed class ValidatedManifest
     public IReadOnlyList<string> ContractAssemblies => Package.ContractAssemblies;
 
     /// <summary>
+    /// Gets the bare file names this package permits a browser client to download, always a subset of
+    /// <see cref="ContractAssemblies"/>.
+    /// </summary>
+    public IReadOnlyList<string> ClientContracts => Package.ClientContractAssemblies;
+
+    /// <summary>
     /// Gets the packages this one requires, each an exact identifier and one proved range.
     /// </summary>
     /// <remarks>
@@ -213,6 +219,7 @@ public static class PluginManifestValidator
         var range = ValidateContractRange(manifest, found);
         var entryAssembly = ValidateEntryAssembly(manifest, found);
         var contractAssemblies = ValidateContractAssemblies(manifest, found);
+        var clientContracts = ValidateClientContracts(manifest, contractAssemblies, found);
         var dependencies = ValidateDependencies(manifest, id, found);
         var capabilities = ValidateCapabilities(manifest, found);
         ValidatePackageShape(manifest, found);
@@ -239,7 +246,8 @@ public static class PluginManifestValidator
                 entryAssembly,
                 contractAssemblies,
                 dependencies,
-                availability),
+                availability,
+                clientContracts),
             range!,
             capabilities,
             mediaKinds,
@@ -393,6 +401,66 @@ public static class PluginManifestValidator
                 found.Add(new ManifestDefect(
                     path,
                     $"'{value}' is this package's entry assembly and cannot also be a shared contract assembly. Publish the contracts a dependant binds to from an assembly of their own.",
+                    CoreErrorCode.PluginManifestInvalid));
+                continue;
+            }
+
+            result.Add(value);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Proves the subset of published contracts this package permits a browser to download.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Checked against the contract list this validator just proved rather than against the raw
+    /// declaration, so a client contract naming an assembly whose own spelling was refused is reported once,
+    /// against the member that names it, instead of twice.
+    /// </para>
+    /// <para>
+    /// The subset rule is the whole facet. Host admits a shared contract assembly once per installation and
+    /// hands every dependant the same assembly object; a browser that received a file outside that set would
+    /// be holding a type identity no part of the installation is bound to, which is the one thing sharing a
+    /// contract exists to prevent.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<string> ValidateClientContracts(
+        PluginManifest manifest,
+        IReadOnlyList<string> contractAssemblies,
+        List<ManifestDefect> found)
+    {
+        var declared = RequireList(manifest.ClientContracts, "clientContracts", found);
+        var published = new HashSet<string>(contractAssemblies, StringComparer.OrdinalIgnoreCase);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>(declared.Count);
+
+        for (var index = 0; index < declared.Count; index++)
+        {
+            var path = $"clientContracts[{index}]";
+            var value = ValidateAssemblyFileName(declared[index], path, "client contract assembly", found);
+
+            if (value is null)
+            {
+                continue;
+            }
+
+            if (!seen.Add(value))
+            {
+                found.Add(new ManifestDefect(
+                    path,
+                    $"'{value}' is offered to clients more than once.",
+                    CoreErrorCode.PluginManifestInvalid));
+                continue;
+            }
+
+            if (!published.Contains(value))
+            {
+                found.Add(new ManifestDefect(
+                    path,
+                    $"'{value}' is offered to clients but is not one of this package's shared contract assemblies. A client receives the same admitted identity a dependant binds to, or nothing.",
                     CoreErrorCode.PluginManifestInvalid));
                 continue;
             }
