@@ -1,7 +1,6 @@
 using System;
 using Arronix.Abstractions.Hosting;
 using Arronix.Common.Hosting;
-using Microsoft.Extensions.Time.Testing;
 
 namespace Arronix.Common.Tests.Hosting;
 
@@ -87,7 +86,7 @@ public class HostingFactsTests
         }
 
         var operatingSystem = new OperatingSystemInfo(NoProbes, facts);
-        var runtime = new HostRuntimeInfo(operatingSystem, TimeProvider.System, new StubDetector(false), facts);
+        var runtime = new HostRuntimeInfo(operatingSystem, new StubDetector(false), facts);
 
         Assert.That(runtime.IsContainerized, Is.EqualTo(operatingSystem.IsContainerized));
         Assert.That(runtime.IsContainerized, Is.EqualTo(containerized));
@@ -145,20 +144,27 @@ public class HostingFactsTests
     }
 
     [Test]
-    public void AHostThatCannotReadItsProcessStartTimeReportsWhenItWasComposed()
+    public void AHostThatCannotReadItsProcessStartTimeSaysSoRatherThanSubstitutingOne()
     {
-        var composed = new DateTimeOffset(2026, 8, 25, 12, 0, 0, TimeSpan.Zero);
-        var clock = new FakeTimeProvider(composed);
         var facts = PlatformFactsStub.Linux();
         facts.ProcessStartTime = null;
 
-        var runtime = new HostRuntimeInfo(
-            new OperatingSystemInfo(NoProbes, facts),
-            clock,
-            new StubDetector(false),
-            facts);
+        var runtime = new HostRuntimeInfo(new OperatingSystemInfo(NoProbes, facts), new StubDetector(false), facts);
 
-        Assert.That(runtime.StartTime, Is.EqualTo(composed));
+        Assert.That(
+            runtime.StartTime,
+            Is.Null,
+            "composition time would be presented as an uptime the process never had");
+    }
+
+    [Test]
+    public void TheProcessStartTimeIsReportedWhenThePlatformHasOne()
+    {
+        var started = new DateTimeOffset(2026, 8, 25, 9, 30, 0, TimeSpan.Zero);
+        var facts = PlatformFactsStub.Linux();
+        facts.ProcessStartTime = started;
+
+        Assert.That(Runtime(facts, service: false).StartTime, Is.EqualTo(started));
     }
 
     [Test]
@@ -264,7 +270,7 @@ public class HostingFactsTests
     }
 
     private static HostRuntimeInfo Runtime(IPlatformFacts facts, bool service = false)
-        => new(new OperatingSystemInfo(NoProbes, facts), TimeProvider.System, new StubDetector(service), facts);
+        => new(new OperatingSystemInfo(NoProbes, facts), new StubDetector(service), facts);
 
     private sealed class StubDetector(bool isWindowsService) : IWindowsServiceDetector
     {

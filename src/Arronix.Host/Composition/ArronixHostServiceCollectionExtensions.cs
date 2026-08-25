@@ -1,4 +1,6 @@
 using Arronix.Common.Composition;
+using Arronix.Common.Hosting;
+using Arronix.Host.Hosting;
 using Arronix.Host.Runtime;
 using Arronix.Plugins.Composition;
 using Microsoft.Extensions.Configuration;
@@ -50,6 +52,11 @@ public static class ArronixHostServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configuration);
+
+        // Registered before the shared assembly's own TryAdd, whose fallback answers "not a service"
+        // because it has no reliable test to apply. A caller that registered its own detector first still
+        // keeps it.
+        services.TryAddSingleton<IWindowsServiceDetector, WindowsServiceDetector>();
 
         services.AddArronixCommon(configuration);
         services.AddArronixHostOptions(configuration);

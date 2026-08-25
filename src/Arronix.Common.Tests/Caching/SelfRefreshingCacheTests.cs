@@ -216,7 +216,7 @@ public class SelfRefreshingCacheTests
     }
 
     [Test]
-    public void ACacheWithNoLifetimeIsNeverRefreshedConditionally()
+    public void ACacheWithNoLifetimeIsLoadedOnceAndThenLeftAlone()
     {
         var fetches = 0;
         var cache = _provider.GetSelfRefreshingCache<Owner, string>(
@@ -228,7 +228,50 @@ public class SelfRefreshingCacheTests
             });
 
         Assert.DoesNotThrowAsync(() => cache.RefreshIfExpiredAsync());
-        Assert.That(fetches, Is.Zero, "no configured threshold and none supplied means nothing to compare");
+        Assert.That(fetches, Is.EqualTo(1), "contents that have never been loaded are stale under any reading");
+
+        _clock.Advance(TimeSpan.FromDays(30));
+        Assert.DoesNotThrowAsync(() => cache.RefreshIfExpiredAsync());
+
+        Assert.That(
+            fetches,
+            Is.EqualTo(1),
+            "and with no configured threshold and none supplied, loaded contents never go stale on their own");
+    }
+
+    [Test]
+    public async Task StaleContentsAreNeverReadButAreStillHeldUntilSweptAsync()
+    {
+        var cache = _provider.GetSelfRefreshingCache<Owner, string>(
+            "bulk",
+            _ => Task.FromResult<IReadOnlyDictionary<string, string>>(
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["k"] = "v" }),
+            TimeSpan.FromMinutes(10));
+
+        await cache.RefreshAsync().ConfigureAwait(false);
+        _clock.Advance(TimeSpan.FromMinutes(11));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Find("k"), Is.Null, "contents past their lifetime are not current contents");
+            Assert.That(cache.Count, Is.EqualTo(1), "and reading past them does not remove them");
+        });
+
+        Assert.That(await cache.GetAsync("k").ConfigureAwait(false), Is.EqualTo("v"), "GetAsync refreshes first");
+
+        cache.Clear();
+        Assert.That(cache.Count, Is.Zero);
+    }
+
+    [Test]
+    public void ACacheWithNoLifetimeStillAnswersFromItsFetchDelegate()
+    {
+        var cache = _provider.GetSelfRefreshingCache<Owner, string>(
+            "bulk",
+            _ => Task.FromResult<IReadOnlyDictionary<string, string>>(
+                new Dictionary<string, string>(StringComparer.Ordinal) { ["k"] = "v" }));
+
+        Assert.That(cache.GetAsync("k").GetAwaiter().GetResult(), Is.EqualTo("v"), "a cache nobody can fill is not a cache");
     }
 
     private ISelfRefreshingCache<string> Cache(TimeSpan lifetime, Action onFetch)

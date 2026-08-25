@@ -54,10 +54,15 @@ internal sealed class PlatformFacts : IPlatformFacts
                 return new DateTimeOffset(current.StartTime.ToUniversalTime(), TimeSpan.Zero);
             }
             // A sandbox that denies /proc and a platform that does not expose the value mean the same
-            // thing: this host cannot report when its process started.
-#pragma warning disable CA1031
-            catch (Exception)
-#pragma warning restore CA1031
+            // thing: this host cannot report when its process started. A process-fatal condition means
+            // something else entirely and keeps going.
+            catch (Exception failure) when (failure
+                is InvalidOperationException
+                or PlatformNotSupportedException
+                or NotSupportedException
+                or UnauthorizedAccessException
+                or System.ComponentModel.Win32Exception
+                or IOException)
             {
                 return null;
             }

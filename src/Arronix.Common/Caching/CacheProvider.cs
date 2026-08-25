@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Linq;
 using Arronix.Abstractions.Caching;
@@ -28,12 +29,31 @@ namespace Arronix.Common.Caching;
 /// injected clock's timer.
 /// </para>
 /// </remarks>
-public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
+public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable, IAsyncDisposable
 {
     private readonly ConcurrentDictionary<string, Registration> _caches = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, CacheNamespace> _namespaces = new(StringComparer.Ordinal);
     private readonly TimeProvider _clock;
     private readonly ITimer? _sweep;
+
+    /// <summary>
+    /// The provider's own namespace. Every cache belongs to one — the host's unscoped caches to this — so
+    /// there is no cache whose operations disposal cannot close and wait for. It also gates publication:
+    /// creating a namespace and registering a cache are admitted operations, so disposal either waits for
+    /// one or refuses it, and neither can land in a table that has already been swept.
+    /// </summary>
+    private readonly CacheNamespace _root;
+
+    private readonly object _disposalGate = new();
+
+    /// <summary>
+    /// The completion every caller of <see cref="DisposeAsync"/> awaits. A promise rather than the core
+    /// method's own task: a completed async method's task is its state machine, and this field lives as
+    /// long as the provider does, so holding one would keep the last cache it touched — and with it the
+    /// extension's load context — alive for the life of the process.
+    /// </summary>
+    private TaskCompletionSource? _disposal;
+
     private int _disposed;
 
     /// <summary>Initializes a new instance of the <see cref="CacheProvider"/> class.</summary>
@@ -45,6 +65,7 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
         ArgumentNullException.ThrowIfNull(clock);
 
         _clock = clock;
+        _root = new CacheNamespace(this, "(host)", isRoot: true);
 
         var interval = options?.Value.SweepInterval ?? CacheOptions.DefaultSweepInterval;
 
@@ -68,6 +89,12 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
     /// </remarks>
     internal Action? OnResolutionAdmitted { get; set; }
 
+    /// <summary>
+    /// Gets or sets a hook run inside namespace creation, after its admission is taken and before the
+    /// namespace is published. The seam that makes creation-versus-disposal provable. Unset in production.
+    /// </summary>
+    internal Action? OnCreationAdmitted { get; set; }
+
     /// <inheritdoc />
     public ICache<TValue> GetCache<TOwner, TValue>(string partition)
         => GetCache<TOwner, TValue>(partition, owningNamespace: null);
@@ -88,6 +115,11 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+
+        // Admitted, so disposal waits for this publication or refuses it outright.
+        using var admission = _root.Enter();
+
+        OnCreationAdmitted?.Invoke();
 
         var created = new CacheNamespace(this, name);
 
@@ -116,14 +148,98 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
     }
 
     /// <inheritdoc />
-    public void Dispose()
+    /// <remarks>
+    /// The blocking form of <see cref="DisposeAsync"/>, and it blocks for the same reason: a factory or a
+    /// fetch that is still running is code this provider handed a cache to, and returning while it runs
+    /// would report the provider disposed while it is not.
+    /// </remarks>
+    public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+    /// <summary>
+    /// Refuses everything new, waits for everything already admitted, and then lets go.
+    /// </summary>
+    /// <returns>A task that completes once no cache operation is running and nothing is held.</returns>
+    /// <remarks>
+    /// Every close is started before any wait, so one slow factory delays only the waiting, never the
+    /// refusing: by the time the first drain is awaited, every namespace in this provider — the root
+    /// included — is already turning new work away. Every caller awaits the same completion.
+    /// </remarks>
+    public ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        TaskCompletionSource promise;
+        var first = false;
+
+        lock (_disposalGate)
         {
-            return;
+            if (_disposal is null)
+            {
+                _disposal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                first = true;
+            }
+
+            promise = _disposal;
         }
 
+        if (first)
+        {
+            _ = FulfillAsync(promise);
+        }
+
+        return new ValueTask(promise.Task);
+    }
+
+    /// <summary>Runs the disposal behind the promise, so nothing durable owns its state machine.</summary>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Whatever disposal produces is handed to every caller through the promise rather than left on an unobserved task.")]
+    private async Task FulfillAsync(TaskCompletionSource promise)
+    {
+        try
+        {
+            await DisposeCoreAsync().ConfigureAwait(false);
+            promise.SetResult();
+        }
+        catch (Exception failure)
+        {
+            promise.SetException(failure);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        Volatile.Write(ref _disposed, 1);
         _sweep?.Dispose();
+
+        var known = _namespaces.Values.ToArray();
+
+        // Everything known is closed before anything is awaited, so refusal is immediate everywhere.
+        _root.Gate.Close();
+
+        foreach (var space in known)
+        {
+            space.Gate.Close();
+        }
+
+        var releases = known.Select(space => space.ReleaseAsync().AsTask()).ToList();
+
+        // Every creation and registration that was in flight has finished or been refused after this.
+        await _root.Gate.DrainAsync().ConfigureAwait(false);
+
+        // A namespace admitted before the root closed can have been published while that drain ran. Close
+        // them all first, for the same reason, and only then wait.
+        var late = _namespaces.Values.Except(known).ToArray();
+
+        foreach (var space in late)
+        {
+            space.Gate.Close();
+        }
+
+        releases.AddRange(late.Select(space => space.ReleaseAsync().AsTask()));
+
+        await Task.WhenAll(releases).ConfigureAwait(false);
+        await _root.ReleaseAsync().ConfigureAwait(false);
+
         _caches.Clear();
         _namespaces.Clear();
     }
@@ -142,7 +258,7 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
                 _clock,
                 CacheExpiry.Fixed,
                 defaultLifetime: null,
-                owningNamespace?.Gate));
+                (owningNamespace ?? _root).Gate));
 
     internal ICache<TValue> GetRollingCache<TOwner, TValue>(
         string partition,
@@ -164,7 +280,7 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
                 _clock,
                 CacheExpiry.Rolling,
                 defaultLifetime,
-                owningNamespace?.Gate));
+                (owningNamespace ?? _root).Gate));
     }
 
     internal ISelfRefreshingCache<TValue> GetSelfRefreshingCache<TOwner, TValue>(
@@ -184,14 +300,14 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
             CacheExpiry.Fixed,
             lifetime,
             owningNamespace,
-            name => new SelfRefreshingCache<TValue>(name, fetch, _clock, lifetime, owningNamespace?.Gate));
+            name => new SelfRefreshingCache<TValue>(name, fetch, _clock, lifetime, (owningNamespace ?? _root).Gate));
     }
 
     /// <summary>Removes one cache, but only when the namespace asking for it is the one that owns it.</summary>
     internal bool TryRemoveCache(string name, CacheNamespace owner, out INamespacedCache? cache)
     {
         if (_caches.TryGetValue(name, out var registration)
-            && string.Equals(registration.Shape.Namespace, owner.Name, StringComparison.Ordinal)
+            && string.Equals(registration.Shape.Namespace, owner.Scope, StringComparison.Ordinal)
             && ((ICollection<KeyValuePair<string, Registration>>)_caches).Remove(
                 new KeyValuePair<string, Registration>(name, registration)))
         {
@@ -243,18 +359,22 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
         // Resolution is an admitted operation, so a release either waits for this registration or refuses
         // it. Without the admission a cache can be added to a namespace whose release already read its
         // contents.
-        using var admission = owningNamespace?.Enter();
+        // The root ticket covers publication into this provider's own table, which is what disposal waits
+        // for; the namespace ticket covers the namespace's own release.
+        var space = owningNamespace ?? _root;
+        using var publication = _root.Enter();
+        using var admission = ReferenceEquals(space, _root) ? null : space.Enter();
 
         OnResolutionAdmitted?.Invoke();
 
-        var name = NameOf(owner, partition, owningNamespace?.Name);
+        var name = NameOf(owner, partition, space.Scope);
         var shape = new CacheShape(
             IdentityOf(owner),
             IdentityOf(valueType),
             kind,
             expiry,
             lifetime,
-            owningNamespace?.Name);
+            space.Scope);
 
         var registration = _caches.GetOrAdd(
             name,
@@ -268,7 +388,7 @@ public sealed class CacheProvider : ICacheNamespaceProvider, IDisposable
                 + $"as {shape.Describe()}. One owner and partition names one cache.");
         }
 
-        owningNamespace?.Track(name);
+        space.Track(name);
         return registration.Cache;
     }
 

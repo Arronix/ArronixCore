@@ -102,16 +102,36 @@ public class CacheProviderTests
 
         _clock.Advance(TimeSpan.FromMinutes(30));
 
+        // Read past it first: what is counted must not depend on whether anybody looked.
         Assert.Multiple(() =>
         {
-            Assert.That(cache.Count, Is.EqualTo(2), "an unswept expired entry is still held");
+            Assert.That(cache.Find("dead"), Is.Null, "an expired value is never returned");
             Assert.That(cache.Values, Is.EquivalentTo(new[] { "a" }), "only live values are enumerated");
-            Assert.That(cache.Find("dead"), Is.Null);
+            Assert.That(
+                cache.Count,
+                Is.EqualTo(2),
+                "an ordinary read reports an expired entry absent and leaves it; only a sweep removes it");
         });
 
         cache.ClearExpired();
 
         Assert.That(cache.Count, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void AnExpiredEntryIsReplacedRatherThanAddedWhenItIsAskedForAgain()
+    {
+        var cache = _provider.GetCache<Owner, string>("titles");
+        cache.Set("key", "first", TimeSpan.FromMinutes(1));
+
+        _clock.Advance(TimeSpan.FromMinutes(30));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(cache.Get("key", () => "second"), Is.EqualTo("second"), "the expired value is not reused");
+            Assert.That(cache.Count, Is.EqualTo(1), "and the replacement takes its place rather than sitting beside it");
+            Assert.That(cache.Find("key"), Is.EqualTo("second"));
+        });
     }
 
     [Test]

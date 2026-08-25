@@ -1,5 +1,6 @@
 using System.Globalization;
 using Arronix.Abstractions.Hosting;
+using Arronix.Common.Lifetimes;
 
 namespace Arronix.Common.Hosting;
 
@@ -81,9 +82,7 @@ public sealed class OperatingSystemInfo : IOperatingSystemInfo
 
                 read = probe.Read();
             }
-#pragma warning disable CA1031
-            catch (Exception failure)
-#pragma warning restore CA1031
+            catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
             {
                 throw new InvalidOperationException(
                     $"Operating-system identity probe '{probe.GetType().FullName ?? probe.GetType().Name}' "

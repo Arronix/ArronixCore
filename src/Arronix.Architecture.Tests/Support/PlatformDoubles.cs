@@ -176,7 +176,7 @@ internal sealed class StubEventPublisher : IEventPublisher
 
 internal sealed class StubHostRuntimeInfo : IHostRuntimeInfo
 {
-    public DateTimeOffset StartTime => DateTimeOffset.UnixEpoch;
+    public DateTimeOffset? StartTime => DateTimeOffset.UnixEpoch;
 
     public bool IsUserInteractive => false;
 

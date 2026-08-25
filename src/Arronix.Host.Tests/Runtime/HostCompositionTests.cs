@@ -7,8 +7,10 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Hosting;
 using Arronix.Abstractions.Scheduling;
 using Arronix.Abstractions.Telemetry;
+using Arronix.Common.Hosting;
 using Arronix.Host.Composition;
 using Arronix.Host.Health;
+using Arronix.Host.Hosting;
 using Arronix.Host.Intent;
 using Arronix.Host.Languages;
 using Arronix.Host.Media;
@@ -56,6 +58,12 @@ internal sealed class HostCompositionTests
         {
             Directory.Delete(_root, recursive: true);
         }
+    }
+
+    /// <summary>A detector a host brought with it, which composition must not overrule.</summary>
+    private sealed class AlwaysAService : IWindowsServiceDetector
+    {
+        public bool IsWindowsService => true;
     }
 
     private ServiceProvider Build()
@@ -286,6 +294,29 @@ internal sealed class HostCompositionTests
 
         provider.GetRequiredService<Microsoft.Extensions.Options.IOptions<Configuration.LibraryOptions>>()
             .Value.RootFolders.Should().Contain(_root);
+    }
+
+    [Test]
+    public void TheHostAnswersTheWindowsServiceQuestionWithTheFrameworksOwnTest()
+    {
+        using var provider = Build();
+
+        provider.GetRequiredService<IWindowsServiceDetector>().Should().BeOfType<WindowsServiceDetector>(
+            "the shared assembly's fallback only says the question was never answered");
+    }
+
+    [Test]
+    public void AHostThatBroughtItsOwnServiceDetectorKeepsIt()
+    {
+        var services = new ServiceCollection();
+        var mine = new AlwaysAService();
+        services.AddLogging();
+        services.AddSingleton<IWindowsServiceDetector>(mine);
+        services.AddArronixHost(new ConfigurationBuilder().Build());
+
+        using var provider = services.BuildServiceProvider();
+
+        provider.GetRequiredService<IWindowsServiceDetector>().Should().BeSameAs(mine);
     }
 
     [Test]

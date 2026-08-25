@@ -328,7 +328,8 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
         {
             throw new ObjectDisposedException(
                 Name,
-                "This cache belongs to an extension whose cache namespace has been released.");
+                "The cache namespace this cache belongs to has been released. A namespace released with its "
+                + "extension and a disposed provider both refuse every further operation.");
         }
 
         return ticket;
@@ -341,6 +342,12 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
     }
 
     /// <summary>Reads a live value, restarting a rolling lifetime on the way out.</summary>
+    /// <remarks>
+    /// An expired entry is reported absent and left where it is. <see cref="Count"/> counts what is held
+    /// rather than what is readable — expired entries included, until <see cref="ClearExpired"/> or the
+    /// provider's sweep takes them — so evicting here would make an ordinary read change the number the
+    /// contract says only sweeping changes.
+    /// </remarks>
     private bool TryReadLive(string key, out TValue? value)
     {
         if (!_entries.TryGetValue(key, out var entry))
@@ -353,8 +360,6 @@ internal sealed class ExpiringCache<TValue> : INamespacedCache, ICache<TValue>
 
         if (entry.IsExpired(now))
         {
-            // By exact pair, so a value stored by another thread between the read and the removal survives.
-            ((ICollection<KeyValuePair<string, Entry>>)_entries).Remove(new KeyValuePair<string, Entry>(key, entry));
             value = default;
             return false;
         }

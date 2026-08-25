@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.Caching;
 using Arronix.Common.Lifetimes;
@@ -26,12 +27,19 @@ internal sealed class CacheNamespace : ICacheNamespace
     private readonly QuiescenceGate _gate = new();
     private readonly ConcurrentDictionary<string, byte> _caches = new(StringComparer.Ordinal);
     private readonly object _releaseGate = new();
-    private Task? _release;
 
-    internal CacheNamespace(CacheProvider owner, string name)
+    /// <summary>
+    /// The completion every caller of <see cref="ReleaseAsync"/> awaits. A promise rather than the core
+    /// method's own task, because a completed async method's task is its state machine: keeping one here
+    /// would keep the last cache the release touched alive for as long as anything held this namespace.
+    /// </summary>
+    private TaskCompletionSource? _release;
+
+    internal CacheNamespace(CacheProvider owner, string name, bool isRoot = false)
     {
         _owner = owner;
         Name = name;
+        IsRoot = isRoot;
     }
 
     /// <inheritdoc />
@@ -43,6 +51,15 @@ internal sealed class CacheNamespace : ICacheNamespace
 
     /// <summary>Gets the number of caches currently held by this namespace.</summary>
     internal int CacheCount => _caches.Count;
+
+    /// <summary>
+    /// Gets the scope this namespace prefixes cache names with, or <see langword="null"/> for the
+    /// provider's own root, whose caches are named exactly as an unscoped cache always was.
+    /// </summary>
+    internal string? Scope => IsRoot ? null : Name;
+
+    /// <summary>Gets a value indicating whether this is the provider's own namespace.</summary>
+    internal bool IsRoot { get; }
 
     internal QuiescenceGate Gate => _gate;
 
@@ -68,10 +85,43 @@ internal sealed class CacheNamespace : ICacheNamespace
     /// </remarks>
     public ValueTask ReleaseAsync()
     {
+        TaskCompletionSource promise;
+        var first = false;
+
         lock (_releaseGate)
         {
-            _release ??= ReleaseCoreAsync();
-            return new ValueTask(_release);
+            if (_release is null)
+            {
+                _release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                first = true;
+            }
+
+            promise = _release;
+        }
+
+        if (first)
+        {
+            _ = FulfillAsync(promise);
+        }
+
+        return new ValueTask(promise.Task);
+    }
+
+    /// <summary>Runs the release behind the promise, so nothing durable owns its state machine.</summary>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "Whatever release produces is handed to every caller through the promise rather than left on an unobserved task.")]
+    private async Task FulfillAsync(TaskCompletionSource promise)
+    {
+        try
+        {
+            await ReleaseCoreAsync().ConfigureAwait(false);
+            promise.SetResult();
+        }
+        catch (Exception failure)
+        {
+            promise.SetException(failure);
         }
     }
 

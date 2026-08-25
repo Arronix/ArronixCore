@@ -202,7 +202,7 @@ internal sealed class PluginBootstrapperStartupRecoveryTests
             }
         }
 
-        public DateTimeOffset StartTime { get; } = DateTimeOffset.UnixEpoch;
+        public DateTimeOffset? StartTime { get; } = DateTimeOffset.UnixEpoch;
 
         public bool IsUserInteractive => false;
 

@@ -46,7 +46,9 @@ public interface ICacheProvider
     /// <param name="partition">The partition name, unique within the owner.</param>
     /// <param name="fetch">Produces the complete contents. Invoked once per refresh.</param>
     /// <param name="lifetime">
-    /// How long the contents stay fresh, or <see langword="null"/> for the provider default.
+    /// How long the contents stay fresh, or <see langword="null"/> for no staleness threshold: the
+    /// contents are then loaded on first use and replaced only when a caller asks. There is no hidden
+    /// provider default.
     /// </param>
     /// <returns>The cache for that partition.</returns>
     ISelfRefreshingCache<TValue> GetSelfRefreshingCache<TOwner, TValue>(

@@ -13,31 +13,23 @@ public sealed class HostRuntimeInfo : IHostRuntimeInfo
 {
     /// <summary>Initializes a new instance of the <see cref="HostRuntimeInfo"/> class.</summary>
     /// <param name="operatingSystem">The operating-system facts, which own containerization.</param>
-    /// <param name="clock">The clock, used only when the process start time cannot be read.</param>
     /// <param name="serviceDetector">Whether the service control manager started this process.</param>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
-    public HostRuntimeInfo(
-        IOperatingSystemInfo operatingSystem,
-        TimeProvider clock,
-        IWindowsServiceDetector serviceDetector)
-        : this(operatingSystem, clock, serviceDetector, PlatformFacts.Instance)
+    public HostRuntimeInfo(IOperatingSystemInfo operatingSystem, IWindowsServiceDetector serviceDetector)
+        : this(operatingSystem, serviceDetector, PlatformFacts.Instance)
     {
     }
 
     internal HostRuntimeInfo(
         IOperatingSystemInfo operatingSystem,
-        TimeProvider clock,
         IWindowsServiceDetector serviceDetector,
         IPlatformFacts facts)
     {
         ArgumentNullException.ThrowIfNull(operatingSystem);
-        ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(serviceDetector);
         ArgumentNullException.ThrowIfNull(facts);
 
-        // A host that cannot read its process start time reports when the platform was composed: the
-        // earliest instant this code can speak for, and not a default date every status page would subtract.
-        StartTime = facts.ProcessStartTime ?? clock.GetUtcNow();
+        StartTime = facts.ProcessStartTime;
         ExecutingApplication = facts.ProcessPath;
         IsAdministrator = facts.IsPrivilegedProcess;
         IsContainerized = operatingSystem.IsContainerized;
@@ -49,13 +41,9 @@ public sealed class HostRuntimeInfo : IHostRuntimeInfo
     }
 
     /// <inheritdoc />
-    public DateTimeOffset StartTime { get; }
+    public DateTimeOffset? StartTime { get; }
 
     /// <inheritdoc />
-    /// <remarks>
-    /// The platform's own answer. On Unix every process is reported interactive, so the value there is
-    /// what the platform said rather than a derived claim.
-    /// </remarks>
     public bool IsUserInteractive { get; }
 
     /// <inheritdoc />

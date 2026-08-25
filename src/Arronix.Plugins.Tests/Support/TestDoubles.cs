@@ -446,7 +446,7 @@ internal sealed class RecordingSelfRefreshingCache<TValue> : ISelfRefreshingCach
 
 internal sealed class StubHostRuntimeInfo : IHostRuntimeInfo
 {
-    public DateTimeOffset StartTime => DateTimeOffset.UnixEpoch;
+    public DateTimeOffset? StartTime => DateTimeOffset.UnixEpoch;
 
     public bool IsUserInteractive => false;
 

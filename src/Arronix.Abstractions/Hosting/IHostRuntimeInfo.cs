@@ -12,12 +12,14 @@ namespace Arronix.Abstractions.Hosting;
 public interface IHostRuntimeInfo
 {
     /// <summary>
-    /// Gets the instant the host process started.
+    /// Gets the instant the host process started, or <see langword="null"/> when the platform will not say —
+    /// a sandbox that denies the process table, for instance. No stand-in value is substituted.
     /// </summary>
-    DateTimeOffset StartTime { get; }
+    DateTimeOffset? StartTime { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the process has an attached console a user can interact with.
+    /// Gets the platform's own answer to whether the process runs in user-interactive mode
+    /// (<c>Environment.UserInteractive</c>). Unix reports every process interactive.
     /// </summary>
     bool IsUserInteractive { get; }
 
@@ -27,7 +29,8 @@ public interface IHostRuntimeInfo
     bool IsAdministrator { get; }
 
     /// <summary>
-    /// Gets a value indicating whether the process is running as a managed operating system service.
+    /// Gets a value indicating whether the Windows service control manager started this process. Always
+    /// <see langword="false"/> elsewhere; a systemd unit or a launchd job is not this fact.
     /// </summary>
     bool IsWindowsService { get; }
 

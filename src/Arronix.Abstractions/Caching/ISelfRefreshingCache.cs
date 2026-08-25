@@ -8,8 +8,9 @@ namespace Arronix.Abstractions.Caching;
 /// <typeparam name="TValue">The cached value type.</typeparam>
 /// <remarks>
 /// This is the right shape when the backing source is cheaper to read in bulk than per key — a mapping
-/// table behind one remote call, for instance. It has no equivalent in the framework's caching
-/// primitives, which are all per-entry.
+/// table behind one remote call, for instance. It has no equivalent in the framework's caching primitives,
+/// which are all per-entry. A cache created without a lifetime is loaded once, on first use, and then
+/// changes only when a caller refreshes or replaces its contents.
 /// </remarks>
 public interface ISelfRefreshingCache<TValue> : ICache
 {
@@ -26,7 +27,10 @@ public interface ISelfRefreshingCache<TValue> : ICache
     /// Returns the value for a key from the current contents without refreshing.
     /// </summary>
     /// <param name="key">The key to look up.</param>
-    /// <returns>The value, or <see langword="null"/> when the key is absent.</returns>
+    /// <returns>
+    /// The value, or <see langword="null"/> when the key is absent. Contents past the cache's configured
+    /// lifetime are stale rather than current, so every key reads as absent until they are replaced.
+    /// </returns>
     TValue? Find(string key);
 
     /// <summary>
@@ -48,6 +52,11 @@ public interface ISelfRefreshingCache<TValue> : ICache
     /// </param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A task that completes once the contents are known to be fresh.</returns>
+    /// <remarks>
+    /// Contents that have never been loaded are stale under any threshold, so the first call always
+    /// fetches. After that, a cache configured without a lifetime and asked without a threshold has
+    /// nothing to be stale against and does nothing; refreshing it is <see cref="RefreshAsync"/>'s job.
+    /// </remarks>
     Task RefreshIfExpiredAsync(TimeSpan? timeToLive = null, CancellationToken cancellationToken = default);
 
     /// <summary>

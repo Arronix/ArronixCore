@@ -35,7 +35,10 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
     /// <param name="name">The fully-qualified cache name, including the owning partition.</param>
     /// <param name="fetch">Produces the complete contents.</param>
     /// <param name="clock">The clock staleness is measured against.</param>
-    /// <param name="lifetime">How long the contents stay fresh, or <see langword="null"/> for no default.</param>
+    /// <param name="lifetime">
+    /// How long the contents stay fresh, or <see langword="null"/> for no staleness threshold: nothing goes
+    /// stale on its own and the contents change only when a caller refreshes or replaces them.
+    /// </param>
     /// <param name="namespaceGate">The releasable namespace this cache belongs to, when it belongs to one.</param>
     internal SelfRefreshingCache(
         string name,
@@ -129,12 +132,24 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Contents past their configured lifetime are reported absent and left where they are, so what
+    /// <see cref="Count"/> reports still changes only when a sweep or a refresh changes it.
+    /// </remarks>
     public TValue? Find(string key)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
         using var admission = Enter();
-        return Volatile.Read(ref _snapshot).Items.TryGetValue(key, out var value) ? value : default;
+
+        var snapshot = Volatile.Read(ref _snapshot);
+
+        if (_lifetime is { } lifetime && snapshot.IsExpired(_clock.GetUtcNow(), lifetime))
+        {
+            return default;
+        }
+
+        return snapshot.Items.TryGetValue(key, out var value) ? value : default;
     }
 
     /// <inheritdoc />
@@ -238,14 +253,23 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
 
     private async Task RefreshIfExpiredCoreAsync(TimeSpan? timeToLive, CancellationToken cancellationToken)
     {
-        // A cache configured without a lifetime and asked without one has no staleness threshold at all,
-        // so there is nothing to compare and nothing to refresh.
+        var snapshot = Volatile.Read(ref _snapshot);
+
+        // Contents that have never been loaded are stale under any reading, threshold or no threshold.
+        // Without this a cache created with no lifetime would never call its fetch delegate at all.
+        if (!snapshot.HasLoaded)
+        {
+            await FetchAsync(cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        // Loaded, and with no threshold to measure against, nothing goes stale on its own.
         if ((timeToLive ?? _lifetime) is not { } threshold)
         {
             return;
         }
 
-        if (!Volatile.Read(ref _snapshot).IsExpired(_clock.GetUtcNow(), threshold))
+        if (!snapshot.IsExpired(_clock.GetUtcNow(), threshold))
         {
             return;
         }
@@ -331,7 +355,8 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         var fetch = Volatile.Read(ref _fetch)
             ?? throw new ObjectDisposedException(
                 Name,
-                "This cache belongs to an extension whose cache namespace has been released.");
+                "The cache namespace this cache belongs to has been released. A namespace released with its "
+                + "extension and a disposed provider both refuse every further operation.");
 
         var fetched = await fetch(cancellationToken).ConfigureAwait(false)
             ?? throw new InvalidOperationException(
@@ -353,7 +378,8 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         {
             throw new ObjectDisposedException(
                 Name,
-                "This cache belongs to an extension whose cache namespace has been released.");
+                "The cache namespace this cache belongs to has been released. A namespace released with its "
+                + "extension and a disposed provider both refuse every further operation.");
         }
 
         return ticket;
@@ -369,6 +395,9 @@ internal sealed class SelfRefreshingCache<TValue> : INamespacedCache, ISelfRefre
         internal FrozenDictionary<string, TValue> Items { get; } = items;
 
         internal DateTimeOffset? LoadedAt { get; } = loadedAt;
+
+        /// <summary>Whether these contents have ever been loaded.</summary>
+        internal bool HasLoaded => LoadedAt is not null;
 
         /// <summary>Contents never loaded are stale, which is what forces the first fetch.</summary>
         internal bool IsExpired(DateTimeOffset now, TimeSpan timeToLive)
