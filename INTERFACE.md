@@ -70,6 +70,12 @@ All runtime, SDK, plugin, Host, API, Client, and test projects currently target 
 .NET 11 Preview 7 SDK `11.0.100-preview.7.26381.103` pinned by `global.json`. `Arronix.Generators` alone targets
 `netstandard2.0` as an analyzer dependency; it is not a runtime compatibility escape hatch.
 
+`Arronix.Compatibility.Ratchet validate` accepts the canonical ledger, NUnit results, required-sentinel
+registry and compiler-input evidence. Its optional `--classification-report <file>` output is a deterministic
+`arronix.compatibility.classification-report` JSON document whose version-1 rows expose declared requirement,
+owner, disposition, target and source-provenance facts. It is an inventory contract, not a parity, approval or
+closure claim; its closed record shapes preserve provisional, unresolved, baseline-only and ineligible states.
+
 Extension authors reference the packaging-only `Arronix.Sdk`. It supplies `Arronix.Abstractions` as its sole
 runtime dependency and carries `Arronix.Generators` only under `analyzers/dotnet/cs`; the SDK contributes no
 runtime assembly. Authors then add only the format, language, and media-domain packages their extension
@@ -435,8 +441,13 @@ scheduled plugin work, withdraws the exact active attempt and its naming-token o
 instances, and requests collectible-context unload; a job still executing after its bounded deadline keeps
 that plugin rooted and Active. The sanctioned provider SPI supplies network and filesystem access through
 capability-scoped services. Extensions run in process, so this is an admission and audit boundary rather than
-a sandbox against direct BCL use. The current media store and queue are in memory; restart durability is not
-promised.
+a sandbox against direct BCL use. The catalog-record and library-item slice is durable in the configured
+SQLite store; the acquisition queue and unconverted file/group state remain in memory.
+
+When `--classification-report` is supplied, the ratchet removes the requested prior artifact after successful
+argument parsing, performs the complete ledger, execution, sentinel and compiler-input validation, serializes
+the report into a temporary sibling, and replaces the target only on success. A normal failure after input
+processing begins therefore leaves no prior report looking current, and no partial destination is published.
 
 ## 7. Dependency boundaries
 

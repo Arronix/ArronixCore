@@ -641,6 +641,14 @@ must constrain those relationships before G18 hardens the shared schema.
 
 **Outcome:** every currently skipped Movies case and every compatibility claim has a known evidentiary status.
 
+**Status:** in progress. The ratchet now emits a deterministic typed classification inventory only after its
+complete validation succeeds. Independent review accepted that first slice at
+`d02a7f9719e9a4ea98fcc57406e1ab056ad4125a`: the full rail reported 3,947 total / 3,645 enabled and passed /
+0 failed / 302 skipped across 14 projects. The artifact keeps 301 Movies omissions and one architecture case
+separate, exposes the 158 / 114 / 20 / 9 Movies disposition split, preserves provisional and unresolved owner
+states and full source provenance, and makes all five zero-case controls visible. It is deliberately a
+classification inventory rather than the final executable parity/difference/missing-proof report.
+
 Implement:
 
 - classify the 301 Movies skips as restorations, ownership-correct clean-room replacements, explicit candidate
@@ -1378,10 +1386,11 @@ replacement.
 ## Current next task
 
 **G08 is current.** Before more release interpretation is rewritten, the compatibility evidence must be
-made complete enough to reject accidental feature loss. Start by revision-pinning the upstream feature
-inventory, assigning every registered Movies skip an explicit disposition and owner, and separating
-upstream regression, independently generated, field-observed and owner-decided evidence. No same-session
-generated corpus may be presented as independent proof.
+made complete enough to reject accidental feature loss. The generated classification inventory now exposes
+every registered skip's declared disposition, owner state, target and evidence status without claiming proof.
+Next, revision-pin and independently audit the upstream feature inventory, then resolve provisional and
+unresolved ownership before replacement work relies on it. Independently generated, field-observed and
+owner-decided evidence remain distinct; no same-session generated corpus may be presented as independent proof.
 
 The dependency chain through G07B is complete. G07.2 and G07.3 prove generated typed projection and its
 browser lifecycle; G07A proves a package-only external media/provider consumer; G07B proves the narrow

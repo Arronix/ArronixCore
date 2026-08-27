@@ -1,5 +1,21 @@
 # Arronix History
 
+## 2026-08-28 — Start G08 with a generated classification inventory
+
+The compatibility ratchet now emits an optional typed, versioned classification report only after ledger,
+execution, required-sentinel and compiler-input validation all succeed. It removes a requested stale artifact
+before reading new inputs and atomically publishes the complete replacement. The generated report is not a
+second hand-authored matrix and cannot promote a baseline-only or ineligible source, a candidate divergence,
+or a provisional or unresolved owner into proof.
+
+Independent review accepted the implementation at `d02a7f9719e9a4ea98fcc57406e1ab056ad4125a`.
+The full .NET 11 rail passed 3,645 enabled cases across 14 projects with exactly 302 registered skips and no
+failures or inconclusive cases. Its report kept the 301 Movies omissions separate from the one architecture
+governance case, projected all five zero-case evidence controls, and recorded the Movies disposition split as
+158 restorations, 114 ownership-correct replacements, 20 evidence gaps and 9 candidate divergences. Those are
+declared classifications, not compatibility closure; Movies ownership remains 187 cases provisional and 114
+unresolved.
+
 ## 2026-08-28 — Close the durable Movies catalog vertical
 
 Independent review accepted G07B at `e61fec49766e108d2410b37a1338cfe8cbb3f695`. The full .NET 11 rail

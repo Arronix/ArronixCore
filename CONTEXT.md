@@ -32,6 +32,9 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
   runtime assembly. Extension authors take this one package plus the format and language packages they
   compose.
 - `Arronix.Compatibility.Ratchet` validates the canonical compatibility ledger against fresh test results and its prior committed form. The ledger under `verification/compatibility` gives every known omission a stable semantic identity, immutable published binding and expectation, provenance source, and explicit replacement path. The same-build solution binlog is the authoritative practical record of the actual `Csc` inputs, embedded inputs, warning policy, and build configuration. Each registered execution must resolve from its exact NUnit leaf to the declared CLR method in NUnit's exact executed assembly; the associated Portable PDB must bind that method to the primary and support documents, whose embedded source bytes must exactly match the locked repository files. This is layered same-build provenance, not a cryptographic or hermetic-build attestation claim. Replacement topology is independent of its semantic outcome; outcome must match the source disposition and requirement transition. Acyclic one-to-one replacement chains close to a fixed point, so a published witness can later be retired without rewriting earlier edges. Partition records remain non-closing until aggregate semantic composition is modeled. Required owner decisions resolve to pinned prior-ledger sources attached to the decided requirement. Passing tests do not self-attest proof through an output marker.
+  After validation, required-sentinel and compiler-input checks all pass, the ratchet can emit a
+  deterministic typed classification inventory; it projects declared owner, disposition, target and
+  source-provenance facts without promoting them to compatibility proof.
 - Media extensions may reference Abstractions, the format capabilities they compose, and their own media domain assembly. An extension does not reference another kind's media domain. Host and Client reference neither half of Video.
 - `Arronix.Format.Video` ships as the installed package `arronix.format.video`: one shared contract
   assembly, no entry assembly, no capability. Movies and Television require it by identifier and carry no
@@ -46,6 +49,9 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
   and reaches nowhere. The proof script stages it into the published client's static root as proof-only
   input: there is no test API endpoint, and neither Host nor Client gains a dependency on movies.
 - `eng/ci/run-tests.sh` is the local and hosted-CI proof rail: locked restore, one Release warnings-as-errors solution build with its binlog retained as compiler-input evidence, a non-empty NUnit result from every discovered test project, exact NUnit-leaf/method/assembly/PDB/source binding, an exact 302-skip ratchet, and current-plus-prior compatibility validation. The eight-column required-test registry is append-only and contains only three durable proof sentinels. Package lock files and the consumed-only central package graph are checked in.
+
+- The full proof rail writes `artifacts/compatibility/classification-report.json` after its current-plus-prior
+  compatibility validation succeeds; the generated file is an artifact, not a checked-in status table.
 
 ## Active invariants
 
@@ -407,6 +413,16 @@ work does not substitute for closing an earlier dependency.
   passed / 0 failed / 302 skipped, and the retained G07B proof passed its own 46 browser checks plus provider,
   API-retry and six store-phase assertions. G07B's 46, G07A's 37 and G07.3's 30 + 43 + 64 = 137 remain
   separate proof identities and are never reported as one total.
+
+- G08 is in progress. The first slice generates `artifacts/compatibility/classification-report.json` only
+  after the whole compatibility validation succeeds and removes any requested stale artifact before reading
+  new inputs. Independent review accepted the implementation at
+  `d02a7f9719e9a4ea98fcc57406e1ab056ad4125a`: the full .NET 11 rail reported 3,947 total / 3,645 enabled and
+  passed / 0 failed / 302 skipped across 14 projects. The report keeps the 301 Movies omissions separate from
+  the one architecture-governance case and exposes declared owner, disposition, gate and full source
+  provenance without calling baseline-only or ineligible material parity. All Movies cases are currently
+  non-final on ownership: 187 cases have provisional owners and 114 have unresolved ownership. The upstream
+  feature inventory, current independent clean-room corpus and field-observation corpus remain missing.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
