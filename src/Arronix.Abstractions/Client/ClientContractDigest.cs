@@ -95,6 +95,10 @@ public static class ClientContractDigest
     /// <param name="schema">The declared fields, in declaration order.</param>
     /// <returns>The canonical rendering.</returns>
     /// <exception cref="ArgumentNullException">Either argument is <see langword="null"/>.</exception>
+    /// <exception cref="NotSupportedException">
+    /// The schema contains itself, nests too deep, describes too many values, or holds a null field or
+    /// choice list.
+    /// </exception>
     public static string RenderProjection(Type entityType, IReadOnlyList<FieldDescriptor> schema)
     {
         ArgumentNullException.ThrowIfNull(entityType);

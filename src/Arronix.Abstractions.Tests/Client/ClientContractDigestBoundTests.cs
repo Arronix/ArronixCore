@@ -65,6 +65,37 @@ public sealed class ClientContractDigestBoundTests
     }
 
     /// <remarks>
+    /// The decisive one for the per-type charge. Distinct types and total members are each within the
+    /// bound on their own; only their sum is one over, so a charge that dropped the type itself and kept
+    /// only its members would render this graph rather than refuse it.
+    /// </remarks>
+    [Test]
+    public void AGraphIsRefusedWhenTypesAndMembersEachFitButTheirSumDoesNot()
+    {
+        var context = new Sprawl(width: ClientContractLimits.MaxNodes / 2, chain: 0);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                context.DistinctTypes,
+                Is.LessThanOrEqualTo(ClientContractLimits.MaxNodes),
+                "the premise: distinct types alone fit");
+            Assert.That(
+                context.Root.Properties.Count,
+                Is.LessThanOrEqualTo(ClientContractLimits.MaxNodes),
+                "the premise: members alone fit");
+            Assert.That(
+                context.DistinctTypes + context.Root.Properties.Count,
+                Is.EqualTo(ClientContractLimits.MaxNodes + 1),
+                "the premise: only their sum is one over");
+
+            Assert.That(
+                () => ClientContractDigest.OfSerialization(context, context.Root),
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("describes more than"));
+        });
+    }
+
+    /// <remarks>
     /// The decisive one for an enum's names being charged. Without them the graph spends exactly the budget
     /// and renders; with them it is over by their count alone.
     /// </remarks>
