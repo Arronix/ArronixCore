@@ -350,14 +350,18 @@ for phase in store_phases:
 retry = json.loads((root / 'api-retry-add-verification.json').read_text())
 if retry.get('status') != 200 or retry.get('matchesFirstVisibleAdd') is not True:
     raise SystemExit('error: API retry evidence is not the required HTTP 200 matching-reference result')
+discovery = json.loads((root / 'integration-dependency.json').read_text())
+if discovery.get('dependencySatisfied') is not True or 'blocker' in discovery:
+    raise SystemExit('error: provider discovery evidence is not the required satisfied projection')
 summary = {
     'proofIdentity': 'G07B catalog browser proof',
     'browserCheckCount': sum(len(report['results']) for report in reports),
     'browserPhases': browser_phases,
     'storePhases': store_phases,
     'apiRetry': retry,
+    'providerDiscovery': discovery,
     'phaseEvidencePassing': True,
 }
 (root / 'g07b-proof-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
-print(f"G07B catalog browser proof: {summary['browserCheckCount']} browser checks; all phase/store evidence passing.")
+print(f"G07B catalog browser proof: {summary['browserCheckCount']} browser checks; provider, phase, and store evidence passing.")
 PY

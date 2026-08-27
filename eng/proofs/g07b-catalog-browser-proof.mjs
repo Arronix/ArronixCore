@@ -22,7 +22,6 @@ const expected = {
     inLibrary: 'In library.',
     refreshed: 'Catalog facts refreshed.',
     notWanted: 'Not wanted',
-    withdrawn: 'Withdrawn',
 };
 const catalog = {
     route: '/kinds/movies/catalog',
@@ -83,6 +82,12 @@ async function search(page) {
     const row = page.locator(`${catalog.result}[${catalog.catalogId}="${expected.catalogId}"]`);
     await row.waitFor({ state: 'visible', timeout: 10000 });
     check('catalog result declares proof:42', await row.getAttribute(catalog.catalogId), expected.catalogId);
+    const title = row.getByRole('heading', { level: 3, name: expected.initialTitle, exact: true });
+    await title.waitFor({ state: 'visible', timeout: 10000 });
+    check('catalog result visibly renders revision-one title', (await title.textContent())?.trim(), expected.initialTitle);
+    const artwork = row.locator('.catalog-result-art img');
+    await artwork.waitFor({ state: 'visible', timeout: 10000 });
+    check('catalog result visibly renders inline typed artwork', (await artwork.getAttribute('src'))?.startsWith('data:image/'), true);
     return row;
 }
 
@@ -119,17 +124,14 @@ async function completeVisibleRefresh(page, row) {
     ]).then(([received]) => received);
     check('visible Refresh returned HTTP 200', response.status(), 200);
     await status(row, expected.refreshed);
-    await row.getByRole('heading', { level: 3, name: expected.refreshedTitle, exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+    const title = row.getByRole('heading', { level: 3, name: expected.refreshedTitle, exact: true });
+    await title.waitFor({ state: 'visible', timeout: 10000 });
+    check('catalog row visibly renders revision-two title after Refresh', (await title.textContent())?.trim(), expected.refreshedTitle);
 }
 
 async function openItemPage(page, reference) {
     if (!/^movie:[1-9][0-9]*$/.test(reference ?? '')) throw new Error('Item detail phase requires a complete durable movie reference.');
     await page.goto(`${address}/kinds/movies/items/${encodeURIComponent(reference)}`, { waitUntil: 'networkidle' });
-}
-
-async function assertWithdrawnIfRendered(page) {
-    const withdrawn = page.locator('.state-name').filter({ hasText: expected.withdrawn });
-    if (await withdrawn.count()) check('ordinary item page visibly renders Withdrawn when published', (await withdrawn.first().textContent())?.trim(), expected.withdrawn);
 }
 
 try {
@@ -156,12 +158,17 @@ try {
         await wanted.waitFor({ state: 'visible', timeout: 10000 });
         check('default Wanted monitor checkbox is visibly checked', await wanted.isChecked(), true);
         await wanted.uncheck();
-        await page.getByText(expected.notWanted, { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+        const state = page.getByText(expected.notWanted, { exact: true });
+        await state.waitFor({ state: 'visible', timeout: 10000 });
+        check('ordinary item page visibly reports Not wanted after monitor change', (await state.textContent())?.trim(), expected.notWanted);
     }
     if (phase === 'restart') {
-        await page.getByRole('heading', { level: 1, name: expected.refreshedTitle, exact: true }).waitFor({ state: 'visible', timeout: 10000 });
-        await page.getByText(expected.notWanted, { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
-        await assertWithdrawnIfRendered(page);
+        const title = page.getByRole('heading', { level: 1, name: expected.refreshedTitle, exact: true });
+        await title.waitFor({ state: 'visible', timeout: 10000 });
+        check('ordinary item page visibly persists revision-two title after restart', (await title.textContent())?.trim(), expected.refreshedTitle);
+        const state = page.getByText(expected.notWanted, { exact: true });
+        await state.waitFor({ state: 'visible', timeout: 10000 });
+        check('ordinary item page visibly persists Not wanted after restart', (await state.textContent())?.trim(), expected.notWanted);
     }
     check('the page issued no non-loopback browser request', observed.requested.map(entry => new URL(entry.url).hostname).filter(host => host !== '127.0.0.1' && host !== 'localhost'), []);
     check('the page reported no errors', observed.errors.map(entry => `${entry.channel}: ${entry.text}`), []);
