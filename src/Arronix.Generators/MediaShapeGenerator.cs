@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
@@ -6,6 +5,7 @@ using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
+using static Arronix.Generators.MediaShapeModel;
 
 namespace Arronix.Generators;
 
@@ -324,113 +324,6 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         source.Append(indent).AppendLine("},");
     }
 
-    private static IReadOnlyList<IPropertySymbol> PublicProperties(INamedTypeSymbol type)
-    {
-        var hierarchy = new Stack<INamedTypeSymbol>();
-        for (var current = type; current is not null; current = current.BaseType)
-        {
-            hierarchy.Push(current);
-        }
-
-        var result = new List<IPropertySymbol>();
-        var positions = new Dictionary<string, int>(StringComparer.Ordinal);
-        while (hierarchy.Count > 0)
-        {
-            foreach (var property in hierarchy.Pop().GetMembers().OfType<IPropertySymbol>())
-            {
-                if (property.IsStatic || property.Parameters.Length != 0
-                    || property.DeclaredAccessibility != Accessibility.Public
-                    || property.GetMethod?.DeclaredAccessibility != Accessibility.Public)
-                {
-                    continue;
-                }
-
-                if (positions.TryGetValue(property.Name, out var position))
-                {
-                    result[position] = property;
-                }
-                else
-                {
-                    positions[property.Name] = result.Count;
-                    result.Add(property);
-                }
-            }
-        }
-        return result;
-    }
-
-    private static int ValueKind(ITypeSymbol type, IPropertySymbol property)
-    {
-        if (Has(property, "SizeAttribute")) return 8;
-        if (Has(property, "CountAttribute")) return 19;
-        if (Has(property, "RatioAttribute")) return 9;
-        if (type.SpecialType == SpecialType.System_String) return Has(property, "MultilineAttribute") ? 1 : 0;
-        if (type.TypeKind == TypeKind.Enum) return 11;
-        if (Is(type, "Arronix.Abstractions.Media.ArtworkSet") || Is(type, "Arronix.Abstractions.Media.ArtworkImage")) return 18;
-        if (Is(type, "Arronix.Abstractions.Media.ExternalIdSet") || Is(type, "Arronix.Abstractions.Shape.ExternalId")) return 13;
-        if (Is(type, "Arronix.Abstractions.Identity.MediaItemId")) return 2;
-        if (type.SpecialType is SpecialType.System_Int16 or SpecialType.System_Int32 or SpecialType.System_Int64) return 2;
-        if (type.SpecialType is SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_Decimal) return 3;
-        if (type.SpecialType == SpecialType.System_Boolean) return 4;
-        if (Is(type, "System.DateOnly")) return 5;
-        if (Is(type, "System.DateTime") || Is(type, "System.DateTimeOffset")) return 6;
-        if (Is(type, "System.TimeSpan")) return 7;
-        if (Is(type, "System.Uri")) return 14;
-        if (Is(type, "Arronix.Abstractions.FileSystem.PlatformPath")) return 15;
-        if (Is(type, "Arronix.Abstractions.DTOs.Language")) return 16;
-        if (Is(type, "Arronix.Abstractions.DTOs.QualityTier")) return 17;
-        if (Is(type, "Arronix.Abstractions.Shape.OrdinalPath")) return 10;
-        if (Implements(type, "Arronix.Abstractions.Media.IMediaEntity")) return 12;
-        return 20;
-    }
-
-    private static int Semantics(IPropertySymbol property, int kind, ITypeSymbol element)
-    {
-        var result = 0;
-        if (Has(property, "IdentityAttribute")) result |= 1;
-        if (Has(property, "TitleAttribute")) result |= 2;
-        if (Has(property, "SortableAttribute")) result |= 8;
-        if (Has(property, "FilterableAttribute")) result |= 16;
-        if (Has(property, "GroupableAttribute")) result |= 32;
-        if (Has(property, "SearchableAttribute")) result |= 64;
-        if (Has(property, "ProgressAttribute")) result |= 128;
-        if (Has(property, "StatusAttribute")) result |= 256;
-        if (Has(property, "TimestampAttribute")) result |= 512;
-        if (Has(property, "SizeAttribute")) result |= 1024;
-        if (Has(property, "ArtworkAttribute")) result |= 2048;
-        if (Has(property, "DisambiguationAttribute")) result |= 4096;
-
-        if (Implements(property.ContainingType, "Arronix.Abstractions.Media.IMediaEntity"))
-        {
-            if (property.Name == "Key") result |= 1;
-            if (property.Name == "Title") result |= 2 | 8;
-            if (property.Name == "Artwork") result |= 2048;
-        }
-
-        if (Implements(property.ContainingType, "Arronix.Abstractions.Media.IMediaItem"))
-        {
-            if (property.Name == "Status") result |= 256 | 8 | 16 | 32;
-            if (property.Name == "CatalogState" || property.Name == "Collections") result |= 16 | 32;
-        }
-
-        if (kind == 13) result |= 1;
-        if (kind == 18 || Is(element, "Arronix.Abstractions.Media.ArtworkSet")) result |= 2048;
-        return result;
-    }
-
-    private static int Prominence(IPropertySymbol property)
-    {
-        var attribute = Attribute(property, "ProminenceAttribute");
-        if (attribute?.ConstructorArguments.Length > 0 && attribute.ConstructorArguments[0].Value is int value)
-        {
-            return value;
-        }
-
-        if (property.Name == "Status" || property.Name == "Collections") return 1;
-        if (property.Name == "CatalogState") return 3;
-        return 2;
-    }
-
     private static int Operators(int kind, bool multivalued, bool nullable)
     {
         int value;
@@ -441,79 +334,6 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         else if (kind is 11 or 17 or 16) value = 1 | 2 | 64;
         else value = 1;
         return nullable ? value | 128 : value;
-    }
-
-    private static ITypeSymbol? UnwrapList(ITypeSymbol type)
-    {
-        if (type is not INamedTypeSymbol named || !named.IsGenericType) return null;
-        var definition = named.OriginalDefinition.ToDisplayString();
-        return definition is "System.Collections.Generic.IReadOnlyList<T>"
-            or "System.Collections.Generic.IReadOnlyCollection<T>"
-            or "System.Collections.Generic.IEnumerable<T>"
-            ? named.TypeArguments[0]
-            : null;
-    }
-
-    private static ITypeSymbol StripNullable(ITypeSymbol type) =>
-        type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T } nullable
-            ? nullable.TypeArguments[0]
-            : type;
-
-    private static bool IsNullable(ITypeSymbol type) =>
-        type.IsReferenceType || type.NullableAnnotation == NullableAnnotation.Annotated
-        || type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T };
-
-    private static bool Implements(ITypeSymbol type, string interfaceName) =>
-        Is(type, interfaceName) || type.AllInterfaces.Any(candidate => Is(candidate, interfaceName));
-
-    private static bool Is(ITypeSymbol type, string fullName) =>
-        type.WithNullableAnnotation(NullableAnnotation.None)
-            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat) == "global::" + fullName;
-
-    private static AttributeData? Attribute(IPropertySymbol property, string shortName) =>
-        property.GetAttributes().FirstOrDefault(attribute => attribute.AttributeClass?.Name == shortName);
-
-    private static bool Has(IPropertySymbol property, string shortName) => Attribute(property, shortName) is not null;
-
-    private static string? NamedString(AttributeData? attribute, string name) =>
-        attribute?.NamedArguments.FirstOrDefault(pair => pair.Key == name).Value.Value as string;
-
-    private static string? ConstructorString(AttributeData? attribute) =>
-        attribute?.ConstructorArguments.Length > 0 ? attribute.ConstructorArguments[0].Value as string : null;
-
-    private static string TypeName(ITypeSymbol type) =>
-        type.WithNullableAnnotation(NullableAnnotation.None)
-            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
-
-    private static string Identifier(string name) =>
-        name.Length == 0 ? name : char.ToLowerInvariant(name[0]) + name.Substring(1);
-
-    private static string Label(string name)
-    {
-        var result = new StringBuilder();
-        for (var index = 0; index < name.Length; index++)
-        {
-            var startsWord = index > 0 && char.IsUpper(name[index]) && !char.IsUpper(name[index - 1]);
-            if (startsWord) result.Append(' ');
-            result.Append(startsWord ? char.ToLowerInvariant(name[index]) : name[index]);
-        }
-        return result.ToString();
-    }
-
-    private static string Literal(string value) => "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
-
-    private static string LiteralOrNull(string? value) => value is null ? "null" : Literal(value);
-
-    private static string Bool(bool value) => value ? "true" : "false";
-
-    private static string Sanitize(string value)
-    {
-        var result = new StringBuilder(value.Length);
-        foreach (var character in value)
-        {
-            result.Append(char.IsLetterOrDigit(character) ? character : '_');
-        }
-        return result.ToString();
     }
 
     private sealed class Definition

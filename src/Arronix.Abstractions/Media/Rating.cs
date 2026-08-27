@@ -12,11 +12,11 @@ public readonly record struct RatingScale
     /// <paramref name="maximum"/> is not greater than <paramref name="minimum"/>.
     /// </exception>
     /// <remarks>
-    /// Named as the constructor a deserializer rebuilds the value with. Without that, a struct with an
-    /// implicit parameterless constructor and no settable member is rebuilt as its default, and a scale of
-    /// zero to zero contains nothing: the rating that carries it then fails its own validation at a point
-    /// that names neither the payload nor this type. The scale is an invariant, so the constructor that
-    /// establishes it is the only way back into one.
+    /// Named as the constructor a deserializer rebuilds the value with, because it is the only one that
+    /// produces a scale at all. A struct always has a parameterless form, and here that form is the
+    /// degenerate interval zero-to-zero, which every rating value falls outside of: the rating carrying it
+    /// then fails its own validation at a point that names neither the payload nor this type. The scale is
+    /// an invariant, so the constructor that establishes it is the only way back into one.
     /// </remarks>
     [JsonConstructor]
     public RatingScale(decimal minimum, decimal maximum)
