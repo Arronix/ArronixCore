@@ -24,6 +24,11 @@ internal static class Program
 
         var host = builder.Build();
 
+        // Resolved for its subscription: a tab must stop serving a withdrawn contract when the host says an
+        // extension changed state, not when someone happens to press a button. Before the stream opens, so
+        // the first such event is not delivered to nothing.
+        _ = host.Services.GetRequiredService<ContractStateWatcher>();
+
         // Opened before the first render so that the shell comes up already connected. A failure here is
         // not fatal and is not awaited to completion: the stream reports it, the connectivity state shows
         // it, and the recovery loop deals with it.

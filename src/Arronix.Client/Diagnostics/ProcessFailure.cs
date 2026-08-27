@@ -1,12 +1,12 @@
 using System.Linq;
 using System.Runtime.InteropServices;
 
-namespace Arronix.Client;
+namespace Arronix.Client.Diagnostics;
 
-/// <summary>Which failures leave the process unsound and must never be contained by a boundary.</summary>
+/// <summary>Which failures leave the process unsound and must never be contained.</summary>
 /// <remarks>
-/// The client's copy of the platform's rule, because the client references only the universal contracts.
-/// The whole chain is inspected: an exhausted heap routinely arrives wrapped.
+/// The rule `Arronix.Common.Lifetimes.ProcessFailure` states, restated because the Client references the
+/// universal contract assembly and nothing else.
 /// </remarks>
 internal static class ProcessFailure
 {
@@ -14,11 +14,9 @@ internal static class ProcessFailure
     /// <param name="failure">The failure.</param>
     /// <returns><see langword="true"/> when the process is no longer sound.</returns>
     /// <remarks>
-    /// Exhausted memory, exhausted stack, corrupted memory and structured native failures.
-    /// <see cref="InsufficientMemoryException"/> arrives through <see cref="OutOfMemoryException"/>, and
-    /// <see cref="AccessViolationException"/> is named separately because it does not derive from
-    /// <see cref="SEHException"/> on this runtime. Cancellation is not here: whether it must propagate
-    /// depends on whose token it belongs to, which only the caller knows.
+    /// The whole chain is read, because an exhausted heap arrives wrapped.
+    /// <see cref="AccessViolationException"/> does not derive from <see cref="SEHException"/>. Cancellation
+    /// is absent: whose token it is only the caller knows.
     /// </remarks>
     internal static bool IsFatal(Exception failure)
     {
@@ -33,12 +31,8 @@ internal static class ProcessFailure
     }
 
     /// <summary>Walks a failure and everything it wraps, aggregates included.</summary>
-    /// <param name="failure">The failure.</param>
-    /// <returns>Each distinct exception in the chain.</returns>
-    internal static IEnumerable<Exception> Chain(Exception failure)
+    private static IEnumerable<Exception> Chain(Exception failure)
     {
-        ArgumentNullException.ThrowIfNull(failure);
-
         var pending = new Stack<Exception>();
         var seen = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
         pending.Push(failure);

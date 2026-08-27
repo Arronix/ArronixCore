@@ -58,7 +58,7 @@ internal sealed class ContractDeclarationProofTests
     public async Task ADeclarationThatDoesNotSurviveTheProofIsTerminal(Misbehaviour misbehaviour, string expected)
     {
         var loader = Loader("Fixture.Client." + misbehaviour, misbehaviour, out var name);
-        var report = await loader.LoadAsync();
+        var report = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -80,7 +80,7 @@ internal sealed class ContractDeclarationProofTests
     {
         var loader = Loader("Fixture.Client.Coherent", Misbehaviour.None, out var name);
 
-        var first = await loader.LoadAsync();
+        var first = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -96,7 +96,7 @@ internal sealed class ContractDeclarationProofTests
         // The captured values, not a second reading: the entity metadata is the context's own answer.
         contract.SerializationContext.GetTypeInfo(contract.EntityType).Should().BeSameAs(contract.EntityTypeInfo);
 
-        var second = await loader.LoadAsync();
+        var second = await loader.LoadInstallationAsync();
         second.Packages.Single().Assemblies.Single().Outcome.Should().Be(ContractLoadOutcome.AlreadyLoaded);
 
         var reused = loader.ContractsOf(name).Single();
@@ -122,7 +122,7 @@ internal sealed class ContractDeclarationProofTests
         const string name = "Fixture.Client.Stepping";
         var loader = Loader(name, Misbehaviour.SteppingSchema, out _);
 
-        var report = await loader.LoadAsync();
+        var report = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -154,7 +154,7 @@ internal sealed class ContractDeclarationProofTests
         const string name = "Fixture.Client.LiveNested";
         var loader = Loader(name, Misbehaviour.SteppingNestedSchema, out _);
 
-        var report = await loader.LoadAsync();
+        var report = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -195,7 +195,7 @@ internal sealed class ContractDeclarationProofTests
             Path.Combine(AppContext.BaseDirectory, "ClientContractFixtures", name + ".dll"));
 
         var loader = Loader(name, image, out _);
-        var report = await loader.LoadAsync();
+        var report = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 

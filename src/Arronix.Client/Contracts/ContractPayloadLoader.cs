@@ -2,6 +2,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using Arronix.Abstractions.Client;
+using Arronix.Client.Diagnostics;
 
 namespace Arronix.Client.Contracts;
 
@@ -13,7 +14,7 @@ namespace Arronix.Client.Contracts;
 /// against the current installation by object identity before and after the read. Nothing here changes the
 /// installation report, and the result is returned rather than held.
 /// </remarks>
-public sealed class ContractPayloadLoader
+internal sealed class ContractPayloadLoader
 {
     private readonly HttpClient _http;
     private readonly MediaContractLoader _contracts;
@@ -24,7 +25,7 @@ public sealed class ContractPayloadLoader
     /// <param name="http">The connection to the host that served this client.</param>
     /// <param name="contracts">The contracts this page has admitted.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
-    public ContractPayloadLoader(HttpClient http, MediaContractLoader contracts)
+    internal ContractPayloadLoader(HttpClient http, MediaContractLoader contracts)
     {
         ArgumentNullException.ThrowIfNull(http);
         ArgumentNullException.ThrowIfNull(contracts);

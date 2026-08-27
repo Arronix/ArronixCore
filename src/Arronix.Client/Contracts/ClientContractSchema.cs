@@ -1,5 +1,6 @@
 using Arronix.Abstractions.Client;
 using Arronix.Abstractions.Shape;
+using Arronix.Client.Diagnostics;
 
 namespace Arronix.Client.Contracts;
 

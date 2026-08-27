@@ -228,25 +228,40 @@ internal static class CompiledContract
 
     private static string Flip(string hash) => (hash[0] == 'A' ? "B" : "A") + hash[1..];
 
+    /// <summary>Compiles one lifecycle fixture and returns its bytes.</summary>
+    /// <param name="assemblyName">The assembly name, unique per fixture.</param>
+    /// <param name="misbehaviour">What its declaration does once loaded.</param>
+    /// <param name="declaring">
+    /// Whether the assembly declares a client contract at all. False represents a shared assembly that
+    /// owns no media item, which is a valid payload rather than a defective declaration.
+    /// </param>
+    /// <returns>The compiled assembly image.</returns>
+    internal static byte[] Image(string assemblyName, Misbehaviour misbehaviour, bool declaring = true)
+        => declaring
+            ? Build(assemblyName, misbehaviour).Payload
+            : Compile(assemblyName, misbehaviour, Placeholder, Placeholder, null, declaring: false);
+
     private static byte[] Compile(
         string assemblyName,
         Misbehaviour misbehaviour,
         string serialization,
         string projection,
-        byte[]? auxiliary)
+        byte[]? auxiliary,
+        bool declaring = true)
     {
         var parse = new CSharpParseOptions(LanguageVersion.Latest);
+
+        var application = "[assembly: System.Reflection.AssemblyVersion(\"1.0.0.0\")]\n"
+            + (declaring
+                ? "[assembly: global::Fixture.Client.Entry(typeof(global::Fixture.Client.Entity), \""
+                    + serialization + "\", \"" + projection + "\")]"
+                : string.Empty);
 
         var compilation = CSharpCompilation.Create(
             assemblyName,
             [
                 CSharpSyntaxTree.ParseText(Declaration(misbehaviour), parse, "Declaration.cs"),
-                CSharpSyntaxTree.ParseText(
-                    "[assembly: System.Reflection.AssemblyVersion(\"1.0.0.0\")]\n"
-                    + "[assembly: global::Fixture.Client.Entry(typeof(global::Fixture.Client.Entity), \""
-                    + serialization + "\", \"" + projection + "\")]",
-                    parse,
-                    "Application.cs"),
+                CSharpSyntaxTree.ParseText(application, parse, "Application.cs"),
             ],
             auxiliary is null
                 ? References

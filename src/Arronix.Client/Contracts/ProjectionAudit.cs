@@ -2,6 +2,7 @@ using System.Globalization;
 using Arronix.Abstractions.Client;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Shape;
+using Arronix.Client.Diagnostics;
 
 namespace Arronix.Client.Contracts;
 

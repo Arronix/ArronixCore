@@ -1,3 +1,4 @@
+using Arronix.Client.Diagnostics;
 using Microsoft.JSInterop;
 
 namespace Arronix.Client.Contracts;
@@ -12,17 +13,17 @@ namespace Arronix.Client.Contracts;
 /// under the right name, so nothing here has to be told when an installation changes.
 /// </para>
 /// <para>
-/// The store is an optimization and is treated as one. Every failure — no secure context, a browser with
-/// storage switched off, a quota refusal — degrades to refetching over the network, which is slower and
-/// exactly as correct. What must never happen is loading bytes because they were in a store: the loader
-/// hashes whatever it gets, from wherever it got it, before the runtime sees it.
+/// The store is an optimization. Every failure — no secure context, storage switched off, a quota refusal
+/// — degrades to refetching over the network, which is slower and exactly as correct; an unsound process is
+/// the exception. What must never happen is loading bytes because they were in a store: the loader hashes
+/// whatever it gets, from wherever, before the runtime sees it.
 /// </para>
 /// <para>
 /// Bytes cross the interop boundary as base64 text. It costs a third more transfer for an assembly measured
 /// in kilobytes, and it buys a boundary with one representation on both sides that cannot be misread.
 /// </para>
 /// </remarks>
-public sealed class ContractStore : IAsyncDisposable
+internal sealed class ContractStore : IAsyncDisposable
 {
     private const string ModulePath = "./js/contract-store.js";
 
@@ -52,7 +53,7 @@ public sealed class ContractStore : IAsyncDisposable
     /// </summary>
     /// <param name="contentHash">The content hash naming the bytes.</param>
     /// <returns>The bytes, or <see langword="null"/> when this browser is not holding them.</returns>
-    public async Task<byte[]?> ReadAsync(string contentHash)
+    public async Task<byte[]?> ReadContractAsync(string contentHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
 
@@ -67,7 +68,7 @@ public sealed class ContractStore : IAsyncDisposable
             var encoded = await module.InvokeAsync<string?>("read", contentHash);
             return encoded is null ? null : Convert.FromBase64String(encoded);
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return null;
         }
@@ -79,7 +80,7 @@ public sealed class ContractStore : IAsyncDisposable
     /// <param name="contentHash">The content hash naming the bytes.</param>
     /// <param name="content">The bytes.</param>
     /// <returns>Whether they were held.</returns>
-    public async Task<bool> WriteAsync(string contentHash, byte[] content)
+    public async Task<bool> WriteContractAsync(string contentHash, byte[] content)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
         ArgumentNullException.ThrowIfNull(content);
@@ -94,7 +95,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<bool>("write", contentHash, Convert.ToBase64String(content));
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return false;
         }
@@ -104,7 +105,7 @@ public sealed class ContractStore : IAsyncDisposable
     /// Lists the content hashes this browser is currently holding.
     /// </summary>
     /// <returns>The held hashes, in no particular order.</returns>
-    public async Task<IReadOnlyList<string>> KeysAsync()
+    public async Task<IReadOnlyList<string>> ListContractHashesAsync()
     {
         var module = await OpenAsync();
         if (module is null)
@@ -116,7 +117,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<string[]>("keys");
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return [];
         }
@@ -127,7 +128,7 @@ public sealed class ContractStore : IAsyncDisposable
     /// </summary>
     /// <param name="contentHash">The content hash naming the bytes.</param>
     /// <returns>Whether anything was discarded.</returns>
-    public async Task<bool> RemoveAsync(string contentHash)
+    public async Task<bool> RemoveContractAsync(string contentHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
 
@@ -141,7 +142,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<bool>("remove", contentHash);
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return false;
         }
@@ -151,7 +152,7 @@ public sealed class ContractStore : IAsyncDisposable
     /// Discards everything this browser is holding, which is what a clean start means.
     /// </summary>
     /// <returns>Whether the store was discarded.</returns>
-    public async Task<bool> ClearAsync()
+    public async Task<bool> ClearContractsAsync()
     {
         var module = await OpenAsync();
         if (module is null)
@@ -163,7 +164,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<bool>("clear");
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return false;
         }
@@ -183,7 +184,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             await module.DisposeAsync();
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             // A page being torn down has already disconnected the script host in some browsers, and there
             // is nothing left for a failure here to protect.
@@ -209,7 +210,7 @@ public sealed class ContractStore : IAsyncDisposable
             _module = module;
             return module;
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             _unavailable = true;
             IsAvailable = false;

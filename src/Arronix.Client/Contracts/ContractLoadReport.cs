@@ -73,6 +73,10 @@ public enum ContractLoadOutcome
     NameAlreadyResident = 9,
 
     /// <summary>The bytes could not be fetched, or could not be read as an assembly.</summary>
+    /// <remarks>
+    /// A transport failure. A host that answered about the address says so through
+    /// <see cref="Superseded"/> or <see cref="NotOffered"/>.
+    /// </remarks>
     Unavailable = 10,
 
     /// <summary>
@@ -91,7 +95,16 @@ public enum ContractLoadOutcome
     /// them once it has, and a host describing a payload's contracts wrongly is exactly the case the
     /// published hashes exist to catch before anything is projected.
     /// </remarks>
-    DeclarationMismatch = 12
+    DeclarationMismatch = 12,
+
+    /// <summary>
+    /// 410 Gone: the host publishes this file under a different content hash. Recoverable by re-reading the
+    /// manifest, and never a statement about what this page holds.
+    /// </summary>
+    Superseded = 13,
+
+    /// <summary>404 Not Found: the host offers nothing at this address under any content hash.</summary>
+    NotOffered = 14
 }
 
 /// <summary>One client-safe assembly, as published and as verified.</summary>
@@ -141,6 +154,40 @@ public sealed record LoadedContractPackage(
     IReadOnlyList<PluginId> Closure,
     IReadOnlyList<LoadedContractAssembly> Assemblies);
 
+/// <summary>What the installation a page last read says about an orphaned assembly's package.</summary>
+public enum OrphanedContractOwner
+{
+    /// <summary>Named neither among that manifest's offers nor among its refusals.</summary>
+    /// <remarks>Uninstalled, quarantined and never installed are one answer from a client's side.</remarks>
+    Unpublished = 0,
+
+    /// <summary>Still offered, with a client facet that no longer carries this assembly.</summary>
+    Offered = 1,
+
+    /// <summary>Withheld, with the reason in <see cref="OrphanedContract.Refusal"/>.</summary>
+    Withheld = 2
+}
+
+/// <summary>One assembly this page holds which the installation it last read does not name.</summary>
+/// <param name="Verified">What the host published for it on the pass that loaded it.</param>
+/// <param name="PackageId">The package that published it, captured when it was last admitted.</param>
+/// <param name="PackageName">That package's name, as the host last stated it.</param>
+/// <param name="PackageVersion">That package's version, as the host last stated it.</param>
+/// <param name="Owner">What the manifest just read says about that package.</param>
+/// <param name="Refusal">The host's live refusal when withheld; otherwise <see langword="null"/>.</param>
+/// <remarks>
+/// The assembly stays resident, because a browser cannot unload; what changes is that
+/// <see cref="MediaContractLoader.Find"/> and <see cref="MediaContractLoader.ContractsOf"/> refuse it. It
+/// never makes <see cref="ContractLoadReport.CanProject"/> false.
+/// </remarks>
+public sealed record OrphanedContract(
+    ClientContractAssembly Verified,
+    PluginId PackageId,
+    string PackageName,
+    string PackageVersion,
+    OrphanedContractOwner Owner,
+    ClientContractRefusal? Refusal);
+
 /// <summary>Whether this browser may project anything from what the host published.</summary>
 public enum ContractCompatibility
 {
@@ -187,6 +234,10 @@ public enum ContractCompatibility
 /// <param name="InstallationHash">The host's one hash over everything a client would load.</param>
 /// <param name="Packages">The publishing packages and what became of each of their assemblies.</param>
 /// <param name="Refused">The client facets the host itself withheld, and why.</param>
+/// <param name="Orphaned">
+/// The assemblies this page holds which that installation no longer names, by assembly name. Empty unless
+/// the pass reached the required set of a manifest it had proved whole.
+/// </param>
 /// <param name="StoreAvailable">Whether this browser gave the client a persistent contract store.</param>
 /// <param name="Failure">The sentence to show when nothing may be projected.</param>
 /// <remarks>
@@ -207,6 +258,7 @@ public sealed record ContractLoadReport(
     string? InstallationHash,
     IReadOnlyList<LoadedContractPackage> Packages,
     IReadOnlyList<ClientContractRefusal> Refused,
+    IReadOnlyList<OrphanedContract> Orphaned,
     bool StoreAvailable,
     string? Failure)
 {
@@ -214,8 +266,9 @@ public sealed record ContractLoadReport(
     /// Gets whether a typed projection may be built from what this page holds.
     /// </summary>
     /// <remarks>
-    /// All or nothing. A partially verified installation is not a smaller installation: a media kind whose
-    /// dependency was refused would deserialize into types whose meaning nothing has agreed on.
+    /// All or nothing over everything <i>currently required</i>: a partially verified installation is not a
+    /// smaller installation. Narrower than everything this page has ever loaded — <see cref="Orphaned"/>
+    /// carries that second fact and never makes this one false.
     /// </remarks>
     public bool CanProject => Compatibility == ContractCompatibility.Compatible;
 }

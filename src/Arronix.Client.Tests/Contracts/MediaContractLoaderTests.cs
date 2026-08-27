@@ -311,6 +311,42 @@ public sealed class MediaContractLoaderTests
     }
 
     /// <summary>
+    /// A host that answers about an address is not a host that could not be reached, and the two answers it
+    /// can give are not each other.
+    /// </summary>
+    /// <remarks>
+    /// The byte route already computes this: 410 means the file moved to another content hash, which a
+    /// manifest re-read resolves, and 404 means nothing is offered there at all. Reporting either as a
+    /// transport failure would hide a recoverable race behind an opaque one, and neither is a statement
+    /// about what this page already holds — none of them is terminal.
+    /// </remarks>
+    [TestCase(HttpStatusCode.Gone, ContractLoadOutcome.Superseded, "Re-reading it recovers")]
+    [TestCase(HttpStatusCode.NotFound, ContractLoadOutcome.NotOffered, "under any content hash")]
+    [TestCase(HttpStatusCode.InternalServerError, ContractLoadOutcome.Unavailable, "500")]
+    public async Task AWithdrawnAddressIsDistinguishedFromOneThatCouldNotBeReached(
+        HttpStatusCode answer,
+        ContractLoadOutcome expected,
+        string stated)
+    {
+        var report = await LoadAsync(path => path.EndsWith("client-contracts", StringComparison.Ordinal)
+            ? Json(Manifest(Truthful()))
+            : new HttpResponseMessage(answer));
+
+        using var assertions = new AssertionScope();
+
+        var entry = report.Packages.Single().Assemblies.Single();
+        entry.Outcome.Should().Be(expected);
+        entry.Source.Should().Be(ContractByteSource.Network);
+        entry.Failure.Should().Contain(stated);
+
+        report.Compatibility.Should().Be(
+            ContractCompatibility.Refused,
+            "an address this page never held cannot make it unable to satisfy the installation");
+        report.CanProject.Should().BeFalse();
+        IsResident(FixtureAssemblyName).Should().BeFalse();
+    }
+
+    /// <summary>
     /// Nothing verified may be reached while the installation as a whole is refused.
     /// </summary>
     [Test]
@@ -324,6 +360,60 @@ public sealed class MediaContractLoaderTests
         _loader!.Find(FixtureAssemblyName).Should().BeNull();
     }
 
+    /// <summary>
+    /// A request that timed out is an outcome; a caller that withdrew the question is not.
+    /// </summary>
+    /// <remarks>
+    /// Both arrive as <see cref="OperationCanceledException"/> and only the caller's own token separates
+    /// them. Reading the type alone leaves the previous report standing as this page's description of an
+    /// installation it just failed to read.
+    /// </remarks>
+    [Test]
+    public async Task ATimeoutIsAnOutcomeAndAnAbandonedLoadLeavesTheLastReportStanding()
+    {
+        var stall = false;
+
+        using var handler = new StubHandler(path =>
+        {
+            var manifest = path.EndsWith("client-contracts", StringComparison.Ordinal);
+
+            // No token of this caller's is canceled, so HttpClient reads this as its own timeout.
+            return stall && !manifest ? throw new TaskCanceledException() : manifest
+                ? Json(Manifest(Truthful()))
+                : Bytes(_fixture);
+        });
+
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://host.invalid/") };
+        var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
+
+        stall = true;
+        var timedOut = await loader.LoadInstallationAsync();
+
+        using (new AssertionScope())
+        {
+            timedOut.Packages.Single().Assemblies.Single().Outcome.Should().Be(
+                ContractLoadOutcome.Unavailable,
+                "the host failed to answer, which is a fact about the host and not about this caller");
+            timedOut.Compatibility.Should().Be(ContractCompatibility.Refused);
+            loader.Report.Should().BeSameAs(timedOut, "a timeout replaces the description it failed to read");
+            IsResident(FixtureAssemblyName).Should().BeFalse();
+        }
+
+        // Now the caller genuinely withdraws, which says nothing about the host.
+        using var abandoned = new CancellationTokenSource();
+        await abandoned.CancelAsync();
+
+        using var assertions = new AssertionScope();
+
+        await FluentActions
+            .Awaiting(() => loader.LoadInstallationAsync(abandoned.Token))
+            .Should().ThrowAsync<OperationCanceledException>();
+
+        loader.Report.Should().BeSameAs(
+            timedOut,
+            "an abandoned load states nothing, so the last thing this page actually read still stands");
+    }
+
     private MediaContractLoader? _loader;
 
     private async Task<ContractLoadReport> LoadAsync(Func<string, HttpResponseMessage> respond)
@@ -332,7 +422,7 @@ public sealed class MediaContractLoaderTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://host.invalid/") };
 
         _loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
-        return await _loader.LoadAsync();
+        return await _loader.LoadInstallationAsync();
     }
 
     /// <summary>The description that is true of the staged fixture in every respect.</summary>

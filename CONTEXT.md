@@ -220,6 +220,41 @@ coverage.
   inline raster whose decoded bytes match the container it claims. A payload failure never rewrites the
   installation report the loader already decided. The client spells no media kind, no media assembly and no
   installation's own path, including no default payload address — an architecture rule holds it there.
+- Residency and currency are separate client facts. A resident assembly the installation just read no longer
+  names is orphaned: it stays in the page because a browser cannot unload, stops being served by `Find` and
+  `ContractsOf`, and is reported under its own heading with the package that last published it and what that
+  identifier means to the host now — withheld with the host's own reason, still offered without that file, or
+  not mentioned at all. An orphan never makes an otherwise healthy installation incompatible. Reunion at the
+  exact resident description fetches nothing; a different description is the same terminal
+  `NameAlreadyResident` as replacing an assembly in place. `410 Gone`, `404 Not Found` and a transport failure
+  are three distinct outcomes, none of them terminal. An unchanged `InstallationHash` decides whether to look
+  and never decides what is true, so an unchanged installation costs one manifest read and no bytes.
+  `EventKind.PluginStateChanged` drives that re-read on a connected tab through the loader's own serialized
+  entry point and sheds the bytes the new installation no longer names, and store eviction discards only
+  hashes the verified installation does not name.
+- One client load is one transition. Orphan and owner bookkeeping is computed before the cancellable fetches
+  and applied only with the report it publishes, so an abandoned load leaves residency and the report
+  describing one installation. Reading an installation, shedding the bytes it no longer names and emptying
+  the store are one serialized transaction with no second door: an architecture rule holds every operation
+  that changes what a page holds — and every store read a page could pair with an installation — to the
+  layer that owns it, naming operations rather than types so typed projection may still read what a loaded
+  contract declares. Those operations are named for what they act on, because the rule reads text rather
+  than symbols and a generic name would refuse a stream read or a cache clear that never touched the store;
+  it matches the member rather than the call, so handing one on as a method group is the same door. Beside
+  it, a component's markup and code-behind may not name the loader — its report is live state a render would
+  pair with a committed snapshot — and the transaction is reached only from the view that shows what it
+  produced. Each step is contained separately and failures are values kept in occurrence order,
+  not one latest message. A transaction is numbered under the lease that runs it and seals its report, its
+  post-sweep keys and its failures as one value handed back to its caller. What a view shows is that value,
+  published by the one compare-and-swap that decides it — so a caller the scheduler resumed late cannot land
+  an older installation on newer state, and what a page shows only ever moves forward — and read once per
+  render. A
+  subscriber refusing that announcement is reported beside the record rather than inside it, because the
+  refusal happens after the value was handed over. Every event handler in this path observes the work it
+  starts rather than discarding its task, because each records the failures it contains and only an unsound
+  process could ride a dropped one. Cancellation means the caller's own token — a request timeout is an
+  ordinary outcome that replaces the report it failed to read — and no boundary in the client's contract
+  path contains an exhausted heap or stack, corrupted memory or a structured native failure.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -297,6 +332,10 @@ work does not substitute for closing an earlier dependency.
   reproducing the mutation table and re-running the full .NET 11 rail. This gate claims nothing about cache
   update, removal and stale-tab behaviour (G07.3), about the external-consumer vertical (G07A), or about
   provider-result ingestion.
+- G07.3 is open. Its hermetic lifecycle core is built — orphaning and its refusal, exact reunion, terminal
+  replacement, the `410`/`404`/transport separation, selective store eviction, the unchanged-installation
+  early-out, and the `PluginStateChanged`-driven re-read — but the gate names update, removal, stale cache
+  and stale tab as exercises in a real browser, and none has run there. The gate stays open until they have.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
@@ -342,9 +381,9 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-27) reports 3,460 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,762 total cases across 14 test projects. Of the skips, 301 are Movies cases
-  and one is an architecture case; all are registered in the compatibility ledger. Every later
+- The current combined G07.2 and G07.3-core merge rail reports 3,508 passed, 302 skipped, zero failed and
+  zero inconclusive across 14 test projects. Of the skips, 301 are Movies cases and one is an architecture
+  case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The
   regression sources that name `Movie` are locked by the compatibility ledger, so the import is stated once
@@ -368,6 +407,17 @@ duplicated checklist drifting from current state.
   precedence, because `VersionRange` has no npm-style prerelease exclusion. That is the same rule the
   contract range has always used, and changing it belongs in `VersionRange` rather than in the dependency
   layer. Recorded rather than decided.
+- The client's unchanged-`InstallationHash` early-out is a cost gate with no observable effect. Removing it
+  entirely leaves every test passing, because the reuse path it precedes already returns before any fetch or
+  hash for a resident entry, so the two do the same work. It is kept because it states the rule where a
+  future per-entry check would otherwise make a `PluginStateChanged` storm expensive, and because its safety
+  property — that an equal hash permits the question rather than answering it — is mutation-guarded. Its
+  cost claim is not.
+- `ClientContractPackage.ClosureHash` covers each assembly's identity and content hash and not its file name
+  or its declarations, so `InstallationHash` can stand still while a host restates what a payload declares.
+  The client is not exposed, because every reuse and early-out path compares the published declarations it
+  holds rather than the hash. Widening the server-side hash is a separate decision and belongs with the
+  generated-metadata work rather than here.
 - The shared-assembly source-text screen is a heuristic. The structural rules — no executable platform type,
   no mutable or editable static state, nothing running on load, a reference closure limited to the universal
   contracts — are what prove the boundary; the spelling screen catches literal usage only.

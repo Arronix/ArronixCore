@@ -56,6 +56,225 @@ projected once — before the installation had loaded — and kept that answer; 
 payload address. Both are fixed and re-proved. `docs/research/g07/client-payload-projection.md` records what
 was built, what was observed, and what is not claimed.
 
+## 2026-08-27 — Publish by deciding, and name an operation for what it acts on
+
+Three corrections to the transaction that landed in `6d701b05f`.
+
+- **A guard that had already advanced did not stop the caller it had advanced for.** `ContractView` asked
+  `NewestWins` for the right to commit and assigned the snapshot on the next line — two atomics with an
+  ordinary preemption window between them, not an await. An older transaction could take the right at
+  sequence two, be preempted, be overtaken by a newer one at three that published and announced, and then
+  resume and assign two over it: a page showing an installation it had already stopped showing, with the
+  sequence guard reading three and permitting nothing to correct it. Deciding and publishing are now one
+  compare-and-swap inside the holder, which returns the commit it published. The view has no snapshot field
+  to assign — it reads what stands — so the split is not merely untested but unrepresentable. An
+  announcement's refusals attach to the commit that raised them, matched by identity, or to nothing.
+- **A rule that reads text was holding names that text cannot tell apart, and only where it looked.** The
+  lifecycle rule scanned for `.ReadAsync(`, `.WriteAsync(`, `.ClearAsync(` and their kind, which an HTTP
+  stream, a cache or a component loading its own data all carry — G07.2's payload loader reads an HTTP body,
+  and the rule would have refused it the day that branch merged. It also required an open parenthesis, so
+  handing `Store.ClearContractsAsync` on as a method group walked past it. The store's operations are named
+  for what they act on now, the scan matches the member rather than the call, and both boundaries of a name
+  are checked. A second rule holds the vocabulary itself against the generic names.
+- **Two alternate doors were still open.** Nothing stopped a component injecting the loader and rendering
+  its live `Report` beside a committed snapshot — one moment's installation next to another's stored keys —
+  or an ordinary consumer reaching the transaction directly and changing what this page holds with nothing
+  committing the result. Markup and its code-behind may not name the loader; the transaction is reached only
+  from the view that shows what it produced, its own definition and the composition root. Ordinary code may
+  still hold the loader to read back what an admitted contract declares, which is what typed projection
+  needs and is not presentation state.
+
+Ten new or renamed test methods contribute twenty-one executed cases beyond the preceding candidate: what
+stands cannot regress when an older transaction resumes last, and everything left to that transaction is refused; every overtaken transaction is refused, not only
+the one before last; refusals attach to the commit that raised them and leave its installation exactly where
+it was; a transaction overtaken while announcing publishes nothing over the one that overtook it; the
+lifecycle rule's matcher permits an ordinary `ReadAsync` and a declaration while refusing a contract read, a
+method group and a `nameof`; its type matcher refuses `ContractReloader` and permits `NotAContractReloader`,
+`ContractReloaderFactory` and `ContractReloadResult`; and a component's markup and its code-behind are both
+what the markup rule reads. Two standing witnesses gained a barrier rather than a start: a second
+transaction is now observed to have entered the reloader and read nothing, which is the lease holding,
+because an async method runs synchronously until its first incomplete await.
+
+Mutation: thirty-two in the standing set, each failing a named test. Two probes ran out of band: a
+code-behind file reaching the loader is caught, while the compiling split that restores acceptance and
+publication as separate atomics survives the test suite because expressing it requires reintroducing the
+separate assignable snapshot field the design removed. That defect is prevented structurally, not by a
+regression witness. Removing either lease now fails its witness on five consecutive runs rather than passing
+on scheduling luck.
+
+G07.3 is still open, and `docs/design/typed-media-roadmap.md` now says so accurately rather than "not
+started": the hermetic core is implemented and proved in the rail, and update, removal, stale cache and
+stale tab have not been exercised in a real browser.
+
+## 2026-08-27 — One transaction, one record, one moment
+
+The lifecycle core had one ordering authority for load and sweep, and everything around it was still free to
+disagree with it. Each defect below is a boundary answering one question with another question's answer, or
+with nothing at all.
+
+- **A failure was the latest message, not a fact.** `ContractReloader.LastFailure` was one string: a read
+  that failed was overwritten by a sweep that failed, and both by whichever subscriber happened to refuse
+  last. `Announcement` returned only its final refusal, so three broken consumers were indistinguishable
+  from one, and `ContractView` did the same to a refresh failure. Each contained failure is now a
+  `ContractFailure` value naming the step it happened in, kept whole and in occurrence order. A
+  process-unsound failure still propagates rather than being filed beside them.
+- **A record was still being written while its readers read it.** The reload published its failures,
+  announced, then appended the announcement's refusals — so a consumer refreshing synchronously inside that
+  signal held a value the reloader then replaced, permanently. Records are now sealed before anyone is told.
+  The boundary is stated rather than fudged: what a transaction did is inside the value it hands over; a
+  subscriber refusing the notification that delivered it is reported beside it, because that refusal happens
+  strictly after the subscriber was handed the value. No announcement can carry the record of its own
+  refusals, and pretending otherwise is what produced the race.
+- **What a page showed came from three moments.** `ContractView` published `Report` and `StoredKeys` from
+  one refresh but answered `LastReloadFailure` by reading the reloader live, and the page read each of them
+  off the view separately, several times per render. What a view shows is now one immutable value, assigned
+  once and never re-published, and the page captures that one reference at the top of its render.
+- **"Every caller goes through the reloader" was a convention.** `MediaContractLoader.LoadAsync` was public
+  and the page held the store directly, so a load could fetch and write bytes that a sweep already running
+  against an older installation would then evict, and clearing the store ran beside a reload rather than
+  under it. Reading, sweeping and discarding are now one lease with no second door, and an architecture rule
+  holds every operation that changes what this page holds — and every store read a page could pair with an
+  installation — to the layer that owns it. The rule names operations rather than types, because typed
+  projection will read what a loaded contract declares through the same loader and reading what this page
+  holds is not changing it.
+- **The lifecycle had two signals and two refreshes for one change.** The loader announced its report
+  before the sweep, the reloader announced again after it, and a view refreshing on either could read store
+  keys mid-transaction and pair them with an older record. There is one signal now, and it is the view's
+  own. A transaction is numbered under the lease that runs it, seals its report, its post-sweep keys and its
+  failures as one value, and hands that back to its caller; the view commits by sequence, so a caller the
+  scheduler resumed late cannot land an older installation on newer state. The loader raises nothing and
+  the view subscribes to nothing.
+- **Two notifications were still discarded tasks.** `ContractsPage.OnChanged` dropped
+  `InvokeAsync(StateHasChanged)`, and `ContractStateWatcher.OnReceived` dropped its reload while its own
+  documentation claimed it contained everything but an unsound process — it contained nothing; it dropped
+  the task carrying one. Both are explicit observing `async void` boundaries now: every boundary here
+  records the failures it contains, so the only thing a dropped task could carry away was the class
+  contained nowhere.
+
+Nine cases beyond the ones already standing: two transactions that cannot overlap, ending with the store
+holding what the newest installation names and each sealed over its own keys; a discard that waits for the
+transaction in front and seals the same installation without reading one; every failure of one transaction
+kept in order; an unsound process propagating; an overtaken transaction committing neither its keys, its
+installation nor its failures; a subscriber reading the snapshot this signal announces while three of them
+report two refusals in order; a refusal that cannot land on the transaction that overtook it; a reload and a
+discard each committing what they produced; and a fatal failure from an event-driven reload arriving at the
+boundary's own synchronization context rather than on a task nobody holds. Four source rules stand beside
+them, because this solution has no component-test harness: every lifecycle operation is called only from the
+layer that owns it, no boundary in the contract path discards the task it starts, a page injecting the view
+reads its snapshot exactly once and nothing else off it, and the client still discovers nothing by
+enumerating a loaded assembly.
+
+Mutation: twenty-two, each failing a named test — keeping only the last refusal, reordering them, raising
+the delegate whole, dropping a contained failure, sealing keys before the sweep, numbering every transaction
+alike, running a discard beside a reload, committing an overtaken transaction, recording refusals without
+asking whether one was overtaken, announcing before committing, weakening the ordering guard, dropping the
+loader's orphan computation, restoring either discarded task, reading the view twice in one render, and a
+page reaching each of the seven store and loader doors directly.
+
+Recorded rather than dressed up: the reloader's containment around the read is defence in depth. The loader
+turns every ordinary failure into an outcome in its own report, so nothing in this suite produces a
+`Load`-stage failure, and that branch is stated rather than witnessed. The two page rules are source-shape
+rules for the same reason — there is no component-test harness to render through.
+
+G07.3 is still open: its exit gate names update, removal, stale cache and stale tab as exercises in a real
+browser, and none has run.
+
+## 2026-08-27 — Stop serving a contract this host has withdrawn
+
+A page that loaded Movies and then had Movies uninstalled reported itself fully compatible on its next
+read, showed no trace that Movies had ever been there, and answered `Find("Arronix.Media.Movies")` with a
+live assembly. `RequiredAssemblies` is built from the packages the *current* manifest lists, so a withdrawn
+name was never preflighted, never re-committed, never flagged and never rendered — and `Find`'s two
+conditions, "the last pass could project" and "the dictionary holds it", were both still true. That is the
+failure G07.3's exit gate names, except worse than a rendering bug: nothing downstream could detect it.
+
+- **Residency and currency are now separate facts.** A resident entry whose simple name drops out of the
+  installation just read is marked orphaned. It stays — a browser cannot unload — and stops being served:
+  `Find` and `ContractsOf` both refuse it, through one gate rather than two copies of the same condition.
+  It is reported under its own heading instead of vanishing with its package's panel, carrying the owning
+  `PluginId`, name and version captured while it was still admitted, plus what that identifier means to the
+  host *now*: withheld with the host's own live reason, still offered without this file, or not mentioned
+  at all. The host keeps no history, so those three are everything a client may honestly say, and the
+  sentence an operator reads is derived at the rendering edge rather than stored twice.
+- **An orphan is not a fault.** `CanProject` still means "everything currently required is resident", and a
+  removal elsewhere in an installation must not make the rest of it incompatible. The fix had to avoid
+  trading a silent-serving bug for a false alarm, so it lives entirely in what `Find` answers and what the
+  report shows.
+- **Reunion and replacement stay different.** A package that returns at the exact content hash, identity,
+  module, length and declarations this page holds is reused without a byte fetched. One that returns under
+  any different description is terminal `NameAlreadyResident` — the same outcome as replacing an assembly
+  in place, because a stale resident assembly is stale whichever path produced it.
+- **`410`, `404` and a transport failure are three answers.** The byte route already computed the
+  distinction and `GetByteArrayAsync` threw it away. `410 Gone` is now `Superseded` and says the address
+  moved and a manifest re-read recovers; `404` is `NotOffered`; anything else stays `Unavailable`. None is
+  terminal: an address this page never held cannot make it unable to satisfy the installation.
+- **Eviction is store-only.** A janitor discards content hashes the verified installation does not name,
+  using the primitives the store already had. It cannot touch residency, and it refuses to run against a
+  report whose manifest was never proved whole — an empty package list from an unreachable host is an
+  absence of knowledge, and sweeping on it would make every failed fetch a cold start.
+- **A connected tab re-reads for itself, and sheds bytes while it is there.** One subscriber, on
+  `EventKind.PluginStateChanged` only, calling the loader's own already-serialized `LoadAsync` and then the
+  janitor. A trigger, not a second manifest reader: this client keeps one description of an installation and
+  one place that proves it. Ahead of it, an unchanged `InstallationHash` decides whether to look and never
+  decides what is true — every required assembly must still match the description the fresh manifest states,
+  over values already in memory, because the published closure hash covers identity and content and not what
+  a payload declares.
+- **One load is one transition.** The orphan and owner bookkeeping a pass computes is applied only with the
+  report it publishes. Applying it first — as the first cut did — paired the previous report with the next
+  installation's residency whenever a caller abandoned a load mid-fetch: a page still claiming to be
+  compatible while `Find` had already changed its mind about which names it serves. A completed load now
+  raises a change notification too, because the consumer showing a report is rarely the one that asked for
+  it, and a page that snapshots it once would render an installation the loader has already stopped serving.
+  The watcher raises its own signal after it has swept, on success and on a contained failure alike: the
+  loader's notification arrives before the sweep, so a consumer refreshing on that alone would read an
+  evicted address as still held with nothing afterwards to correct it. Its three steps are contained
+  separately, and it tells each subscriber in turn: an observer refusing one step is that observer's defect,
+  not a reason to keep bytes this host no longer names, to withhold the signal, or to deny it to the next
+  subscriber. And because two notifications arrive per reload and their store reads do not complete in the
+  order they started, only the newest refresh commits — an older read landing last would put the evicted
+  address back on the page.
+- **One ordering authority, not one per caller.** The loader serializes its own reads and nothing else, so a
+  sweep computed from an older read could finish after a newer one and evict exactly the addresses the newer
+  installation had just fetched. Two entry paths reach it — an operator's button and a tab reacting to an
+  extension changing state — and a gate private to either would have left the race between them. One
+  `ContractReloader` now owns load, sweep and announcement as a single serialized transaction, and both
+  callers go through it. The announcement is inside the lease: releasing first would let the next reload
+  read, sweep and record over the one still telling its subscribers, so consumers would learn of two
+  installations out of order. The watcher is a filter again and owns nothing.
+- **What a view shows is one type, and one observation.** The page had been holding the coordination: two
+  subscriptions, a generation guard, a refresh sequence and a task nothing awaited, none of it reachable by
+  a test because the solution has no component-test harness. `ContractView` owns it instead — the page
+  injects it, renders it and subscribes once. A refresh reads store and report as one observation and
+  commits it only if nothing overtook it, so an older read cannot put back addresses a newer one saw
+  evicted, cannot pair its keys with another moment's report, and cannot answer a failure the newest
+  refresh already stated. Its own refresh is observed rather than dropped, so an unsound process is
+  rethrown instead of vanishing, and one rule for telling subscribers is now shared with the reloader.
+- **Cancellation is the caller's token and nothing else.** A request timeout arrives as the same
+  `OperationCanceledException` and had been propagating as an abandoned load, leaving the previous report
+  standing as this page's description of an installation it had just failed to read. It is now an ordinary
+  `Unreachable` or `Unavailable` outcome. Beside it, no boundary in the client's contract path contains an
+  exhausted heap or stack, corrupted memory or a structured native failure any more, and the watcher — which
+  has no caller to return anything to — states every failure it does contain rather than swallowing it.
+
+Twenty-two cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
+and no fetch, the withdraw-then-replace terminal, the three withdrawn-address answers, selective eviction
+with live-hash preservation and the unreadable-manifest refusal, the state-change filter with its eviction,
+its disposal, the serialized transaction across both entry paths, its in-lease announcement, its refusal by
+an observer and by a subscriber, the view's overtaken-refresh discard, its refusing subscriber and its
+reload, the newest-wins guard itself, plus two witnesses for abandonment —
+a timeout that becomes an outcome, and a canceled load that leaves residency and the report describing one
+installation. Mutation: dropping
+the orphan flag from `Find`, trusting the installation hash without checking what was published, skipping
+reconciliation, applying the bookkeeping before the cancellable work, dropping the watcher's sweep, and
+announcing before it, letting a refused notification abort it, accepting an overtaken refresh, announcing
+outside the lease, dropping serialization altogether, committing an overtaken refresh's failure or its keys,
+and swallowing a subscriber's refusal each fail. Removing the early-out
+*entirely* fails nothing, which is recorded as debt rather than dressed up — the reuse path it precedes
+already returns before any fetch or hash.
+
+G07.3 is not closed. Its exit gate names update, removal, stale cache and stale tab as exercises in a real
+browser; this is the hermetic core they will be driven through.
+
 ## 2026-08-26 — Stop charging for the whole telemetry stream to shape your own events
 
 `ITelemetryEnricher` and `ITelemetryEventFilter` were gated by `Capability.TelemetrySink`, which is the

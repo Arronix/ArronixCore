@@ -209,6 +209,37 @@ Artwork stays typed throughout: role, address, width and height survive projecti
 the rendered image. `docs/research/g07/client-payload-projection.md` records what was built and observed;
 this section describes the boundary as implemented, not the state of its review.
 
+Residency and currency are separate facts. A resident assembly the installation just read no longer names is
+orphaned: it stays in the page, because a browser cannot unload, and stops being served — `Find` and
+`ContractsOf` refuse it, and it is reported under its own heading carrying the package that last published
+it and what that identifier means to the host now, withheld with the host's own reason, still offered
+without that file, or not mentioned at all. An orphan never makes an otherwise healthy installation
+incompatible. The same package returning at the exact content hash, identity, module and declarations the
+page holds is reunited without a byte fetched; returning under any different description is the same
+terminal `NameAlreadyResident` as replacing it in place. `410 Gone`, `404 Not Found` and a transport
+failure are three outcomes, not one: the first says the address moved and a manifest re-read recovers, and
+none of the three is a statement about what the page holds. An unchanged `InstallationHash` decides whether
+to look and never decides what is true — every required assembly must still match the description this
+manifest states, over values already in memory, so an unchanged installation costs one manifest read and no
+bytes. `EventKind.PluginStateChanged` drives that re-read on a connected tab, through the loader's own
+serialized entry point rather than a second manifest reader, and the same trigger sheds the bytes the new
+installation no longer names. Store eviction discards content hashes the verified installation does not
+name, never touches residency, and is refused outright against a manifest that was not proved whole.
+
+One load is one transition: the orphan and owner bookkeeping a pass computes is applied only with the report
+it publishes, so a caller that abandons a load mid-fetch leaves residency and the report describing one
+installation. Reading an installation, shedding the bytes it no longer names and emptying the store are one
+serialized transaction with no second door — an operator's reload and an extension-state event cannot
+overlap, so no older sweep evicts what a newer read just fetched, and no store is emptied beside a read. A
+transaction is numbered under the lease that runs it and seals its report, the keys the browser holds after
+its sweep, and every failure it contained, in order, as one value handed back to its caller. What a view
+shows is that value, published by the one compare-and-swap that decides it rather than by a guard a caller
+consults and then acts on, so what a page shows only ever moves forward, and read once per render. A subscriber refusing that
+announcement is reported beside the record and not inside it, because a refusal happens after the value was
+handed over. Cancellation is the caller's token and nothing else: a request timeout is an ordinary
+`Unreachable` or `Unavailable` outcome that replaces the report it failed to read, and no boundary in this
+path contains an unsound process or drops the task carrying one.
+
 ## 5. Invariants
 
 - Universal contracts and Host remain media- and vendor-neutral.

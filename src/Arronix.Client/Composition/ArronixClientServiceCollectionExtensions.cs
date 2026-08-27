@@ -57,6 +57,19 @@ public static class ArronixClientServiceCollectionExtensions
         // record of what this page has already loaded has to be the one record.
         services.TryAddSingleton<ContractStore>();
         services.TryAddSingleton<MediaContractLoader>();
+        services.TryAddSingleton<ContractStoreJanitor>();
+
+        // One ordering authority for load, sweep and discard together: callers with their own gates would
+        // let an older sweep land after a newer read, or empty the store beside one.
+        services.TryAddSingleton<ContractReloader>();
+
+        // The only lifecycle surface anything else uses, committing newest-wins because callers resume in
+        // whatever order the scheduler chooses.
+        services.TryAddSingleton<ContractView>();
+
+        // Its value is its subscription, so something has to resolve it. Program does, before the stream
+        // opens, so no extension-state event arrives with nothing listening.
+        services.TryAddSingleton<ContractStateWatcher>();
 
         // Reads one serialized entity through whichever contract this page admitted. Separate from the
         // loader because a payload that will not read says nothing about the installation that was.

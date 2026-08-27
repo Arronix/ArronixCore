@@ -346,7 +346,7 @@ internal sealed class ContractPayloadTests
         page.BeforePayload = async () =>
         {
             page.Publish = false;
-            await page.Contracts.LoadAsync();
+            await page.Contracts.LoadInstallationAsync();
         };
 
         var report = await page.Payloads.ProjectAsync(offer, PayloadPath);
@@ -375,7 +375,7 @@ internal sealed class ContractPayloadTests
         page.Payloads.Revalidate(report, offer).Should().BeSameAs(report, "the contract is still admitted");
 
         page.Publish = false;
-        await page.Contracts.LoadAsync();
+        await page.Contracts.LoadInstallationAsync();
 
         var stale = page.Payloads.Revalidate(report, offer);
         stale!.Outcome.Should().Be(ContractPayloadOutcome.NoAdmittedContract);
@@ -391,7 +391,7 @@ internal sealed class ContractPayloadTests
     {
         await using var page = await Page.OpenAsync(MoviesAssembly, Movies(), Fixture());
         page.Publish = false;
-        await page.Contracts.LoadAsync();
+        await page.Contracts.LoadInstallationAsync();
 
         var report = await page.Payloads.ProjectAsync(PayloadPath);
 
@@ -507,7 +507,7 @@ internal sealed class ContractPayloadTests
 
             page = new Page(context, contracts, new ContractPayloadLoader(http, contracts));
 
-            var report = await contracts.LoadAsync();
+            var report = await contracts.LoadInstallationAsync();
             report.CanProject.Should().BeTrue(report.Failure);
 
             return page;

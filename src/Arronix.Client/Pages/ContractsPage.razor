@@ -1,10 +1,8 @@
 @page "/contracts"
-@{
-}
 @using Arronix.Client.Contracts
 @using Arronix.Client.Serialization
-@inject MediaContractLoader Contracts
-@inject ContractStore Store
+@implements IDisposable
+@inject ContractView View
 @*
     What this browser verified, what it loaded, and what the host said each of them should be.
 
@@ -12,9 +10,15 @@
     is rendering something plausible out of a contract that is not the one the host admitted, and seeing
     that requires reading what each side said.
 
-    The facets the host withheld are rendered here too, because a missing media kind is the same question
-    from the other end. This page names no media kind and no media assembly.
+    The facets the host withheld are rendered here, because a missing media kind is the same question from
+    the other end, and so are the assemblies this page holds which the host no longer names. This page names
+    no media kind and no media assembly.
 *@
+
+@{
+    // Once per render, by one reference: separate reads of the same facts describe separate moments.
+    var snapshot = View.Snapshot;
+}
 
 <h1>Media contracts</h1>
 
@@ -27,60 +31,68 @@
 
 <div class="page-actions">
     <button class="button" type="button" disabled="@_busy" @onclick="ReloadAsync">Reload contracts</button>
-    <button class="button button-quiet" type="button" disabled="@_busy" @onclick="ClearStoreAsync">Discard stored bytes</button>
-    <span class="chip chip-quiet" id="contract-store-mode">@StoreMode</span>
+    <button class="button button-quiet" type="button" disabled="@_busy" @onclick="DiscardStoredBytesAsync">Discard stored bytes</button>
+    <span class="chip chip-quiet" id="contract-store-mode">@StoreMode(snapshot)</span>
 </div>
 
-@if (_report is null)
-{
-    <LoadingIndicator Message="Reading what this host publishes…" />
-}
-else
+@if (snapshot.Report is { } report)
 {
     @*
         The same report, verbatim, for a browser driver to read. Rendered rather than exposed through script
         interop so that what a proof harness reads is exactly what a person on this page is looking at: a
         surface that could disagree with the rendered one would be proving itself.
     *@
-    <pre id="contract-proof" hidden>@ProofText</pre>
+    <pre id="contract-proof" hidden>@ProofText(report)</pre>
 
     <section class="panel" id="contract-summary">
         <header class="panel-head">
             <h2>Installation</h2>
-            <span class="chip" id="contract-compatibility">@_report.Compatibility</span>
-            <span class="chip chip-quiet" id="contract-can-project">@(_report.CanProject ? "projection permitted" : "projection withheld")</span>
+            <span class="chip" id="contract-compatibility">@report.Compatibility</span>
+            <span class="chip chip-quiet" id="contract-can-project">@(report.CanProject ? "projection permitted" : "projection withheld")</span>
         </header>
 
         <dl class="contract-facts">
             <dt>Client contract</dt>
-            <dd id="client-contract-identity">@_report.ClientContractIdentity</dd>
+            <dd id="client-contract-identity">@report.ClientContractIdentity</dd>
 
             <dt>Host contract</dt>
-            <dd id="host-contract-identity">@(_report.PublishedContractIdentity ?? "—")</dd>
+            <dd id="host-contract-identity">@(report.PublishedContractIdentity ?? "—")</dd>
 
             <dt>Installation hash</dt>
-            <dd id="installation-hash">@(_report.InstallationHash ?? "—")</dd>
+            <dd id="installation-hash">@(report.InstallationHash ?? "—")</dd>
 
             <dt>Stored keys</dt>
-            <dd id="stored-key-count">@_storedKeys.Count</dd>
+            <dd id="stored-key-count">@snapshot.StoredKeys.Count</dd>
         </dl>
 
-        @if (_report.Failure is { Length: > 0 } failure)
+        @if (report.Failure is { Length: > 0 } failure)
         {
             <p class="panel-detail tone-problem" id="contract-failure">@failure</p>
         }
+
+        @*
+            Every failure, not the latest one, and read off the snapshot captured above — so what this page
+            says about a failure belongs to the installation it shows.
+        *@
+        @foreach (var failed in snapshot.Failures)
+        {
+            <p class="panel-detail tone-problem contract-reload-failure" data-stage="@failed.Stage">
+                The last change to what this page holds failed at @failed.Stage: @failed.Message
+            </p>
+        }
+
     </section>
 
-    @if (_report.Refused.Count > 0)
+    @if (report.Refused.Count > 0)
     {
         <section class="panel" id="contract-refusals">
             <header class="panel-head">
                 <h2>Withheld by this host</h2>
-                <span class="chip">@_report.Refused.Count</span>
+                <span class="chip">@report.Refused.Count</span>
             </header>
 
             <ul class="plugin-list">
-                @foreach (var refusal in _report.Refused)
+                @foreach (var refusal in report.Refused)
                 {
                     <li class="plugin tone-problem contract-refusal" data-package="@refusal.Package.Value">
                         <div class="plugin-head">
@@ -117,13 +129,45 @@ else
         </section>
     }
 
-    @if (_report.Packages.Count == 0)
+    @if (report.Orphaned.Count > 0)
+    {
+        <section class="panel" id="contract-orphans">
+            <header class="panel-head">
+                <h2>Held here, no longer installed</h2>
+                <span class="chip">@report.Orphaned.Count</span>
+            </header>
+
+            <p class="panel-detail">
+                A browser cannot unload an assembly. These stay in this page for as long as it is open and
+                are refused for projection; reload the page to run only what this host admits.
+            </p>
+
+            <ul class="plugin-list">
+                @foreach (var orphan in report.Orphaned)
+                {
+                    <li class="plugin tone-problem contract-orphan"
+                        data-assembly="@orphan.Verified.AssemblyName"
+                        data-package="@orphan.PackageId.Value"
+                        data-owner="@orphan.Owner">
+                        <div class="plugin-head">
+                            <p class="plugin-name">@orphan.Verified.FileName</p>
+                            <span class="chip">@orphan.Owner</span>
+                            <span class="plugin-version">@orphan.PackageName @orphan.PackageVersion</span>
+                        </div>
+                        <p class="plugin-message">@Explain(orphan)</p>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+
+    @if (report.Packages.Count == 0)
     {
         <EmptyState Title="No media contracts"
                     Detail="This host publishes no contract assembly a client may load." />
     }
 
-    @foreach (var package in _report.Packages)
+    @foreach (var package in report.Packages)
     {
         <section class="panel contract-package" id="@($"contract-package-{package.Id.Value}")">
             <header class="panel-head">
@@ -192,31 +236,51 @@ else
         </section>
     }
 }
+else
+{
+    <LoadingIndicator Message="Reading what this host publishes…" />
+}
 
-<ContractPayloadPanel Installation="@Contracts.Report" />
+<ContractPayloadPanel Installation="@snapshot.Report" />
 
 @code {
-    private ContractLoadReport? _report;
-    private IReadOnlyList<string> _storedKeys = [];
     private bool _busy;
 
-    private string StoreMode => _report?.StoreAvailable == true
+    private static string StoreMode(ContractReloadResult snapshot) => snapshot.Report?.StoreAvailable == true
         ? "persistent store"
         : "no persistent store";
 
-    private string ProofText => _report is null
-        ? string.Empty
-        : System.Text.Json.JsonSerializer.Serialize(_report, ApiJsonOptions.Default);
+    private static string ProofText(ContractLoadReport report)
+        => System.Text.Json.JsonSerializer.Serialize(report, ApiJsonOptions.Default);
 
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
-        _report = Contracts.Report;
+        View.Changed += OnChanged;
         await ReloadAsync();
     }
 
+    /// <inheritdoc />
+    public void Dispose() => View.Changed -= OnChanged;
+
     private static bool IsResident(LoadedContractAssembly assembly)
         => assembly.Outcome is ContractLoadOutcome.Loaded or ContractLoadOutcome.AlreadyLoaded;
+
+    /// <remarks>Derived, not stored: the host keeps no history beyond what its package means now.</remarks>
+    private static string Explain(OrphanedContract orphan) => orphan.Owner switch
+    {
+        OrphanedContractOwner.Withheld =>
+            $"This host withholds the client facet of '{orphan.PackageId.Value}': {orphan.Refusal?.Reason}",
+        OrphanedContractOwner.Offered =>
+            $"'{orphan.PackageId.Value}' no longer offers '{orphan.Verified.FileName}' to a client.",
+        _ => $"This host no longer offers the package '{orphan.PackageId.Value}'.",
+    };
+
+    /// <remarks>
+    /// <see langword="async"/> <see langword="void"/> on purpose, as the view's own observer is: a
+    /// discarded task takes a failed render with it and this page then silently stops following the view.
+    /// </remarks>
+    private async void OnChanged(object? sender, EventArgs e) => await InvokeAsync(StateHasChanged);
 
     private async Task ReloadAsync()
     {
@@ -224,8 +288,9 @@ else
 
         try
         {
-            _report = await Contracts.LoadAsync();
-            _storedKeys = await Store.KeysAsync();
+            // Through the one view every caller shares, so this button cannot overlap an automatic
+            // reload.
+            await View.ReloadAsync();
         }
         finally
         {
@@ -234,18 +299,16 @@ else
     }
 
     /// <remarks>
-    /// Discards the bytes, not the assemblies. A browser cannot unload one, so this makes the next load a
-    /// clean-store load and leaves whatever this page already loaded exactly where it is — which is the
-    /// honest behavior and the one a test of a clean start needs.
+    /// Through the same view, so emptying the store cannot overlap a reload and leave this page describing
+    /// a moment that never existed.
     /// </remarks>
-    private async Task ClearStoreAsync()
+    private async Task DiscardStoredBytesAsync()
     {
         _busy = true;
 
         try
         {
-            await Store.ClearAsync();
-            _storedKeys = await Store.KeysAsync();
+            await View.DiscardStoredBytesAsync();
         }
         finally
         {

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Json;
 using System.Reflection;
@@ -9,6 +10,7 @@ using Arronix.Abstractions.Client;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
+using Arronix.Client.Diagnostics;
 using Arronix.Client.Serialization;
 
 namespace Arronix.Client.Contracts;
@@ -33,7 +35,7 @@ namespace Arronix.Client.Contracts;
 /// resident. Diagnostics stay visible either way.
 /// </para>
 /// </remarks>
-public sealed class MediaContractLoader
+internal sealed class MediaContractLoader
 {
     private const string ManifestPath = "api/v1/client-contracts";
 
@@ -104,33 +106,36 @@ public sealed class MediaContractLoader
     /// <param name="assemblyName">The simple assembly name.</param>
     /// <returns>The loaded assembly, when this page holds a complete verified installation.</returns>
     /// <remarks>
+    /// <para>
     /// Answers nothing unless the last load proved the entire required set. A caller reaching for one
     /// verified assembly out of an installation that failed elsewhere is exactly the partial projection this
     /// design refuses.
+    /// </para>
+    /// <para>
+    /// Nor for a name the installation this loader last read no longer carries: that would project a
+    /// contract the host does not admit, which no caller downstream could detect.
+    /// </para>
     /// </remarks>
     public Assembly? Find(string assemblyName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
 
-        return Report?.CanProject == true && _resident.TryGetValue(assemblyName, out var resident)
-            ? resident.Assembly
-            : null;
+        return Current(assemblyName) is { } resident ? resident.Assembly : null;
     }
 
     /// <summary>Gets the client contracts one loaded assembly was admitted with, in published order.</summary>
     /// <param name="assemblyName">The simple assembly name.</param>
     /// <returns>The contracts, or empty when this page holds no complete verified installation.</returns>
     /// <remarks>
-    /// What the proof captured, never a second reading of the declaration, and gated like
-    /// <see cref="Find"/>.
+    /// The instances the post-load proof accepted, never a second reading or resolution, and gated exactly
+    /// like <see cref="Find"/>. An orphan's declarations are withheld with its assembly: they are the other
+    /// door into a contract the host has withdrawn.
     /// </remarks>
     internal IReadOnlyList<VerifiedClientContract> ContractsOf(string assemblyName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
 
-        return Report?.CanProject == true && _resident.TryGetValue(assemblyName, out var resident)
-            ? resident.Contracts
-            : [];
+        return Current(assemblyName) is { } resident ? resident.Contracts : [];
     }
 
     /// <summary>Lists every client contract this page holds, in the order the host published them.</summary>
@@ -155,7 +160,7 @@ public sealed class MediaContractLoader
             {
                 var name = assembly.Published.AssemblyName;
 
-                if (!seen.Add(name) || !_resident.TryGetValue(name, out var resident))
+                if (!seen.Add(name) || Current(name) is not { } resident)
                 {
                     continue;
                 }
@@ -170,25 +175,42 @@ public sealed class MediaContractLoader
         return admitted;
     }
 
+    /// <summary>Gets the resident entry this page may serve under a simple name, or <see langword="null"/>.</summary>
+    /// <remarks>Did the last pass prove the whole required set, and did it still name this assembly.</remarks>
+    private ResidentContract? Current(string assemblyName)
+        => Report?.CanProject == true
+            && _resident.TryGetValue(assemblyName, out var resident)
+            && !resident.Orphaned
+                ? resident
+                : null;
+
     /// <summary>
     /// Reads what the host publishes, verifies everything this client would need, and loads it.
     /// </summary>
     /// <param name="cancellationToken">Abandons the load.</param>
     /// <returns>What was published and what became of it.</returns>
-    public async Task<ContractLoadReport> LoadAsync(CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Reading is all this does. Telling anyone belongs to the transaction that also sheds the bytes the
+    /// installation no longer names, because a signal raised here would describe a page mid-sweep.
+    /// </remarks>
+    internal async Task<ContractLoadReport> LoadInstallationAsync(
+        CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
+        ContractLoadReport report;
+
         try
         {
-            var report = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
+            report = await LoadCoreAsync(cancellationToken).ConfigureAwait(false);
             Report = report;
-            return report;
         }
         finally
         {
             _gate.Release();
         }
+
+        return report;
     }
 
     private async Task<ContractLoadReport> LoadCoreAsync(CancellationToken cancellationToken)
@@ -201,13 +223,13 @@ public sealed class MediaContractLoader
                 .GetFromJsonAsync<ClientContractManifest>(ManifestPath, ApiJsonOptions.Default, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The caller abandoned the load. That is not a statement about the host, and turning it into
-            // one would report an installation as unreachable because a page navigated away.
+            // The caller abandoned the load, which says nothing about the host. Only its own token says
+            // so: a timeout arrives as the same type and is an ordinary outcome that replaces the report.
             throw;
         }
-        catch (Exception failure)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return Refused(ContractCompatibility.Unreachable, null, null, [], [], failure.Message);
         }
@@ -267,15 +289,44 @@ public sealed class MediaContractLoader
                 held);
         }
 
-        // Pass one: verify everything, load nothing. The required set is the union of every published
-        // package's closure, in the load order the host stated, with each package taken once.
+        // The required set is the union of every published package's closure, in the load order the host
+        // stated, with each package taken once.
         var required = RequiredAssemblies(manifest);
+
+        // Intended, not applied: a pass abandoned mid-fetch must leave this page describing the
+        // installation it last actually read.
+        var orphaning = Orphaning(required);
+
+        var report = await ProveAsync(manifest, required, orphaning, cancellationToken).ConfigureAwait(false);
+
+        // One transition: this pass's bookkeeping becomes visible with the report it publishes.
+        Adopt(required, orphaning);
+        return report;
+    }
+
+    /// <summary>Verifies the required set, commits what passes, and describes the result.</summary>
+    /// <remarks>
+    /// Adds to <see cref="_resident"/> as it loads, because an assembly the runtime took is resident
+    /// whether or not this pass finishes. Orphan and owner bookkeeping is its caller's.
+    /// </remarks>
+    private async Task<ContractLoadReport> ProveAsync(
+        ClientContractManifest manifest,
+        List<(ContractOwner Owner, ClientContractAssembly Published)> required,
+        HashSet<string> orphaning,
+        CancellationToken cancellationToken)
+    {
+        if (Unchanged(manifest, required, orphaning) is { } unchanged)
+        {
+            return unchanged;
+        }
+
+        // Pass one: verify everything, load nothing.
         var verified = new Dictionary<string, Preflight>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var (packageId, published) in required)
+        foreach (var (owner, published) in required)
         {
             verified[published.AssemblyName] =
-                await PreflightAsync(packageId, published, cancellationToken).ConfigureAwait(false);
+                await PreflightAsync(owner.Id, published, cancellationToken).ConfigureAwait(false);
         }
 
         var blocked = verified.Values.Where(entry => !entry.IsVerified).ToArray();
@@ -301,12 +352,13 @@ public sealed class MediaContractLoader
                     ? _terminal
                     : $"{blocked.Length} of {verified.Count} required contract assemblies failed verification, "
                         + "so none was loaded and nothing may be projected. Each failure is listed against the "
-                        + "assembly it belongs to.");
+                        + "assembly it belongs to.",
+                Orphans(manifest, orphaning));
         }
 
         // Pass two: commit. Everything below this line is irreversible in a browser, which is why nothing
         // above it touched the runtime.
-        foreach (var (_, published) in required)
+        foreach (var (owner, published) in required)
         {
             var entry = verified[published.AssemblyName];
 
@@ -321,7 +373,7 @@ public sealed class MediaContractLoader
             {
                 assembly = _load(entry.Content!);
             }
-            catch (Exception failure)
+            catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
             {
                 _terminal = $"'{published.FileName}' passed every check and the runtime still refused it: "
                     + failure.Message
@@ -336,7 +388,8 @@ public sealed class MediaContractLoader
                     manifest.InstallationHash,
                     Project(manifest, verified),
                     manifest.Refused,
-                    _terminal);
+                    _terminal,
+                    Orphans(manifest, orphaning));
             }
 
             var content = entry.Content!;
@@ -359,18 +412,21 @@ public sealed class MediaContractLoader
                     manifest.InstallationHash,
                     Project(manifest, verified),
                     manifest.Refused,
-                    _terminal);
+                    _terminal,
+                    Orphans(manifest, orphaning));
             }
 
-            // Only now, and with the entry points the proof resolved, so reuse hands back what passed.
-            _resident[published.AssemblyName] = new ResidentContract(assembly, published, contracts);
+            // Only now, and with the contracts the proof captured, so reuse hands back what passed. The
+            // owner travels with it: an entry whose package later leaves can only be attributed from what
+            // was captured while it was still admitted.
+            _resident[published.AssemblyName] = new ResidentContract(assembly, published, contracts, owner);
 
             // Loaded, and only now. Until this line the report said Verified, which is what was true.
             verified[published.AssemblyName] = entry.Committed();
 
             if (entry.Source == ContractByteSource.Network)
             {
-                await _store.WriteAsync(published.ContentHash, content).ConfigureAwait(false);
+                await _store.WriteContractAsync(published.ContentHash, content).ConfigureAwait(false);
             }
         }
 
@@ -381,6 +437,7 @@ public sealed class MediaContractLoader
             manifest.InstallationHash,
             Project(manifest, verified),
             manifest.Refused,
+            Orphans(manifest, orphaning),
             _store.IsAvailable,
             null);
     }
@@ -425,26 +482,36 @@ public sealed class MediaContractLoader
 
         try
         {
-            var held = await _store.ReadAsync(published.ContentHash).ConfigureAwait(false);
+            var held = await _store.ReadContractAsync(published.ContentHash).ConfigureAwait(false);
 
-            if (held is null)
-            {
-                source = ContractByteSource.Network;
-                content = await _http
-                    .GetByteArrayAsync(AddressOf(packageId, published), cancellationToken)
-                    .ConfigureAwait(false);
-            }
-            else
+            if (held is not null)
             {
                 content = held;
             }
+            else
+            {
+                source = ContractByteSource.Network;
+
+                using var response = await _http
+                    .GetAsync(AddressOf(packageId, published), cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (Withdrawn(response.StatusCode, published) is { } withdrawn)
+                {
+                    return withdrawn;
+                }
+
+                response.EnsureSuccessStatusCode();
+                content = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            }
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception failure)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
+            // A timeout lands here: the host failed to answer, rather than this caller withdrawing.
             return Preflight.Failed(ContractLoadOutcome.Unavailable, source, failure.Message);
         }
 
@@ -558,6 +625,30 @@ public sealed class MediaContractLoader
     }
 
     /// <summary>
+    /// Reads what the host said about an address it declined to serve, or nothing when it served it.
+    /// </summary>
+    /// <remarks>
+    /// 410 means the file moved and the next manifest read resolves it; 404 means nothing is there under
+    /// any hash; anything else is a transport failure left to the caller's catch.
+    /// </remarks>
+    private static Preflight? Withdrawn(HttpStatusCode status, ClientContractAssembly published)
+        => status switch
+        {
+            HttpStatusCode.Gone => Preflight.Failed(
+                ContractLoadOutcome.Superseded,
+                ContractByteSource.Network,
+                $"The host no longer serves '{published.FileName}' at content {published.ContentHash} and "
+                + "publishes it under a different hash: this client's manifest was overtaken between "
+                + "reading it and fetching these bytes. Re-reading it recovers. Nothing was loaded."),
+            HttpStatusCode.NotFound => Preflight.Failed(
+                ContractLoadOutcome.NotOffered,
+                ContractByteSource.Network,
+                $"The host offers no '{published.FileName}' to a client under any content hash, and its own "
+                + "manifest named this one. Nothing was loaded."),
+            _ => null,
+        };
+
+    /// <summary>
     /// Drops a stored entry that did not survive verification, so a poisoned store repairs itself.
     /// </summary>
     /// <remarks>
@@ -568,7 +659,7 @@ public sealed class MediaContractLoader
     {
         if (source == ContractByteSource.Store)
         {
-            await _store.RemoveAsync(published.ContentHash).ConfigureAwait(false);
+            await _store.RemoveContractAsync(published.ContentHash).ConfigureAwait(false);
         }
     }
 
@@ -580,12 +671,12 @@ public sealed class MediaContractLoader
     /// this client does not recompute it from reference tables, which describe what an assembly names rather
     /// than what a package is entitled to.
     /// </remarks>
-    private static List<(PluginId PackageId, ClientContractAssembly Published)> RequiredAssemblies(
+    private static List<(ContractOwner Owner, ClientContractAssembly Published)> RequiredAssemblies(
         ClientContractManifest manifest)
     {
         var byId = manifest.Packages.ToDictionary(package => package.Id);
         var seen = new HashSet<PluginId>();
-        var required = new List<(PluginId, ClientContractAssembly)>();
+        var required = new List<(ContractOwner, ClientContractAssembly)>();
 
         foreach (var package in manifest.Packages)
         {
@@ -599,15 +690,136 @@ public sealed class MediaContractLoader
                 // Every closure member is a published package: the validator proved it before this ran, so
                 // there is no "unknown member" branch here to skip one silently.
                 var source = byId[member];
+                var owner = new ContractOwner(source.Id, source.Name, source.Version);
 
                 foreach (var assembly in source.Assemblies)
                 {
-                    required.Add((source.Id, assembly));
+                    required.Add((owner, assembly));
                 }
             }
         }
 
         return required;
+    }
+
+    /// <summary>Names this page holds which the installation just read does not.</summary>
+    /// <remarks>
+    /// A name the manifest does state is never here, however badly it then verifies — that is the separate
+    /// <see cref="ContractLoadOutcome.NameAlreadyResident"/> question, and one name under both headings
+    /// would describe two problems where there is one.
+    /// </remarks>
+    private HashSet<string> Orphaning(List<(ContractOwner Owner, ClientContractAssembly Published)> required)
+    {
+        var named = new HashSet<string>(
+            required.Select(entry => entry.Published.AssemblyName),
+            StringComparer.OrdinalIgnoreCase);
+
+        return new HashSet<string>(
+            _resident.Keys.Where(name => !named.Contains(name)),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Makes one completed pass's bookkeeping this page's, in a single step.</summary>
+    /// <remarks>Never a removal: nothing leaves <see cref="_resident"/> and a browser unloads nothing.</remarks>
+    private void Adopt(
+        List<(ContractOwner Owner, ClientContractAssembly Published)> required,
+        HashSet<string> orphaning)
+    {
+        foreach (var (owner, published) in required)
+        {
+            if (_resident.TryGetValue(published.AssemblyName, out var named) && named.Owner != owner)
+            {
+                _resident[published.AssemblyName] = named with { Owner = owner };
+            }
+        }
+
+        foreach (var name in _resident.Keys.ToArray())
+        {
+            var entry = _resident[name];
+            var orphaned = orphaning.Contains(name);
+
+            if (entry.Orphaned != orphaned)
+            {
+                _resident[name] = entry with { Orphaned = orphaned };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Answers the pass on which the installation this page confirmed is the one the host is publishing,
+    /// or <see langword="null"/> when the ordinary pass has to run.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ClientContractManifest.InstallationHash"/> decides whether to look, never what is true:
+    /// an equal hash only permits the question, and every required assembly must still match the exact
+    /// description this manifest states — the reuse gate's own comparison, over values already in memory,
+    /// so no bytes are fetched and a restated declaration is still refused. Only a
+    /// <see cref="ContractCompatibility.Compatible"/> previous result qualifies, because a refusal over an
+    /// unchanged installation may have been a transport failure.
+    /// </remarks>
+    private ContractLoadReport? Unchanged(
+        ClientContractManifest manifest,
+        List<(ContractOwner Owner, ClientContractAssembly Published)> required,
+        HashSet<string> orphaning)
+    {
+        if (Report is not { Compatibility: ContractCompatibility.Compatible, InstallationHash: { } confirmed }
+            || !string.Equals(confirmed, manifest.InstallationHash, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var reused = new Dictionary<string, Preflight>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (_, published) in required)
+        {
+            if (!_resident.TryGetValue(published.AssemblyName, out var resident)
+                || !Matches(resident.Verified, published))
+            {
+                return null;
+            }
+
+            reused[published.AssemblyName] = Preflight.Reused(published);
+        }
+
+        return new ContractLoadReport(
+            ContractCompatibility.Compatible,
+            manifest.ContractIdentity,
+            ClientContractIdentity,
+            manifest.InstallationHash,
+            Project(manifest, reused),
+            manifest.Refused,
+            Orphans(manifest, orphaning),
+            _store.IsAvailable,
+            null);
+    }
+
+    /// <summary>Renders what this page holds and the installation just read does not name.</summary>
+    /// <remarks>
+    /// Labeled from that manifest alone: the host keeps no history, so why a package left is not a fact a
+    /// client has.
+    /// </remarks>
+    private IReadOnlyList<OrphanedContract> Orphans(
+        ClientContractManifest manifest,
+        HashSet<string> orphaning)
+        => orphaning
+            .Select(name => _resident[name])
+            .OrderBy(resident => resident.Verified.AssemblyName, StringComparer.Ordinal)
+            .Select(resident => Describe(manifest, resident))
+            .ToList()
+            .AsReadOnly();
+
+    private static OrphanedContract Describe(ClientContractManifest manifest, ResidentContract resident)
+    {
+        var owner = resident.Owner;
+        var refusal = manifest.Refused.FirstOrDefault(entry => entry.Package == owner.Id);
+
+        var state = refusal is not null
+            ? OrphanedContractOwner.Withheld
+            : manifest.Packages.Any(package => package.Id == owner.Id)
+                ? OrphanedContractOwner.Offered
+                : OrphanedContractOwner.Unpublished;
+
+        return new OrphanedContract(resident.Verified, owner.Id, owner.Name, owner.Version, state, refusal);
     }
 
     /// <summary>Renders the per-package view from the verification results.</summary>
@@ -693,7 +905,7 @@ public sealed class MediaContractLoader
                     + "than this client's own contract.";
             }
         }
-        catch (Exception resolution)
+        catch (Exception resolution) when (!ProcessFailure.IsFatal(resolution))
         {
             return $"its reference to '{ContractAssemblyName}' could not be resolved: {resolution.Message}";
         }
@@ -940,13 +1152,19 @@ public sealed class MediaContractLoader
     private static string AddressOf(PluginId packageId, ClientContractAssembly published)
         => $"{ManifestPath}/{Uri.EscapeDataString(packageId.Value)}/{Uri.EscapeDataString(published.ContentHash)}/{Uri.EscapeDataString(published.FileName)}";
 
+    /// <summary>Renders a refusal.</summary>
+    /// <remarks>
+    /// <paramref name="orphaned"/> defaults to empty: a pass that returned before the required set was
+    /// known has nothing to say about what this page holds.
+    /// </remarks>
     private ContractLoadReport Refused(
         ContractCompatibility compatibility,
         string? publishedIdentity,
         string? installationHash,
         IReadOnlyList<LoadedContractPackage> packages,
         IReadOnlyList<ClientContractRefusal> refused,
-        string? failure)
+        string? failure,
+        IReadOnlyList<OrphanedContract>? orphaned = null)
         => new(
             compatibility,
             publishedIdentity,
@@ -954,6 +1172,7 @@ public sealed class MediaContractLoader
             installationHash,
             packages,
             refused,
+            orphaned ?? [],
             _store.IsAvailable,
             failure);
 
@@ -962,14 +1181,24 @@ public sealed class MediaContractLoader
     /// <param name="Contract">What the admission proof captured.</param>
     internal sealed record AdmittedContract(string AssemblyName, VerifiedClientContract Contract);
 
+    /// <summary>The package a resident contract was last admitted under.</summary>
+    /// <param name="Id">The package identifier.</param>
+    /// <param name="Name">Its name, as the host stated it.</param>
+    /// <param name="Version">Its version, as the host stated it.</param>
+    private readonly record struct ContractOwner(PluginId Id, string Name, string Version);
+
     /// <summary>One contract this page has loaded, and the exact description it was verified against.</summary>
     /// <param name="Assembly">The loaded assembly.</param>
     /// <param name="Verified">What the host published for it, proved against its bytes and its runtime.</param>
     /// <param name="Contracts">What that proof captured, in published order.</param>
+    /// <param name="Owner">The package that published it, so an orphan can be attributed.</param>
+    /// <param name="Orphaned">Whether the installation last read stopped naming this assembly.</param>
     private sealed record ResidentContract(
         Assembly Assembly,
         ClientContractAssembly Verified,
-        IReadOnlyList<VerifiedClientContract> Contracts);
+        IReadOnlyList<VerifiedClientContract> Contracts,
+        ContractOwner Owner,
+        bool Orphaned = false);
 
     /// <summary>What verification decided about one published assembly, before anything was loaded.</summary>
     private sealed record Preflight(
