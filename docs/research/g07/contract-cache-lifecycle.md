@@ -1,11 +1,15 @@
 # Contract cache lifecycle in the browser — preparation for G07.3
 
 **Status:** research only. This document prepares G07.3; it does not close it, does not change `CONTEXT.md` or
-`INTERFACE.md`, and does not touch product code. G07.2 (generated client metadata, typed deserialization,
-typed rendering) is still **not started** — `INTERFACE.md` line 364 and `docs/design/typed-media-roadmap.md`
-both record it that way as of this audit — so nothing here assumes typed projection exists. Every claim below
-is read from the code and tests present on this branch at commit `ce643da45`, not from the roadmap's
-description of intent.
+`INTERFACE.md`, and does not touch product code.
+
+**Snapshot notice.** Every claim below is read from the code and tests present on this branch at commit
+`ce643da45`, dated 2026-08-27. In particular, the statement that G07.2 (generated client metadata, typed
+deserialization, typed rendering) is **not started** — `INTERFACE.md` line 364 and
+`docs/design/typed-media-roadmap.md` both record it that way at that commit — is a fact about that snapshot,
+not a standing property of the repository. A reader integrating this document after G07.2 has landed must
+re-check `INTERFACE.md`/`CONTEXT.md` before relying on that sentence; nothing else in this document depends
+on G07.2 being unstarted (§7 states explicitly what does and does not need re-scoping once it lands).
 
 G07.3's stated outcome is: "installing, updating, and removing a package, and holding a tab open across those
 changes, all behave predictably in the browser and fail visibly rather than projecting partial data." Its exit
@@ -16,8 +20,10 @@ continuing to render from a contract the host no longer admits.*
 ## 1. What G07.1 already built that G07.3 inherits
 
 G07.1 (`docs/research/g07/client-contract-loading.md`) did not stop at "publish and load once." It already
-built most of the machinery a lifecycle story needs; G07.3's job is narrower than a fresh read of its exit
-gate suggests. Four mechanisms already exist and are already proven:
+built most of the *mechanism* a lifecycle story needs — this narrows the new mechanism G07.3 must invent, not
+the evidence it must produce: real-browser acceptance for update, removal, stale cache, and stale tab is still
+owed in full, per the exit gate, whatever already exists at the unit level (§4 states exactly which). Six
+mechanisms already exist and are already proven:
 
 1. **Content addressing, not versioning.** `GET /api/v1/client-contracts/{package}/{contentHash}/{fileName}`
    names bytes, not a mutable slot (`src/Arronix.Api/Endpoints/ClientContractEndpoints.cs:56-65`). An
@@ -35,22 +41,30 @@ gate suggests. Four mechanisms already exist and are already proven:
    `NotOffered` when nothing does (`src/Arronix.Plugins/Registry/ClientContractCatalog.cs:152-187`). The
    endpoint renders those as `410`/`404` respectively
    (`src/Arronix.Api/Endpoints/ClientContractEndpoints.cs:117-127`). This is exactly the signal an "update
-   in flight" or "removed" distinction needs; G07.3's gap is that the *client* does not yet read it (§4.1).
-4. **The "same simple name, different bytes" case is already Terminal, already tested, already proven in a
-   real load context.** `MediaContractLoader.PreflightAsync` refuses a resident name whose newly published
+   in flight" or "removed" distinction needs; G07.3's gap is that the *client* does not yet read it
+   (seam 3 in §3; rows U5 and W3 in §4.2/§4.6).
+4. **The "same simple name, different bytes" case already has a Terminal outcome, and it is proven at the
+   hermetic level.** `MediaContractLoader.PreflightAsync` refuses a resident name whose newly published
    description does not match (`src/Arronix.Client/Contracts/MediaContractLoader.cs:340-353`), and
    `ContractCommitTests.AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn`
-   (`src/Arronix.Client.Tests/Contracts/ContractCommitTests.cs:200-221`) drives it end to end, including a real
-   `AssemblyLoadContext.Default.LoadFromStream` and a follow-up load that proves Terminal is sticky even after
-   the host reverts to what the page already holds. **Update-in-place, for an assembly this tab is currently
-   using, is not a G07.3 gap. It is closed G07.1 work.** What G07.3 actually owns is narrower: the assembly
-   that stops being required at all, and everything downstream of that.
+   (`src/Arronix.Client.Tests/Contracts/ContractCommitTests.cs:200-221`) drives it end to end against a real
+   `AssemblyLoadContext.Default.LoadFromStream`, including a follow-up load that proves Terminal is sticky even
+   after the host reverts to what the page already holds. **This is reusable implementation and reusable unit
+   evidence, not closed gate evidence.** The `ContractCommitTests` fixture runs in-process against a stub
+   `HttpMessageHandler`; it has never run in an actual browser page, and G07.3's own exit gate names "update"
+   as one of the four exercises that must run "in the real browser," on equal footing with removal, stale
+   cache, and stale tab (`docs/design/typed-media-roadmap.md`, G07.3 exit gate). So update-in-place splits into
+   two different kinds of open work, not one closed item: the *reaction logic* for update already exists and
+   is unit-proven, and only real-browser acceptance evidence is outstanding for it (§4.2 U2); the *reaction
+   logic* for removal does not exist at all yet (§2.2), so removal owes both an implementation and real-browser
+   evidence. G07.3 therefore owns real-browser acceptance for all four named exercises — update included — plus
+   the removal implementation itself.
 5. **The publication boundary that would make a "torn read" possible does not exist.** Host publication and
    withdrawal are atomic through one shared gate (G02 completion notes, `docs/design/typed-media-roadmap.md`
    lines 216-219), so `Manifest()` can never observe "package A upgraded, package B mid-upgrade" as two
    half-applied facts in one call. A "failed/partial update" cannot appear as a torn manifest; it can only
    appear as two well-formed manifests in a row, which is an ordinary update-or-removal case, not a new
-   category. §5.7 states this precisely so it is not accidentally re-litigated during implementation.
+   category. §4.7 states this precisely so it is not accidentally re-litigated during implementation.
 6. **The PWA service worker and the contract store cannot collide.** `service-worker.published.js` passes
    every `/api/`-prefixed request straight to the network (`networkOnlyPaths`, lines 29-31, 65-67) and only
    ever deletes caches under its own `arronix-cache-` prefix on activation (lines 50-58); the contract store
@@ -103,7 +117,7 @@ States, keyed by simple assembly name inside one `MediaContractLoader`:
 | `Loaded` / `AlreadyLoaded` (current) | yes | yes | yes |
 | `NameAlreadyResident` (Terminal) | yes (the old bytes) | no — tab-level `_terminal` blocks `Find()` universally | yes, as `NameAlreadyResident`, and the tab is `Terminal` |
 | `RuntimeRefused` (Terminal) | no | no — tab-level `_terminal` blocks `Find()` universally | yes, as `RuntimeRefused` |
-| **`Orphaned`** *(does not exist yet — the G07.3 gap)* | **yes** | **yes, incorrectly** | **no — silently absent** |
+| **`Orphaned`** *(does not exist yet — the G07.3 gap)* | **yes** | **yes, incorrectly** | **no — silently absent; needs the owning package's last-admitted identity retained to be reported honestly (see below)** |
 
 The last row is the finding this whole document turns on, so it is worth stating exactly, in code terms.
 `RequiredAssemblies(manifest)` (`MediaContractLoader.cs:508-536`) is built only from the packages the *current*
@@ -131,6 +145,31 @@ today means "everything the current manifest requires is resident"; it has never
 construction mean, "everything this tab has ever loaded is still valid." G07.3 has to introduce a state that
 carries that second fact, because nothing upstream of `Find()` can currently ask for it.
 
+**What an `Orphaned` entry may honestly say, without inventing server history.** The server keeps no
+history — M1 is only ever "what does `Manifest()` say right now." So an `Orphaned` entry cannot be labeled
+with *why* a package left; it can only be labeled with what the *current* manifest says about that package's
+identifier today, which is exactly the M1 vocabulary from §2.1 and requires no new server-side tracking to
+answer:
+
+- If the owning `PluginId` appears in the current manifest's `Refused` list (M1 `Withheld`), the orphaned
+  entry can carry that live `ClientContractRefusal` — its `Reason` and `CausedBy` are real, current,
+  server-stated facts (`ClientContractManifest.cs:98-103`), not a client guess. The report can then say
+  something as specific as "withdrawn: this host now refuses this package's facet — {reason}."
+- If the owning `PluginId` appears in neither `Packages` nor `Refused` (M1 `Unpublished`), the entry can say
+  only "this host no longer offers package '{id}'." Uninstalled, quarantined outright, and simply never seen
+  by this manifest read are indistinguishable from the client's side of the wire, and the report must not
+  pretend otherwise.
+
+Neither label requires the client to remember anything about the package except what it already captured at
+the moment that assembly was last verified: the owning `PluginId`, and the package `Name`/`Version` from that
+pass's `ClientContractPackage`. Today's `ResidentContract` record —
+`private sealed record ResidentContract(Assembly Assembly, ClientContractAssembly Verified)`
+(`MediaContractLoader.cs:656`) — does not carry that; it holds the verified assembly description but not which
+package published it. Retaining the owning `PluginId`/`Name`/`Version` alongside each resident entry at commit
+time is therefore a required part of the `Orphaned` state, not an optional enrichment: without it, an orphaned
+report entry could say a name is stale but could not say *whose* it was, which is the fact an operator or a
+future rendering surface actually needs.
+
 Transitions:
 
 - `Untouched → Verified → Loaded`: the ordinary first pass (already proven).
@@ -155,9 +194,14 @@ Transitions:
 ### 2.3 M3 — one tab's overall compatibility
 
 `ContractCompatibility` (`ContractLoadReport.cs:128-164`): `Unknown → {Compatible, ContractIdentityMismatch,
-Unreachable, ManifestInvalid, Refused, Terminal}`. `Terminal` is the only absorbing state — checked and
-short-circuited before any network call on every subsequent `LoadAsync` (`MediaContractLoader.cs:205-214`).
-Every other value is recomputed fresh each call. This machine needs **no new states** for G07.3. `Compatible`'s
+Unreachable, ManifestInvalid, Refused, Terminal}`. `Terminal` is the only absorbing state, but the exact point
+it short-circuits matters and is easy to state wrong: `LoadCoreAsync` always fetches the manifest over the
+network and runs it through `ContractManifestValidator.Describe` and the contract-identity comparison first
+(`MediaContractLoader.cs:142-203`); only after that — at line 205-214 — does it check `_terminal` and, if set,
+return immediately without ever building `RequiredAssemblies` or entering the preflight/commit loop. So a
+terminal tab still performs one manifest fetch and one local validation pass on every `LoadAsync` call; what
+is skipped is every byte-level network request and the entire commit — the expensive and irreversible parts,
+not the manifest read itself. Every non-terminal value is recomputed fresh each call. This machine needs **no new states** for G07.3. `Compatible`'s
 existing, narrow definition — "everything currently required is resident" — is correct and should not be
 widened to also mean "nothing orphaned exists," because that would make an ordinary, harmless removal of an
 unrelated package (one this tab never touched) look like a fault. The fix belongs entirely in M2 and in what
@@ -181,37 +225,56 @@ where the bytes came from (`MediaContractLoader.cs:405-421`).
 Each of these is a specific place in the existing code where G07.3's first slices attach. None is exercised
 here — this section is a map, not a patch.
 
-1. **`Find()` and `_resident` have no concept of "still current."**
-   `src/Arronix.Client/Contracts/MediaContractLoader.cs:42, 110-117, 508-536`. `Find` must be able to refuse a
-   name that is physically resident but no longer named by the last manifest this loader read at a matching
-   hash. This needs the loader to retain, per resident entry, whether the most recent `LoadAsync` re-confirmed
-   it — not just whether it was ever loaded.
+1. **`Find()` and `_resident` have no concept of "still current," and `_resident` does not remember who
+   published an entry.** `src/Arronix.Client/Contracts/MediaContractLoader.cs:42, 110-117, 508-536, 656`.
+   `Find` must be able to refuse a name that is physically resident but no longer named by the last manifest
+   this loader read at a matching hash. That needs the loader to retain, per resident entry, whether the most
+   recent `LoadAsync` re-confirmed it — not just whether it was ever loaded — and it also needs the owning
+   `PluginId` plus that package's last-seen `Name`/`Version`, because `ResidentContract`
+   (`MediaContractLoader.cs:656`) currently carries only the `Assembly` and its verified `ClientContractAssembly`,
+   not which package published it. Without that second fact an orphaned entry could be flagged but not
+   attributed (§2.2).
 2. **`Project()` drops packages the caller has no other way to learn about.**
    `MediaContractLoader.cs:539-556`. It walks `manifest.Packages` only, so a withdrawn package's entry — the
    one thing an operator or a future rendering surface would need to explain "why did this disappear" —
    is never emitted. A stale-but-resident entry needs to survive into the report under its own heading, the
    way `Refused` already survives from the *server's* side (`ContractLoadReport.cs:172` /
-   `ContractsPage.razor:74-118`).
+   `ContractsPage.razor:74-118`); the label on it should be driven by whether the owning `PluginId` is
+   currently `Withheld` (carry the live `ClientContractRefusal.Reason`) or currently `Unpublished` (say only
+   that it is no longer offered), per the honesty rule in §2.2.
 3. **Byte-fetch failure collapses `404`, `410`, and genuine transport failure into one `Unavailable`.**
    `MediaContractLoader.cs:365-391`. `GetByteArrayAsync` throws on any non-2xx and the catch block
    (`.PreflightAsync`, lines 388-391) reports `ContractLoadOutcome.Unavailable` regardless of which. The server
    already computed the right distinction (`ClientContractOutcome.Superseded` → `410`,
    `NotOffered` → `404`, `ClientContractEndpoints.cs:102-128`) and throws it away at the transport boundary.
-   This matters specifically for the race in §5.7: manifest read, then the host republishes before the byte
+   This matters specifically for the race in §4.7: manifest read, then the host republishes before the byte
    fetch completes — today that reads as an opaque "Unavailable," when it is actually "re-read the manifest,
    the address moved."
 4. **No selective eviction exists; only total `ClearAsync()`.**
    `ContractStore.cs:154-170` / `ContractsPage.razor:239-252`. The primitives (`KeysAsync`, `RemoveAsync`) are
    present; nothing computes "keys present, minus keys the current manifest names" and drives them.
-5. **Nothing observes server-side change except a manual click.**
-   `ContractsPage.razor:29, 219-232` — "Reload contracts" is the only trigger for a fresh `LoadAsync`.
-   `DescriptorCache` already solved the equivalent problem for descriptor data by invalidating on
-   `EventKind.PluginStateChanged` over the live event stream (`src/Arronix.Client/Services/DescriptorCache.cs:129-135`);
-   nothing analogous exists for contracts. A cheap "is this stale" check should not require a full
-   hash-and-metadata verification pass — `InstallationHash` already exists for exactly this purpose
-   (`ClientContractManifest.cs:112-115`: "one value that changes whenever anything a client would load
-   changes, so a client can decide whether to re-read the rest") and nothing currently reads it for that
-   purpose outside the loader's own internal comparison.
+5. **Nothing observes server-side change except a manual click, and a connected tab has no way to stop
+   projecting withdrawn content promptly.** `ContractsPage.razor:29, 219-232` — "Reload contracts" is the only
+   trigger for a fresh `LoadAsync`. `DescriptorCache` already solved the analogous problem for descriptor data
+   by subscribing to `EventKind.PluginStateChanged` over the live event stream and invalidating on it
+   (`src/Arronix.Client/Services/DescriptorCache.cs:129-135`); nothing subscribes on behalf of contracts. This
+   is not merely a UX gap: for a tab that *is* connected and subscribed, letting a withdrawn contract keep
+   projecting until the operator happens to click "Reload contracts" fails the exit gate's own sentence —
+   "a tab holding a withdrawn contract refuses to project it and says so" is a requirement on a live tab, not
+   an offer contingent on manual action (§4.5 distinguishes this from a genuinely disconnected tab, which
+   cannot be held to the same standard). The fix must not introduce a second manifest-fetching or
+   manifest-validating code path alongside `LoadCoreAsync`'s: `LoadAsync` is already the one place that fetches
+   and validates a manifest (`ContractManifestValidator.Describe`, the identity check) and is already
+   serialized by `_gate` (`MediaContractLoader.cs:43, 126-138`), so an event-driven trigger should simply call
+   the loader's own `LoadAsync` rather than stand up an independent reader. What is missing to make that cheap
+   enough to call on every `PluginStateChanged` event is an early-out: `InstallationHash`
+   (`ClientContractManifest.cs:112-115`, "one value that changes whenever anything a client would load
+   changes, so a client can decide whether to re-read the rest") is fetched and validated as part of every
+   manifest read already, but nothing today compares it against the last `Compatible` report's
+   `InstallationHash` to skip the per-assembly preflight/commit loop when nothing has actually changed. Adding
+   that comparison inside `LoadCoreAsync` (after the existing identity check, before `RequiredAssemblies`) is
+   what turns "call `LoadAsync` on every state-change event" from an expensive full-verification pass into a
+   cheap manifest-only check that only does real work when the installation actually moved.
 6. **`ClientContractHealthContributor` cannot see, and should not be asked to see, browser-tab state.**
    `src/Arronix.Host/Health/ClientContractHealthContributor.cs`. It reports only server-side withheld facets
    (M1's `Withheld`). It has, and should keep, zero visibility into any tab's M2/M3 state, because that state
@@ -239,14 +302,15 @@ the required behavior yet.
 | # | Scenario | Required behavior | Status |
 | --- | --- | --- | --- |
 | U1 | A package this tab has **not** loaded is updated | Next `LoadAsync` fetches and verifies the new bytes normally; no terminal state | **Proven** by construction — a fresh name has no `_resident` entry to conflict with |
-| U2 | A package this tab **has** loaded is updated (same simple name, new content hash) | Terminal, with a stated reason, on the pass that discovers it; sticky across further loads including a revert | **Proven** — `ContractCommitTests.AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn` |
+| U2 | A package this tab **has** loaded is updated (same simple name, new content hash) | Terminal, with a stated reason, on the pass that discovers it; sticky across further loads including a revert | **Reaction logic proven at the hermetic level** — `ContractCommitTests.AVerifiedInstallationIsLoadedReusedAndThenTerminalWhenTheHostMovesOn`, against a stub `HttpMessageHandler` and a real `AssemblyLoadContext.Default.LoadFromStream`. **Real-browser acceptance is a separate, still-open item** — G07.3's exit gate names update as one of the four exercises to run "in the real browser," and no existing browser-matrix case (G07.1's cases 1-8 are all against one static installation) replays "load, then the host updates, then this same tab reloads." |
 | U3 | A dependency updates; a dependant's own bytes are unchanged | The dependant's `ClosureHash` changes; the dependant's own assembly content hash does not | **Proven** — `PackagedClientContractTests` closure-hash-stability assertion |
 | U4 | *(post-G07.2)* Generated-metadata hash or projection-schema hash changes without the assembly's content hash changing | Should be structurally impossible if metadata is embedded in the same content-addressed assembly bytes G07.1 already verifies; if G07.2 instead publishes either hash as a sibling fact, G07.3 must extend Preflight to check it, but the *lifecycle* (install/update/remove/evict) rule is unchanged — it is still one address, one verification pass | **Not applicable yet** — flagged so G07.3 is not re-scoped when G07.2 lands; see §7 |
 | U5 | Manifest is re-read mid-load: host updates *between* the manifest fetch and a byte fetch in the same `LoadAsync` pass | The byte address for the old manifest's entry is `410 Gone`; the loader should recognize "superseded, not merely unreachable" and could recover by re-reading the manifest rather than reporting an opaque failure | **Gap** — seam 3; currently collapses to generic `Unavailable` |
 
-Mutation for U2 (already guarded, restated for completeness): skip the `NameAlreadyResident` check in
-`PreflightAsync` → `ContractCommitTests` fails immediately, because the second load of the mutated build would
-report `Compatible` instead of `Terminal`.
+Mutation for U2 (already guarded at the hermetic level, restated for completeness): skip the
+`NameAlreadyResident` check in `PreflightAsync` → `ContractCommitTests` fails immediately, because the second
+load of the mutated build would report `Compatible` instead of `Terminal`. This mutation guards the reaction
+logic; it does not substitute for the real-browser acceptance case slice 5 (§6) still owes.
 
 ### 4.3 Removal / withdrawal
 
@@ -254,7 +318,7 @@ report `Compatible` instead of `Terminal`.
 | --- | --- | --- | --- |
 | R1 | Server-side: package is stopped/uninstalled; `Manifest()` no longer lists it | Manifest simply omits it; no crash, no stale row | **Proven** — `PackagedClientContractTests.AStoppedInstallationOffersNothing` |
 | R2 | Client-side, this tab **never loaded** the withdrawn package | Next `LoadAsync` is `Compatible` over whatever remains; nothing to say about a package this tab never touched | **Proven by construction** |
-| R3 | Client-side, this tab **has loaded and is currently using** the withdrawn package | `Find()` for that name must refuse once the current manifest stops naming it; the report must say the package is gone rather than silently dropping its panel; the tab's overall `Compatibility` for the *rest* of the installation remains `Compatible` — a removal elsewhere must not manufacture a fault | **Gap** — seam 1/2; this is the central finding of §2.2 |
+| R3 | Client-side, this tab **has loaded and is currently using** the withdrawn package | `Find()` for that name must refuse once the current manifest stops naming it; the report must say the package is gone rather than silently dropping its panel, labeled from the *current* manifest's own M1 state for that `PluginId` — its live `Refused` reason if it is currently `Withheld`, or only "no longer offered" if it is currently `Unpublished` — never a client-invented cause; the tab's overall `Compatibility` for the *rest* of the installation remains `Compatible` — a removal elsewhere must not manufacture a fault | **Gap** — seam 1/2; this is the central finding of §2.2 |
 | R4 | The withdrawn package returns later, at the exact hash this tab already verified | Recognized without a byte refetch or re-verification; returns to a serving state | **Already correct once R3 exists** — `Matches()` already implements the equality check; only the interim visibility is missing |
 | R5 | The withdrawn package returns later, at a **different** hash than this tab holds | Terminal, identical in kind to U2 — a stale resident assembly is a stale resident assembly regardless of the path that produced it | **Gap**, same seam as R3 |
 
@@ -279,10 +343,11 @@ eviction rule from becoming a data-loss rule.
 
 | # | Scenario | Required behavior | Status |
 | --- | --- | --- | --- |
-| S1 | A tab opened before an update never calls `LoadAsync` again | It keeps rendering from what it already resolved to be `Compatible`; this is honest, not a bug — nothing observed the change, so nothing can be said about it | **Correct by the current design's own terms**; the risk is purely UX (no signal exists to prompt a reload) |
-| S2 | A tab is prompted (by any means) to re-check and does | `LoadAsync` re-reads the manifest; if the tab holds nothing that conflicts, it becomes `Compatible` again cleanly; if it holds a now-orphaned or now-conflicting assembly, R3/U2 apply | **Half-proven** — U2's branch is proven; R3's branch is the gap |
+| S1a | A tab that is **disconnected** from the live event stream (offline, hub connection dropped, or simply never subscribed) and never calls `LoadAsync` again | It keeps rendering from what it already resolved to be `Compatible`; this is honest, not a bug — nothing observed the change, and nothing *could* have, so nothing can be said about it | **Correct by the current design's own terms** — a tab that genuinely cannot learn of a change cannot be held to a standard that requires learning of it |
+| S1b | A tab that **is connected and subscribed** to `EventKind.PluginStateChanged`, holding a resident assembly whose owning package is later withdrawn | This is not merely a UX shortfall: for a live tab, letting withdrawn content keep projecting until an operator happens to click "Reload contracts" fails the exit gate directly. A connected tab must promptly re-check on the state-change signal and, once it does, `Find()` must stop serving the withdrawn name — i.e. S1b must resolve into S2 automatically, not by manual action | **Gap** — requires seam 1 (the `Orphaned` state and `Find()` refusal) and seam 5/slice 4 (the event-driven trigger) together; neither alone is sufficient |
+| S2 | A tab is prompted (manually, or automatically per S1b once slice 4 exists) to re-check and does | `LoadAsync` re-reads the manifest; if the tab holds nothing that conflicts, it becomes `Compatible` again cleanly; if it holds a now-orphaned or now-conflicting assembly, R3/U2 apply | **Half-proven** — U2's reaction logic is proven at the hermetic level (real-browser acceptance still open, per §1 item 4); R3's branch is the implementation gap |
 | S3 | A tab's own manifest read is itself stale relative to a *second*, even newer manifest published between two of its own polls | Irrelevant to the loader — it only ever compares "what I hold" against "what I just read"; a skipped intermediate state is invisible and does not need to be, because each read is self-consistent (M1 has no torn state to skip) | **Correct by construction** — see §1 item 5 |
-| S4 | An operator wants to know "am I stale" cheaply, without a full verify pass | `InstallationHash` already exists for exactly this; nothing currently exposes a cheap poll/compare of it outside the loader's own full pass | **Gap** — seam 5 |
+| S4 | Deciding whether a re-check is worth the full verify pass, on every `PluginStateChanged` event | `InstallationHash` already exists for exactly this; nothing currently compares it against the last confirmed value to short-circuit the per-assembly preflight/commit loop | **Gap** — seam 5 |
 
 ### 4.6 Withdrawn addresses (the byte route itself)
 
@@ -310,7 +375,7 @@ remains under this heading is entirely client-side concurrency within one tab:
 | C1 | Two tabs write the same content hash to the shared store concurrently | Idempotent — identical bytes under an identical key; no corruption possible by construction, because the key *is* the hash of the value | **Provable by design**; not separately exercised, and probably does not need to be — it follows from the store contract, not from timing |
 | C2 | Tab A causes eviction (once E1 exists) of a hash that tab B is mid-fetch of from the store | B's in-flight read is unaffected; a miss on B's *next* fetch simply falls back to network | **Design-level guarantee to state explicitly once eviction exists**, per §2.4 |
 | C3 | Tab A is Terminal (holds a stale resident assembly); tab B, opened fresh afterward | A's Terminal state is entirely local — `_resident`/`_terminal` live on the `MediaContractLoader` instance, which is per-tab (registered via `TryAddSingleton` inside one Blazor WASM app instance, `ArronixClientServiceCollectionExtensions.cs:58-59`, i.e., per page load, not per origin) — B loads cleanly against the current installation with no cross-tab interference | **Proven by construction** — there is no shared client-side state between tabs other than the store, and the store cannot make a load incorrect (§2.4) |
-| C4 | Two tabs, one still on the old build of a package (never reloaded), one freshly loaded on the new build | Both are individually self-consistent and honest about what they hold; this is the ordinary, permanent consequence of "a browser cannot unload," not a bug to fix — see S1 | **Correct by design; this is the platform constraint, not a defect** |
+| C4 | Two tabs, one still on the old build of a package (never reloaded or not connected to the event stream), one freshly loaded on the new build | Both are individually self-consistent and honest about what they hold; this is the ordinary, permanent consequence of "a browser cannot unload," not a bug to fix — see S1a | **Correct by design; this is the platform constraint, not a defect** |
 
 ### 4.9 Non-unloadable assemblies
 
@@ -359,7 +424,7 @@ it cannot be quietly violated by a future change:
 ## 6. First five implementation slices after G07.2
 
 These are ordered by dependency, not by roadmap gate — each is small enough to land and prove independently,
-and none requires G07.2's generated metadata or typed rendering to exist first, so in principle slices 1–3
+and none requires G07.2's generated metadata or typed rendering to exist first, so in principle slices 1–4
 could start before G07.2 closes if the owner wanted to decouple them; they are sequenced after it here only
 because that is the roadmap's stated order and because a real Movie rendering surface (G07.2's outcome) is
 what makes "a tab silently keeps rendering a withdrawn contract" a user-visible failure worth a UI treatment,
@@ -389,25 +454,41 @@ rather than only a diagnostic-page curiosity.
    plus `ContractStore.cs` (no new store primitives needed, just a driver). Proof: E1's mutation in §4.4 —
    evict something live and prove the next load still succeeds from network — plus a positive case proving an
    orphaned hash is actually gone from `KeysAsync()` afterward.
-4. **A cheap, event-driven staleness signal, separate from the verifying load.** Mirror
-   `DescriptorCache.OnReceived` (`Services/DescriptorCache.cs:129-135`): a small service subscribes to the
-   existing event stream, and on `EventKind.PluginStateChanged` compares the last known `InstallationHash`
-   (cheap: already present on every manifest read, no byte verification needed) against a fresh manifest-only
-   fetch, and raises an "this host has changed" signal a page can render as a banner — distinct from, and far
-   cheaper than, triggering a full `LoadAsync`. This is what makes S1/S4 in §4.5 actionable instead of merely
-   theoretically correct. Targets: a new `Arronix.Client/Services` type alongside `DescriptorCache`, wired the
-   same way in `ArronixClientServiceCollectionExtensions.cs`. Proof: a hermetic test on the new service using
-   the existing `EventStream` test doubles, asserting the signal fires on `PluginStateChanged` and not on
-   unrelated event kinds.
-5. **Extend the real-browser and hermetic evidence to cover true removal and eviction, not just update.**
-   `eng/proofs/g07-client-contracts.sh` currently proves install and the server-side withdrawal case
-   (`AStoppedInstallationOffersNothing` is a Host-test, not part of the browser script). Add a second server
-   run to the script — start with both packages, restart with only one — and extend the browser matrix with
-   the removal case: a tab that already loaded Movies, then reloads against the shrunk manifest, must show
-   Movies' entry as orphaned/refused rather than absent, and `#contract-proof` must say so in text a driver can
-   assert on. Add the corresponding hermetic cases for slices 1–3. This slice is last because it is the thing
-   that turns slices 1–4 from "code that exists" into "G07.3 exit-gate evidence," exactly as the G07.1 doc's
-   own evidence section (§4) did for that gate.
+4. **An `InstallationHash` early-out in `LoadCoreAsync`, driven by the same event `DescriptorCache` already
+   subscribes to.** This is two small changes that must land together, because either alone leaves S1b (§4.5)
+   unmet. First, inside `LoadCoreAsync`, after the existing contract-identity check and before
+   `RequiredAssemblies` runs, compare the freshly fetched manifest's `InstallationHash` against the last
+   `Compatible` report's `InstallationHash`; when they match, skip the per-assembly preflight/commit loop
+   entirely and return the equivalent report, so a call that finds nothing changed costs one manifest fetch and
+   one validation pass, not N byte hashes. Second, add a small `Arronix.Client/Services` type — subscribed the
+   same way `DescriptorCache.OnReceived` subscribes to `EventKind.PluginStateChanged`
+   (`Services/DescriptorCache.cs:129-135`) — whose handler simply calls the existing, already-serialized
+   `MediaContractLoader.LoadAsync()`. No new manifest-fetching or manifest-validating code is written anywhere
+   outside `LoadCoreAsync`; the event handler is a trigger, not a second reader, which is what keeps this
+   consistent with invariant I-5. Once both pieces exist, a connected tab automatically turns S1b into S2 on
+   every `PluginStateChanged` event, at the cost of one cheap manifest comparison when nothing changed and one
+   full pass (which correctly produces `Orphaned`/`NameAlreadyResident`/`Compatible`, per slice 1) when
+   something did. Targets: `MediaContractLoader.cs` (`LoadCoreAsync`, the new early-out), a new
+   `Arronix.Client/Services` type wired in `ArronixClientServiceCollectionExtensions.cs` the same way
+   `DescriptorCache` is. Proof: a hermetic test proving the early-out skips preflight when `InstallationHash`
+   is unchanged (e.g. by asserting zero byte-route HTTP calls on the second pass) and still runs the full pass
+   when it differs; a hermetic test on the new subscriber proving it drives `LoadAsync` on
+   `PluginStateChanged` and not on unrelated event kinds; and, once slice 1 exists, an end-to-end hermetic
+   narrative that a withdrawal followed by a `PluginStateChanged` event makes `Find()` start refusing the
+   withdrawn name with no manual action.
+5. **Extend the real-browser and hermetic evidence to cover real update acceptance, true removal, and
+   eviction.** `eng/proofs/g07-client-contracts.sh` and the G07.1 browser matrix currently prove install
+   against one static installation only; neither has ever run "a tab loads, the host changes, the same tab
+   reloads" for *any* outcome — update included, per §1 item 4. Extend the script with a second server run
+   against the same package set — first both packages, then restart with a changed build of one and, in a
+   third run, with one entirely absent — and extend the browser matrix with both the update-reload case (U2,
+   proving the hermetic `NameAlreadyResident`/Terminal result in a real browser page, not just a stub
+   `HttpMessageHandler`) and the removal-reload case (R3): a tab that already loaded Movies must show its entry
+   as orphaned/withdrawn rather than absent after reloading against the shrunk manifest, labeled per §2.2's
+   Withheld/Unpublished rule, and `#contract-proof` must say so in text a driver can assert on. Add the
+   corresponding hermetic cases for slices 1–4. This slice is last because it is what turns slices 1–4 from
+   "code that exists" into the specific real-browser exit-gate evidence G07.3 owes for update, removal, stale
+   cache, and stale tab alike — exactly as the G07.1 doc's own evidence section (§4) did for that gate.
 
 ## 7. Explicitly out of scope here, and owner-relevant flags
 
