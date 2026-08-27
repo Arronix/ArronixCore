@@ -1,0 +1,25 @@
+<!-- This proof-only external package owns its build policy. -->
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <!-- The proof runner supplies both paths below the proof artifact root.  This external fixture never
+         owns or cleans source-tree bin/obj directories. -->
+    <BaseOutputPath Condition="'$(G07BProofOutputRoot)' != ''">$(G07BProofOutputRoot)bin/</BaseOutputPath>
+    <BaseIntermediateOutputPath Condition="'$(G07BProofIntermediateRoot)' != ''">$(G07BProofIntermediateRoot)obj/</BaseIntermediateOutputPath>
+    <GenerateAssemblyInfo Condition="'$(G07BProofIntermediateRoot)' != ''">false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute Condition="'$(G07BProofIntermediateRoot)' != ''">false</GenerateTargetFrameworkAttribute>
+    <DefaultItemExcludes Condition="'$(G07BProofOutputRoot)' != ''">$(DefaultItemExcludes);$(G07BProofOutputRoot)**/*</DefaultItemExcludes>
+    <DefaultItemExcludes Condition="'$(G07BProofIntermediateRoot)' != ''">$(DefaultItemExcludes);$(G07BProofIntermediateRoot)**/*</DefaultItemExcludes>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(G07BProofOutputRoot)' != ''">
+    <Compile Remove="$(G07BProofOutputRoot)**/*.cs" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(G07BProofIntermediateRoot)' != ''">
+    <Compile Remove="$(G07BProofIntermediateRoot)**/*.cs" />
+  </ItemGroup>
+</Project>
