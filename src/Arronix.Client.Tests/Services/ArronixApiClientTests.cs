@@ -3,6 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Wire;
 using Arronix.Client.Configuration;
@@ -118,6 +119,69 @@ internal sealed class ArronixApiClientTests
             && request.Body == "{\"catalogId\":\"tmdb:603\"}");
     }
 
+    [Test]
+    public async Task CatalogAddReadsAFullReferenceFromLiteralServerJson()
+    {
+        using var fixture = Fixture(static _ => new HttpResponseMessage(HttpStatusCode.Created)
+        {
+            Content = new StringContent(
+                """
+                {"item":{"ref":{"kind":"movies","level":"movie","id":42},"title":"The Matrix","fields":{}},"catalogId":{"scheme":"tmdb","value":"603"},"inLibrary":true}
+                """,
+                Encoding.UTF8,
+                "application/json"),
+        });
+
+        var added = await fixture.Client.AddCatalogItemAsync(Movies, ExternalId.Of("tmdb", "603"));
+
+        using var _ = new FluentAssertions.Execution.AssertionScope();
+        added.Item.Item.Ref.Should().Be(Movie);
+        added.Item.CatalogId.Should().Be(ExternalId.Of("tmdb", "603"));
+        added.Created.Should().BeTrue();
+    }
+
+    [Test]
+    public async Task ActionRequestsWriteMediaItemIdentifiersAsNumbers()
+    {
+        using var fixture = Fixture(static _ => Json(HttpStatusCode.OK, new ActionResult(true, null, null, null)));
+
+        await fixture.Client.InvokeActionAsync(
+            Movies,
+            "set-monitoring",
+            new ActionRequest { Items = [Collection] });
+
+        var request = fixture.Handler.Requests.Should().ContainSingle().Which;
+        using var body = JsonDocument.Parse(request.Body!);
+        var reference = body.RootElement.GetProperty("items")[0];
+
+        using var _ = new FluentAssertions.Execution.AssertionScope();
+        reference.GetProperty("id").ValueKind.Should().Be(JsonValueKind.Number);
+        reference.GetProperty("id").GetInt64().Should().Be(42);
+    }
+
+    [Test]
+    public async Task ProviderDiscoveryReadsLiteralServerEnumAndIdentifierShapes()
+    {
+        using var fixture = Fixture(request => request.RequestUri!.AbsolutePath.EndsWith("/definitions", StringComparison.Ordinal)
+            ? LiteralJson(
+                """
+                [{"id":7,"provider":"tmdb:movies","family":"cataloger","name":"TMDb","enabled":true,"settings":{},"state":"active"}]
+                """)
+            : LiteralJson(
+                """
+                [{"provider":"tmdb:movies","family":"cataloger","descriptor":{"localId":"movies","name":"TMDb","settings":[]},"pairedMediaKind":"movies","catalogScheme":"tmdb"}]
+                """));
+
+        var providers = await fixture.Client.GetProvidersAsync(ProviderFamily.Cataloger, Movies);
+        var definitions = await fixture.Client.GetProviderDefinitionsAsync();
+
+        using var _ = new FluentAssertions.Execution.AssertionScope();
+        providers.Should().ContainSingle().Which.Family.Should().Be(ProviderFamily.Cataloger);
+        providers[0].PairedMediaKind.Should().Be(Movies);
+        definitions.Should().ContainSingle().Which.Family.Should().Be(ProviderFamily.Cataloger);
+        definitions[0].State.Should().Be(DefinitionState.Active);
+    }
+
     [TestCase(HttpStatusCode.Accepted)]
     [TestCase(HttpStatusCode.NoContent)]
     public async Task CatalogAddRefusesUnexpectedSuccessfulStatuses(HttpStatusCode status)
@@ -215,6 +279,11 @@ internal sealed class ArronixApiClientTests
             JsonSerializer.Serialize(value, ApiJsonOptions.Default),
             Encoding.UTF8,
             "application/json"),
+    };
+
+    private static HttpResponseMessage LiteralJson(string value) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent(value, Encoding.UTF8, "application/json"),
     };
 
     private static ClientFixture Fixture(Func<HttpRequestMessage, HttpResponseMessage> answer)

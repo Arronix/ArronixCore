@@ -15,10 +15,10 @@ namespace Arronix.Client.Serialization;
 /// </para>
 /// <para>
 /// <b>The server must mirror exactly this:</b> web defaults (camel-cased names, case-insensitive reads,
-/// numeric values accepted from strings), nulls omitted when writing, enumerations on the wire as their
-/// numbers, and the converters below. Enumerations stay numeric because every one of them is a
-/// closed vocabulary switched over exhaustively at both ends; a name would add a second spelling of a
-/// value that already has one.
+/// numeric values accepted from strings), nulls omitted when writing, camel-case enumeration names on the
+/// wire (while accepting their legacy numeric form), and the converters below. Enumeration names preserve
+/// their semantic spelling when a member is inserted; the client still switches the closed vocabularies
+/// exhaustively after deserialization.
 /// </para>
 /// <para>
 /// Converters exist only for the identities that cannot survive a round trip without one — an identifier
@@ -65,7 +65,9 @@ public static class ApiJsonOptions
         options.PropertyNameCaseInsensitive = true;
         options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: true));
         options.Converters.Add(new MediaKindIdJsonConverter());
+        options.Converters.Add(new MediaItemIdJsonConverter());
         options.Converters.Add(new MediaLevelIdJsonConverter());
         options.Converters.Add(new PluginIdJsonConverter());
         options.Converters.Add(new ProviderIdJsonConverter());
