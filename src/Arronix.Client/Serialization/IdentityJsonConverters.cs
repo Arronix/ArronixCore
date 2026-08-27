@@ -30,6 +30,21 @@ public sealed class MediaKindIdJsonConverter : JsonConverter<MediaKindId>
     }
 }
 
+/// <summary>Reads and writes a host-assigned media item identifier as its numeric wire value.</summary>
+public sealed class MediaItemIdJsonConverter : JsonConverter<MediaItemId>
+{
+    /// <inheritdoc />
+    public override MediaItemId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        => MediaItemId.FromInt64(reader.GetInt64());
+
+    /// <inheritdoc />
+    public override void Write(Utf8JsonWriter writer, MediaItemId value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        writer.WriteNumberValue(value.Value);
+    }
+}
+
 /// <summary>
 /// Reads and writes a media level identifier as the text it was created from.
 /// </summary>
@@ -42,7 +57,9 @@ public sealed class MediaLevelIdJsonConverter : JsonConverter<MediaLevelId>
 {
     /// <inheritdoc />
     public override MediaLevelId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => MediaLevelId.TryParse(reader.GetString(), out var id) ? id : default;
+        => MediaLevelId.TryParse(reader.GetString(), out var id)
+            ? id
+            : throw new JsonException("A level identifier must be a non-empty string.");
 
     /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, MediaLevelId value, JsonSerializerOptions options)
@@ -100,7 +117,9 @@ public sealed class ProviderIdJsonConverter : JsonConverter<ProviderId>
 {
     /// <inheritdoc />
     public override ProviderId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
-        => ProviderId.TryParse(reader.GetString(), out var id) ? id : default;
+        => ProviderId.TryParse(reader.GetString(), out var id)
+            ? id
+            : throw new JsonException("A provider identifier must be of the form 'extension:local'.");
 
     /// <inheritdoc />
     public override void Write(Utf8JsonWriter writer, ProviderId value, JsonSerializerOptions options)
@@ -124,7 +143,14 @@ public sealed class OrdinalPathJsonConverter : JsonConverter<OrdinalPath>
     public override OrdinalPath Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         var text = reader.GetString();
-        return text is not null && OrdinalPath.TryParse(text, out var path) ? path : OrdinalPath.Empty;
+        if (string.IsNullOrEmpty(text))
+        {
+            return OrdinalPath.Empty;
+        }
+
+        return OrdinalPath.TryParse(text, out var path)
+            ? path
+            : throw new JsonException("An ordinal path must be up to four dot-separated integers.");
     }
 
     /// <inheritdoc />
