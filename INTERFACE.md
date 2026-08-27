@@ -188,11 +188,14 @@ serialized entry point rather than a second manifest reader, and the same trigge
 installation no longer names. Store eviction discards content hashes the verified installation does not
 name, never touches residency, and is refused outright against a manifest that was not proved whole.
 
-One load is one transition. The orphan and owner bookkeeping a pass computes is applied only with the
-report it publishes, so a caller that abandons a load mid-fetch leaves residency and the report describing
-the same installation. A load that finishes raises a change notification, because the consumer showing a
-report is often not the one that asked for it, and the event-driven re-check raises its own only once it
-has swept. Cancellation is the caller's token and nothing else: a
+One load is one transition: the orphan and owner bookkeeping a pass computes is applied only with the report
+it publishes, so a caller that abandons a load mid-fetch leaves residency and the report describing one
+installation. A finished load notifies, because the consumer showing a report is often not the one that
+asked for it. Reading and sweeping are one serialized transaction owned by a single reloader every caller
+shares — an operator's reload and an extension-state event cannot overlap, so no older sweep evicts what a
+newer read just fetched — and it announces inside that same lease, telling each subscriber in turn, so one
+refusal costs the others nothing and no later reload overtakes the notification. Cancellation is the
+caller's token and nothing else: a
 request timeout is an ordinary `Unreachable` or `Unavailable` outcome that replaces the report it failed to
 read, and no boundary in this path contains an unsound process.
 

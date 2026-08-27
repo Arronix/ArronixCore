@@ -377,7 +377,7 @@ public sealed class MediaContractLoaderTests
         {
             var manifest = path.EndsWith("client-contracts", StringComparison.Ordinal);
 
-            // No token of this caller's is cancelled, so HttpClient reads this as its own timeout.
+            // No token of this caller's is canceled, so HttpClient reads this as its own timeout.
             return stall && !manifest ? throw new TaskCanceledException() : manifest
                 ? Json(Manifest(Truthful()))
                 : Bytes(_fixture);

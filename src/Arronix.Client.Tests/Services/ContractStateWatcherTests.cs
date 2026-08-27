@@ -14,34 +14,36 @@ using FluentAssertions.Execution;
 namespace Arronix.Client.Tests.Services;
 
 /// <summary>
-/// What makes a connected tab re-read the installation, what that re-read does, and what must not trigger it.
+/// Which events make a connected tab reload the installation, and which must not.
 /// </summary>
 /// <remarks>
 /// A tab that learns of a withdrawal late goes on serving a contract this host does not admit, and a tab
-/// that re-reads on unrelated traffic is polling. Both are failures, in opposite directions.
+/// that reloads on unrelated traffic is polling. Both are failures, in opposite directions. What a reload
+/// then does, and in what order, belongs to the reloader every caller shares.
 /// </remarks>
 [TestFixture]
 internal sealed class ContractStateWatcherTests
 {
-    private const string Dead = "CCCC000000000000000000000000000000000000000000000000000000000003";
-
-    /// <summary>Only an extension-state event drives a re-read, it sheds bytes, and disposing stops it.</summary>
+    /// <summary>Only an extension-state event reloads, and disposing stops even that.</summary>
     /// <remarks>
-    /// Every count is taken after an ordinary <c>LoadAsync</c>, which queues behind whatever the handler
-    /// already started on the loader's own gate. That makes the count a barrier rather than a race: no
-    /// waiting, no sleeping, and an event that wrongly triggered a read would have completed before it.
+    /// Every count is taken after an ordinary reload, which queues behind whatever the handler already
+    /// started on the reloader's own gate. That makes the count a barrier rather than a race: no waiting,
+    /// no sleeping, and an event that wrongly triggered a reload would have completed before it.
     /// </remarks>
     [Test]
-    public async Task OnlyAnExtensionStateChangeMakesTheLoaderReadTheInstallationAgain()
+    public async Task OnlyAnExtensionStateChangeReloadsTheInstallation()
     {
         var host = new CountingHost();
         using var http = host.Connect();
-        var store = new InMemoryContractStore(Dead);
-        var loader = new MediaContractLoader(http, store.Open());
+        var store = new InMemoryContractStore().Open();
+
+        var reloader = new ContractReloader(
+            new MediaContractLoader(http, store),
+            new ContractStoreJanitor(store));
 
         var options = new ClientOptions { ServerAddress = new Uri("https://host.invalid/") };
         await using var events = new EventStream(options, new HostConnectivity(http, options));
-        var watcher = new ContractStateWatcher(loader, new ContractStoreJanitor(store.Open()), events);
+        var watcher = new ContractStateWatcher(reloader, events);
 
         foreach (var kind in new[]
                  {
@@ -55,118 +57,24 @@ internal sealed class ContractStateWatcherTests
             events.Publish(Envelope(kind));
         }
 
-        await loader.LoadAsync();
-
-        using (new AssertionScope())
-        {
-            host.ManifestReads.Should().Be(1, "nothing but an extension changing state can change what is installed");
-            store.Keys.Should().Equal(new[] { Dead }, "no re-check ran, so nothing was swept");
-        }
+        await reloader.ReloadAsync();
+        host.ManifestReads.Should().Be(1, "nothing but an extension changing state can change what is installed");
 
         events.Publish(Envelope(EventKind.PluginStateChanged));
 
-        await loader.LoadAsync();
-
-        using (new AssertionScope())
-        {
-            host.ManifestReads.Should().Be(3, "the state change drove one read, and this call is the other");
-            store.Keys.Should().BeEmpty(
-                "the one path that runs with nobody present must still shed an address this host does not name");
-            watcher.LastFailure.Should().BeNull();
-        }
+        await reloader.ReloadAsync();
+        host.ManifestReads.Should().Be(3, "the state change drove one reload, and this call is the other");
 
         watcher.Dispose();
         events.Publish(Envelope(EventKind.PluginStateChanged));
 
-        await loader.LoadAsync();
+        await reloader.ReloadAsync();
 
         using var assertions = new AssertionScope();
 
         host.ManifestReads.Should().Be(4, "a disposed watcher is unsubscribed, so only this call read");
         host.ByteRequests.Should().Be(0, "an installation offering nothing has nothing to fetch");
-    }
-
-    /// <summary>
-    /// A re-check that fails is contained and stated, never contained quietly.
-    /// </summary>
-    /// <remarks>
-    /// What reaches the watcher's boundary is a defect, because the loader names every outcome it can
-    /// describe. Here a consumer's own handler throws; nothing awaits an event handler, so a failure
-    /// swallowed there would have nowhere to be observed at all.
-    /// </remarks>
-    [Test]
-    public async Task AFailedRecheckIsContainedAndStated()
-    {
-        var host = new CountingHost();
-        using var http = host.Connect();
-        var store = new InMemoryContractStore();
-        var loader = new MediaContractLoader(http, store.Open());
-
-        var options = new ClientOptions { ServerAddress = new Uri("https://host.invalid/") };
-        await using var events = new EventStream(options, new HostConnectivity(http, options));
-        using var watcher = new ContractStateWatcher(loader, new ContractStoreJanitor(store.Open()), events);
-
-        var stated = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        watcher.Rechecked += (_, _) => stated.TrySetResult();
-        loader.ReportChanged += Refuse;
-
-        events.Publish(Envelope(EventKind.PluginStateChanged));
-
-        await stated.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        using var assertions = new AssertionScope();
-
-        watcher.LastFailure.Should().Contain("a consumer refused the report");
-        loader.Report.Should().NotBeNull("the load itself succeeded; only the notification failed");
-
-        loader.ReportChanged -= Refuse;
-
-        static void Refuse(object? sender, EventArgs e)
-            => throw new InvalidOperationException("a consumer refused the report");
-    }
-
-    /// <summary>
-    /// A consumer told the re-check is done sees the store the re-check left behind.
-    /// </summary>
-    /// <remarks>
-    /// The loader announces its own load, which happens before the sweep. A page refreshing on that alone
-    /// would read the evicted address as still held, and no later notification would correct it.
-    /// </remarks>
-    [Test]
-    public async Task AnAutomaticReloadSweepsBeforeItSaysItIsDone()
-    {
-        var host = new CountingHost();
-        using var http = host.Connect();
-        var store = new InMemoryContractStore(Dead);
-        var loader = new MediaContractLoader(http, store.Open());
-
-        var options = new ClientOptions { ServerAddress = new Uri("https://host.invalid/") };
-        await using var events = new EventStream(options, new HostConnectivity(http, options));
-        using var watcher = new ContractStateWatcher(loader, new ContractStoreJanitor(store.Open()), events);
-
-        // What a consumer would render, read at each notification it is offered.
-        var onLoad = new List<string[]>();
-        var onRecheck = new List<string[]>();
-        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        loader.ReportChanged += (_, _) => onLoad.Add([.. store.Keys]);
-        watcher.Rechecked += (_, _) =>
-        {
-            onRecheck.Add([.. store.Keys]);
-            finished.TrySetResult();
-        };
-
-        events.Publish(Envelope(EventKind.PluginStateChanged));
-        await finished.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        using var assertions = new AssertionScope();
-
-        onLoad.Should().ContainSingle().Which.Should().Equal(
-            new[] { Dead },
-            "the load finishes before the sweep, so this notification cannot be the last word");
-        onRecheck.Should().ContainSingle().Which.Should().BeEmpty(
-            "a consumer told the re-check is done must not still be showing an evicted address");
-        watcher.LastFailure.Should().BeNull();
+        reloader.LastFailure.Should().BeNull();
     }
 
     private static EventEnvelope Envelope(EventKind kind)

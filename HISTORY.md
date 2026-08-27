@@ -48,7 +48,20 @@ failure G07.3's exit gate names, except worse than a rendering bug: nothing down
   it, and a page that snapshots it once would render an installation the loader has already stopped serving.
   The watcher raises its own signal after it has swept, on success and on a contained failure alike: the
   loader's notification arrives before the sweep, so a consumer refreshing on that alone would read an
-  evicted address as still held with nothing afterwards to correct it.
+  evicted address as still held with nothing afterwards to correct it. Its three steps are contained
+  separately, and it tells each subscriber in turn: an observer refusing one step is that observer's defect,
+  not a reason to keep bytes this host no longer names, to withhold the signal, or to deny it to the next
+  subscriber. And because two notifications arrive per reload and their store reads do not complete in the
+  order they started, only the newest refresh commits — an older read landing last would put the evicted
+  address back on the page.
+- **One ordering authority, not one per caller.** The loader serializes its own reads and nothing else, so a
+  sweep computed from an older read could finish after a newer one and evict exactly the addresses the newer
+  installation had just fetched. Two entry paths reach it — an operator's button and a tab reacting to an
+  extension changing state — and a gate private to either would have left the race between them. One
+  `ContractReloader` now owns load, sweep and announcement as a single serialized transaction, and both
+  callers go through it. The announcement is inside the lease: releasing first would let the next reload
+  read, sweep and record over the one still telling its subscribers, so consumers would learn of two
+  installations out of order. The watcher is a filter again and owns nothing.
 - **Cancellation is the caller's token and nothing else.** A request timeout arrives as the same
   `OperationCanceledException` and had been propagating as an abandoned load, leaving the previous report
   standing as this page's description of an installation it had just failed to read. It is now an ordinary
@@ -56,14 +69,17 @@ failure G07.3's exit gate names, except worse than a rendering bug: nothing down
   exhausted heap or stack, corrupted memory or a structured native failure any more, and the watcher — which
   has no caller to return anything to — states every failure it does contain rather than swallowing it.
 
-Fifteen cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
+Nineteen cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
 and no fetch, the withdraw-then-replace terminal, the three withdrawn-address answers, selective eviction
 with live-hash preservation and the unreadable-manifest refusal, the state-change filter with its eviction,
-its disposal, its stated failure and its sweep-before-signal ordering, and two witnesses for abandonment — a timeout that becomes an outcome,
-and a cancelled load that leaves residency and the report describing one installation. Mutation: dropping
+its disposal, the serialized transaction across both entry paths, its in-lease announcement, its refusal by
+an observer and by a subscriber, and the newest-wins refresh guard, plus two witnesses for abandonment —
+a timeout that becomes an outcome, and a canceled load that leaves residency and the report describing one
+installation. Mutation: dropping
 the orphan flag from `Find`, trusting the installation hash without checking what was published, skipping
 reconciliation, applying the bookkeeping before the cancellable work, dropping the watcher's sweep, and
-signalling before it each fail. Removing the early-out
+announcing before it, letting a refused notification abort it, accepting an overtaken refresh, announcing
+outside the lease, and dropping serialization altogether each fail. Removing the early-out
 *entirely* fails nothing, which is recorded as debt rather than dressed up — the reuse path it precedes
 already returns before any fetch or hash.
 

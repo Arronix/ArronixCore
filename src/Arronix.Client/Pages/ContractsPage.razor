@@ -7,8 +7,7 @@
 @implements IDisposable
 @inject MediaContractLoader Contracts
 @inject ContractStore Store
-@inject ContractStoreJanitor Janitor
-@inject ContractStateWatcher Watcher
+@inject ContractReloader Reloader
 @*
     What this browser verified, what it loaded, and what the host said each of them should be.
 
@@ -76,10 +75,10 @@ else
             <p class="panel-detail tone-problem" id="contract-failure">@failure</p>
         }
 
-        @if (Watcher.LastFailure is { Length: > 0 } contained)
+        @if (Reloader.LastFailure is { Length: > 0 } contained)
         {
             <p class="panel-detail tone-problem" id="contract-recheck-failure">
-                The last automatic re-check failed: @contained
+                The last reload failed: @contained
             </p>
         }
     </section>
@@ -239,6 +238,8 @@ else
 }
 
 @code {
+    private readonly NewestWins _refreshes = new();
+
     private ContractLoadReport? _report;
     private IReadOnlyList<string> _storedKeys = [];
     private bool _busy;
@@ -254,11 +255,11 @@ else
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
-        // A load this page did not start still changes what it is showing. ReportChanged covers every
-        // load; the watcher's own signal comes after it has swept, which is the only point at which the
-        // stored-key count below is the one this installation left behind.
+        // A reload this page did not start still changes what it is showing. ReportChanged covers a read
+        // by any other consumer; the reloader's own signal comes after it has swept, which is the only
+        // point at which the stored-key count below is the one this installation left behind.
         Contracts.ReportChanged += OnLoaded;
-        Watcher.Rechecked += OnLoaded;
+        Reloader.Completed += OnLoaded;
 
         _report = Contracts.Report;
         await ReloadAsync();
@@ -268,16 +269,32 @@ else
     public void Dispose()
     {
         Contracts.ReportChanged -= OnLoaded;
-        Watcher.Rechecked -= OnLoaded;
+        Reloader.Completed -= OnLoaded;
     }
 
     private void OnLoaded(object? sender, EventArgs e) => _ = RefreshAsync();
 
+    /// <remarks>
+    /// An automatic reload offers two notifications — the load, then the sweep that follows it — and each
+    /// refresh reads the store behind an await. Without a number, the older read can land last and put the
+    /// evicted address back on the page.
+    /// </remarks>
     private async Task RefreshAsync()
     {
-        _report = Contracts.Report;
-        _storedKeys = await Store.KeysAsync();
-        await InvokeAsync(StateHasChanged);
+        var request = _refreshes.Request();
+        var keys = await Store.KeysAsync();
+
+        await InvokeAsync(() =>
+        {
+            if (!_refreshes.IsCurrent(request))
+            {
+                return;
+            }
+
+            _report = Contracts.Report;
+            _storedKeys = keys;
+            StateHasChanged();
+        });
     }
 
     private static bool IsResident(LoadedContractAssembly assembly)
@@ -302,9 +319,9 @@ else
 
         try
         {
-            // Bytes only. Held addresses this installation does not name cost storage and buy nothing, and
-            // discarding one can only make a later load slower, never wrong.
-            await Janitor.SweepAsync(await Contracts.LoadAsync());
+            // Through the one reloader, so this button cannot overlap an automatic reload and leave an
+            // older sweep to evict what the newer installation just fetched.
+            await Reloader.ReloadAsync();
             await RefreshAsync();
         }
         finally

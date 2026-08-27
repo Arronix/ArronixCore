@@ -213,12 +213,14 @@ coverage.
   hashes the verified installation does not name.
 - One client load is one transition. Orphan and owner bookkeeping is computed before the cancellable fetches
   and applied only with the report it publishes, so an abandoned load leaves residency and the report
-  describing the same installation; a completed load raises a change notification, because the consumer
-  showing a report is often not the one that asked for it, and the event-driven re-check announces itself
-  only after it has swept. Cancellation means the caller's own token: a
-  request timeout is an ordinary outcome that replaces the report it failed to read, and no boundary in the
-  client's contract path contains an exhausted heap or stack, corrupted memory or a structured native
-  failure.
+  describing one installation. A completed load notifies, because the consumer showing a report is often not
+  the one that asked for it. Load, sweep and announcement are one serialized transaction owned by a single
+  reloader every caller shares, so an operator's reload and an extension-state event cannot overlap and no
+  older sweep can evict what a newer read just fetched; each step is contained separately and each
+  subscriber is told in turn, inside the same lease. A consumer refreshing on both notifications commits
+  only its newest read. Cancellation means the caller's own token — a request timeout is an ordinary outcome that
+  replaces the report it failed to read — and no boundary in the client's contract path contains an
+  exhausted heap or stack, corrupted memory or a structured native failure.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -331,8 +333,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-27) reports 3,212 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,514 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,216 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,518 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

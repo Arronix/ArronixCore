@@ -59,6 +59,10 @@ public static class ArronixClientServiceCollectionExtensions
         services.TryAddSingleton<MediaContractLoader>();
         services.TryAddSingleton<ContractStoreJanitor>();
 
+        // One ordering authority for load and sweep together, shared by the page and the watcher: two
+        // callers with their own gates would still let an older sweep land after a newer read.
+        services.TryAddSingleton<ContractReloader>();
+
         // Its value is its subscription, so something has to resolve it. Program does, before the stream
         // opens, so no extension-state event arrives with nothing listening.
         services.TryAddSingleton<ContractStateWatcher>();

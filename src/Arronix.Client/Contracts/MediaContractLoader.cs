@@ -99,9 +99,8 @@ public sealed class MediaContractLoader
 
     /// <summary>Occurs when a load has finished and <see cref="Report"/> is a new one.</summary>
     /// <remarks>
-    /// Not every load is started by whoever is showing the result: a tab re-reads on its own when an
-    /// extension changes state, and a consumer holding the previous report would go on showing an
-    /// installation this loader has already stopped serving.
+    /// Not every load is started by whoever is showing the result, and a consumer holding the previous
+    /// report would go on showing an installation this loader has already stopped serving.
     /// </remarks>
     public event EventHandler? ReportChanged;
 
