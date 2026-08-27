@@ -46,7 +46,7 @@ packed package, restored and compiled a partial typed media declaration with zer
 
 That proof is real but narrow, and the G06 record says so directly: "G07A retains the stronger permanent
 proof of packaging, installation, admission, exact browser type identity, and rendering in an unmodified
-Host and Client." Three gaps separate the two:
+Host and Client." Four gaps separate the two:
 
 1. **Not retained.** No external-consumer project exists anywhere in this repository or its solution
    (`Arronix.sln` lists 34 projects, none named for an external fixture). The G06 proof was built, exercised,
@@ -58,9 +58,20 @@ Host and Client." Three gaps separate the two:
    type the consumer's typed media kind closes is the type Host's registry actually holds — the G03-style
    `typeof(...)` identity proof, but for a package built with no repository knowledge at all.
 3. **No provider, no browser.** G06 exercised a media declaration only. G07A additionally requires "one typed
-   provider" (a cataloger/curator pairing, admitted and quarantine-checked per G04/G05, but never ingested —
-   see §6) and a browser-side load of the consumer's client-safe contract assembly through the unmodified
-   `Arronix.Client`, which G06 never attempted.
+   provider" — a cataloger closing `ICataloger<TItem>` against the shipped domain, admitted and
+   quarantine-checked per G04/G05, but never ingested (see §6) — and a browser-side load of the consumer's
+   client-safe contract assembly through the unmodified `Arronix.Client`, which G06 never attempted. `ICurator`
+   is not required for this proof (see §2); the roadmap's own phrase is "one typed provider," singular, and
+   G04's pairing check is already proved per-family and per-contract (`docs/research/g04/provider-pairing-contract.md`
+   §1.2–1.3), so one cataloger exercises it completely.
+4. **No cross-package pairing.** A single combined package that both declares the media kind and implements
+   its own cataloger never crosses a package boundary at all — Host would admit one package whose kind and
+   provider arrive together, which is not what G04's admission proof or G03's shared-CLR-identity proof are
+   about. Both existing precedents split this on purpose: G03's fixtures are "two independent fixture
+   dependants" sharing one admitted `Video` identity, and G05's `Arronix.Provider.Tmdb` is packaged, versioned,
+   and admitted separately from `Arronix.Plugin.Movies`, closing `ICataloger<Movie>` against a domain it
+   never authored. G07A must reproduce that shape with packages built from outside the repository, or it
+   proves nothing about independent provider pairing that a combined package doesn't already trivially satisfy.
 
 G07A is therefore not a bigger G06 test; it is the first time any extension — first-party or not — is
 proved end to end from `dotnet pack` through a real browser tab without ever touching this repository's
@@ -68,37 +79,90 @@ projects, sources, or internal visibility grants.
 
 ## 2. Topology
 
-The consumer lives entirely outside `Arronix.sln`. It is a standalone directory (not necessarily committed
-under `src/`, since it must prove it needs no repository project reference — a location such as
-`eng/proofs/fixtures/g07a-external-consumer/` keeps it discoverable without adding it to the solution) that
-references only packed artifacts:
+The default topology is **two independently built external packages**, each outside `Arronix.sln` and each
+built with no knowledge of the other's source — only of the other's packed, shipped output. A combined
+package that declares the kind and implements its own cataloger in one assembly is explicitly rejected as the
+default: it never exercises admission across a package boundary, so it cannot stand in for the pairing proof
+G04 establishes (`docs/research/g04/provider-pairing-contract.md` §1.2, "the pairing is read from the contract
+the implementation implements" — a claim about *a* registration's own package, never about two packages
+agreeing). The two packages mirror the real split between `Arronix.Media.Movies`/`Arronix.Plugin.Movies` and
+the independently versioned `Arronix.Provider.Tmdb`, with one further split the first-party pair does not
+need: the media package itself is two assemblies, because the provider package must compile against a
+*shipped* domain type, not a project sibling.
+
+**Package 1 — the media package** (two projects, one package; not necessarily committed under `src/`, since
+it must prove it needs no repository project reference — a location such as
+`eng/proofs/fixtures/g07a-media/` keeps it discoverable without adding it to the solution):
 
 ```
-external consumer (outside Arronix.sln)
-├── ExternalKind.csproj          -- PackageReference: Arronix.Sdk, arronix.format.video (or an equally
-│                                    trivial owned format — see §7), no ProjectReference, no InternalsVisibleTo
-├── ExternalKind.cs               -- partial class : MediaType<TItem,TTarget,TRelease,TParser>
-├── ExternalKindProvider.cs       -- ICataloger<TItem> / ICurator<TItem>, or a combined class implementing both
-├── ExternalKindModule.cs         -- IPluginModule: AddMediaType<...>(), AddCataloger<...>(descriptor), AddCurator<...>(descriptor)
-└── plugin.json                   -- schemaVersion 1, id distinct from movies/tmdb/arronix.format.video,
-                                      entryAssembly + contractAssemblies + clientContracts + capabilities
+ExternalKind.Domain.csproj    -- PackageReference: Arronix.Abstractions only. No Sdk, no analyzer, no
+│                                 generator: this mirrors Arronix.Media.Movies exactly, which "declares no
+│                                 MediaType and takes no analyzer" for the same reason — a definition here
+│                                 would put its generated reader delegates on this assembly's shared cadence.
+├── ExternalItem.cs             -- the nominal item type, e.g. ExternalItem : MediaItem<ExternalItem,...>
+
+ExternalKind.csproj            -- PackageReference: Arronix.Sdk, the packed ExternalKind.Domain package
+│                                 (§3), arronix.format.video (or an equally trivial owned format — see §7).
+│                                 No ProjectReference, no InternalsVisibleTo.
+├── ExternalKind.cs              -- partial class : MediaType<ExternalItem,ReleaseTarget<ExternalItem>,
+│                                    Release<Video>,ExternalKindParser>
+├── ExternalKindParser.cs        -- static IReleaseParser<Release<Video>>
+├── ExternalKindModule.cs        -- IPluginModule: AddMediaType<ExternalKind>() only — no provider
+│                                    registration lives in this package
+└── plugin.json                  -- id "externalkind" (or similar, distinct from movies/tmdb/
+                                     arronix.format.video), entryAssembly ExternalKind.dll,
+                                     contractAssemblies [ExternalKind.Domain.dll],
+                                     clientContracts [ExternalKind.Domain.dll], capabilities ["media-kind"]
 ```
 
-This mirrors the shape every first-party plugin already has (`src/Arronix.Plugin.Movies`,
-`src/Arronix.Provider.Tmdb`, `src/Arronix.Format.Video`) — the point of G07A is that the *only* difference
-from a first-party extension is where it was built and what it was allowed to reference.
+**Package 2 — the provider package** (one project, built and versioned independently of Package 1, in a
+sibling location such as `eng/proofs/fixtures/g07a-provider/`):
 
-Runtime topology follows the G07.1 precedent in `eng/proofs/g07-client-contracts.sh` exactly, with one
-package added to the same installation:
+```
+ExternalKindCataloger.csproj  -- PackageReference: Arronix.Abstractions, the same packed ExternalKind.Domain
+│                                 package Package 1 published (§3) — with its runtime asset excluded from
+│                                 this project's own publish output (the NuGet equivalent of the `Private="false"`
+│                                 ProjectReference Arronix.Provider.Tmdb uses against Arronix.Media.Movies),
+│                                 so this package never carries a private copy of a type it must share by
+│                                 exact identity. No Arronix.Sdk: a provider registers nothing the generator
+│                                 projects, exactly as Arronix.Provider.Tmdb takes no analyzer reference.
+├── ExternalKindCataloger.cs    -- : ICataloger<ExternalItem> only — no ICurator (see below)
+├── ExternalKindCatalogerModule.cs -- IPluginModule: AddCataloger<ExternalKindCataloger>(descriptor) only
+└── plugin.json                  -- id "externalkind.cataloger" (distinct from Package 1's id), entryAssembly
+                                     ExternalKindCataloger.dll, no contractAssemblies (nothing to share),
+                                     dependencies [{ "package": "externalkind", "range": "..." }],
+                                     capabilities ["metadata"]
+```
+
+**No `ICurator` in the default proof.** The roadmap's own phrase is "one typed provider," and G04's owner
+decision (`docs/owner-ledger.md` O-40; `docs/research/g04/media-item-identity.md`) already settled what a
+curator would have to do if one were added later: it returns `CuratedReference` values naming a catalog
+identity in the cataloger's own scheme, never an item, and it never owns identity — Host alone assigns
+`MediaItemId` at materialization. A curator adds no new admission mechanism `ICataloger<TItem>` does not
+already exercise (both close through the same `IClosedCataloger`/`IClosedCurator` family-marker path per
+`docs/research/g04/provider-pairing-contract.md` §1.2); it would be additional package/proof surface for the
+same proof G07A already gets from one cataloger. If a curator is added to this fixture in a later revision, it
+must return catalog-qualified references exactly as above and must not be given, or appear to have, its own
+notion of durable identity.
+
+This mirrors the shape every first-party plugin already has (`src/Arronix.Media.Movies` +
+`src/Arronix.Plugin.Movies`, `src/Arronix.Provider.Tmdb`, `src/Arronix.Format.Video`) — the point of G07A is
+that the *only* difference from a first-party split is where each package was built and what it was allowed
+to reference.
+
+Runtime topology follows the G07.1 precedent in `eng/proofs/g07-client-contracts.sh` exactly, with two
+packages — not one — added to the same installation:
 
 ```
 artifacts/g07a/
 ├── packages/
 │   ├── arronix.format.video/     -- dotnet publish of the in-repo project (unchanged G07.1 staging)
-│   ├── movies/                   -- optional: only needed if the consumer's own kind is not sufficient
+│   ├── movies/                   -- optional: only needed if the two external packages are not sufficient
 │   │                                 alone to exercise a populated, non-empty installation
-│   └── <external-id>/            -- dotnet publish of the OUT-OF-REPO consumer, built from its own
-│                                     restored/packed dependency graph, copied (not built) into place
+│   ├── externalkind/              -- dotnet publish of Package 1 (media), built from its own
+│   │                                 restored/packed dependency graph, copied (not built) into place
+│   └── externalkind.cataloger/    -- dotnet publish of Package 2 (provider), independently built and
+│                                     staged, admitted after Package 1 per its declared dependency edge
 ├── client/                       -- dotnet publish of the unmodified Arronix.Client (no proof-only flags)
 └── evidence/                     -- server.log, manifest.json, plugins.json, browser #contract-proof text
 ```
@@ -111,12 +175,13 @@ already proves the real composition is sufficient.
 ## 3. Commands
 
 A retained proof script (`eng/proofs/g07a-external-consumer.sh`, following the header/option conventions of
-`eng/proofs/g07-client-contracts.sh`) needs three phases the existing script does not have, run before the
-existing staging/serving sequence. Every command below resolves `dotnet` the same way
+`eng/proofs/g07-client-contracts.sh`) needs four phases the existing script does not have, run before the
+existing staging/serving sequence, and the fourth (packing and restoring the provider) strictly depends on the
+domain package the second phase produces. Every command below resolves `dotnet` the same way
 `eng/proofs/g07-client-contracts.sh` already does — `dotnet_command=${DOTNET_COMMAND:-dotnet}` — and every
 invocation shown here is written against that variable, never bare `dotnet`, per §0:
 
-1. **Pack the consumer's dependencies from this repository**, into a throwaway local feed:
+1. **Pack this repository's own dependencies**, into a throwaway local feed:
    ```bash
    "$dotnet_command" pack src/Arronix.Sdk/Arronix.Sdk.csproj -c Release -o "$feed_root"
    "$dotnet_command" pack src/Arronix.Abstractions/Arronix.Abstractions.csproj -c Release -o "$feed_root"
@@ -126,33 +191,64 @@ invocation shown here is written against that variable, never bare `dotnet`, per
    never packed independently (`IsPackable=false`) — it is embedded as the SDK package's analyzer asset, so
    packing the SDK is sufficient; the generator project itself is never a restore target.
 
-2. **Restore and build the consumer against only that feed, with an isolated package cache**, so the proof
-   cannot silently succeed by falling back to a locally installed copy or a warm global cache:
+2. **Pack Package 1's domain project into the same feed, then restore and build Package 1 against it**, with
+   an isolated package cache so the proof cannot silently succeed by falling back to a locally installed copy
+   or a warm global cache:
    ```bash
-   "$dotnet_command" restore "$consumer_project" \
+   "$dotnet_command" pack "$media_domain_project" -c Release -o "$feed_root"
+   "$dotnet_command" restore "$media_entry_project" \
      --source "$feed_root" --source https://api.nuget.org/v3/index.json \
      --packages "$isolated_nuget_cache"
-   "$dotnet_command" build "$consumer_project" -c Release --no-restore -warnaserror
+   "$dotnet_command" build "$media_entry_project" -c Release --no-restore -warnaserror
    ```
-   nuget.org stays reachable only for the .NET SDK's own implicit packages; every `Arronix.*` reference must
-   resolve from `$feed_root`. A `NuGet.Config` scoped to the fixture directory (this repository currently
-   has none — restore relies on ambient machine configuration) is cleaner than repeated `--source` flags and
-   makes "clean package cache" mean the same thing on every run. Because the consumer targets `net11.0` (it
-   closes `MediaType<...>` from `Arronix.Sdk`, which itself targets `net11.0`), a restore or build run under
-   the wrong default SDK does not quietly retarget the project — the pinned `global.json` this consumer's own
-   directory should carry, mirroring the repository root's, makes `rollForward: disable` refuse an unpinned
-   `dotnet` outright rather than let it downgrade.
+   `ExternalKind.Domain` must be packed and present in `$feed_root` *before* this restore, because
+   `ExternalKind.csproj` takes it as an ordinary `PackageReference`, not a project sibling reference — that
+   restore is the first point at which "the consumer needs no project reference" is actually exercised for the
+   cross-package edge, not merely for the SDK edge G06 already proved.
 
-3. **Pack and publish the consumer's own extension**, the same way `eng/proofs/g07-client-contracts.sh`
-   publishes first-party packages — `"$dotnet_command" publish --configuration Release --no-build --output
-   artifacts/g07a/packages/<external-id>` — so the staged payload is the consumer's real publish closure, not
-   a hand-copied `bin/` directory.
+3. **Restore and build Package 2 against the same feed**, which by now holds both the repository's packages
+   and Package 1's domain package:
+   ```bash
+   "$dotnet_command" restore "$provider_project" \
+     --source "$feed_root" --source https://api.nuget.org/v3/index.json \
+     --packages "$isolated_nuget_cache"
+   "$dotnet_command" build "$provider_project" -c Release --no-restore -warnaserror
+   ```
+   `ExternalKindCataloger.csproj`'s `PackageReference` to `ExternalKind.Domain` must exclude the runtime asset
+   from this project's own build/publish output (`<ExcludeAssets>runtime</ExcludeAssets>` or equivalent) — the
+   NuGet-restore analogue of the `Private="false"` `Arronix.Provider.Tmdb` already sets on its `ProjectReference`
+   to `Arronix.Media.Movies`. Without it, Package 2's own publish output would carry a second copy of
+   `ExternalKind.Domain.dll`, which G03's private-copy refusal exists precisely to catch at admission
+   ("a package carrying a private copy of an admitted contract... is refused with both module identifiers and
+   both content hashes") — a passing local build would then fail loudly only once the two packages are staged
+   together in phase 4, which is a worse place to discover a manifest/project mistake than the restore that
+   caused it.
+
+   Both restores in phases 2 and 3 target `net11.0` throughout (Package 1's entry project through `Arronix.Sdk`,
+   Package 2 directly); a `global.json` in each project's own directory, mirroring the repository root's,
+   keeps `rollForward: disable` refusing an unpinned `dotnet` outright rather than letting either restore or
+   build silently retarget. A `NuGet.Config` scoped to each fixture directory (this repository currently has
+   none — restore relies on ambient machine configuration) is cleaner than repeated `--source` flags and makes
+   "clean package cache" mean the same thing on every run.
+
+4. **Pack and publish both extensions**, the same way `eng/proofs/g07-client-contracts.sh` publishes
+   first-party packages:
+   ```bash
+   "$dotnet_command" publish "$media_entry_project" --configuration Release --no-build \
+     --output artifacts/g07a/packages/externalkind
+   "$dotnet_command" publish "$provider_project" --configuration Release --no-build \
+     --output artifacts/g07a/packages/externalkind.cataloger
+   ```
+   so each staged payload is that package's real publish closure, not a hand-copied `bin/` directory — and
+   Package 2's staged folder is the concrete evidence that phase 3's `ExcludeAssets` actually worked: it must
+   contain `Arronix.Abstractions.dll` and its own entry assembly, and must not contain `ExternalKind.Domain.dll`.
 
 From there, the script reuses G07.1's pattern verbatim, with the same `$dotnet_command` variable and the same
 invocation, `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/proofs/g07a-external-consumer.sh`:
-build/publish the unmodified client, start `Arronix.Api` against the combined `packages/` folder, assert over
-HTTP that the consumer's package reached `Active` and offers its client facet, then hand off to a real
-browser (`--serve`, Playwright or manual) to load the client-safe contract and read `#contract-proof`.
+build/publish the unmodified client, start `Arronix.Api` against the combined `packages/` folder — now holding
+both external packages plus `arronix.format.video` (and, optionally, `movies`) — assert over HTTP that both
+packages reached `Active` in dependency order and that Package 1 offers its client facet, then hand off to a
+real browser (`--serve`, Playwright or manual) to load the client-safe contract and read `#contract-proof`.
 
 ## 4. Artifact lifecycle
 
@@ -162,19 +258,22 @@ discipline (`rm -rf "$proof_root"` at the top of the script, nothing written out
 
 | Artifact | Produced by | Lives under | Regenerated |
 | --- | --- | --- | --- |
-| Local package feed (`.nupkg` files) | `"$dotnet_command" pack` of Sdk/Abstractions/(format) | `artifacts/g07a/feed/` | every run |
-| Isolated NuGet cache | `"$dotnet_command" restore --packages` | `artifacts/g07a/nuget-cache/` | every run |
-| Consumer build output | `"$dotnet_command" build`/`publish` of the out-of-repo project | consumer's own `bin`/`obj`, or redirected via `--output` | every run; `obj/` must be cleared first, per the G07.1 trimming lesson about stale Blazor/publish state |
-| Staged package payloads | `"$dotnet_command" publish --no-build --output` per package | `artifacts/g07a/packages/<id>/` | every run |
+| Local package feed (`.nupkg` files) | `"$dotnet_command" pack` of Sdk/Abstractions/(format) **and** of Package 1's domain project (`ExternalKind.Domain`) | `artifacts/g07a/feed/` | every run |
+| Isolated NuGet cache | `"$dotnet_command" restore --packages`, shared by both external packages' restores | `artifacts/g07a/nuget-cache/` | every run |
+| Package 1 build output | `"$dotnet_command" build`/`publish` of the out-of-repo media entry project | Package 1's own `bin`/`obj`, or redirected via `--output` | every run; `obj/` must be cleared first, per the G07.1 trimming lesson about stale Blazor/publish state |
+| Package 2 build output | `"$dotnet_command" build`/`publish` of the out-of-repo provider project, only after Package 1's domain nupkg is in the feed | Package 2's own `bin`/`obj`, or redirected via `--output` | every run, `bin`/`obj` cleared first |
+| Staged package payloads | `"$dotnet_command" publish --no-build --output` per package, two external packages plus first-party ones | `artifacts/g07a/packages/<id>/` | every run |
 | Client publish | `"$dotnet_command" publish` of unmodified `Arronix.Client` | `artifacts/g07a/client/` | every run, `bin`/`obj` cleared first |
 | Server process + logs | `"$dotnet_command" run` against `Arronix.Api` | `artifacts/g07a/evidence/server.log` | every run |
 | HTTP evidence | `curl` against `/api/v1/client-contracts`, `/api/v1/plugins` | `artifacts/g07a/evidence/*.json` | every run |
 | Browser report | operator/Playwright reading `#contract-proof` | `artifacts/g07a/evidence/browser-*.txt` (recommended, not yet scripted) | every run |
 
-The consumer's *source* is the one artifact that is not disposable — it is the retained fixture the exit
-gate requires — but its build outputs, the local feed, and the isolated cache must never be. A retained feed
-or cache is exactly the shortcut ("it still works because a warm cache from last time has it") that would
-quietly reopen the escape hatches §6 rules out.
+Both packages' *sources* are the artifacts that are not disposable — they are the retained fixture the exit
+gate requires — but their build outputs, the domain nupkg itself, the local feed, and the isolated cache must
+never be. A retained feed or cache is exactly the shortcut ("it still works because a warm cache from last
+time has it") that would quietly reopen the escape hatches §2 and §5 rule out — most concretely for Package 2,
+whose whole restore is supposed to prove it can only ever see Package 1's domain type through a freshly
+packed, freshly published artifact.
 
 ## 5. Test and mutation matrix
 
@@ -187,60 +286,98 @@ matrix, to be executed by the retained script plus a small number of hermetic un
 
 | Layer | Positive case | Negative case | Expected refusal / diagnostic |
 | --- | --- | --- | --- |
-| Authoring | Consumer's media type is `partial` | Remove `partial` | `ARX1003` at the declaration, build fails |
-| Package restore | Restore from the local feed only | Point `--source` at an empty feed | NU1101 / restore failure, no fallback resolution |
-| Provider pairing | Cataloger/curator close `ICataloger<TItem>`/`ICurator<TItem>` for the consumer's own item type | Implementation closes no member of the family, or closes it over the wrong item type | `PluginProviderContractInvalid` |
-| Media/provider coherence | Consumer's kind is admitted before its provider | Package the provider alone, without an admitted kind supplying its item type | `PluginMediaPairingUnsatisfied` |
+| Authoring | Package 1's media type is `partial` | Remove `partial` | `ARX1003` at the declaration, build fails |
+| Package 1 restore | Restore Package 1 from the local feed only | Point `--source` at an empty feed | NU1101 / restore failure, no fallback resolution |
+| Cross-package restore | Package 2 restores `ExternalKind.Domain` from the feed Package 1's `dotnet pack` populated | Run Package 2's restore before phase 2 packs the domain project | NU1101 for `ExternalKind.Domain`, distinct from Package 1's own restore failure above — this is the row that proves the *pairing* has no project-reference escape hatch, not just the SDK edge |
+| No private copy | Package 2's publish output carries no `ExternalKind.Domain.dll` (`ExcludeAssets=runtime`, §3 phase 3) | Reference the domain package without excluding the runtime asset | admission refuses with both module identifiers and both content hashes named, per G03's private-copy check (`docs/research/g04/provider-pairing-contract.md` is silent on this specifically; the check is G03's, exercised here for the first time by an out-of-repo package) |
+| Provider pairing | Package 2's cataloger closes `ICataloger<TItem>` for Package 1's exact item type | Implementation closes no member of the family, or closes it over the wrong item type | `PluginProviderContractInvalid` |
+| Media/provider coherence | Package 1 is admitted before Package 2 | Package 2 alone, without an admitted kind supplying its item type | `PluginMediaPairingUnsatisfied` |
 | Kind admission | One item type, one kind | A second package closes a kind over the same item type | `MediaItemTypeConflict` |
-| Contract range | `plugin.json` declares `>=0.9 <0.10` | Declare an incompatible range (e.g. `>=0.1 <0.2`) | `PluginContractMismatch`, quarantined before construction |
-| Escape hatch: project reference | none present | add a `ProjectReference` to any in-repo project | build proof must fail closed (script asserts the consumer's `.csproj` contains no `ProjectReference`) |
-| Escape hatch: `InternalsVisibleTo` | none present, none needed | grant `InternalsVisibleTo` from any first-party assembly to the consumer | architecture-test-style assertion: grep the solution for a grant naming the fixture; today's five real grants (`Arronix.Host`, three `*.Tests` assemblies, `Arronix.Client.Tests`) are the complete list and none should ever name this fixture |
-| Client load | Consumer's own client-safe assembly hashes, verifies, and loads under G07.1's two-pass loader | Flip one byte of the staged consumer assembly (same mutation G07.1 already proves generically) | `ContentHashMismatch`, `CanProject=false`, nothing resident |
-| Browser fixture projection | The already-published G07.2 serialized fixture renders through the unmodified `ContractsPage.razor` | n/a — G07A does not invent a second rendering path | — |
+| Contract range | Both `plugin.json` files declare `>=0.9 <0.10` | Declare an incompatible range on either package (e.g. `>=0.1 <0.2`) | `PluginContractMismatch`, that package quarantined before construction |
+| Escape hatch: project reference | none present, in either package | add a `ProjectReference` to any in-repo project, or between the two external packages themselves | build proof must fail closed (script asserts neither `.csproj` contains a `ProjectReference`) |
+| Escape hatch: `InternalsVisibleTo` | none present, none needed, in either package | grant `InternalsVisibleTo` from any first-party assembly to either package | architecture-test-style assertion: grep the solution for a grant naming either fixture; today's five real grants (`Arronix.Host`, three `*.Tests` assemblies, `Arronix.Client.Tests`) are the complete list and none should ever name either fixture |
+| Client load | Package 1's client-safe assembly hashes, verifies, and loads under G07.1's two-pass loader | Flip one byte of Package 1's staged assembly (same mutation G07.1 already proves generically) | `ContentHashMismatch`, `CanProject=false`, nothing resident |
+| Browser fixture projection | **Open — see §6 and §8 item 1.** Not yet a single defined positive case until the G07.2 integration decision names what "reuse" means. | n/a until the positive case is defined | — |
 
 The escape-hatch rows are the ones with no first-party precedent to imitate: they are assertions about the
-*fixture's own project file and the solution's `InternalsVisibleTo` grants*, not about Host behaviour, and
+*fixtures' own project files and the solution's `InternalsVisibleTo` grants*, not about Host behaviour, and
 belong in the proof script itself (grep/assert) rather than in a unit test that only ever sees the repository
-side of the boundary.
+side of the boundary. The cross-package and no-private-copy rows have no first-party precedent either, in a
+different sense: G03 and G05 prove those mechanisms exist, but always between packages built inside this
+repository from a shared `Directory.Packages.props`; nothing today exercises them between two packages that
+never shared a solution.
 
-## 6. Fixture contract — what G07A's consumer may and must not depend on
+## 6. Fixture contract — what G07A's consumer may and must not depend on, and one integration decision that is not yet made
 
 Per the roadmap text verbatim, the consumer:
 
 - defines **a trivial typed media kind and one typed provider** — enough to exercise `AddMediaType<T>()`,
-  `AddCataloger<T>`/`AddCurator<T>`, and the G04 pairing check, not a realistic domain;
+  `AddCataloger<T>`, and the G04 pairing check across the two-package boundary in §2, not a realistic domain;
 - **packages and installs into an unmodified Host** — the real `Arronix.Api`, no test-only route, no
   fixture-specific composition root;
 - **loads its client-safe typed contract in the unmodified browser Client using the serialized G07
-  fixture** — this is the one clause that reaches outside G07A's own package. Read against G07.2's own
-  Implement list ("typed deserialization of a Movie graph... the serialized fixture G07A later reuses"), the
-  fixture G07A loads in the browser is the **existing G07.2 Movie fixture**, not a fixture the consumer's own
-  trivial kind generates. G07A's contribution to the browser half is therefore narrower than it first reads:
-  it proves the consumer's *contract assembly* loads and verifies through the unmodified client (the G07.1
-  mechanism, already complete and generic over any package), while typed deserialization/rendering is
-  exercised against the fixture G07.2 already built and published, not reimplemented per-kind.
+  fixture**, with the exit gate stating the browser proof is explicitly "limited to contract loading and
+  fixture projection," and the gate's own **Outcome** line naming "generated accessibility" as one of the
+  four things this gate proves — package assets, analyzer packaging, generated accessibility, and admission;
 - explicitly **does not** ingest provider results or render a durable item — "Provider-result ingestion and
-  durable item rendering remain G19/G28 work" — so the provider only needs to admit and pass the G04/G05
-  contract checks; it is never invoked through `CatalogDispatcher` in this proof;
+  durable item rendering remain G19/G28 work" — so Package 2's cataloger only needs to admit and pass the
+  G04/G05 contract checks; it is never invoked through `CatalogDispatcher` in this proof;
 - **must not** add "a temporary external item source, test-only production endpoint, or premature generic
   catalog workflow merely to make this smoke test render provider results" — i.e. no shortcut that makes the
   provider *look* ingested is acceptable, even if it would make the browser page more convincing.
 
-## 7. Open scoping decision: does the consumer need its own format?
+**What "reuse" means for the serialized fixture is not settled, and this document must not settle it by
+assumption.** G07.2 is recorded `not started` (§8 item 1); its own Implement list is the only place the
+phrase "the serialized fixture G07A later reuses" appears, describing "typed deserialization of a Movie
+graph" as what produces that fixture. That sentence fixes what fixture exists once G07.2 lands — a serialized
+Movie graph — but it does not fix what *reusing* it means for a package whose whole point is that it is not
+Movie. Three readings are each consistent with the roadmap text as written, and they make different claims
+about whether G07A actually proves "generated accessibility" for the external media type in the browser, not
+just for Movies:
+
+1. **Protocol reuse.** G07.2 defines a generated-metadata wire protocol and a typed-deserialization/rendering
+   mechanism; Package 1's own generator output is run through that same mechanism against Package 1's own
+   trivial item, producing a *second*, package-specific serialized fixture. "The serialized fixture G07A later
+   reuses" would then describe the *shape and tooling* G07.2 leaves behind, not literal shared bytes. This
+   reading is the only one of the three that exercises the external package's own generated client metadata in
+   the browser, and is the only one that fully answers the Outcome line's "generated accessibility" for this
+   package rather than for Movies.
+2. **Schema reuse, external data.** Package 1's fixture is serialized using G07.2's schema and hashed the way
+   G07.2's projection-schema hash requires, but the browser-side rendering component itself is not
+   reimplemented per package — it is the one G07.2 built, pointed at Package 1's bytes instead of Movie's.
+   This still exercises Package 1's own generated metadata, but reuses more of G07.2's browser-side machinery
+   verbatim than reading 1 does.
+3. **Literal reuse of the Movie fixture.** The browser leg of G07A never touches Package 1's own generated
+   client metadata at all: it loads Package 1's contract assembly through the already-complete G07.1
+   mechanism (proving *that* half honestly), and separately re-renders the *existing* Movie fixture through
+   the unmodified `ContractsPage.razor` as a demonstration that the rendering path G07.2 built still works
+   after a second, unrelated package is installed. This is the cheapest reading to implement and the only one
+   of the three explicitly ruled out as sufficient by itself: it would leave "generated accessibility" proved
+   for Movies, not for the external package, which is not what this gate is for.
+
+This report does not choose between them — doing so from this branch, before G07.2 exists, would be exactly
+the kind of "mechanism's needs become an owner decision by omission" this repository's own discipline warns
+against (`CONTEXT.md`; owner-ledger O-33). Whoever implements G07.2 must record which reading it commits to,
+because the choice changes what G07.2's own "serialized fixture" artifact needs to be parameterizable over
+(one Movie-shaped fixture only, versus a fixture-generation mechanism reusable against any admitted package's
+generated metadata) — recorded again in §8 item 1 and §9.
+
+## 7. Open scoping decision: does Package 1 need its own format?
 
 `MediaType`'s primary constructor requires non-empty format composition (`INTERFACE.md` §3,
-`typed-media-north-star.md` rule 8). Two honest options, neither settled by the roadmap text:
+`typed-media-north-star.md` rule 8). This applies only to Package 1 (the media package); Package 2 (the
+cataloger) composes no format at all. Two honest options, neither settled by the roadmap text:
 
 - **Reuse `arronix.format.video`.** It is already an independently installable, no-entry-assembly,
   zero-capability contract package (`src/Arronix.Format.Video/plugin.json`) — the cheapest way to satisfy the
-  constructor without inventing a second format capability. The consumer's dependency edge
+  constructor without inventing a second format capability. Package 1's dependency edge
   (`{ "package": "arronix.format.video", "range": ">=0.1 <0.2" }`) then also incidentally re-proves the G03
   shared-CLR-identity claim ("two independent fixture dependants share the same admitted Video contract
   identity") for a package built with no repository access, which G03 itself never claimed.
-- **Compose a still-simpler format the consumer defines and ships itself.** More faithfully "external," but
+- **Compose a still-simpler format Package 1 defines and ships itself.** More faithfully "external," but
   spends scope G07A does not ask for — a self-authored format capability is not in the roadmap's Implement
-  list for this gate, and the exit gate's own phrase is "a trivial typed media kind," singular, not two new
-  extensions.
+  list for this gate, and the exit gate's own phrase is "a trivial typed media kind," singular, not three new
+  extensions (media, provider, and now format).
 
 Reusing `arronix.format.video` is the lower-risk default; record the choice in the eventual G07A record
 rather than deciding it silently in code, per this repository's own discipline against turning a mechanism's
@@ -248,24 +385,31 @@ convenience into an undocumented decision (`CONTEXT.md`, owner-ledger O-33).
 
 ## 8. Blockers
 
-1. **G07.2 and G07.3 are recorded `not started`, as of 2026-08-27.** `docs/design/typed-media-roadmap.md`
-   carries an explicit `**Status:**` line per sub-gate — G07.1 `complete`, G07.2 `not started`, G07.3
-   `not started` — and that field, not a snapshot of any branch's commit history, is this repository's
-   authoritative record of gate progress; re-check it directly rather than trusting a git-log comparison
-   frozen at the moment this report was written, since other work can land on sibling branches at any time
-   without this document being updated. G07A's browser half depends on G07.2's generated client metadata and
-   its serialized Movie fixture (§6). The roadmap states the dependency directly: "G07 is closed only when
-   all three are closed; G07A and G07B remain later gates and none of their work is folded into these."
-   **This blocks only the browser-fixture-projection portion of G07A**, not the package/restore/pack/
-   admission/CLR-identity portion, which depends only on already-complete G01–G06.
-2. **No retained external-consumer fixture exists.** Confirmed by absence from `Arronix.sln` and by grep
-   across the tree; this is expected (G06's proof was intentionally ephemeral) but means G07A starts from
-   nothing rather than hardening an existing scaffold.
-3. **No local package feed or isolated-cache tooling exists.** There is no `NuGet.Config` in the repository
-   root, and no script packs first-party projects for external consumption today. `eng/proofs/*` currently
-   only stages first-party projects by `dotnet publish` of an in-tree `.csproj`; nothing exercises `dotnet
-   pack` against a consumer that never had repository access. This is buildable now — it depends on nothing
-   still in flight — but does not exist.
+1. **G07.2 and G07.3 are recorded `not started`, as of 2026-08-27, and the "reuse" integration decision from
+   §6 is unmade because of it.** `docs/design/typed-media-roadmap.md` carries an explicit `**Status:**` line
+   per sub-gate — G07.1 `complete`, G07.2 `not started`, G07.3 `not started` — and that field, not a snapshot
+   of any branch's commit history, is this repository's authoritative record of gate progress; re-check it
+   directly rather than trusting a git-log comparison frozen at the moment this report was written, since
+   other work can land on sibling branches at any time without this document being updated. This blocks two
+   distinct things, not one: G07A's browser half cannot run at all until G07.2 exists, *and*, separately, it
+   is not yet decided which of §6's three readings of "reuse" G07A's browser half is even supposed to prove —
+   that decision belongs to whoever implements G07.2, because only that implementation fixes whether the
+   serialized fixture is Movie-specific or parameterizable over any admitted package's generated metadata. The
+   roadmap states the sequencing dependency directly: "G07 is closed only when all three are closed; G07A and
+   G07B remain later gates and none of their work is folded into these." **This blocks only the
+   browser-fixture-projection portion of G07A**, not the package/restore/pack/admission/CLR-identity portion
+   across the two external packages in §2, which depends only on already-complete G01–G06.
+2. **No retained external-consumer fixtures exist.** Confirmed by absence from `Arronix.sln` and by grep
+   across the tree; this is expected (G06's proof was intentionally ephemeral, and it was also only ever one
+   package) but means G07A starts from nothing rather than hardening an existing scaffold, for both the media
+   package and the provider package.
+3. **No local package feed, cross-package restore, or isolated-cache tooling exists.** There is no
+   `NuGet.Config` in the repository root, and no script packs first-party projects — or an out-of-repo
+   package's own domain project — for external consumption today. `eng/proofs/*` currently only stages
+   first-party projects by `dotnet publish` of an in-tree `.csproj`; nothing exercises `dotnet pack` against a
+   consumer that never had repository access, and nothing exercises one out-of-repo package restoring another
+   out-of-repo package's packed output, which is the specific mechanism §2's two-package split and §3 phase 3
+   depend on. This is buildable now — it depends on nothing still in flight — but does not exist.
 4. **Trimming remains disabled** (`Arronix.Client.csproj`, `PublishTrimmed=false`), recorded G07.1 debt. G07A
    inherits this rather than resolving it; the browser proof, like G07.1's, runs against the same
    ordinary-but-untrimmed `dotnet publish` output. Not a G07A blocker, but worth restating so the eventual
@@ -281,34 +425,45 @@ convenience into an undocumented decision (`CONTEXT.md`, owner-ledger O-33).
    and that blocker is now closed.** `CONTEXT.md`'s current technical-debt section records that an ordinary
    `Arronix.Api` server now composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`,
    `IHostRuntimeInfo`, and `IOperatingSystemInfo`, and activates the independently published Video and Movies
-   packages beside it. This directly unblocks the consumer's own entry-assembly package (its media
-   kind/provider module) from reaching `Active` in the same real-server topology G07.1 already proved for
-   Movies — recorded here because it is easy to mistake for still-open after reading only G07.1's own
-   residual-gaps list, which predates the fix.
+   packages beside it. This directly unblocks both of §2's external packages — Package 1's media-kind module
+   and Package 2's cataloger module both have entry assemblies — from reaching `Active` in the same
+   real-server topology G07.1 already proved for Movies — recorded here because it is easy to mistake for
+   still-open after reading only G07.1's own residual-gaps list, which predates the fix.
 7. **The machine's default `dotnet` does not match the pinned SDK.** Confirmed 2026-08-27: `PATH` resolves
    `dotnet` to `/opt/homebrew/bin/dotnet`, Homebrew's `10.0.400`; the repository's `global.json` pins
    `11.0.100-preview.7.26381.103` at `/usr/local/share/dotnet/dotnet` with `rollForward: disable`. This is not
    a G07A-specific blocker — it applies to every restore, build, and test in this repository — but it is
    sharpest here because G07A's proof script is the first one that also restores and builds a project *outside*
-   the repository, where there is no `global.json` inherited by proximity unless the fixture ships its own. §0
-   states the operational rule; the retained script must set `DOTNET_COMMAND`/`$dotnet_command` explicitly and
-   the consumer fixture's own directory should carry a `global.json` pinning the same SDK, rather than relying
-   on whichever `dotnet` a future operator's shell happens to find first.
+   the repository, where there is no `global.json` inherited by proximity unless each fixture ships its own —
+   now sharper still with two independent fixture directories instead of one. §0 states the operational rule;
+   the retained script must set `DOTNET_COMMAND`/`$dotnet_command` explicitly and both fixtures' own
+   directories should each carry a `global.json` pinning the same SDK, rather than relying on whichever
+   `dotnet` a future operator's shell happens to find first.
 
 ## 9. Recommendation for sequencing
 
-Split G07A into two slices when it is implemented:
+Split G07A into three slices when it is implemented — one more than previously recorded here, because §6's
+open integration decision is now its own piece of work rather than an assumption folded into Slice B:
 
-- **Slice A (buildable now):** pack, isolated restore, build, provider-pairing admission, exact CLR identity,
-  and the full diagnostic matrix in §5, ending at "the package reaches `Active` in an unmodified `Arronix.Api`
-  and publishes its client facet." Depends only on G01–G06, all complete.
-- **Slice B (blocked on G07.2):** the browser load of the consumer's client-safe assembly against the
-  unmodified `Arronix.Client`, and the fixture-projection check against G07.2's serialized Movie fixture.
+- **Slice A (buildable now):** both external packages from §2 — pack, cross-package restore (the domain nupkg
+  chain in §3 phases 2–3), build, the private-copy check, provider-pairing admission, exact CLR identity, and
+  the full diagnostic matrix in §5 through the client-load row, ending at "both packages reach `Active` in an
+  unmodified `Arronix.Api`, in dependency order, and Package 1 publishes its client facet." Depends only on
+  G01–G06, all complete, and proves the two-package pairing G06 alone never attempted.
+- **Slice B0 (a decision, not code):** whoever implements G07.2 records which of §6's three readings of
+  "reuse" applies, and states it in G07.2's own record before Slice B is scoped or estimated. This is
+  deliberately sequenced before Slice B rather than folded into it, so Slice B's own cost estimate is not
+  built on an assumption this document explicitly declined to make.
+- **Slice B (blocked on G07.2 and on Slice B0):** the browser load of Package 1's client-safe assembly against
+  the unmodified `Arronix.Client`, and the fixture-projection check — whose shape depends entirely on Slice
+  B0's answer: reading 1 or 2 (§6) requires Package 1's own generator output to reach the browser; reading 3
+  requires only that the pre-existing Movie fixture still renders after Package 1 is installed alongside it.
 
-Slice A retires the "not retained, compile-only" half of §1's gap list without waiting on work whose
-completion this document cannot itself certify — re-check the roadmap's `**Status:**` fields at
-implementation time rather than trusting §8 item 1's 2026-08-27 reading. Slice B is a small addition once
-G07.2 lands, because it reuses G07.1's loader and G07.2's fixture rather than inventing either.
+Slice A retires the "not retained, compile-only" and "no cross-package pairing" halves of §1's gap list
+without waiting on work whose completion this document cannot itself certify — re-check the roadmap's
+`**Status:**` fields at implementation time rather than trusting §8 item 1's 2026-08-27 reading. Slice B is a
+small addition once G07.2 lands and Slice B0 is answered, because it reuses G07.1's loader and whichever of
+G07.2's fixture mechanisms Slice B0 named, rather than inventing either.
 
 Both slices, and every command either one runs, use `/usr/local/share/dotnet/dotnet` (§0) — never the
 machine-default `dotnet` — and never relax `net11.0` or the pinned prerelease SDK to work around a restore or
