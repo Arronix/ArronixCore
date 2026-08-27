@@ -12,8 +12,7 @@ namespace Arronix.Generators;
 [Generator(LanguageNames.CSharp)]
 public sealed class MediaShapeGenerator : IIncrementalGenerator
 {
-    private const string MediaTypeName = "Arronix.Abstractions.Media.MediaType<TItem, TTarget, TRelease, TParser>";
-
+    /// <inheritdoc />
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var definitions = context.SyntaxProvider
@@ -32,26 +31,16 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
     private static Definition? FindDefinition(GeneratorSyntaxContext context)
     {
         var declaration = (ClassDeclarationSyntax)context.Node;
-        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol)
-        {
-            return null;
-        }
-
-        var mediaBase = symbol.BaseType;
-        while (mediaBase is not null
-               && mediaBase.OriginalDefinition.ToDisplayString() != MediaTypeName)
-        {
-            mediaBase = mediaBase.BaseType;
-        }
-
-        if (mediaBase is null || mediaBase.TypeArguments.Length != 4)
+        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol
+            || MediaShapeModel.Create(context.SemanticModel.Compilation) is not { } shape
+            || shape.ClosedBase(symbol, PlatformSymbol.MediaType) is not { TypeArguments.Length: 4 } mediaBase)
         {
             return null;
         }
 
         var item = mediaBase.TypeArguments[0];
         var related = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default);
-        CollectReferencedEntities(item, related);
+        CollectReferencedEntities(shape, item, related);
         related.Remove(item);
 
         foreach (var creation in declaration.DescendantNodes().OfType<BaseObjectCreationExpressionSyntax>())
@@ -62,13 +51,11 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
                 continue;
             }
 
-            var definitionName = created.OriginalDefinition.ToDisplayString();
-            if (definitionName is
-                "Arronix.Abstractions.Media.GroupDefinition<TItem, TGroup>"
-                or "Arronix.Abstractions.Media.WorkbenchDefinition<TItem, TRow>")
+            if (shape.Is(created, PlatformSymbol.GroupDefinition)
+                || shape.Is(created, PlatformSymbol.WorkbenchDefinition))
             {
                 related.Add(created.TypeArguments[1]);
-                CollectReferencedEntities(created.TypeArguments[1], related);
+                CollectReferencedEntities(shape, created.TypeArguments[1], related);
             }
         }
 
@@ -77,6 +64,7 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
             : symbol.ContainingNamespace.ToDisplayString();
 
         return new Definition(
+            shape,
             symbol,
             item,
             related.ToImmutableArray(),
@@ -84,7 +72,7 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
             Sanitize(symbol.ToDisplayString()) + ".MediaShape.g.cs");
     }
 
-    private static void CollectReferencedEntities(ITypeSymbol type, ISet<ITypeSymbol> found)
+    private static void CollectReferencedEntities(MediaShapeModel shape, ITypeSymbol type, ISet<ITypeSymbol> found)
     {
         if (type is not INamedTypeSymbol named || !found.Add(type))
         {
@@ -94,9 +82,9 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         foreach (var property in PublicProperties(named))
         {
             var candidate = UnwrapList(property.Type) ?? property.Type;
-            if (Implements(candidate, "Arronix.Abstractions.Media.IMediaEntity"))
+            if (shape.Implements(candidate, PlatformSymbol.MediaEntity))
             {
-                CollectReferencedEntities(candidate, found);
+                CollectReferencedEntities(shape, candidate, found);
             }
         }
     }
@@ -138,19 +126,19 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
 
         source.AppendLine("            });");
         source.AppendLine();
-        EmitShape(source, "ItemShape", definition.Item);
+        EmitShape(source, definition.Shape, "ItemShape", definition.Item);
 
         for (var index = 0; index < definition.Related.Length; index++)
         {
             source.AppendLine();
-            EmitShape(source, "RelatedShape" + index, definition.Related[index]);
+            EmitShape(source, definition.Shape, "RelatedShape" + index, definition.Related[index]);
         }
 
         source.AppendLine("}");
         return source.ToString();
     }
 
-    private static void EmitShape(StringBuilder source, string name, ITypeSymbol type)
+    private static void EmitShape(StringBuilder source, MediaShapeModel shape, string name, ITypeSymbol type)
     {
         source.Append("    private static global::Arronix.Abstractions.Media.CompiledEntityShape ")
             .Append(name).AppendLine(" { get; } = new()");
@@ -161,9 +149,9 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
 
         foreach (var property in PublicProperties((INamedTypeSymbol)type))
         {
-            if (!Has(property, "IgnoreAttribute") && property.Name != "EqualityContract")
+            if (!shape.IsExcluded(property))
             {
-                EmitField(source, property, "            ", topLevel: true, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
+                EmitField(source, shape, property, "            ", topLevel: true, new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default));
             }
         }
 
@@ -173,6 +161,7 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
 
     private static void EmitField(
         StringBuilder source,
+        MediaShapeModel shape,
         IPropertySymbol property,
         string indent,
         bool topLevel,
@@ -180,19 +169,20 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
     {
         var declared = property.Type;
         var listElement = UnwrapList(declared);
-        var multivalued = listElement is not null || Is(declared, "Arronix.Abstractions.Media.ArtworkSet")
-            || Is(declared, "Arronix.Abstractions.Media.ExternalIdSet");
+        var multivalued = listElement is not null || shape.Is(declared, PlatformSymbol.ArtworkSet)
+            || shape.Is(declared, PlatformSymbol.ExternalIdSet);
         var element = StripNullable(listElement ?? declared);
-        var kind = ValueKind(element, property);
+        var kind = shape.ValueKind(element, property);
         var nullable = IsNullable(declared) || (listElement is not null && IsNullable(listElement));
-        var semantics = topLevel ? Semantics(property, kind, element) : 0;
-        var prominence = topLevel ? Prominence(property) : 1;
-        var editable = topLevel && Has(property, "EditableAttribute") && !Has(property, "DerivedAttribute");
-        var display = Attribute(property, "DisplayAttribute");
+        var semantics = topLevel ? shape.Semantics(property, kind, element) : 0;
+        var prominence = topLevel ? shape.Prominence(property) : 1;
+        var editable = topLevel && shape.Has(property, PlatformSymbol.Editable)
+            && !shape.Has(property, PlatformSymbol.Derived);
+        var display = shape.Attribute(property, PlatformSymbol.Display);
         var name = NamedString(display, "Name") ?? Label(property.Name);
         var description = NamedString(display, "Description");
         var example = NamedString(display, "Example");
-        var unit = ConstructorString(Attribute(property, "UnitAttribute"));
+        var unit = ConstructorString(shape.Attribute(property, PlatformSymbol.Unit));
         var operators = Operators(kind, multivalued, nullable);
         var isNameable = kind is not (18 or 12 or 20);
 
@@ -204,7 +194,8 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         source.Append(indent).Append("    IsNullable = ").Append(Bool(nullable)).AppendLine(",");
         source.Append(indent).Append("    Example = ").Append(LiteralOrNull(example)).AppendLine(",");
         source.Append(indent).Append("    IsNameable = ").Append(Bool(isNameable)).AppendLine(",");
-        source.Append(indent).Append("    ExplicitIdentity = ").Append(Bool(Has(property, "IdentityAttribute"))).AppendLine(",");
+        source.Append(indent).Append("    ExplicitIdentity = ")
+            .Append(Bool(shape.Has(property, PlatformSymbol.Identity))).AppendLine(",");
         source.Append(indent).Append("    FilterOperators = (global::Arronix.Abstractions.Intent.FilterOperators)")
             .Append(operators).AppendLine(",");
         source.Append(indent).Append("    Read = static instance => ((")
@@ -225,9 +216,9 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         source.Append(indent).Append("        Editable = ").Append(Bool(editable)).AppendLine(",");
         source.Append(indent).Append("        Unit = ").Append(LiteralOrNull(unit)).AppendLine(",");
         EmitChoices(source, element, kind, indent + "        ");
-        EmitComponentDescriptors(source, element, kind, indent + "        ", ancestors);
+        EmitComponentDescriptors(source, shape, element, kind, indent + "        ", ancestors);
         source.Append(indent).AppendLine("    },");
-        EmitComponents(source, element, kind, indent + "    ", ancestors);
+        EmitComponents(source, shape, element, kind, indent + "    ", ancestors);
         source.Append(indent).AppendLine("},");
     }
 
@@ -251,6 +242,7 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
 
     private static void EmitComponentDescriptors(
         StringBuilder source,
+        MediaShapeModel shape,
         ITypeSymbol element,
         int kind,
         string indent,
@@ -267,9 +259,9 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         source.Append(indent).AppendLine("{");
         foreach (var component in PublicProperties(composite))
         {
-            if (!Has(component, "IgnoreAttribute") && component.Name != "EqualityContract")
+            if (!shape.IsExcluded(component))
             {
-                EmitDescriptorOnly(source, component, indent + "    ", next);
+                EmitDescriptorOnly(source, shape, component, indent + "    ", next);
             }
         }
         source.Append(indent).AppendLine("},");
@@ -277,6 +269,7 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
 
     private static void EmitDescriptorOnly(
         StringBuilder source,
+        MediaShapeModel shape,
         IPropertySymbol property,
         string indent,
         ISet<ITypeSymbol> ancestors)
@@ -284,8 +277,8 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         var listElement = UnwrapList(property.Type);
         var multivalued = listElement is not null;
         var element = StripNullable(listElement ?? property.Type);
-        var kind = ValueKind(element, property);
-        var display = Attribute(property, "DisplayAttribute");
+        var kind = shape.ValueKind(element, property);
+        var display = shape.Attribute(property, PlatformSymbol.Display);
 
         source.Append(indent).AppendLine("new global::Arronix.Abstractions.Shape.FieldDescriptor");
         source.Append(indent).AppendLine("{");
@@ -294,12 +287,13 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         source.Append(indent).Append("    ValueKind = (global::Arronix.Abstractions.Shape.FieldValueKind)").Append(kind).AppendLine(",");
         source.Append(indent).Append("    Multivalued = ").Append(Bool(multivalued)).AppendLine(",");
         EmitChoices(source, element, kind, indent + "    ");
-        EmitComponentDescriptors(source, element, kind, indent + "    ", ancestors);
+        EmitComponentDescriptors(source, shape, element, kind, indent + "    ", ancestors);
         source.Append(indent).AppendLine("},");
     }
 
     private static void EmitComponents(
         StringBuilder source,
+        MediaShapeModel shape,
         ITypeSymbol element,
         int kind,
         string indent,
@@ -316,9 +310,9 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         source.Append(indent).AppendLine("{");
         foreach (var component in PublicProperties(composite))
         {
-            if (!Has(component, "IgnoreAttribute") && component.Name != "EqualityContract")
+            if (!shape.IsExcluded(component))
             {
-                EmitField(source, component, indent + "    ", topLevel: false, next);
+                EmitField(source, shape, component, indent + "    ", topLevel: false, next);
             }
         }
         source.Append(indent).AppendLine("},");
@@ -339,18 +333,22 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
     private sealed class Definition
     {
         internal Definition(
+            MediaShapeModel shape,
             INamedTypeSymbol symbol,
             ITypeSymbol item,
             ImmutableArray<ITypeSymbol> related,
             string? namespaceName,
             string hintName)
         {
+            Shape = shape;
             Symbol = symbol;
             Item = item;
             Related = related;
             Namespace = namespaceName;
             HintName = hintName;
         }
+
+        internal MediaShapeModel Shape { get; }
 
         internal INamedTypeSymbol Symbol { get; }
 
