@@ -826,12 +826,21 @@ handle, which is 3.1's split and 2.2's rule made mechanical rather than advisory
 cataloger back-off ladder is fed as well as read. `CatalogSchemeUnowned` means only that no installed
 cataloger owns the scheme; a fetch's four outcomes are `Found`, `NotHeld`, `AuthorityUnavailable` and
 `NotAnswered`, and a search reports the same distinctions as a partial result naming each authority that did
-not contribute. `NotHeld` is **fail-closed**: it requires every available authority to have answered, because
-one that could not be leased or that failed leaves absence unestablished — and `Withdrawn`, when the refresh
-leg writes it, must never be reachable from a transport fault. A cataloger's own failure is contained; a
-process that is no longer sound propagates through `ProcessFailure.IsFatal`, wrapped forms included, and
-only the caller's own cancellation token ends a dispatch — a provider raising `OperationCanceledException`
-from its own timeout is one authority failing, not the call being abandoned.
+not contribute. `NotHeld` is **fail-closed** across the *owners* of the scheme, not merely those in service:
+an owner that was backed off and so never asked, that could not be leased, or that failed leaves absence
+unestablished — and `Withdrawn`, when the refresh leg writes it, must never be reachable from a transport
+fault or from a provider nobody asked. Owners are partitioned on one reading of their availability, because
+two readings let a back-off expiring between them put an owner in both sets or in neither.
+
+Calling a cataloger and reading what it returned are one boundary and are contained together: a collection
+that throws while it is being copied is that owner failing, recorded and warned about, while the owners that
+did answer still make the page. A process that is no longer sound propagates through
+`ProcessFailure.IsFatal`, wrapped forms included, from either half. Cancellation is checked at dispatch
+entry, between owners, after an owner answers, and either side of copying a search result, so a cataloger
+that ignores its token cannot turn a withdrawn call into a record, an absence or a page, and a withdrawn
+caller is not answered with a diagnosis of the installation instead. Only the caller's own token ends a
+dispatch — a provider raising `OperationCanceledException` from its own timeout is one owner failing, not
+the call being abandoned.
 
 **What is deliberately not here.** No store, no representation, no transaction, no library row, no EF Core
 and no migration. `CatalogAssignment` (3.1) was **not** introduced: reporting what a merge superseded is

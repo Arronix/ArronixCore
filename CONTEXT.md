@@ -73,7 +73,9 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
   holds it belong in one transaction and only the first half exists. Resolution and assignment are separate
   contracts on one state: `ICatalogIdentityReader` is the public surface of `CatalogIdentity`, assignment is
   a host-internal interface implemented explicitly, and projection is handed the reader — so a browse or
-  read path has no member through which the identity space could grow.
+  read path has no member through which the identity space could grow. Projection resolves a reference the
+  same way: every identifier canonicalized, lowest surviving assignment taken, and a referent the host does
+  not hold projected under its catalog identity and title rather than as an absent field.
 - A provider author names the media item type once, in the contract the implementation closes. Registration
   reads that pairing back from the contracts the implementation actually implements, by one-time type
   inspection; a family marker on the closed contracts makes the wrong family a compiler error but carries no
@@ -192,10 +194,14 @@ coverage.
 - `CatalogDispatcher` fetches through the cataloger that owns a reference's scheme, resolves a curated list
   through the catalogs its references name, and assigns durable identity only through its host-internal
   materializing member. A catalog call records success and failure against `ProviderStatusStore`, so the cataloger
-  back-off ladder is fed as well as read. Its four fetch outcomes are distinct: a record found, every
-  authority answering that none holds it, every installed authority backed off, and an authority that did
-  not answer; absence is fail-closed, so one silent authority yields the unanswered outcome rather than
-  absence. `CatalogSchemeUnowned` now means only that no cataloger owns the scheme. The installed TMDb proof
+  back-off ladder is fed as well as read. Its four fetch outcomes are distinct: a record found, every owner
+  of the scheme answering that none holds it, every owner backed off, and an owner that did not answer.
+  Absence is fail-closed across the owners of the scheme, so one that was backed off and not asked, that
+  could not be leased, or that failed yields the unanswered outcome rather than absence.
+  `CatalogSchemeUnowned` now means only that no cataloger owns the scheme. Calling a cataloger and reading
+  what it returned are one contained boundary, and cancellation is checked at entry, between owners, after
+  an owner answers, and either side of copying a search result, so a cataloger that ignores its token cannot
+  turn a withdrawn call into a record, an absence or a page. The installed TMDb proof
   executes that full generic path, but no API/Client user workflow reaches it yet. `CatalogIdentity` and
   `IMediaStore` remain in memory; nothing writes a library row, and a merge does not move library rows
   already keyed by a superseded reference.

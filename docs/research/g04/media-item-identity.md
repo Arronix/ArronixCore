@@ -28,9 +28,9 @@
 - A catalog read answers with `CatalogCandidate<TItem>`: the catalog's identity, the exact typed item, the
   identifier asked for when a redirect made those differ, and the reference the platform already holds it
   under. That held reference is the lowest surviving assignment among every identifier the candidate would
-  bind, so it does not depend on the order a cataloger lists them in. Assignment is host-internal. A reference in an unowned scheme is
-  `CatalogSchemeUnowned` (an installation problem); an item stating other than one identifier in its own
-  scheme is `CatalogIdentityInvalid` (an extension defect). A curated list's schemes are all checked before
+  bind, so it does not depend on the order a cataloger lists them in. Assignment is host-internal.
+  A reference in an unowned scheme is `CatalogSchemeUnowned` (an installation problem); an item stating
+  other than one identifier in its own scheme is `CatalogIdentityInvalid` (an extension defect). A curated list's schemes are all checked before
   any of it is fetched, and a candidate retains the curator's optional entry identifier.
 
 ## Current limitations

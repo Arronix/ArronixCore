@@ -1,5 +1,43 @@
 # Arronix History
 
+## 2026-08-27 — Answer the caller who is still waiting, and only from every authority
+
+Review of the identity and catalog-response boundary found five semantic defects in it and one regression it
+had caused. **This entry and the one below it are the G07B identity/catalog-response boundary candidate and
+nothing more. They close no durable G07B exit-gate row**, because every row needs durable state and none of
+it is here: no store, no representation, no transaction, no library row. Assignment stays host-internal
+until it sits inside the library take-in transaction.
+
+- **A backed-off owner is still an owner.** `RequireAuthorities` filtered them away, so a scheme with one
+  cataloger in service and one backed off could answer `NotHeld` — a confident absence assembled from half
+  its authorities, and the answer a refresh would later make durable as a withdrawal. Unavailable owners are
+  retained and seeded into the fetch's silence and the search's warnings. Each owner is partitioned on one
+  reading of its availability: two readings let a back-off expiring between them put it in both sets or in
+  neither.
+- **A rendered handle no longer depends on list order.** `ItemProjector.Reference` stopped at the first
+  identifier that resolved and did not canonicalize, so two pages could address one group two ways, and a
+  superseded identity rendered as though it still stood. It inspects every identifier, canonicalizes each,
+  and takes the lowest surviving assignment — the rule assignment itself applies.
+- **Cancellation is the caller's decision.** It is checked at dispatch entry, between owners, after an owner
+  answers, and either side of copying a search result. A cataloger that ignores the token it was handed
+  cannot turn a withdrawn call into a record, an absence, or a page of results; a withdrawn caller is no
+  longer answered with a diagnosis of the installation instead. Cancellation the provider raised while the
+  caller is still waiting stays contained, as it was.
+- **Calling a cataloger and reading what it returned are one boundary.** Splitting the await from the copy
+  had put the copy outside the containment, so a collection that threw as it was enumerated escaped instead
+  of being recorded against its own owner. Both halves sit under one `ProcessFailure.IsFatal` guard again: a
+  tear is that owner failing, and the owners that did answer still make the page.
+- **An unresolved reference is a value, not an absence.** Once projection stopped minting handles, the
+  client rendered a collection it had not taken in as the dash a missing field uses. It renders the
+  referent's title, or its catalog identifier, and is absent only when it carries neither.
+- **`CatalogIdentity.Issued` is gone.** The counter existed only to be asserted against. No-allocation is
+  proved through the ordinary lookup a caller would make, controlled by that same lookup finding the record
+  once it is materialized and by the identity it receives being the first the kind ever issues.
+
+Twenty-five mutations, each caught by one witness and only that one. Absence, order-independence,
+containment and every cancellation check are asserted where no other check could fire — including a clock
+that moves on every reading, so the double-read partition is a failing test rather than a code review note.
+
 ## 2026-08-27 — Stop naming everything anybody searched for
 
 `CatalogDispatcher.SearchAsync` gave every result a `MediaItemId`. Forty rows scrolled past and forty

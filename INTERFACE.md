@@ -236,6 +236,11 @@ is resident. What a media contract *contains* is not discovered by enumeration.
   assignment is a host-internal interface `CatalogIdentity` implements explicitly. `IMediaTypeRuntime.Project`
   and `Read` take the reader, so browsing an item whose group references the platform has never taken in
   resolves them or projects them under their catalog identity with no local handle, rather than minting one.
+  Resolution inspects every identifier the referent states, canonicalizes each, and takes the lowest
+  surviving assignment, which is what assignment itself settles on — so a rendered handle does not depend on
+  the order a cataloger listed them in, and a superseded identity is never rendered as though it still
+  stood. A `Reference`-valued `FieldValue` therefore carries either a local handle or the catalog identifier
+  and the referent's title, and a consumer renders the second rather than treating it as an absent field.
 - A catalog read answers with candidates, not with library items. `CatalogDispatcher`'s public surface —
   search, fetch and curated resolve — produces `CatalogCandidate<TItem>` values carrying catalog identity,
   the exact typed item, the identifier asked for when a redirect made those differ, the reference the
@@ -247,15 +252,21 @@ is resident. What a media contract *contains* is not discovered by enumeration.
   assignment made first — and is deliberately not offered as a platform operation, because naming a record
   and recording that the library holds it are one transaction and only the first half exists. It becomes a
   platform operation when it sits inside that transaction, and not before.
-- A catalog fetch distinguishes four answers. `Found` carries the record. `NotHeld` means every available
-  authority answered and none holds it, and is fail-closed — one authority that could not be leased or that
-  failed yields `NotAnswered` instead, because absence was not established across the authority set.
-  `AuthorityUnavailable` means every installed authority for the scheme is backed off. `CatalogSchemeUnowned`
-  is refused before anything is asked and means only that no installed cataloger owns the scheme. A search
-  reports the same distinctions as a partial result naming each authority that did not contribute. Catalog
-  calls record success and failure against the provider status service, so the cataloger back-off ladder is
-  fed rather than only read. A cataloger's own failure is contained; a process that is no longer sound is
-  not, and only the caller's own cancellation token ends a dispatch.
+- A catalog fetch distinguishes four answers. `Found` carries the record. `NotHeld` means every cataloger
+  that owns the scheme answered and none holds it; it is fail-closed, so an owner that was backed off and
+  therefore not asked, that could not be leased, or that failed yields `NotAnswered` instead, because
+  absence was not established across the owners of the scheme. `AuthorityUnavailable` means every owner is
+  backed off, so none was asked. `CatalogSchemeUnowned` is refused before anything is asked and means only
+  that no installed cataloger owns the scheme. A search reports the same distinctions as a partial result
+  naming each owner that did not contribute. Catalog calls record success and failure against the provider
+  status service, so the cataloger back-off ladder is fed rather than only read.
+- Calling a cataloger and reading what it returned are one boundary. A collection that throws while it is
+  being copied is that owner failing — recorded, named in a warning, and stepped over — not the search
+  failing; a process that is no longer sound propagates from either. Cancellation is the caller's decision
+  and is checked at dispatch entry, between owners, after an owner answers, and either side of copying a
+  search result, so a cataloger that ignores the token it was handed cannot turn a withdrawn call into a
+  record, into an absence, or into a page of results. Only the caller's own token ends a dispatch: one the
+  provider raised from its own timeout is that owner failing to answer.
 - A cataloger owns its external identifier namespace and marker spellings. Media parsers consume validated `ExternalIdReading` values and never duplicate vendor marker regular expressions.
 - Every item and group exposes `ExternalIds`, `Title`, `TitleLanguage`, `Overview`, and `Artwork` through `IMediaEntity`; media-specific facts extend that floor as ordinary typed properties. `IMediaEntity` declares no durable key, so an item a cataloger shapes is complete without one.
 - The common item class remains fully visible and strongly typed. Release dates and availability behaviour live in a media-owned lifecycle object; typed release stage, catalog presence, and plural collection membership are common item facts.
