@@ -1,5 +1,56 @@
 # Arronix History
 
+## 2026-08-27 — Stop serving a contract this host has withdrawn
+
+A page that loaded Movies and then had Movies uninstalled reported itself fully compatible on its next
+read, showed no trace that Movies had ever been there, and answered `Find("Arronix.Media.Movies")` with a
+live assembly. `RequiredAssemblies` is built from the packages the *current* manifest lists, so a withdrawn
+name was never preflighted, never re-committed, never flagged and never rendered — and `Find`'s two
+conditions, "the last pass could project" and "the dictionary holds it", were both still true. That is the
+failure G07.3's exit gate names, except worse than a rendering bug: nothing downstream could detect it.
+
+- **Residency and currency are now separate facts.** A resident entry whose simple name drops out of the
+  installation just read is marked orphaned. It stays — a browser cannot unload — and stops being served:
+  `Find` and `ContractsOf` both refuse it, through one gate rather than two copies of the same condition.
+  It is reported under its own heading instead of vanishing with its package's panel, carrying the owning
+  `PluginId`, name and version captured while it was still admitted, plus what that identifier means to the
+  host *now*: withheld with the host's own live reason, still offered without this file, or not mentioned
+  at all. The host keeps no history, so those three are everything a client may honestly say, and the
+  sentence an operator reads is derived at the rendering edge rather than stored twice.
+- **An orphan is not a fault.** `CanProject` still means "everything currently required is resident", and a
+  removal elsewhere in an installation must not make the rest of it incompatible. The fix had to avoid
+  trading a silent-serving bug for a false alarm, so it lives entirely in what `Find` answers and what the
+  report shows.
+- **Reunion and replacement stay different.** A package that returns at the exact content hash, identity,
+  module, length and declarations this page holds is reused without a byte fetched. One that returns under
+  any different description is terminal `NameAlreadyResident` — the same outcome as replacing an assembly
+  in place, because a stale resident assembly is stale whichever path produced it.
+- **`410`, `404` and a transport failure are three answers.** The byte route already computed the
+  distinction and `GetByteArrayAsync` threw it away. `410 Gone` is now `Superseded` and says the address
+  moved and a manifest re-read recovers; `404` is `NotOffered`; anything else stays `Unavailable`. None is
+  terminal: an address this page never held cannot make it unable to satisfy the installation.
+- **Eviction is store-only.** A janitor discards content hashes the verified installation does not name,
+  using the primitives the store already had. It cannot touch residency, and it refuses to run against a
+  report whose manifest was never proved whole — an empty package list from an unreachable host is an
+  absence of knowledge, and sweeping on it would make every failed fetch a cold start.
+- **A connected tab re-reads for itself.** One subscriber, on `EventKind.PluginStateChanged` only, calling
+  the loader's own already-serialized `LoadAsync`. A trigger, not a second manifest reader: this client
+  keeps one description of an installation and one place that proves it. Ahead of it, an unchanged
+  `InstallationHash` decides whether to look and never decides what is true — every required assembly must
+  still match the description the fresh manifest states, over values already in memory, because the
+  published closure hash covers identity and content and not what a payload declares.
+
+Eleven cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
+and no fetch, the withdraw-then-replace terminal, the three withdrawn-address answers, selective eviction
+with live-hash preservation and the unreadable-manifest refusal, and the state-change filter with its
+disposal. Mutation: dropping the orphan flag from `Find`, trusting the installation hash without checking
+what was published, and skipping reconciliation each fail. Removing the early-out *entirely* fails nothing,
+which is recorded as debt rather than dressed up — the reuse path it precedes already returns before any
+fetch or hash.
+
+G07.3 is not closed. Its exit gate names update, removal, stale cache and stale tab as exercises in a real
+browser; this is the hermetic core they will be driven through.
+
 ## 2026-08-26 — Stop charging for the whole telemetry stream to shape your own events
 
 `ITelemetryEnricher` and `ITelemetryEventFilter` were gated by `Capability.TelemetrySink`, which is the

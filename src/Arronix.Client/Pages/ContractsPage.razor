@@ -5,6 +5,7 @@
 @using Arronix.Client.Serialization
 @inject MediaContractLoader Contracts
 @inject ContractStore Store
+@inject ContractStoreJanitor Janitor
 @*
     What this browser verified, what it loaded, and what the host said each of them should be.
 
@@ -13,7 +14,9 @@
     that requires reading what each side said.
 
     The facets the host withheld are rendered here too, because a missing media kind is the same question
-    from the other end. This page names no media kind and no media assembly.
+    from the other end, and so are the assemblies this page holds which the host no longer names: a
+    withdrawn package whose panel simply disappeared would look like one this host never had. This page
+    names no media kind and no media assembly.
 *@
 
 <h1>Media contracts</h1>
@@ -111,6 +114,38 @@ else
                                 }
                             </p>
                         }
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+
+    @if (_report.Orphaned.Count > 0)
+    {
+        <section class="panel" id="contract-orphans">
+            <header class="panel-head">
+                <h2>Held here, no longer installed</h2>
+                <span class="chip">@_report.Orphaned.Count</span>
+            </header>
+
+            <p class="panel-detail">
+                A browser cannot unload an assembly. These stay in this page for as long as it is open and
+                are refused for projection; reload the page to run only what this host admits.
+            </p>
+
+            <ul class="plugin-list">
+                @foreach (var orphan in _report.Orphaned)
+                {
+                    <li class="plugin tone-problem contract-orphan"
+                        data-assembly="@orphan.Verified.AssemblyName"
+                        data-package="@orphan.PackageId.Value"
+                        data-owner="@orphan.Owner">
+                        <div class="plugin-head">
+                            <p class="plugin-name">@orphan.Verified.FileName</p>
+                            <span class="chip">@orphan.Owner</span>
+                            <span class="plugin-version">@orphan.PackageName @orphan.PackageVersion</span>
+                        </div>
+                        <p class="plugin-message">@Explain(orphan)</p>
                     </li>
                 }
             </ul>
@@ -216,6 +251,19 @@ else
     private static bool IsResident(LoadedContractAssembly assembly)
         => assembly.Outcome is ContractLoadOutcome.Loaded or ContractLoadOutcome.AlreadyLoaded;
 
+    /// <remarks>
+    /// Derived from what the report carries rather than stored beside it. The host keeps no history, so an
+    /// orphan can be labeled with what its package means to this host now and with nothing else.
+    /// </remarks>
+    private static string Explain(OrphanedContract orphan) => orphan.Owner switch
+    {
+        OrphanedContractOwner.Withheld =>
+            $"This host withholds the client facet of '{orphan.PackageId.Value}': {orphan.Refusal?.Reason}",
+        OrphanedContractOwner.Offered =>
+            $"'{orphan.PackageId.Value}' no longer offers '{orphan.Verified.FileName}' to a client.",
+        _ => $"This host no longer offers the package '{orphan.PackageId.Value}'.",
+    };
+
     private async Task ReloadAsync()
     {
         _busy = true;
@@ -223,6 +271,10 @@ else
         try
         {
             _report = await Contracts.LoadAsync();
+
+            // Bytes only. Held addresses this installation does not name cost storage and buy nothing, and
+            // discarding one can only make a later load slower, never wrong.
+            await Janitor.SweepAsync(_report);
             _storedKeys = await Store.KeysAsync();
         }
         finally

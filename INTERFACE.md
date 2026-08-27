@@ -171,6 +171,23 @@ object identity to the client's own compiled contract assembly. An entry that ve
 reported as verified, never as loaded, and a typed projection is permitted only when every required assembly
 is resident. What a media contract *contains* is not discovered by enumeration.
 
+Residency and currency are separate facts. A resident assembly the installation just read no longer names is
+orphaned: it stays in the page, because a browser cannot unload, and stops being served — `Find` and
+`ContractsOf` refuse it, and it is reported under its own heading carrying the package that last published
+it and what that identifier means to the host now, withheld with the host's own reason, still offered
+without that file, or not mentioned at all. An orphan never makes an otherwise healthy installation
+incompatible. The same package returning at the exact content hash, identity, module and declarations the
+page holds is reunited without a byte fetched; returning under any different description is the same
+terminal `NameAlreadyResident` as replacing it in place. `410 Gone`, `404 Not Found` and a transport
+failure are three outcomes, not one: the first says the address moved and a manifest re-read recovers, and
+none of the three is a statement about what the page holds. An unchanged `InstallationHash` decides whether
+to look and never decides what is true — every required assembly must still match the description this
+manifest states, over values already in memory, so an unchanged installation costs one manifest read and no
+bytes. `EventKind.PluginStateChanged` drives that re-read on a connected tab, through the loader's own
+serialized entry point rather than a second manifest reader. Store eviction discards content hashes the
+verified installation does not name, never touches residency, and is refused outright against a manifest
+that was not proved whole.
+
 ## 5. Invariants
 
 - Universal contracts and Host remain media- and vendor-neutral.

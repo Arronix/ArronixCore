@@ -311,6 +311,42 @@ public sealed class MediaContractLoaderTests
     }
 
     /// <summary>
+    /// A host that answers about an address is not a host that could not be reached, and the two answers it
+    /// can give are not each other.
+    /// </summary>
+    /// <remarks>
+    /// The byte route already computes this: 410 means the file moved to another content hash, which a
+    /// manifest re-read resolves, and 404 means nothing is offered there at all. Reporting either as a
+    /// transport failure would hide a recoverable race behind an opaque one, and neither is a statement
+    /// about what this page already holds — none of them is terminal.
+    /// </remarks>
+    [TestCase(HttpStatusCode.Gone, ContractLoadOutcome.Superseded, "Re-reading it recovers")]
+    [TestCase(HttpStatusCode.NotFound, ContractLoadOutcome.NotOffered, "under any content hash")]
+    [TestCase(HttpStatusCode.InternalServerError, ContractLoadOutcome.Unavailable, "500")]
+    public async Task AWithdrawnAddressIsDistinguishedFromOneThatCouldNotBeReached(
+        HttpStatusCode answer,
+        ContractLoadOutcome expected,
+        string stated)
+    {
+        var report = await LoadAsync(path => path.EndsWith("client-contracts", StringComparison.Ordinal)
+            ? Json(Manifest(Truthful()))
+            : new HttpResponseMessage(answer));
+
+        using var assertions = new AssertionScope();
+
+        var entry = report.Packages.Single().Assemblies.Single();
+        entry.Outcome.Should().Be(expected);
+        entry.Source.Should().Be(ContractByteSource.Network);
+        entry.Failure.Should().Contain(stated);
+
+        report.Compatibility.Should().Be(
+            ContractCompatibility.Refused,
+            "an address this page never held cannot make it unable to satisfy the installation");
+        report.CanProject.Should().BeFalse();
+        IsResident(FixtureAssemblyName).Should().BeFalse();
+    }
+
+    /// <summary>
     /// Nothing verified may be reached while the installation as a whole is refused.
     /// </summary>
     [Test]

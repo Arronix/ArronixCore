@@ -57,6 +57,11 @@ public static class ArronixClientServiceCollectionExtensions
         // record of what this page has already loaded has to be the one record.
         services.TryAddSingleton<ContractStore>();
         services.TryAddSingleton<MediaContractLoader>();
+        services.TryAddSingleton<ContractStoreJanitor>();
+
+        // Its value is its subscription, so something has to resolve it. Program does, before the stream
+        // opens, so no extension-state event arrives with nothing listening.
+        services.TryAddSingleton<ContractStateWatcher>();
 
         return services;
     }

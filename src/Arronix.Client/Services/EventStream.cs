@@ -62,6 +62,10 @@ public sealed class EventStream : IAsyncDisposable
     /// </summary>
     public event EventHandler? ConnectionChanged;
 
+    /// <summary>Raises <see cref="Received"/> for one envelope the platform pushed.</summary>
+    /// <param name="envelope">What happened.</param>
+    internal void Publish(EventEnvelope envelope) => Received?.Invoke(this, envelope);
+
     /// <summary>
     /// Gets a value indicating whether the connection is up.
     /// </summary>
@@ -205,7 +209,7 @@ public sealed class EventStream : IAsyncDisposable
             .AddJsonProtocol(protocol => ApiJsonOptions.Configure(protocol.PayloadSerializerOptions))
             .Build();
 
-        connection.On<EventEnvelope>(EventMethodName, envelope => Received?.Invoke(this, envelope));
+        connection.On<EventEnvelope>(EventMethodName, Publish);
 
         connection.Reconnecting += _ =>
         {

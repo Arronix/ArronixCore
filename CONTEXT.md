@@ -199,6 +199,17 @@ coverage.
   every required assembly is resident. The client keeps bytes in a content-hash-keyed browser store and
   discovers nothing by enumerating a loaded assembly — an architecture rule rejects type, property, field,
   method and member enumeration and `Activator.CreateInstance` anywhere in its source.
+- Residency and currency are separate client facts. A resident assembly the installation just read no longer
+  names is orphaned: it stays in the page because a browser cannot unload, stops being served by `Find` and
+  `ContractsOf`, and is reported under its own heading with the package that last published it and what that
+  identifier means to the host now — withheld with the host's own reason, still offered without that file, or
+  not mentioned at all. An orphan never makes an otherwise healthy installation incompatible. Reunion at the
+  exact resident description fetches nothing; a different description is the same terminal
+  `NameAlreadyResident` as replacing an assembly in place. `410 Gone`, `404 Not Found` and a transport failure
+  are three distinct outcomes, none of them terminal. An unchanged `InstallationHash` decides whether to look
+  and never decides what is true, so an unchanged installation costs one manifest read and no bytes.
+  `EventKind.PluginStateChanged` drives that re-read on a connected tab through the loader's own serialized
+  entry point, and store eviction discards only hashes the verified installation does not name.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -266,6 +277,10 @@ work does not substitute for closing an earlier dependency.
   line, a corrupted byte, a falsified identity, a falsified build and a malformed manifest — in every case
   before the runtime sees the payload. See `docs/research/g07/client-contract-loading.md`. It does not claim
   typed deserialization or rendering (G07.2) or cache update, removal and stale-tab behaviour (G07.3).
+  G07.3 is open. Its hermetic lifecycle core is built — orphaning and its refusal, exact reunion, terminal
+  replacement, the `410`/`404`/transport separation, selective store eviction, the unchanged-installation
+  early-out, and the `PluginStateChanged`-driven re-read — but the gate names update, removal, stale cache
+  and stale tab as exercises in a real browser, and none has run there. The gate stays open until they have.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
@@ -307,8 +322,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-26) reports 3,141 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,443 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,208 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,510 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The
@@ -333,6 +348,17 @@ duplicated checklist drifting from current state.
   precedence, because `VersionRange` has no npm-style prerelease exclusion. That is the same rule the
   contract range has always used, and changing it belongs in `VersionRange` rather than in the dependency
   layer. Recorded rather than decided.
+- The client's unchanged-`InstallationHash` early-out is a cost gate with no observable effect. Removing it
+  entirely leaves every test passing, because the reuse path it precedes already returns before any fetch or
+  hash for a resident entry, so the two do the same work. It is kept because it states the rule where a
+  future per-entry check would otherwise make a `PluginStateChanged` storm expensive, and because its safety
+  property — that an equal hash permits the question rather than answering it — is mutation-guarded. Its
+  cost claim is not.
+- `ClientContractPackage.ClosureHash` covers each assembly's identity and content hash and not its file name
+  or its declarations, so `InstallationHash` can stand still while a host restates what a payload declares.
+  The client is not exposed, because every reuse and early-out path compares the published declarations it
+  holds rather than the hash. Widening the server-side hash is a separate decision and belongs with the
+  generated-metadata work rather than here.
 - The shared-assembly source-text screen is a heuristic. The structural rules — no executable platform type,
   no mutable or editable static state, nothing running on load, a reference closure limited to the universal
   contracts — are what prove the boundary; the spelling screen catches literal usage only.

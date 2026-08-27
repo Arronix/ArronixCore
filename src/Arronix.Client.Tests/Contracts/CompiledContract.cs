@@ -41,21 +41,26 @@ internal static class CompiledContract
     /// <summary>Compiles one fixture and returns its bytes.</summary>
     /// <param name="assemblyName">The assembly name, unique per fixture.</param>
     /// <param name="misbehaviour">What its declaration does once loaded.</param>
+    /// <param name="declaring">
+    /// Whether the assembly declares a client contract at all. False is a shared assembly that owns no item
+    /// — a format's representation vocabulary is one — which is a valid payload rather than a defective one.
+    /// </param>
     /// <returns>The compiled assembly image.</returns>
-    public static byte[] Image(string assemblyName, Misbehaviour misbehaviour)
+    public static byte[] Image(string assemblyName, Misbehaviour misbehaviour, bool declaring = true)
     {
         var parse = new CSharpParseOptions(LanguageVersion.Latest);
+
+        var application = "[assembly: System.Reflection.AssemblyVersion(\"1.0.0.0\")]\n"
+            + (declaring
+                ? "[assembly: global::Fixture.Client.Entry(typeof(global::Fixture.Client.Entity), \""
+                    + new string('A', 64) + "\", \"" + new string('B', 64) + "\")]"
+                : string.Empty);
 
         var compilation = CSharpCompilation.Create(
             assemblyName,
             [
                 CSharpSyntaxTree.ParseText(Declaration(misbehaviour), parse, "Declaration.cs"),
-                CSharpSyntaxTree.ParseText(
-                    "[assembly: System.Reflection.AssemblyVersion(\"1.0.0.0\")]\n"
-                    + "[assembly: global::Fixture.Client.Entry(typeof(global::Fixture.Client.Entity), \""
-                    + new string('A', 64) + "\", \"" + new string('B', 64) + "\")]",
-                    parse,
-                    "Application.cs"),
+                CSharpSyntaxTree.ParseText(application, parse, "Application.cs"),
             ],
             References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, deterministic: true));
