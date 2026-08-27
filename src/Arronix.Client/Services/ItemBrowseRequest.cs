@@ -65,7 +65,7 @@ public sealed record ItemBrowseRequest
     {
         var query = new List<KeyValuePair<string, string?>>
         {
-            new("parent", Parent?.Id.Value.ToString(CultureInfo.InvariantCulture)),
+            new("parent", Parent is { } parent ? ApiPaths.ItemReference(parent) : null),
             new("axis", AxisId),
             new("q", Text),
             new("sort", SortFieldId),
@@ -79,7 +79,7 @@ public sealed record ItemBrowseRequest
                 .OrderBy(filter => filter.Key, StringComparer.Ordinal)
                 .Select(filter => new KeyValuePair<string, string?>(
                     "filter",
-                    $"{filter.Key}:{filter.Value}")));
+                    $"{filter.Key}={filter.Value}")));
 
         return query;
     }

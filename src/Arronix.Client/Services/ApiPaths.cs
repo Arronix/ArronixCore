@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using Arronix.Abstractions.Identity;
+using Arronix.Abstractions.Shape;
 
 namespace Arronix.Client.Services;
 
@@ -48,18 +50,105 @@ public static class ApiPaths
 
     /// <summary>Builds the address of one item.</summary>
     /// <param name="kind">The media kind.</param>
-    /// <param name="itemId">The item's identifier.</param>
+    /// <param name="reference">The item's complete reference.</param>
     /// <returns>The address.</returns>
-    public static string Item(string kind, long itemId)
-        => $"{Kind(kind)}/items/{itemId.ToString(CultureInfo.InvariantCulture)}";
+    public static string Item(string kind, MediaItemRef reference)
+        => $"{Kind(kind)}/items/{Escape(ItemReference(kind, reference))}";
 
     /// <summary>Builds the address of one item's children.</summary>
     /// <param name="kind">The media kind.</param>
-    /// <param name="itemId">The item's identifier.</param>
+    /// <param name="reference">The containing item's complete reference.</param>
     /// <param name="query">The query values to append.</param>
     /// <returns>The address.</returns>
-    public static string ItemChildren(string kind, long itemId, IEnumerable<KeyValuePair<string, string?>> query)
-        => WithQuery($"{Item(kind, itemId)}/children", query);
+    public static string ItemChildren(
+        string kind,
+        MediaItemRef reference,
+        IEnumerable<KeyValuePair<string, string?>> query)
+        => WithQuery($"{Item(kind, reference)}/children", query);
+
+    /// <summary>Builds the address of one catalog search.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <param name="scheme">The catalog scheme to search.</param>
+    /// <param name="text">The text to search for.</param>
+    /// <param name="id">The external identifier to resolve.</param>
+    /// <param name="page">The one-based page number.</param>
+    /// <param name="pageSize">The number of results wanted.</param>
+    /// <returns>The address.</returns>
+    public static string CatalogSearch(
+        string kind,
+        string scheme,
+        string? text,
+        ExternalId? id,
+        int page,
+        int pageSize)
+        => WithQuery(
+            $"{Kind(kind)}/catalog/search",
+            [
+                new("scheme", scheme),
+                new("q", text),
+                new("id", id?.ToString()),
+                new("page", page.ToString(CultureInfo.InvariantCulture)),
+                new("size", pageSize.ToString(CultureInfo.InvariantCulture)),
+            ]);
+
+    /// <summary>Builds the address where a catalog item is explicitly added.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <returns>The address.</returns>
+    public static string CatalogItems(string kind) => $"{Kind(kind)}/catalog/items";
+
+    /// <summary>Builds the address where one added item's catalog facts are refreshed.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <param name="reference">The complete reference of the added item.</param>
+    /// <returns>The address.</returns>
+    public static string CatalogItemRefresh(string kind, MediaItemRef reference)
+        => $"{CatalogItems(kind)}/{Escape(ItemReference(kind, reference))}/refresh";
+
+    /// <summary>Renders the complete route-local form of an item reference.</summary>
+    /// <param name="reference">The item reference to render.</param>
+    /// <returns>The <c>level:id</c> form.</returns>
+    /// <exception cref="ArgumentException"><paramref name="reference"/> cannot name an issued item.</exception>
+    public static string ItemReference(MediaItemRef reference)
+    {
+        if (string.IsNullOrWhiteSpace(reference.Kind.Value)
+            || string.IsNullOrWhiteSpace(reference.Level.Value)
+            || reference.Id.Value < 1)
+        {
+            throw new ArgumentException("An item route requires a kind, level and positive identifier.", nameof(reference));
+        }
+
+        return string.Create(
+            CultureInfo.InvariantCulture,
+            $"{reference.Level}:{reference.Id}");
+    }
+
+    /// <summary>Reads a route-local <c>level:id</c> item reference.</summary>
+    /// <param name="kind">The media kind established by the containing route.</param>
+    /// <param name="text">The route segment to read.</param>
+    /// <param name="reference">The parsed reference when the segment was well formed.</param>
+    /// <returns>Whether the segment named one possible issued item.</returns>
+    public static bool TryParseItemReference(MediaKindId kind, string? text, out MediaItemRef reference)
+    {
+        reference = default;
+
+        if (string.IsNullOrWhiteSpace(kind.Value) || string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        var separator = text.IndexOf(':', StringComparison.Ordinal);
+        if (separator <= 0
+            || separator != text.LastIndexOf(':', StringComparison.Ordinal)
+            || separator == text.Length - 1
+            || !MediaLevelId.TryParse(text[..separator], out var level)
+            || !long.TryParse(text[(separator + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+            || id < 1)
+        {
+            return false;
+        }
+
+        reference = new MediaItemRef(kind, level, MediaItemId.FromInt64(id));
+        return true;
+    }
 
     /// <summary>Builds the address of a cross-cutting collection's members.</summary>
     /// <param name="kind">The media kind.</param>
@@ -138,6 +227,16 @@ public static class ApiPaths
     public static string JobTrigger(string jobId) => $"{Jobs}/{Escape(jobId)}/trigger";
 
     private static string Escape(string value) => Uri.EscapeDataString(value ?? string.Empty);
+
+    private static string ItemReference(string kind, MediaItemRef reference)
+    {
+        if (!string.Equals(kind, reference.Kind.Value, StringComparison.Ordinal))
+        {
+            throw new ArgumentException("An item route cannot name a reference from another media kind.", nameof(reference));
+        }
+
+        return ItemReference(reference);
+    }
 
     private static string WithQuery(string path, IEnumerable<KeyValuePair<string, string?>> query)
     {

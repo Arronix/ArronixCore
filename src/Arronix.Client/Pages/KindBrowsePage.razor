@@ -54,5 +54,5 @@ else
 
     private void OpenAsync(ItemDetail item)
         => Navigation.NavigateTo(
-            $"kinds/{Uri.EscapeDataString(item.Item.Ref.Kind.Value)}/items/{item.Item.Ref.Id.Value.ToString(CultureInfo.InvariantCulture)}");
+            $"kinds/{Uri.EscapeDataString(item.Item.Ref.Kind.Value)}/items/{Uri.EscapeDataString(ApiPaths.ItemReference(item.Item.Ref))}");
 }

@@ -298,7 +298,7 @@ else if (_page is { } loaded && _axis is { } axis && _level is { } current)
             {
                 var parent = _trail[^1];
                 _level = ItemProjection.ChildLevel(Kind, parent.Item.Ref.Level) ?? _level;
-                _page = await Api.GetChildrenAsync(Kind.Kind, parent.Item.Ref.Id, request, token);
+                _page = await Api.GetChildrenAsync(Kind.Kind, parent.Item.Ref, request, token);
             }
             else if (BrowsePlan.SourceFor(axis.Kind) is BrowseSource.Groups
                 && axis.GroupingAxisId is { Length: > 0 } groupingAxisId)

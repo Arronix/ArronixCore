@@ -1,4 +1,4 @@
-@page "/kinds/{Kind}/items/{ItemId:int}"
+@page "/kinds/{Kind}/items/{ItemReference}"
 @{
 }
 @implements IDisposable
@@ -45,7 +45,9 @@ else if (_missing)
     private string? _error;
     private bool _busy;
     private bool _missing;
-    private int _loadedItemId = -1;
+    private string? _loadedKind;
+    private string? _loadedItemReference;
+    private MediaItemRef? _reference;
 
     /// <summary>Gets or sets the media kind named in the address.</summary>
     [Parameter]
@@ -53,7 +55,7 @@ else if (_missing)
 
     /// <summary>Gets or sets the item named in the address.</summary>
     [Parameter]
-    public int ItemId { get; set; }
+    public string? ItemReference { get; set; }
 
     protected override void OnInitialized()
     {
@@ -70,18 +72,28 @@ else if (_missing)
 
     protected override async Task OnParametersSetAsync()
     {
-        if (_loadedItemId == ItemId && _descriptor is not null)
+        if (string.Equals(_loadedKind, Kind, StringComparison.Ordinal)
+            && string.Equals(_loadedItemReference, ItemReference, StringComparison.Ordinal)
+            && _descriptor is not null)
         {
             return;
         }
 
-        _loadedItemId = ItemId;
+        _loadedKind = Kind;
+        _loadedItemReference = ItemReference;
+        _descriptor = null;
+        _level = null;
+        _item = null;
+        _children = [];
+        _reference = null;
         await LoadAsync();
     }
 
     private void OnEvent(object? sender, EventEnvelope envelope)
     {
-        if (envelope.Kind is EventKind.ItemChanged && envelope.Item?.Id.Value == ItemId)
+        if (envelope.Kind is EventKind.ItemChanged
+            && envelope.Item is { } item
+            && item == _reference)
         {
             InvokeAsync(LoadFromNotificationAsync);
         }
@@ -99,7 +111,7 @@ else if (_missing)
 
     private void OpenChild(ItemDetail child)
         => Navigation.NavigateTo(
-            $"kinds/{Uri.EscapeDataString(child.Item.Ref.Kind.Value)}/items/{child.Item.Ref.Id.Value.ToString(CultureInfo.InvariantCulture)}");
+            $"kinds/{Uri.EscapeDataString(child.Item.Ref.Kind.Value)}/items/{Uri.EscapeDataString(ApiPaths.ItemReference(child.Item.Ref))}");
 
     private async Task LoadAsync()
     {
@@ -116,8 +128,15 @@ else if (_missing)
         try
         {
             var kindId = MediaKindId.FromString(Kind);
+            if (!ApiPaths.TryParseItemReference(kindId, ItemReference, out var reference))
+            {
+                _missing = true;
+                return;
+            }
+
+            _reference = reference;
             _descriptor = await Descriptors.GetAsync(kindId);
-            _item = await Api.GetItemAsync(kindId, MediaItemId.FromInt64(ItemId));
+            _item = await Api.GetItemAsync(kindId, reference);
 
             if (_descriptor is null || _item is null)
             {
@@ -130,7 +149,7 @@ else if (_missing)
             _children = _item.Item.HasChildren
                 ? (await Api.GetChildrenAsync(
                     kindId,
-                    _item.Item.Ref.Id,
+                    _item.Item.Ref,
                     new ItemBrowseRequest { PageSize = Options.PageSize })).Items
                 : [];
         }
