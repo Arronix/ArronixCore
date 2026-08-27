@@ -341,8 +341,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-27) reports 3,458 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,760 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,460 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,762 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

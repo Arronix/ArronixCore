@@ -146,6 +146,8 @@ declared measurements are the images' own.
 | Dropped, reordered, duplicated and equal-cloned descriptors are each refused | `ProjectionAuditTests.ADroppedReorderedDuplicatedOrClonedDescriptorIsRefused` |
 | A list that changes after it is checked cannot change what is rendered | `.AListThatChangesAfterItIsCheckedCannotChangeWhatIsRendered`, `.ADescriptorListThatChangesAfterItIsCheckedCannotChangeWhatIsRendered` |
 | A root list, nested components and choices that each change after admission change nothing | `ClientContractSchemaTests.ARootListThatChangesAfterAdmissionChangesNothing`, `.NestedComponentsThatChangeAfterAdmissionChangeNothing`, `.ChoicesThatChangeAfterAdmissionChangeNothing` |
+| Repeated component labels are charged where they are drawn | `.RepeatedComponentLabelsAreChargedWhereTheyAreDrawn` |
+| Stable roots whose own lists answer differently are admitted, and hashed, from their first answer | `ContractDeclarationProofTests.ASchemaWhoseNestedListsAnswerDifferentlyIsAdmittedFromTheirFirstAnswer` |
 | Neither an equal clone nor the frozen copy substitutes for the admitted descriptor | `.NeitherAnEqualCloneNorTheFrozenCopyCanStandInForTheAdmittedDescriptor` |
 | The trusted projection is detached from every contract-owned schema list | `.TheTrustedProjectionIsDetachedFromEveryContractOwnedSchemaList` |
 | One total covers the schema and the values rendered beside it | `.OneTotalCoversTheSchemaAndTheValuesRenderedBesideIt` |
@@ -230,20 +232,26 @@ that fails to build proves nothing — one attempt here did, and was redone unti
 | Identity is checked against the frozen copy rather than the admitted root | 36 fail |
 | The admitted roots are the contract's live list rather than a capture of it | 2 fail |
 | Choices are taken from the contract's own list rather than copied | 1 fails |
-| The hash is taken over the live schema rather than the frozen capture | 1 fails, the end-to-end admission witness |
+| The admission digest walks the contract's live root list | 2 fail |
+| The admission digest walks the admitted roots, whose own lists are still live | 1 fails |
 | Each payload is given a fresh full budget instead of the schema's remainder | 1 fails |
+| A composite's component labels are drawn but not charged | 1 fails |
 | A composite's component labels are dropped | 5 fail |
 
-The fifth row is why the witness exists: the same mutation survived 190 of 190 before it was written, so the
-loader-to-hash connection was not load-bearing until a contract whose schema changes between the freeze and
-any later read was admitted end to end through `MediaContractLoader`.
+The three digest and label rows are why their witnesses exist, and each was written because the mutation
+survived first. Hashing the live root list survived 190 of 190; hashing the *admitted* roots survived a
+further 192, because capturing a root object says nothing about the component and choice lists that object
+still names; and charging nothing for a component label survived too, because no case had yet drawn one
+label often enough to matter. The three fixtures that close them are, in order: a schema whose root list
+answers differently, a schema whose roots are stable and whose nested lists answer differently, and a
+multivalued composite whose one-character values are dwarfed by the label drawn beside each of them.
 
 ### 4.5 Full rail
 
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=14 total=3760 enabled=3458 passed=3458 failed=0 skipped=302 inconclusive=0
+projects=14 total=3762 enabled=3460 passed=3460 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=14 compileItems=360 boundSources=15
 ```

@@ -64,9 +64,15 @@ internal enum Misbehaviour
     AggregateSchema,
 
     /// <summary>
-    /// Its schema is coherent and answers with a different shape every time it is read.
+    /// Its schema is coherent and its root list answers with a different field every time it is read.
     /// </summary>
     SteppingSchema,
+
+    /// <summary>
+    /// Its schema's root objects are stable, and their components and choices answer with something
+    /// different every time they are read.
+    /// </summary>
+    SteppingNestedSchema,
 
     /// <summary>It reads a payload into its own entity and projects it, which is the control.</summary>
     PayloadReadable,
@@ -182,7 +188,8 @@ internal static class CompiledContract
     private static bool Hashable(Misbehaviour misbehaviour)
         => misbehaviour is Misbehaviour.None or Misbehaviour.DigestMismatch
             or Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema or Misbehaviour.WideSchema
-            or Misbehaviour.AggregateSchema or Misbehaviour.SteppingSchema or Misbehaviour.PayloadReadable
+            or Misbehaviour.AggregateSchema or Misbehaviour.SteppingSchema
+            or Misbehaviour.SteppingNestedSchema or Misbehaviour.PayloadReadable
             or Misbehaviour.PayloadForeignType or Misbehaviour.PayloadNullEntity
             or Misbehaviour.PayloadThrowingProject or Misbehaviour.PayloadCancelingProject
             or Misbehaviour.PayloadForeignProjectedType;
@@ -297,6 +304,7 @@ internal static class CompiledContract
             Misbehaviour.WideSchema => "Schemas.Wide;",
             Misbehaviour.AggregateSchema => "Schemas.Aggregate;",
             Misbehaviour.SteppingSchema => "Schemas.Stepping;",
+            Misbehaviour.SteppingNestedSchema => "Schemas.LiveNested;",
             _ => "[];",
         };
 
@@ -421,8 +429,31 @@ internal static class CompiledContract
                 /// <summary>A list that claims more entries than could be held and produces none.</summary>
                 internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Wide { get; } = new Vast();
 
-                /// <summary>A coherent schema that answers with a different shape every time it is read.</summary>
+                /// <summary>A coherent schema whose root list answers differently every time it is read.</summary>
                 internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Stepping { get; } = new Stepper();
+
+                /// <summary>
+                /// Stable root objects whose own lists answer differently every time they are read. The
+                /// roots never move, so capturing them is not enough: what they name has to be captured too.
+                /// </summary>
+                internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> LiveNested { get; } =
+                    new[]
+                    {
+                        new global::Arronix.Abstractions.Shape.FieldDescriptor
+                        {
+                            FieldId = "certification",
+                            Name = "Certification",
+                            ValueKind = global::Arronix.Abstractions.Shape.FieldValueKind.Composite,
+                            Components = new SteppingComponents(),
+                        },
+                        new global::Arronix.Abstractions.Shape.FieldDescriptor
+                        {
+                            FieldId = "status",
+                            Name = "Status",
+                            ValueKind = global::Arronix.Abstractions.Shape.FieldValueKind.Enumerated,
+                            Choices = new SteppingChoices(),
+                        },
+                    };
 
                 /// <summary>One root, whose children are exactly the whole budget: together, one too many.</summary>
                 internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Aggregate { get; } =
@@ -454,6 +485,48 @@ internal static class CompiledContract
                         Name = id,
                         ValueKind = global::Arronix.Abstractions.Shape.FieldValueKind.Text,
                     };
+
+                /// <summary>One component the first time it is read, and another every time after.</summary>
+                private sealed class SteppingComponents : System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor>
+                {
+                    private static readonly global::Arronix.Abstractions.Shape.FieldDescriptor First = Leaf("region");
+
+                    private static readonly global::Arronix.Abstractions.Shape.FieldDescriptor Rest = Leaf("swapped");
+
+                    private int _reads;
+
+                    public global::Arronix.Abstractions.Shape.FieldDescriptor this[int index] =>
+                        _reads++ == 0 ? First : Rest;
+
+                    public int Count => 1;
+
+                    public System.Collections.Generic.IEnumerator<global::Arronix.Abstractions.Shape.FieldDescriptor> GetEnumerator()
+                    {
+                        yield return this[0];
+                    }
+
+                    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+                }
+
+                /// <summary>One choice the first time it is read, and another every time after.</summary>
+                private sealed class SteppingChoices : System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FacetValue>
+                {
+                    private int _reads;
+
+                    public global::Arronix.Abstractions.Shape.FacetValue this[int index] =>
+                        _reads++ == 0
+                            ? new global::Arronix.Abstractions.Shape.FacetValue("released", "Released")
+                            : new global::Arronix.Abstractions.Shape.FacetValue("smuggled", "Smuggled");
+
+                    public int Count => 1;
+
+                    public System.Collections.Generic.IEnumerator<global::Arronix.Abstractions.Shape.FacetValue> GetEnumerator()
+                    {
+                        yield return this[0];
+                    }
+
+                    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+                }
 
                 /// <summary>
                 /// One composite the first time it is read, and a composite whose component is named

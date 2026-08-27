@@ -270,6 +270,54 @@ public sealed class ClientContractSchemaTests
         second.Should().NotBeNull();
     }
 
+    /// <remarks>
+    /// A component's name is drawn beside every tuple, so a list of tuples draws it as many times as it has
+    /// tuples. The schema is charged once, when it is frozen; the labels are charged where they are drawn,
+    /// or a contract could declare one long component name and repeat it until the page is enormous while
+    /// the values in it stay tiny.
+    /// </remarks>
+    [Test]
+    public void RepeatedComponentLabelsAreChargedWhereTheyAreDrawn()
+    {
+        var label = new string('L', ClientContractLimits.MaxTextLength);
+
+        var ratings = new FieldDescriptor
+        {
+            FieldId = "ratings",
+            Name = "R",
+            ValueKind = FieldValueKind.Composite,
+            Multivalued = true,
+            Components = [new FieldDescriptor { FieldId = "s", Name = label, ValueKind = FieldValueKind.Text }],
+        };
+
+        // One label drawn beside a one-character value.
+        var perTuple = ClientContractLimits.MaxTextLength + 1;
+        var over = (ClientContractLimits.MaxProjectionCharacters / perTuple) + 1;
+        var under = over / 2;
+
+        FieldValue Tuples(int count) => FieldValue.OfItems(
+            FieldValueKind.Composite,
+            [.. Enumerable.Range(0, count)
+                .Select(_ => FieldValue.OfComposite([FieldValue.OfText("x")]))]);
+
+        ProjectionDefect? Render(int tuples)
+        {
+            var schema = Admit([ratings]);
+
+            return ProjectionAudit.Describe(Entity, schema, Projection(schema, Tuples(tuples)), out var ignored);
+        }
+
+        using var scope = new AssertionScope();
+
+        // Far inside the node budget either way, so only the characters can be what decides.
+        over.Should().BeLessThan(ClientContractLimits.MaxNodes);
+
+        Render(under).Should().BeNull("half as many labels fit");
+        Render(over)!.Message.Should().Contain(
+            "characters one projection may render in total",
+            "the values are one character each, so the labels are what fills the total");
+    }
+
     [Test]
     public void ASchemaThatIsNotAListOfFieldsIsRefusedAtAdmission()
     {

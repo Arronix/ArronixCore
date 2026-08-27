@@ -139,6 +139,48 @@ internal sealed class ContractDeclarationProofTests
     }
 
     /// <summary>
+    /// A schema whose root objects never move, and whose components and choices answer differently every
+    /// time they are read, is admitted and hashed from their first answer.
+    /// </summary>
+    /// <remarks>
+    /// Capturing the root list is not enough and this is the shape that shows it. The roots here are stable
+    /// objects, so an admission that captured only them would still walk their live component and choice
+    /// lists when it hashed — reading a second answer, and publishing a hash for a schema that is not the
+    /// one a page will render. The whole graph is read once, and the hash is taken over that copy.
+    /// </remarks>
+    [Test]
+    public async Task ASchemaWhoseNestedListsAnswerDifferentlyIsAdmittedFromTheirFirstAnswer()
+    {
+        const string name = "Fixture.Client.LiveNested";
+        var loader = Loader(name, Misbehaviour.SteppingNestedSchema, out _);
+
+        var report = await loader.LoadAsync();
+
+        using var assertions = new AssertionScope();
+
+        report.Packages.Single().Assemblies.Single().Outcome.Should().Be(
+            ContractLoadOutcome.Loaded,
+            report.Packages.Single().Assemblies.Single().Failure
+            ?? "the first answer of every list is a coherent schema");
+
+        var schema = loader.ContractsOf(name).Single().Schema;
+
+        schema.Frozen[0].Components.Single().FieldId.Should().Be("region");
+        schema.Frozen[1].Choices.Single().Value.Should().Be("released");
+
+        // And they stay that, however often a report, a renderer or a proof reads them.
+        schema.Frozen[0].Components.Single().FieldId.Should().Be("region");
+        schema.Frozen[1].Choices.Single().Value.Should().Be("released");
+
+        // The hostility is real: the contract's own lists have already moved on, and the copy is why that
+        // no longer matters.
+        schema.Admitted[0].Components[0].FieldId.Should().Be("swapped");
+        schema.Admitted[1].Choices[0].Value.Should().Be("smuggled");
+        schema.Admitted[0].Components.Should().NotBeSameAs(schema.Frozen[0].Components);
+        schema.Admitted[1].Choices.Should().NotBeSameAs(schema.Frozen[1].Choices);
+    }
+
+    /// <summary>
     /// The shipped movies contract is admitted through the ordinary loader, not only synthetic fixtures.
     /// </summary>
     /// <remarks>
