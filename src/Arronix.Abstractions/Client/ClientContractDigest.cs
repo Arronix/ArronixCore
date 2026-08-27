@@ -91,7 +91,7 @@ public static class ClientContractDigest
         ArgumentNullException.ThrowIfNull(schema);
 
         var rendering = new StringBuilder();
-        rendering.Append("entity=").Append(Name(entityType)).Append('\n');
+        rendering.Append("entity=").Append(Text(Name(entityType))).Append('\n');
 
         foreach (var field in schema)
         {
@@ -130,11 +130,11 @@ public static class ClientContractDigest
 
     private static void RenderType(StringBuilder rendering, JsonTypeInfo type)
     {
-        rendering.Append("type=").Append(Name(type.Type)).Append("|kind=").Append(type.Kind);
+        rendering.Append("type=").Append(Text(Name(type.Type))).Append("|kind=").Append(type.Kind);
 
         if (type.ElementType is { } element)
         {
-            rendering.Append("|element=").Append(Name(element));
+            rendering.Append("|element=").Append(Text(Name(element)));
         }
 
         rendering.Append('\n');
@@ -143,7 +143,7 @@ public static class ClientContractDigest
         // rendered as it is rather than sorted.
         foreach (var property in type.Properties)
         {
-            rendering.Append("  member=").Append(property.Name);
+            rendering.Append("  member=").Append(Text(property.Name));
 
             // An ignored member contributes nothing to the wire, and what the framework leaves in its
             // place varies with whether its type is reachable elsewhere. That it is ignored is the fact;
@@ -154,7 +154,7 @@ public static class ClientContractDigest
                 continue;
             }
 
-            rendering.Append('|').Append(Name(property.PropertyType))
+            rendering.Append('|').Append(Text(Name(property.PropertyType)))
                 .Append("|read=").Append(Flag(property.Set is not null))
                 .Append("|write=").Append(Flag(property.Get is not null))
                 .Append("|required=").Append(Flag(property.IsRequired))
@@ -225,21 +225,21 @@ public static class ClientContractDigest
     private static void RenderField(StringBuilder rendering, FieldDescriptor field, int depth)
     {
         rendering.Append(' ', depth * 2)
-            .Append("field=").Append(field.FieldId)
-            .Append('|').Append(field.Name)
-            .Append('|').Append(field.Description ?? string.Empty)
+            .Append("field=").Append(Text(field.FieldId))
+            .Append('|').Append(Text(field.Name))
+            .Append('|').Append(Text(field.Description))
             .Append('|').Append(Number((int)field.ValueKind))
             .Append('|').Append(Number((int)field.Semantics))
             .Append('|').Append(Number((int)field.Prominence))
             .Append('|').Append(field.Multivalued ? "many" : "one")
             .Append('|').Append(field.Editable ? "editable" : "read-only")
-            .Append('|').Append(field.Unit ?? string.Empty)
+            .Append('|').Append(Text(field.Unit))
             .Append('\n');
 
         foreach (var choice in field.Choices)
         {
             rendering.Append(' ', (depth + 1) * 2)
-                .Append("choice=").Append(choice.Value).Append('|').Append(choice.Name).Append('\n');
+                .Append("choice=").Append(Text(choice.Value)).Append('|').Append(Text(choice.Name)).Append('\n');
         }
 
         foreach (var component in field.Components)
@@ -247,6 +247,16 @@ public static class ClientContractDigest
             RenderField(rendering, component, depth + 1);
         }
     }
+
+    /// <summary>Encodes free text so that no value can be mistaken for the structure around it.</summary>
+    /// <remarks>
+    /// A field's name, description or choice text is author-supplied and may contain the separator or a
+    /// line break. Concatenated raw, two different schemas render identically and hash alike — a rename
+    /// that also moved a separator would be invisible. Length-prefixing removes the ambiguity: the reader
+    /// of a rendering never has to find where a value ends. A null is its own mark, distinct from empty.
+    /// </remarks>
+    private static string Text(string? value) =>
+        value is null ? "~" : value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value;
 
     private static string Flag(bool value) => value ? "true" : "false";
 

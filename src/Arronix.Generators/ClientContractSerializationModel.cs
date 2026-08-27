@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using Microsoft.CodeAnalysis;
@@ -49,13 +50,11 @@ internal static class ClientContractSerializationModel
 
     /// <summary>Renders the serialization graph one entity will be read and written through.</summary>
     /// <param name="root">The entity type.</param>
-    /// <param name="strict">Whether the declared context selects strict defaults.</param>
     /// <param name="derived">The wire names of members the contract computes rather than reads.</param>
     /// <param name="refusal">Why the graph could not be modeled, when it could not.</param>
     /// <returns>The canonical rendering, or <see langword="null"/> when it was refused.</returns>
     internal static string? Render(
         INamedTypeSymbol root,
-        bool strict,
         out IReadOnlyList<string> derived,
         out string? refusal)
     {
@@ -63,13 +62,6 @@ internal static class ClientContractSerializationModel
         var ignored = new SortedSet<string>(StringComparer.Ordinal);
         var live = new HashSet<string>(StringComparer.Ordinal);
         derived = Array.Empty<string>();
-
-        if (!strict)
-        {
-            refusal = "its serialization context does not declare JsonSerializerDefaults.Strict, and no "
-                + "other set of defaults is modeled";
-            return null;
-        }
 
         var rendering = new StringBuilder(StrictOptions).Append('\n');
         var seen = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default) { root };
@@ -97,7 +89,8 @@ internal static class ClientContractSerializationModel
 
         // A derived member's name is refused wherever it appears, so it must not also be a member some
         // other type in this graph legitimately carries. Sharing one would make a valid payload unreadable.
-        ignored.ExceptWith(live);
+        // The intersection is taken before anything is removed from either set: subtracting first empties
+        // the very set the collision would have been found in.
         var collisions = new SortedSet<string>(ignored, StringComparer.Ordinal);
         collisions.IntersectWith(live);
 
@@ -122,11 +115,11 @@ internal static class ClientContractSerializationModel
         var element = ElementOf(type);
         var kind = Kind(type, element);
 
-        rendering.Append("type=").Append(Name(type)).Append("|kind=").Append(kind);
+        rendering.Append("type=").Append(Text(Name(type))).Append("|kind=").Append(kind);
 
         if (element is not null)
         {
-            rendering.Append("|element=").Append(Name(element));
+            rendering.Append("|element=").Append(Text(Name(element)));
         }
 
         rendering.Append('\n');
@@ -149,7 +142,7 @@ internal static class ClientContractSerializationModel
                     return reachable;
                 }
 
-                rendering.Append("  member=").Append(CamelCase(property.Name));
+                rendering.Append("  member=").Append(Text(CamelCase(property.Name)));
 
                 var ignore = property.GetAttributes().FirstOrDefault(
                     attribute => attribute.AttributeClass?.Name == "JsonIgnoreAttribute");
@@ -173,7 +166,7 @@ internal static class ClientContractSerializationModel
                     candidate => string.Equals(candidate.Name, property.Name, StringComparison.OrdinalIgnoreCase));
                 var nullable = Nullable(property);
 
-                rendering.Append('|').Append(Name(property.Type))
+                rendering.Append('|').Append(Text(Name(property.Type)))
                     .Append("|read=").Append(Bool(property.SetMethod is { DeclaredAccessibility: Accessibility.Public }))
                     .Append("|write=").Append(Bool(property.GetMethod is { DeclaredAccessibility: Accessibility.Public }))
                     .Append("|required=").Append(Bool(property.IsRequired || parameter is { HasExplicitDefaultValue: false }))
@@ -339,13 +332,10 @@ internal static class ClientContractSerializationModel
     {
         foreach (var attribute in property.GetAttributes())
         {
-            var name = attribute.AttributeClass?.Name;
-
-            if (name is "JsonPropertyNameAttribute" or "JsonConverterAttribute"
-                or "JsonNumberHandlingAttribute" or "JsonPropertyOrderAttribute"
-                or "JsonExtensionDataAttribute" or "JsonIncludeAttribute" or "JsonRequiredAttribute")
+            if (IsSerializationAttribute(attribute) && attribute.AttributeClass?.Name != "JsonIgnoreAttribute")
             {
-                refusal = $"'{property.Name}' carries [{Shorten(name!)}], which this model does not describe";
+                refusal = $"'{property.Name}' carries [{Shorten(attribute.AttributeClass!.Name)}], which "
+                    + "this model does not describe";
                 return false;
             }
         }
@@ -355,14 +345,15 @@ internal static class ClientContractSerializationModel
 
     private static bool Modelable(ITypeSymbol type, string member, ref string? refusal)
     {
+        // An allow list, not a deny list. A framework attribute this model has never heard of changes what
+        // a payload means in some way, and the safe reading of "never heard of" is "not described".
         foreach (var attribute in type.GetAttributes())
         {
-            var name = attribute.AttributeClass?.Name;
-
-            if (name is "JsonConverterAttribute" or "JsonPolymorphicAttribute" or "JsonDerivedTypeAttribute")
+            if (IsSerializationAttribute(attribute) && attribute.AttributeClass?.Name is not
+                ("JsonSerializableAttribute" or "JsonSourceGenerationOptionsAttribute"))
             {
                 refusal = $"'{type.ToDisplayString()}', reached through '{member}', carries "
-                    + $"[{Shorten(name!)}], which this model does not describe";
+                    + $"[{Shorten(attribute.AttributeClass!.Name)}], which this model does not describe";
                 return false;
             }
         }
@@ -374,7 +365,48 @@ internal static class ClientContractSerializationModel
             return false;
         }
 
+        // A collection the model does not recognize would be described as an object with the collection's
+        // own members, which is not what the framework writes.
+        if (ElementOf(type) is null && !IsScalar(type) && IsSequence(type))
+        {
+            refusal = $"'{type.ToDisplayString()}', reached through '{member}', is a collection this model "
+                + "does not recognize, so the shape it would be given is not the shape it is written in";
+            return false;
+        }
+
         return true;
+    }
+
+    private static bool IsSerializationAttribute(AttributeData attribute) =>
+        attribute.AttributeClass?.ContainingNamespace?.ToDisplayString() == "System.Text.Json.Serialization";
+
+    private static bool IsScalar(ITypeSymbol type) =>
+        type.TypeKind == TypeKind.Enum
+        || Array.IndexOf(Scalars, Name(type)) >= 0
+        || type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte }
+        || type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T };
+
+    private static bool IsSequence(ITypeSymbol type)
+    {
+        if (type is IArrayTypeSymbol)
+        {
+            return true;
+        }
+
+        if (type.SpecialType == SpecialType.System_Collections_IEnumerable)
+        {
+            return true;
+        }
+
+        foreach (var contract in type.AllInterfaces)
+        {
+            if (contract.SpecialType == SpecialType.System_Collections_IEnumerable)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsDictionary(ITypeSymbol type)
@@ -399,6 +431,10 @@ internal static class ClientContractSerializationModel
 
         return false;
     }
+
+    /// <summary>Encodes free text so that no value can be mistaken for the structure around it.</summary>
+    internal static string Text(string? value) =>
+        value is null ? "~" : value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value;
 
     private static string Shorten(string attributeName) =>
         attributeName.EndsWith("Attribute", StringComparison.Ordinal)

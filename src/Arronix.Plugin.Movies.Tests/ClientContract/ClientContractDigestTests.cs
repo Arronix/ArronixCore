@@ -60,27 +60,27 @@ public sealed class ClientContractDigestTests
                 + "|respectRequiredCtorParameters=true|numbers=Strict|comments=Disallow|trailingCommas=false"
                 + "|ignoreCondition=Never|includeFields=false\n"));
 
-            Assert.That(rendering, Does.Contain("type=Arronix.Media.Movies.Movie|kind=Object\n"));
+            Assert.That(rendering, Does.Contain("type=26:Arronix.Media.Movies.Movie|kind=Object\n"));
 
             // Wire name, declared type, direction, requiredness and nullability.
             Assert.That(rendering, Does.Contain(
-                "  member=title|System.String|read=true|write=true|required=true"
+                "  member=5:title|13:System.String|read=true|write=true|required=true"
                 + "|getNullable=false|setNullable=false\n"));
 
             // A member the constructor writes and no setter reads.
             Assert.That(rendering, Does.Contain(
-                "  member=minimum|System.Decimal|read=false|write=true|required=true"
+                "  member=7:minimum|14:System.Decimal|read=false|write=true|required=true"
                 + "|getNullable=false|setNullable=false\n"));
 
             // A derived member reaches the wire in neither direction.
-            Assert.That(rendering, Does.Contain("  member=status|ignored\n"));
-            Assert.That(rendering, Does.Contain("  member=normalizedValue|ignored\n"));
+            Assert.That(rendering, Does.Contain("  member=6:status|ignored\n"));
+            Assert.That(rendering, Does.Contain("  member=15:normalizedValue|ignored\n"));
 
             // Generic arguments are spelled without assembly qualification, so a framework patch that
             // changed nothing about a payload does not move the hash.
             Assert.That(rendering, Does.Contain(
-                "type=System.Collections.Generic.IReadOnlyList<Arronix.Abstractions.Media.Rating>"
-                + "|kind=Enumerable|element=Arronix.Abstractions.Media.Rating\n"));
+                "type=75:System.Collections.Generic.IReadOnlyList<Arronix.Abstractions.Media.Rating>"
+                + "|kind=Enumerable|element=33:Arronix.Abstractions.Media.Rating\n"));
         });
     }
 
@@ -91,11 +91,11 @@ public sealed class ClientContractDigestTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(rendering, Does.StartWith("entity=Arronix.Media.Movies.Movie\n"));
+            Assert.That(rendering, Does.StartWith("entity=26:Arronix.Media.Movies.Movie\n"));
             Assert.That(
                 rendering.Split('\n').Count(line => line.StartsWith("  field=", StringComparison.Ordinal)),
                 Is.EqualTo(Declaration.Schema.Count));
-            Assert.That(rendering, Does.Contain("    field=memberCount|"), "a composite's components are covered");
+            Assert.That(rendering, Does.Contain("    field=11:memberCount|"), "a composite's components are covered");
         });
     }
 

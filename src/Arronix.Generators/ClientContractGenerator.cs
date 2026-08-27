@@ -159,11 +159,74 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
         return serialized.Count == 0
             ? null
-            : new SerializationContext(
-                symbol,
-                serialized,
-                EnumArgument(options?.ConstructorArguments.FirstOrDefault()) == "Strict",
-                NamedEnumArgument(options, "PropertyNamingPolicy") == "CamelCase");
+            : new SerializationContext(symbol, serialized, Unsupported(options));
+
+    }
+
+    /// <summary>
+    /// Names the first declared serialization option this model does not describe.
+    /// </summary>
+    /// <remarks>
+    /// One exact set is modeled — strict defaults and the camel-case naming policy — and everything else is
+    /// refused. Reading two options and ignoring the rest is the failure that matters here: a declaration
+    /// that also set, say, a number-handling mode would still be published, under a hash that describes a
+    /// wire it does not have.
+    /// </remarks>
+    private static string? Unsupported(AttributeData? options)
+    {
+        if (options is null)
+        {
+            return "its serialization context declares no [JsonSourceGenerationOptions]";
+        }
+
+        if (options.ConstructorArguments.Length > 1)
+        {
+            return "its serialization context declares options this model does not read";
+        }
+
+        if (options.ConstructorArguments.Length == 1
+            && EnumArgument(options.ConstructorArguments[0]) != "Strict")
+        {
+            return "its serialization context does not declare JsonSerializerDefaults.Strict";
+        }
+
+        var strict = options.ConstructorArguments.Length == 1;
+        var camelCase = false;
+
+        foreach (var argument in options.NamedArguments)
+        {
+            switch (argument.Key)
+            {
+                case "Defaults":
+                    if (EnumArgument(argument.Value) != "Strict")
+                    {
+                        return "its serialization context does not declare JsonSerializerDefaults.Strict";
+                    }
+
+                    strict = true;
+                    break;
+
+                case "PropertyNamingPolicy":
+                    if (EnumArgument(argument.Value) != "CamelCase")
+                    {
+                        return "its serialization context does not declare the camel-case naming policy";
+                    }
+
+                    camelCase = true;
+                    break;
+
+                default:
+                    return $"its serialization context declares '{argument.Key}', which this model does "
+                        + "not describe";
+            }
+        }
+
+        if (!strict)
+        {
+            return "its serialization context does not declare JsonSerializerDefaults.Strict";
+        }
+
+        return camelCase ? null : "its serialization context does not declare the camel-case naming policy";
     }
 
     private static SerializationContext? Match(
@@ -217,16 +280,14 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     {
         refusal = null;
 
-        if (!serializer.CamelCase)
+        if (serializer.Unsupported is { } unsupported)
         {
-            refusal = "its serialization context does not declare the camel-case naming policy, and no "
-                + "other policy is modeled";
+            refusal = unsupported;
             return null;
         }
 
         var graph = ClientContractSerializationModel.Render(
             entry.Symbol,
-            serializer.Strict,
             out var derived,
             out refusal);
 
@@ -522,7 +583,9 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     private static string RenderSchema(INamedTypeSymbol item, IReadOnlyList<Field> schema)
     {
         var rendering = new StringBuilder();
-        rendering.Append("entity=").Append(ClientContractSerializationModel.Name(item)).Append('\n');
+        rendering.Append("entity=")
+            .Append(ClientContractSerializationModel.Text(ClientContractSerializationModel.Name(item)))
+            .Append('\n');
 
         foreach (var field in schema)
         {
@@ -535,21 +598,22 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     private static void RenderField(StringBuilder rendering, Field field, int depth)
     {
         rendering.Append(' ', depth * 2)
-            .Append("field=").Append(field.FieldId)
-            .Append('|').Append(field.Name)
-            .Append('|').Append(field.Description ?? string.Empty)
+            .Append("field=").Append(ClientContractSerializationModel.Text(field.FieldId))
+            .Append('|').Append(ClientContractSerializationModel.Text(field.Name))
+            .Append('|').Append(ClientContractSerializationModel.Text(field.Description))
             .Append('|').Append(Number(field.Kind))
             .Append('|').Append(Number(field.Semantics))
             .Append('|').Append(Number(field.Prominence))
             .Append('|').Append(field.Multivalued ? "many" : "one")
             .Append('|').Append(field.Editable ? "editable" : "read-only")
-            .Append('|').Append(field.Unit ?? string.Empty)
+            .Append('|').Append(ClientContractSerializationModel.Text(field.Unit))
             .Append('\n');
 
         foreach (var choice in field.Choices)
         {
             rendering.Append(' ', (depth + 1) * 2)
-                .Append("choice=").Append(choice.Key).Append('|').Append(choice.Value).Append('\n');
+                .Append("choice=").Append(ClientContractSerializationModel.Text(choice.Key))
+                .Append('|').Append(ClientContractSerializationModel.Text(choice.Value)).Append('\n');
         }
 
         foreach (var component in field.Components)
@@ -597,22 +661,19 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         internal SerializationContext(
             INamedTypeSymbol symbol,
             IReadOnlyList<string> serialized,
-            bool strict,
-            bool camelCase)
+            string? unsupported)
         {
             Symbol = symbol;
             Serialized = serialized;
-            Strict = strict;
-            CamelCase = camelCase;
+            Unsupported = unsupported;
         }
 
         internal INamedTypeSymbol Symbol { get; }
 
         internal IReadOnlyList<string> Serialized { get; }
 
-        internal bool Strict { get; }
-
-        internal bool CamelCase { get; }
+        /// <summary>Gets why this context's declared options are not modeled, or <see langword="null"/>.</summary>
+        internal string? Unsupported { get; }
     }
 
     /// <summary>Reads the member name of an enumeration-valued attribute argument.</summary>

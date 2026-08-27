@@ -96,10 +96,10 @@ emits literals from a compile-time model of the framework's serializer, and `Cli
 recomputes the same canonical renderings from the **live** metadata. Measured, equal:
 
 ```text
-serialization      = 6D346BE2E3B80815766937331C5C97FD733E5314019C82EF4CC9F9E55F7C3E15
-declaredMetadata   = 6D346BE2E3B80815766937331C5C97FD733E5314019C82EF4CC9F9E55F7C3E15
-projection         = 372E2CB8C8092F5F378EAD7F681339157A5E55F636B612F1A8CF94AF69250861
-declaredProjection = 372E2CB8C8092F5F378EAD7F681339157A5E55F636B612F1A8CF94AF69250861
+serialization      = F3B053D8A37B12DA10135C2F3CADABFB7EB51E33E6255BA856E6CFB6667A5D13
+declaredMetadata   = F3B053D8A37B12DA10135C2F3CADABFB7EB51E33E6255BA856E6CFB6667A5D13
+projection         = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
+declaredProjection = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 ```
 
 The serialization rendering carries the strict options, then every type reachable from the root: its kind,
@@ -130,10 +130,39 @@ Getting the two sides to agree took four measurements the model would otherwise 
    type is reachable nowhere else and the real type otherwise. The digest records that the member is
    ignored and nothing more.
 
-Four framework features are **refused** rather than described wrongly, with `ARX1011`: `[JsonPropertyName]`,
-`[JsonConverter]`, `[JsonPolymorphic]`/`[JsonDerivedType]`, and dictionaries. Each changes what a payload
-means in a way the model does not reproduce, and a hash that disagrees with the wire while looking like
-agreement is worse than no contract.
+### 4.1 Every value states its own length
+
+Author-supplied text — a field's identifier, name, description, unit, a choice's stored value and label,
+and every type and member name — is **length-prefixed** on both sides: `5:title`, and `~` for absent, which
+is a different fact from empty. Concatenated raw with a separator, an author who used that separator moves
+the boundary between two values, so two different schemas render identically and hash alike: the hash would
+say two contracts agree when they do not, which is the one thing it exists to rule out.
+`ClientContractDigestEncodingTests` proves it for a separator inside an identifier, a line break
+impersonating another field, choice text, and absent-versus-empty.
+
+### 4.2 What is refused rather than described
+
+`ARX1011`, and the list is an **allow list** rather than a deny list. A framework attribute in
+`System.Text.Json.Serialization` the model has never heard of changes what a payload means in some way, and
+the safe reading of "never heard of" is "not described" — only `[JsonIgnore]` on a member, and
+`[JsonSerializable]`/`[JsonSourceGenerationOptions]` on a type, are modeled. Dictionaries are refused, and
+so is any type that implements `IEnumerable` and is not one of the sequence shapes the model recognizes:
+that one would otherwise be described as an object carrying the collection's own members, which is not what
+the framework writes.
+
+The declared options are held to one exact set — strict defaults plus the camel-case naming policy — and
+any other declared option is refused by name. Reading two options and ignoring the rest was the failure
+that mattered: a context that also set a number-handling mode would still have been published, under a hash
+describing a wire it did not have.
+
+Every refusal has a case in `ClientContractGeneratorTests`, each driven through a real compilation, and the
+supported shape is shown actually producing a contract so an empty refusal list cannot pass for agreement.
+
+One of those guards was inert when it was written. The check that a computed member's name does not collide
+with a live member's name subtracted the live names from the computed set *before* looking for the
+intersection, which empties the set the collision would have been found in, so it never fired — and the
+colliding names were dropped from the guard list as well, leaving them forgeable. Restoring the subtraction
+fails `AComputedMemberSharingALiveMembersNameIsRefused` and nothing else.
 
 ## 5. Strict, and the one hole it leaves
 
@@ -203,7 +232,8 @@ which one carries the invariant is a real decision) and `CategoryId`.
 and any measurements — and populates that slot alone; `OfArtwork(Uri)` remains for producers that hold only
 an address, and `FieldValue.Address` reads whichever slot is populated. An address alone throws away the
 role that says which of several images this one is and the measurements that let one be chosen without
-fetching it.
+fetching it. `Address` is itself derived, so it carries `[JsonIgnore]` under the same rule as every other
+computed value on this contract; the image's own address is a fact of the image and is still written.
 
 ## 9. The complete movie round trip
 
@@ -239,9 +269,9 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3485 enabled=3183 passed=3183 failed=0 skipped=302 inconclusive=0
+projects=14 total=3503 enabled=3201 passed=3201 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
-compileLogs=1 compileProjects=14 compileItems=340 boundSources=15
+compileLogs=1 compileProjects=14 compileItems=343 boundSources=15
 ```
 
 The registered skip count is unchanged at 302 and both ratchets pass. The baseline before this work was

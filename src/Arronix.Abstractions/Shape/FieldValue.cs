@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Media;
 
@@ -101,8 +102,11 @@ public sealed record FieldValue
     /// </summary>
     /// <remarks>
     /// A link carries an address; artwork carries a whole image, and its address is one of the image's
-    /// facts. Exactly one slot is populated per value, so this reads whichever one is.
+    /// facts. Exactly one slot is populated per value, so this reads whichever one is — and it is not
+    /// written, because a payload that stated it beside the slot it came from would have two ways to say
+    /// one thing.
     /// </remarks>
+    [JsonIgnore]
     public Uri? Address => Image?.Address ?? Link;
 
     /// <summary>
