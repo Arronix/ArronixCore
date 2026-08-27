@@ -230,16 +230,25 @@ internal sealed class ItemProjector
         // an item's are never compared. Resolution only: a referent the host holds no identity for is
         // projected under its catalog identity rather than given one, because minting here would make every
         // page render a write.
+        //
+        // Every identifier is inspected, canonicalized, and the lowest surviving assignment wins — the rule
+        // assignment itself applies when identifiers turn out to name one entity. Stopping at the first
+        // match would make a rendered handle depend on the order a cataloger listed the referent's
+        // identifiers in, and two pages could address one group two ways.
         MediaItemRef? handle = null;
-        var catalogId = entity.ExternalIds.Values[0];
 
         foreach (var candidate in entity.ExternalIds.Values)
         {
-            if (identity.TryFind(Kind, address, candidate, out var found))
+            if (!identity.TryFind(Kind, address, candidate, out var found))
             {
-                handle = identity.Canonical(found);
-                catalogId = candidate;
-                break;
+                continue;
+            }
+
+            var resolved = identity.Canonical(found);
+
+            if (handle is not { } best || resolved.Id.Value < best.Id.Value)
+            {
+                handle = resolved;
             }
         }
 
@@ -250,7 +259,7 @@ internal sealed class ItemProjector
 
             // Exactly one handle: the local one when the host holds the referent, the catalog's own when it
             // does not, so an unresolved reference is still something a consumer can follow up.
-            External = handle is null ? catalogId : null,
+            External = handle is null ? entity.ExternalIds.Values[0] : null,
             Text = entity.Title
         };
     }

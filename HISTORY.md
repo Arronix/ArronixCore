@@ -51,7 +51,9 @@ the projector allocate again fails five of them. Nothing here persists — no st
 transaction, no library row — and `CatalogAssignment` was deliberately not introduced, because reporting
 what a merge superseded is useful only to a caller that can move rows. The seam the durable lane takes over
 is the internal assignment: it runs inside no transaction, and the write that has to join it is the store's.
-G07B is not complete.
+This is a boundary correction, not the durable G07B vertical, and closes no G07B exit-gate row; assignment
+becomes an operation the platform offers when it sits inside the library take-in transaction, and not
+before.
 
 ## 2026-08-26 — Stop charging for the whole telemetry stream to shape your own events
 

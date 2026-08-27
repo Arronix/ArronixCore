@@ -95,8 +95,9 @@ internal sealed class PackagedTmdbProviderTests
             });
         var dispatcher = provider.GetRequiredService<CatalogDispatcher>();
         var identity = provider.GetRequiredService<CatalogIdentity>();
+        var itemLevel = kind.MediaType!.Shape.Levels[0].Id;
         var beforeTakingIn = await FetchAsync(dispatcher, kind.MediaType, itemType);
-        var issuedWhileReading = identity.Issued(Movies);
+        var namedWhileReading = identity.TryFind(Movies, itemLevel, ExternalId.Of("tmdb", "603"), out _);
         var first = TakeIn(dispatcher, kind.MediaType, itemType, beforeTakingIn.Value);
         var repeated = await FetchAsync(dispatcher, kind.MediaType, itemType);
         var second = TakeIn(dispatcher, kind.MediaType, itemType, repeated.Value);
@@ -130,11 +131,13 @@ internal sealed class PackagedTmdbProviderTests
         ((IMediaItem)beforeTakingIn.Item).Title.Should().Be("The Matrix");
         beforeTakingIn.CatalogId.Should().Be(ExternalId.Of("tmdb", "603"));
         beforeTakingIn.Held.Should().BeNull("a catalog fetch of an unheld record names nothing");
-        issuedWhileReading.Should().Be(0, "and a real provider fetch allocates no durable identity");
-        first.Reference.Id.Value.Should().BeGreaterThan(0, "Host, not TMDb, assigned durable identity");
+        namedWhileReading.Should().BeFalse("and a real provider fetch names nothing locally");
+        first.Reference.Id.Value.Should().Be(1, "Host assigned the first identity, and the fetch spent none");
         repeated.Held.Should().Be(first.Reference, "a second fetch reports the reference it is now held under");
         second.Reference.Should().Be(first.Reference, "repeating one take-in is one local item");
-        identity.Issued(Movies).Should().Be(1, "one record, one durable identity");
+        identity.TryFind(Movies, itemLevel, ExternalId.Of("tmdb", "603"), out var bound).Should().BeTrue(
+            "the control: the same lookup does find the record once it is materialized");
+        bound.Should().Be(first.Reference, "one record, one durable identity");
         itemType.GetProperty("Key").Should().BeNull("durable identity never crosses the provider contract");
 
         curatedReferences.Should().ContainSingle().Which.Should().Be(

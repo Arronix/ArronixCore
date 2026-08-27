@@ -90,7 +90,7 @@ public static class FieldValueFormatter
         // A composite carries its parts in Items, which Format handles before reaching here; a composite
         // with no parts has nothing to show.
         FieldValueKind.Composite => AbsentMarker,
-        FieldValueKind.Reference => value.Reference?.ToString() ?? AbsentMarker,
+        FieldValueKind.Reference => ReferenceText(value),
         FieldValueKind.ExternalIdentifier => value.External?.ToString() ?? AbsentMarker,
         FieldValueKind.Link => value.Link?.ToString() ?? AbsentMarker,
         FieldValueKind.FilePath => value.Text ?? AbsentMarker,
@@ -99,6 +99,27 @@ public static class FieldValueFormatter
         FieldValueKind.Artwork => value.Address?.ToString() ?? AbsentMarker,
         FieldValueKind.Count => value.Number?.ToString("N0", CultureInfo.CurrentCulture) ?? AbsentMarker,
     };
+
+    /// <summary>
+    /// Renders a reference, which need not have a local handle.
+    /// </summary>
+    /// <remarks>
+    /// The host resolves a reference on the read path and never assigns one, so a referent it has not taken
+    /// in arrives carrying the referent's own title and the catalog identifier it can be followed up by, and
+    /// no handle. That is a value, not an absence, and reading as a dash would hide a real collection behind
+    /// the same mark a missing field uses.
+    /// </remarks>
+    private static string ReferenceText(FieldValue value)
+    {
+        if (value.Reference is { } handle)
+        {
+            return handle.ToString();
+        }
+
+        return string.IsNullOrEmpty(value.Text)
+            ? value.External?.ToString() ?? AbsentMarker
+            : value.Text;
+    }
 
     private static string ChoiceName(FieldDescriptor descriptor, string? stored)
     {

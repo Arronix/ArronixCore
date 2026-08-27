@@ -789,6 +789,15 @@ representation: the moment identity is allocated, the shape a catalog read answe
 provider-status semantics the catalog path had never fed. Nothing here persists, and Q2, Q3 and Q4 are
 untouched.
 
+**Merge gate.** This branch is a boundary correction, not the durable G07B vertical, and **must not be
+merged as one**. Assignment is host-internal precisely because it is not yet inside the durable library
+take-in transaction; until it is — one unit of work over the identity assignment, the catalog entry and
+record, the library row, and any merge the assignment reports (3.4, 5) — G07B stays open and no exit-gate
+row below is satisfied by this work. The boundary is also not to be narrowed or widened on the way in: the
+allocation moment, the candidate shape, the read/assign split and the four fetch outcomes are the whole of
+it, and adding a store, a representation or a public take-in operation to make it look finished would settle
+Q3 and Q4 by sequencing rather than on the merits.
+
 **Q1, and 2.1.** `CatalogDispatcher.SearchAsync`, `FetchAsync` and the renamed `ResolveAsync` (was
 `MaterializeAsync`) are reads. They answer with `CatalogCandidate<TItem>` — the catalog's own identity, the
 exact typed item, the identifier asked for when a redirect made those differ, the reference the platform
@@ -847,6 +856,9 @@ each mutation-checked: reverting the behaviour fails them, and only them.
 ---
 
 ## 11. Exit-gate mapping
+
+**No row below is closed by the identity boundary of 10A.** Every one of them needs durable state, so each
+still reads as a design location rather than as evidence.
 
 | G07B exit gate | Where |
 |---|---|

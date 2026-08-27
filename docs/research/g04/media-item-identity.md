@@ -41,7 +41,8 @@
 - **Nothing persists.** `CatalogIdentity` is in memory, as `IMediaStore` is.
 - **No production cataloger ships**, so `CatalogDispatcher` has no production caller. That is G05's work.
 - **Assignment is host-internal and offered to no caller.** Naming a record and recording that the library
-  holds it are one transaction, and only the first half exists; the second is the durable store's.
+  holds it are one transaction, and only the first half exists; the second is the durable store's. It stays
+  internal until it runs inside that transaction.
 - **`MediaItemId.FromInt64` is still public**: the wire layer rehydrates identifiers the host assigned, and
   the unconverted kinds' legacy `IMediaItemSource` seams still mint their own. The guarantee for providers is
   structural — no catalog contract reaches a `MediaItemId` — and is asserted against the compiled contracts

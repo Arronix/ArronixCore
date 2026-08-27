@@ -245,7 +245,8 @@ is resident. What a media contract *contains* is not discovered by enumeration.
   agrees with what assignment would settle on. Assignment itself is host-internal and idempotent over that
   same set — a repeat, an alias, a redirect and two catalogs describing one record converge on the
   assignment made first — and is deliberately not offered as a platform operation, because naming a record
-  and recording that the library holds it are one transaction and only the first half exists.
+  and recording that the library holds it are one transaction and only the first half exists. It becomes a
+  platform operation when it sits inside that transaction, and not before.
 - A catalog fetch distinguishes four answers. `Found` carries the record. `NotHeld` means every available
   authority answered and none holds it, and is fail-closed — one authority that could not be leased or that
   failed yields `NotAnswered` instead, because absence was not established across the authority set.

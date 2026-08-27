@@ -188,21 +188,6 @@ public sealed class CatalogIdentity : ICatalogIdentityReader, ICatalogIdentityAs
         }
     }
 
-    /// <summary>How many local identities one kind has issued.</summary>
-    /// <param name="kind">The media kind.</param>
-    /// <returns>The highest identity issued in it, or zero when it has issued none.</returns>
-    /// <remarks>
-    /// The allocator's own state, readable so that "this operation allocated nothing" is asserted as the
-    /// fact it is rather than inferred from what a caller was handed. Nothing in production reads it.
-    /// </remarks>
-    internal long Issued(MediaKindId kind)
-    {
-        lock (_gate)
-        {
-            return _issued.GetValueOrDefault(kind);
-        }
-    }
-
     /// <summary>
     /// Places one assignment directly, so a test can build the numeric collisions across kinds and levels
     /// that the allocator does not produce on its own. Not a production path.

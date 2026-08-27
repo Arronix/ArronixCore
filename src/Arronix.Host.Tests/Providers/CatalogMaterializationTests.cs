@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Linq;
 using Arronix.Abstractions.Events;
 using Arronix.Abstractions.Errors;
@@ -45,26 +46,29 @@ internal sealed class CatalogMaterializationTests
     /// exact item, and the identity space is the same size afterwards as it was before.
     /// </summary>
     /// <remarks>
-    /// The pairing below is the instrument's own control. The identical assertion is made either side of a
-    /// search, where it must not move, and either side of a materialization, where it must — so a search
-    /// that quietly started allocating could not pass, and neither could a broken counter.
+    /// Asserted through the ordinary lookup a caller would make, and controlled twice over: the same lookup
+    /// does find the record once it is materialized, and the identity that materialization receives is the
+    /// first this kind ever issues — which it could not be if the search had spent one.
     /// </remarks>
     [Test]
     public async Task ASearchLeavesTheIdentityStateExactlyAsItFoundIt()
     {
         var context = CatalogContext.WithCatalogers(new StubCataloger("alpha", Work("alpha", "1", "Arrival")));
-        var before = context.Issued;
 
         var found = await context.Dispatcher.SearchAsync<Work>(context.Kind, "alpha", new CatalogQuery("Arrival"));
-        var afterSearching = context.Issued;
-
-        context.Dispatcher.Materialize(context.Kind, found.Candidates[0]);
+        var afterSearching = context.Holds(ExternalId.Of("alpha", "1"));
+        var taken = context.Dispatcher.Materialize(context.Kind, found.Candidates[0]);
 
         using var assertions = new AssertionScope();
         found.Candidates.Should().ContainSingle().Which.CatalogId.Should().Be(ExternalId.Of("alpha", "1"));
         found.IsPartialResult.Should().BeFalse();
-        afterSearching.Should().Be(before, "searching a catalog is a read and allocates no durable identity");
-        context.Issued.Should().Be(before + 1, "the control: taking one in does allocate, so the count moves");
+        found.Candidates[0].Held.Should().BeNull();
+        afterSearching.Should().BeFalse("searching a catalog is a read and names nothing locally");
+        context.Holds(ExternalId.Of("alpha", "1")).Should().BeTrue(
+            "the control: the same lookup does find the record once it is materialized");
+        taken.Reference.Id.Value.Should().Be(
+            1,
+            "and it receives the first identity this kind issues, so the search spent none");
     }
 
     /// <summary>Fetching is a read too, and repeating one cannot grow the identity space either.</summary>
@@ -75,31 +79,41 @@ internal sealed class CatalogMaterializationTests
 
         var before = await context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"));
         var again = await context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"));
-        var issuedWhileReading = context.Issued;
+        var heldWhileReading = context.Holds(ExternalId.Of("alpha", "1"));
 
         var taken = context.Dispatcher.Materialize(context.Kind, again.Candidate!);
         var after = await context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"));
 
         using var assertions = new AssertionScope();
-        issuedWhileReading.Should().Be(0, "two fetches of an unheld record name nothing locally");
+        heldWhileReading.Should().BeFalse("two fetches of an unheld record name nothing locally");
         before.Candidate!.Held.Should().BeNull();
         again.Candidate!.Held.Should().BeNull();
+        taken.Reference.Id.Value.Should().Be(1, "so the first identity issued goes to the first take-in");
         after.Candidate!.Held.Should().Be(taken.Reference, "once held, a fetch reports the reference it is held under");
-        context.Issued.Should().Be(1, "and reporting it is still a read");
+        context.Holds(ExternalId.Of("alpha", "1")).Should().BeTrue("the control: the lookup does find it");
     }
 
+    /// <remarks>
+    /// The control is the unrelated record taken in afterwards: it receives the very next identity, so the
+    /// repeat between them consumed none. A repeat that minted would push it one further along.
+    /// </remarks>
     [Test]
     public async Task RepeatedTakeInOfOneRecordAllocatesOnce()
     {
-        var context = CatalogContext.WithCatalogers(new StubCataloger("alpha", Work("alpha", "1", "Arrival")));
+        var context = CatalogContext.WithCatalogers(
+            new StubCataloger("alpha", Work("alpha", "1", "Arrival")),
+            new StubCataloger("beta", Work("beta", "9", "Another work")));
 
         var first = await context.TakeInAsync(ExternalId.Of("alpha", "1"));
         var second = await context.TakeInAsync(ExternalId.Of("alpha", "1"));
+        var unrelated = await context.TakeInAsync(ExternalId.Of("beta", "9"));
 
         using var assertions = new AssertionScope();
         second.Reference.Should().Be(first.Reference);
-        first.Reference.Id.Value.Should().BeGreaterThan(0, "the host assigned it, and the cataloger never saw it");
-        context.Issued.Should().Be(1, "the second take-in converged on the first assignment rather than minting");
+        first.Reference.Id.Value.Should().Be(1, "the host assigned it, and the cataloger never saw it");
+        unrelated.Reference.Id.Value.Should().Be(
+            2,
+            "the control: the next distinct record takes the next identity, so the repeat minted nothing");
     }
 
     /// <summary>
@@ -128,7 +142,7 @@ internal sealed class CatalogMaterializationTests
             ExternalId.Of("alpha", "old"),
             "and the candidate carries the identifier that was actually asked for");
         direct.Reference.Should().Be(viaAlias.Reference, "an alias and the record it redirects to are one item");
-        context.Issued.Should().Be(1);
+        viaAlias.Reference.Id.Value.Should().Be(1, "one record, one identity, reached by either identifier");
         context.Identity.TryFind(context.Kind.Kind, Level, ExternalId.Of("alpha", "old"), out var alias)
             .Should().BeTrue("the alias was bound when the record it names was taken in");
         alias.Should().Be(viaAlias.Reference);
@@ -218,15 +232,17 @@ internal sealed class CatalogMaterializationTests
 
         var held = await context.TakeInAsync(ExternalId.Of("beta", "tt2"));
         var viaAnotherCatalog = await context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"));
-        var issuedWhileReading = context.Issued;
+        var namedWhileReading = context.Holds(ExternalId.Of("alpha", "1"));
         var taken = context.Dispatcher.Materialize(context.Kind, viaAnotherCatalog.Candidate!);
 
         using var assertions = new AssertionScope();
         viaAnotherCatalog.Candidate!.Held.Should().Be(
             held.Reference,
             "the record is held under an identifier this item also states");
-        issuedWhileReading.Should().Be(1, "and reading that is still a read");
+        namedWhileReading.Should().BeFalse(
+            "reporting that is a read: the second catalog's identifier was not bound by looking at it");
         taken.Reference.Should().Be(held.Reference, "so taking it in converges rather than naming it twice");
+        context.Holds(ExternalId.Of("alpha", "1")).Should().BeTrue("the control: materializing does bind it");
     }
 
     /// <summary>
@@ -493,7 +509,7 @@ internal sealed class CatalogMaterializationTests
             Warnings: []);
 
         var resolved = await context.Dispatcher.ResolveAsync(context.Kind, list);
-        var issuedWhileReading = context.Issued;
+        var namedWhileReading = context.Holds(ExternalId.Of("alpha", "1"));
         var taken = resolved.Candidates
             .Select(candidate => context.Dispatcher.Materialize(context.Kind, candidate))
             .ToArray();
@@ -506,7 +522,8 @@ internal sealed class CatalogMaterializationTests
             .Should().Equal(CuratedEntryId.Of("row-1"), null);
         alpha.Fetched.Should().Equal([ExternalId.Of("alpha", "1")], "each reference is fetched from its own owner");
         beta.Fetched.Should().Equal(ExternalId.Of("beta", "9"));
-        issuedWhileReading.Should().Be(0, "resolving a curated list is a read");
+        namedWhileReading.Should().BeFalse("resolving a curated list is a read");
+        context.Holds(ExternalId.Of("alpha", "1")).Should().BeTrue("the control: materializing does bind it");
         taken.Select(entry => entry.Reference).Distinct().Should().HaveCount(2);
         taken.Select(entry => entry.CuratedEntryId)
             .Should().Equal([CuratedEntryId.Of("row-1"), null], "the curator's entry identifier survives");
@@ -696,6 +713,421 @@ internal sealed class CatalogMaterializationTests
             .WithInnerException<TypeInitializationException, OutOfMemoryException>();
     }
 
+    /// <summary>
+    /// An owner that is backed off is still one of the scheme's authorities, so absence cannot be settled
+    /// while it is missing from the answer.
+    /// </summary>
+    /// <remarks>
+    /// Exactly two authorities, both owning the scheme, both holding nothing. The only difference between
+    /// the cases is whether the second is in service — so the outcome turns on that alone. Filtering the
+    /// backed-off owner away, as the dispatcher used to, would report a confident absence assembled from
+    /// half the authorities.
+    /// </remarks>
+    [TestCase(true, CatalogFetchOutcome.NotAnswered, TestName = "ABackedOffOwnerLeavesAbsenceUnestablished")]
+    [TestCase(false, CatalogFetchOutcome.NotHeld, TestName = "EveryOwnerInServiceEstablishesAbsence")]
+    public async Task AFetchSettlesAbsenceOnlyWhenEveryOwnerOfTheSchemeWasAsked(
+        bool secondBackedOff,
+        CatalogFetchOutcome expected)
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var asked = new StubCataloger("alpha", answer: null);
+        var context = CatalogContext.WithCatalogers(clock, asked, new StubCataloger("alpha", answer: null));
+
+        if (secondBackedOff)
+        {
+            context.BackOff(clock, ordinal: 1);
+        }
+
+        var fetch = await context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"));
+
+        using var assertions = new AssertionScope();
+        asked.Fetched.Should().Equal(
+            [ExternalId.Of("alpha", "1")],
+            "the authority in service is asked in both cases");
+        fetch.Outcome.Should().Be(expected);
+        fetch.Candidate.Should().BeNull();
+
+        if (secondBackedOff)
+        {
+            fetch.Reason.Should().Contain("catalog-2").And.Contain("out of service");
+        }
+    }
+
+    /// <summary>A record found by an authority in service is a record, whoever else was not asked.</summary>
+    [Test]
+    public async Task ABackedOffOwnerDoesNotStopAnAuthorityInServiceAnsweringWithTheRecord()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var context = CatalogContext.WithCatalogers(
+            clock,
+            new StubCataloger("alpha", Work("alpha", "1", "Arrival")),
+            new StubCataloger("alpha", answer: null));
+        context.BackOff(clock, ordinal: 1);
+
+        var fetch = await context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"));
+
+        using var assertions = new AssertionScope();
+        fetch.Outcome.Should().Be(CatalogFetchOutcome.Found);
+        fetch.Candidate!.Item.Title.Should().Be("Arrival");
+    }
+
+    /// <summary>A search whose scheme has a backed-off owner is partial, and says which owner.</summary>
+    [Test]
+    public async Task ASearchNamesTheBackedOffOwnerThatWasNotAsked()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var answering = new StubCataloger("alpha", Work("alpha", "1", "Arrival"));
+        var absent = new StubCataloger("alpha", Work("alpha", "2", "Story of Your Life"));
+        var context = CatalogContext.WithCatalogers(clock, answering, absent);
+        context.BackOff(clock, ordinal: 1);
+
+        var searched = await context.Dispatcher.SearchAsync<Work>(context.Kind, "alpha", new CatalogQuery("Arrival"));
+
+        using var assertions = new AssertionScope();
+        searched.Candidates.Should().ContainSingle().Which.CatalogId.Should().Be(ExternalId.Of("alpha", "1"));
+        absent.Searched.Should().BeEmpty("an owner out of service is not asked");
+        searched.IsPartialResult.Should().BeTrue("so the page is assembled from fewer authorities than own it");
+        searched.Warnings.Should().ContainSingle().Which.Should()
+            .Contain("catalog-2").And.Contain("out of service");
+    }
+
+    /// <summary>A caller that has already withdrawn is not served, and no authority is asked.</summary>
+    [Test]
+    public async Task AnAlreadyWithdrawnCallerIsRefusedBeforeAnyAuthorityIsAsked()
+    {
+        var cataloger = new StubCataloger("alpha", Work("alpha", "1", "Arrival"));
+        var context = CatalogContext.WithCatalogers(cataloger);
+        using var withdrawn = new CancellationTokenSource();
+        await withdrawn.CancelAsync();
+
+        var fetching = () => context.Dispatcher.FetchAsync<Work>(
+            context.Kind,
+            ExternalId.Of("alpha", "1"),
+            withdrawn.Token);
+        var searching = () => context.Dispatcher.SearchAsync<Work>(
+            context.Kind,
+            "alpha",
+            new CatalogQuery("Arrival"),
+            withdrawn.Token);
+
+        using var assertions = new AssertionScope();
+        await fetching.Should().ThrowAsync<OperationCanceledException>();
+        await searching.Should().ThrowAsync<OperationCanceledException>();
+        cataloger.Fetched.Should().BeEmpty();
+        cataloger.Searched.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A withdrawn caller is answered with the withdrawal, not with a diagnosis of the installation.
+    /// </summary>
+    /// <remarks>
+    /// What the entry check exists for: the per-authority check never runs in either case, so without it a
+    /// withdrawn caller receives an answer about the deployment to a question nobody is waiting on.
+    /// </remarks>
+    [Test]
+    public async Task AWithdrawnCallerIsNotToldAboutTheInstallationInstead()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var context = CatalogContext.WithCatalogers(clock, new StubCataloger("alpha", answer: null));
+        using var withdrawn = new CancellationTokenSource();
+        await withdrawn.CancelAsync();
+
+        var unowned = () => context.Dispatcher.FetchAsync<Work>(
+            context.Kind,
+            ExternalId.Of("gamma", "1"),
+            withdrawn.Token);
+        var curated = () => context.Dispatcher.ResolveAsync(
+            context.Kind,
+            new CuratedListFetch<Work>([new CuratedReference(ExternalId.Of("gamma", "1"))], false, []),
+            withdrawn.Token);
+
+        context.BackOff(clock, ordinal: 0);
+        var allBackedOff = () => context.Dispatcher.FetchAsync<Work>(
+            context.Kind,
+            ExternalId.Of("alpha", "1"),
+            withdrawn.Token);
+
+        using var assertions = new AssertionScope();
+        await unowned.Should().ThrowAsync<OperationCanceledException>();
+        await curated.Should().ThrowAsync<OperationCanceledException>();
+        await allBackedOff.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    /// <summary>
+    /// A cataloger that ignores the token it was handed cannot turn a withdrawn call into a record or into
+    /// an absence.
+    /// </summary>
+    /// <remarks>
+    /// Both halves matter: an ignored cancellation must become neither a record nor an absence, and the
+    /// second is the more dangerous, because absence is what a refresh would later make durable.
+    /// </remarks>
+    [TestCase(true, TestName = "AnIgnoredCancellationDoesNotBecomeARecord")]
+    [TestCase(false, TestName = "AnIgnoredCancellationDoesNotBecomeAnAbsence")]
+    public async Task ACatalogerIgnoringCancellationYieldsNeitherSuccessNorAbsence(bool holdsTheRecord)
+    {
+        using var caller = new CancellationTokenSource();
+        var cataloger = new StubCataloger("alpha", holdsTheRecord ? Work("alpha", "1", "Arrival") : null)
+        {
+            WithdrawsTheCaller = caller,
+        };
+        var context = CatalogContext.WithCatalogers(cataloger);
+
+        var act = () => context.Dispatcher.FetchAsync<Work>(
+            context.Kind,
+            ExternalId.Of("alpha", "1"),
+            caller.Token);
+
+        using var assertions = new AssertionScope();
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        cataloger.Fetched.Should().Equal(
+            [ExternalId.Of("alpha", "1")],
+            "the cataloger really was called, and really did answer past the withdrawal");
+    }
+
+    /// <summary>A caller withdrawing part-way through stops the authorities that have not been asked yet.</summary>
+    [Test]
+    public async Task ACallerWithdrawingBetweenAuthoritiesStopsTheOnesNotYetAsked()
+    {
+        using var caller = new CancellationTokenSource();
+        var first = new StubCataloger("alpha", answer: null) { WithdrawsTheCaller = caller };
+        var second = new StubCataloger("alpha", Work("alpha", "1", "Arrival"));
+        var context = CatalogContext.WithCatalogers(first, second);
+
+        var act = () => context.Dispatcher.FetchAsync<Work>(
+            context.Kind,
+            ExternalId.Of("alpha", "1"),
+            caller.Token);
+
+        using var assertions = new AssertionScope();
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        first.Fetched.Should().HaveCount(1);
+        second.Fetched.Should().BeEmpty("the caller withdrew before the second authority was reached");
+    }
+
+    /// <summary>
+    /// An owner lands in exactly one of the two sets, whatever a concurrent status change does.
+    /// </summary>
+    /// <remarks>
+    /// The clock moves on every reading, so a back-off that expires between two of them answers differently
+    /// each time. Asking twice would then place this owner in neither set, and the answer would name no
+    /// authority at all while claiming every one of them is out of service.
+    /// </remarks>
+    [Test]
+    public async Task AnOwnerIsPartitionedOnOneReadingOfItsAvailability()
+    {
+        var clock = new SteppingClock(DateTimeOffset.UnixEpoch);
+        var context = CatalogContext.WithCatalogers(clock, new StubCataloger("alpha", answer: null));
+
+        clock.Advance(TimeSpan.FromHours(1));
+        context.Status.RecordFailure(context.Definitions[0].Id);
+        clock.Advance(ProviderStatusStore.InitialFailureGrace + TimeSpan.FromMinutes(1));
+        var till = context.Status.RecordFailure(context.Definitions[0].Id).DisabledTill!.Value;
+
+        // Parked one tick short of the back-off expiring, and moving past it on the very next reading.
+        clock.MoveTo(till - TimeSpan.FromSeconds(1));
+        clock.Step = TimeSpan.FromSeconds(2);
+
+        var fetch = await context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"));
+
+        using var assertions = new AssertionScope();
+        fetch.Outcome.Should().Be(CatalogFetchOutcome.AuthorityUnavailable);
+        fetch.Reason.Should().Contain(
+            "catalog-1",
+            "the owner was read once and placed, rather than read twice and lost between the answers");
+    }
+
+    /// <summary>
+    /// A search makes its own cancellation checks, and each is asserted where only that check can fire.
+    /// </summary>
+    /// <remarks>
+    /// A search does not early-return when every owner is backed off — the loop simply does not run — so its
+    /// entry check is the only thing between a withdrawn caller and a partial answer. The unowned scheme is
+    /// refused before the loop for the same reason.
+    /// </remarks>
+    [Test]
+    public async Task ASearchRefusesAWithdrawnCallerWhereNoOtherCheckWould()
+    {
+        var clock = new FakeTimeProvider(DateTimeOffset.UnixEpoch);
+        var context = CatalogContext.WithCatalogers(clock, new StubCataloger("alpha", answer: null));
+        using var withdrawn = new CancellationTokenSource();
+        await withdrawn.CancelAsync();
+
+        var unowned = () => context.Dispatcher.SearchAsync<Work>(
+            context.Kind,
+            "gamma",
+            new CatalogQuery("Arrival"),
+            withdrawn.Token);
+
+        context.BackOff(clock, ordinal: 0);
+        var allBackedOff = () => context.Dispatcher.SearchAsync<Work>(
+            context.Kind,
+            "alpha",
+            new CatalogQuery("Arrival"),
+            withdrawn.Token);
+
+        using var assertions = new AssertionScope();
+        await unowned.Should().ThrowAsync<OperationCanceledException>();
+        await allBackedOff.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    /// <summary>
+    /// An answer produced after the caller withdrew is not even read, let alone put on a page.
+    /// </summary>
+    /// <remarks>
+    /// Copying a cataloger's collection is work the host does for the caller. Checking before the copy is
+    /// what makes that work conditional on someone still waiting for it.
+    /// </remarks>
+    [Test]
+    public async Task ASearchDoesNotEvenReadAnAnswerProducedAfterTheCallerWithdrew()
+    {
+        using var caller = new CancellationTokenSource();
+        var cataloger = new StubCataloger("alpha", Work("alpha", "1", "Arrival")) { WithdrawsTheCaller = caller };
+        var context = CatalogContext.WithCatalogers(cataloger);
+
+        var act = () => context.Dispatcher.SearchAsync<Work>(
+            context.Kind,
+            "alpha",
+            new CatalogQuery("Arrival"),
+            caller.Token);
+
+        using var assertions = new AssertionScope();
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        cataloger.Searched.Should().HaveCount(1, "it really did answer past the withdrawal");
+        cataloger.Results!.WasRead.Should().BeFalse("and what it answered with was never read");
+        context.Status.Find(context.Definitions[0].Id).Should().BeNull(
+            "nor was the discarded answer recorded as a contribution");
+    }
+
+    /// <summary>
+    /// A withdrawal that lands while the answer is being copied still discards it.
+    /// </summary>
+    /// <remarks>
+    /// The window the second check covers: the caller was waiting when the copy began and had stopped by the
+    /// time it finished, which is a race a single check before the copy cannot close.
+    /// </remarks>
+    [Test]
+    public async Task ASearchDiscardsAnAnswerTheCallerStoppedWaitingForWhileItWasCopied()
+    {
+        using var caller = new CancellationTokenSource();
+        var cataloger = new StubCataloger("alpha", Work("alpha", "1", "Arrival"))
+        {
+            WithdrawsTheCallerWhileRead = caller,
+        };
+        var context = CatalogContext.WithCatalogers(cataloger);
+
+        var act = () => context.Dispatcher.SearchAsync<Work>(
+            context.Kind,
+            "alpha",
+            new CatalogQuery("Arrival"),
+            caller.Token);
+
+        using var assertions = new AssertionScope();
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        cataloger.Results!.WasRead.Should().BeTrue("the copy began, which is what puts the race in reach");
+        context.Status.Find(context.Definitions[0].Id).Should().BeNull(
+            "and the answer contributed nothing, not even a recorded success");
+    }
+
+    /// <summary>
+    /// A cataloger whose results throw as they are read is that authority failing, not the search failing.
+    /// </summary>
+    /// <remarks>
+    /// Calling a cataloger and reading what it returned are both its own code, so both are contained the
+    /// same way: the authority is recorded failed, named in a warning, and the authorities that did answer
+    /// still make the page. The three cases are the same tear raised three ways — an ordinary failure, a
+    /// cancellation the caller did not ask for, and a process that is no longer sound.
+    /// </remarks>
+    [Test]
+    public async Task ASearchContainsACatalogerWhoseResultsTearWhileTheyAreRead()
+    {
+        var ordinary = Tearing(new InvalidOperationException("The page tore."));
+        var providerCancellation = Tearing(new OperationCanceledException("The catalog page timed out."));
+        var unsound = Tearing(new TypeInitializationException("Catalog", new OutOfMemoryException()));
+
+        var searchingOrdinary = await ordinary.Dispatcher.SearchAsync<Work>(
+            ordinary.Kind, "alpha", new CatalogQuery("Arrival"));
+        var searchingProviderCancellation = await providerCancellation.Dispatcher.SearchAsync<Work>(
+            providerCancellation.Kind, "alpha", new CatalogQuery("Arrival"));
+        var searchingUnsound = () => unsound.Dispatcher.SearchAsync<Work>(
+            unsound.Kind, "alpha", new CatalogQuery("Arrival"));
+
+        using var assertions = new AssertionScope();
+
+        foreach (var (searched, tear) in new[]
+        {
+            (searchingOrdinary, "page tore"),
+            (searchingProviderCancellation, "timed out"),
+        })
+        {
+            searched.Candidates.Should().ContainSingle(
+                "the authority that answered still makes the page")
+                .Which.CatalogId.Should().Be(ExternalId.Of("alpha", "2"));
+            searched.IsPartialResult.Should().BeTrue();
+            searched.Warnings.Should().ContainSingle().Which.Should().Contain("catalog-1").And.Contain(tear);
+        }
+
+        ordinary.Status.Find(ordinary.Definitions[0].Id).Should().NotBeNull("the tear is the authority's");
+        ordinary.Status.Find(ordinary.Definitions[1].Id).Should().BeNull("and not the one that answered's");
+        await searchingUnsound.Should().ThrowAsync<TypeInitializationException>(
+            "a process that is no longer sound is not contained, wherever it is raised");
+    }
+
+    /// <summary>Two authorities: the first tears as its results are read, the second answers.</summary>
+    private static CatalogContext Tearing(Exception tear) => CatalogContext.WithCatalogers(
+        new StubCataloger("alpha", Work("alpha", "1", "Arrival")) { FailsWhileRead = tear },
+        new StubCataloger("alpha", Work("alpha", "2", "Story of Your Life")));
+
+    /// <summary>
+    /// A caller withdrawing alongside a failure stops the next authority, which no other check would.
+    /// </summary>
+    /// <remarks>
+    /// The authority that withdrew the caller also failed, so nothing it returned was checked. Only the
+    /// check at the top of the next iteration stands between the withdrawal and the next authority.
+    /// </remarks>
+    [TestCase(true, TestName = "ASearchStopsAtTheNextAuthorityAfterAWithdrawalWithAFailure")]
+    [TestCase(false, TestName = "AFetchStopsAtTheNextAuthorityAfterAWithdrawalWithAFailure")]
+    public async Task ADispatchStopsAtTheNextAuthorityWhenAWithdrawalArrivesWithAFailure(bool searching)
+    {
+        using var caller = new CancellationTokenSource();
+        var first = new StubCataloger("alpha", answer: null) { WithdrawsTheCaller = caller, Throws = true };
+        var second = new StubCataloger("alpha", Work("alpha", "2", "Story of Your Life"));
+        var context = CatalogContext.WithCatalogers(first, second);
+
+        Func<Task> act = searching
+            ? () => context.Dispatcher.SearchAsync<Work>(
+                context.Kind,
+                "alpha",
+                new CatalogQuery("Arrival"),
+                caller.Token)
+            : () => context.Dispatcher.FetchAsync<Work>(context.Kind, ExternalId.Of("alpha", "1"), caller.Token);
+
+        using var assertions = new AssertionScope();
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        second.Searched.Should().BeEmpty("the caller withdrew before the second authority was reached");
+        second.Fetched.Should().BeEmpty();
+    }
+
+    /// <summary>A caller withdrawing part-way through a search stops the authorities not yet asked.</summary>
+    [Test]
+    public async Task ASearchStopsAtTheAuthorityWhereTheCallerWithdrew()
+    {
+        using var caller = new CancellationTokenSource();
+        var first = new StubCataloger("alpha", Work("alpha", "1", "Arrival")) { WithdrawsTheCaller = caller };
+        var second = new StubCataloger("alpha", Work("alpha", "2", "Story of Your Life"));
+        var context = CatalogContext.WithCatalogers(first, second);
+
+        var act = () => context.Dispatcher.SearchAsync<Work>(
+            context.Kind,
+            "alpha",
+            new CatalogQuery("Arrival"),
+            caller.Token);
+
+        using var assertions = new AssertionScope();
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        first.Searched.Should().HaveCount(1);
+        second.Searched.Should().BeEmpty("the caller withdrew before the second authority was reached");
+    }
+
     /// <summary>A catalog call that succeeds clears the back-off the same way every other family's does.</summary>
     [Test]
     public async Task AnAnsweringAuthorityClearsItsRecordedFailure()
@@ -798,8 +1230,29 @@ internal sealed class CatalogMaterializationTests
             return Dispatcher.Materialize(Kind, fetch.Candidate!);
         }
 
-        /// <summary>How many local identities this kind has issued.</summary>
-        internal long Issued => Identity.Issued(Kind.Kind);
+        /// <summary>
+        /// Takes one configured authority out of service, past both grace windows so the ladder bites.
+        /// </summary>
+        /// <param name="clock">The fixture's clock, which must be the one the status store was built on.</param>
+        /// <param name="ordinal">Which configured definition, in registration order.</param>
+        internal void BackOff(FakeTimeProvider clock, int ordinal)
+        {
+            clock.Advance(TimeSpan.FromHours(1));
+            Status.RecordFailure(Definitions[ordinal].Id);
+            clock.Advance(ProviderStatusStore.InitialFailureGrace + TimeSpan.FromMinutes(1));
+            Status.RecordFailure(Definitions[ordinal].Id);
+            Status.IsAvailable(Definitions[ordinal].Id).Should().BeFalse(
+                "the fixture must really have taken it out of service for the rule to mean anything");
+        }
+
+        /// <summary>Whether the platform holds anything under one catalog identifier.</summary>
+        /// <remarks>
+        /// The ordinary read a caller would make. Asserting no-allocation through it, rather than through a
+        /// counter put on identity state for the purpose, keeps the production surface free of a member that
+        /// exists only to be tested.
+        /// </remarks>
+        internal bool Holds(ExternalId catalogId) =>
+            Identity.TryFind(Kind.Kind, Level, catalogId, out _);
     }
 
     /// <summary>
@@ -824,6 +1277,20 @@ internal sealed class CatalogMaterializationTests
         /// <summary>An exact failure to raise, when the test is about which failures are contained.</summary>
         internal Exception? Fails { get; init; }
 
+        /// <summary>
+        /// A caller to withdraw while answering, standing in for a cataloger that ignores its token.
+        /// </summary>
+        internal CancellationTokenSource? WithdrawsTheCaller { get; init; }
+
+        /// <summary>A caller to withdraw as the answer is read, rather than as it is produced.</summary>
+        internal CancellationTokenSource? WithdrawsTheCallerWhileRead { get; init; }
+
+        /// <summary>A failure to raise as the answer is read, rather than as it is produced.</summary>
+        internal Exception? FailsWhileRead { get; init; }
+
+        /// <summary>The list this cataloger last answered a search with.</summary>
+        internal WatchedResults? Results { get; private set; }
+
         public string CatalogScheme { get; internal set; } = scheme;
 
         public CatalogerCapabilities Capabilities =>
@@ -838,8 +1305,9 @@ internal sealed class CatalogMaterializationTests
         {
             _searched.Add(query);
             Misbehave();
+            Results = new WatchedResults(answer, WithdrawsTheCallerWhileRead, FailsWhileRead);
 
-            return Task.FromResult<IReadOnlyList<Work>>(answer is null ? [] : [answer]);
+            return Task.FromResult<IReadOnlyList<Work>>(Results);
         }
 
         public Task<Work?> GetAsync(
@@ -856,6 +1324,10 @@ internal sealed class CatalogMaterializationTests
         /// <summary>Fails the way this stub was configured to, before it answers anything.</summary>
         private void Misbehave()
         {
+            // Withdrawal first: a cataloger can ignore its token and then fail, and which of the two the
+            // dispatcher sees must not depend on the order this fixture raises them in.
+            WithdrawsTheCaller?.Cancel();
+
             if (Fails is { } exact)
             {
                 throw exact;
@@ -886,6 +1358,61 @@ internal sealed class CatalogMaterializationTests
             ProviderInvocation invocation,
             string optionSourceId,
             CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<FacetValue>>([]);
+    }
+
+    /// <summary>
+    /// A search result that records being read, and can withdraw the caller as it is.
+    /// </summary>
+    /// <remarks>
+    /// What a cataloger returns is its own collection, and copying it is work the host does on the caller's
+    /// behalf. Recording the read is how "nothing the cataloger returned was even looked at" becomes an
+    /// assertion rather than an assumption.
+    /// </remarks>
+    private sealed class WatchedResults(
+        Work? answer,
+        CancellationTokenSource? withdrawsWhileRead,
+        Exception? failsWhileRead)
+        : IReadOnlyList<Work>
+    {
+        private readonly Work[] _items = answer is null ? [] : [answer];
+
+        internal bool WasRead { get; private set; }
+
+        public int Count => _items.Length;
+
+        public Work this[int index] => _items[index];
+
+        public IEnumerator<Work> GetEnumerator()
+        {
+            WasRead = true;
+            withdrawsWhileRead?.Cancel();
+
+            return failsWhileRead is { } failure
+                ? throw failure
+                : ((IEnumerable<Work>)_items).GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+    }
+
+    /// <summary>A clock that moves on every reading, so two reads of one fact can disagree.</summary>
+    private sealed class SteppingClock(DateTimeOffset start) : TimeProvider
+    {
+        private DateTimeOffset _now = start;
+
+        /// <summary>How far each reading moves the clock. Zero leaves it fixed.</summary>
+        internal TimeSpan Step { get; set; } = TimeSpan.Zero;
+
+        internal void Advance(TimeSpan by) => _now += by;
+
+        internal void MoveTo(DateTimeOffset when) => _now = when;
+
+        public override DateTimeOffset GetUtcNow()
+        {
+            var reading = _now;
+            _now += Step;
+            return reading;
+        }
     }
 
     /// <summary>A bus for a fixture that never changes a definition.</summary>

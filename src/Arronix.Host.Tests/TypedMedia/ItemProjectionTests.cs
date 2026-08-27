@@ -28,6 +28,9 @@ internal sealed class ItemProjectionTests
     /// <summary>Host identity state, standing in for the one a running host owns.</summary>
     private static CatalogIdentity Identity { get; } = new();
 
+    /// <summary>The axis a referenced group is addressed in, which is its own key space.</summary>
+    private static MediaLevelId Collection => MediaLevelId.FromString("collection");
+
     /// <summary>
     /// The reference the host holds one entity under, assigned the way materializing it does.
     /// </summary>
@@ -152,7 +155,7 @@ internal sealed class ItemProjectionTests
         var identity = new CatalogIdentity();
         var group = ((ICatalogIdentityAssignment)identity).Identify(
             Model.Kind,
-            MediaLevelId.FromString("collection"),
+            Collection,
             [ExternalId.Of("tmdb-collection", "7")]);
 
         var memberships = Model.Read(Sample, "collections", identity);
@@ -172,6 +175,90 @@ internal sealed class ItemProjectionTests
             reference.External.Should().BeNull("a resolved reference carries the local handle, not both");
         });
     }
+
+    /// <summary>
+    /// A referenced group whose identifiers were assigned separately is addressed by the lowest of them,
+    /// whatever order the referent lists them in.
+    /// </summary>
+    /// <remarks>
+    /// Two identifiers, two assignments, no merge yet — which is the state that discriminates. Reading
+    /// cannot merge, so it has to report the reference assignment would settle on, and that is the lowest.
+    /// Taking the first identifier that resolves would address one group two ways depending on the order a
+    /// cataloger listed them in; the witness is the same identity state read twice with only that reversed.
+    /// </remarks>
+    [TestCase(false, TestName = "AGroupHandleIsTheLowestAssignmentInDeclaredOrder")]
+    [TestCase(true, TestName = "AGroupHandleIsTheLowestAssignmentInReversedOrder")]
+    public void AGroupReferenceResolvesToTheLowestAssignmentWhateverOrderItsIdentifiersArrive(bool reversed)
+    {
+        var identity = new CatalogIdentity();
+        var assign = (ICatalogIdentityAssignment)identity;
+        var first = ExternalId.Of("tmdb-collection", "7");
+        var second = ExternalId.Of("other-collection", "z9");
+
+        var lower = assign.Identify(Model.Kind, Collection, [first]);
+        var higher = assign.Identify(Model.Kind, Collection, [second]);
+
+        var reference = Model
+            .Read(Collecting(reversed ? [second, first] : [first, second]), "collections", identity)
+            .Items!
+            .Single();
+
+        Assert.Multiple(() =>
+        {
+            higher.Id.Value.Should().BeGreaterThan(
+                lower.Id.Value,
+                "two separate assignments, unmerged, which is what makes the order observable");
+            reference.Reference!.Value.Should().Be(
+                lower,
+                "the lowest wins, which is what assignment itself settles on when they converge");
+            reference.External.Should().BeNull("a resolved reference carries the local handle, not both");
+        });
+    }
+
+    /// <summary>
+    /// A referent whose identifier still points at a superseded identity resolves to the survivor.
+    /// </summary>
+    /// <remarks>
+    /// A merge repoints the aliases it can see, so this state is placed directly rather than grown: it is
+    /// the durable case of a row written under an identity a later merge retired. The read path resolves it
+    /// so no caller has to remember to canonicalize — which was G04's recorded limitation and is why
+    /// projecting canonicalizes rather than trusting the lookup.
+    /// </remarks>
+    [Test]
+    public void AGroupReferenceOnASupersededIdentityResolvesToTheSurvivingOne()
+    {
+        var identity = new CatalogIdentity();
+        var assign = (ICatalogIdentityAssignment)identity;
+        var surviving = assign.Identify(Model.Kind, Collection, [ExternalId.Of("tmdb-collection", "7")]);
+        var retired = assign.Identify(Model.Kind, Collection, [ExternalId.Of("other-collection", "z9")]);
+        assign.Identify(
+            Model.Kind,
+            Collection,
+            [ExternalId.Of("tmdb-collection", "7"), ExternalId.Of("other-collection", "z9")]);
+
+        // An alias the merge did not reach, still pointing at the identity it retired.
+        var stale = ExternalId.Of("stale-collection", "s1");
+        identity.Assign(Model.Kind, Collection, stale, retired.Id);
+
+        var reference = Model.Read(Collecting([stale]), "collections", identity).Items!.Single();
+
+        Assert.Multiple(() =>
+        {
+            identity.TryFind(Model.Kind, Collection, stale, out var raw).Should().BeTrue();
+            raw.Id.Should().Be(retired.Id, "the lookup really does answer with the retired identity");
+            reference.Reference!.Value.Should().Be(
+                surviving,
+                "and the read path resolves it, so no caller has to canonicalize");
+        });
+    }
+
+    /// <summary>An item whose one collection states exactly these identifiers.</summary>
+    private static Work Collecting(ExternalId[] collectionIds) => new()
+    {
+        Title = "Arrival",
+        ExternalIds = ExternalIdSet.Of(ExternalId.Of("tmdb", "329865")),
+        Collections = [new WorkCollection { Title = "Villeneuve", ExternalIds = ExternalIdSet.From(collectionIds) }],
+    };
 
     /// <summary>
     /// A referent the host holds no identity for is projected under the catalog's identity, not given one.
@@ -195,7 +282,8 @@ internal sealed class ItemProjectionTests
             reference.Reference.Should().BeNull("the host has not named this group");
             reference.External.Should().Be(ExternalId.Of("tmdb-collection", "7"));
             reference.Text.Should().Be("Villeneuve", "a consumer that will not follow it still has a label");
-            identity.Issued(Model.Kind).Should().Be(0);
+            identity.TryFind(Model.Kind, Collection, ExternalId.Of("tmdb-collection", "7"), out _)
+                .Should().BeFalse("and reading it named nothing");
         });
     }
 
@@ -203,9 +291,9 @@ internal sealed class ItemProjectionTests
     /// Projecting is a read. Rendering items and their group references allocates no durable identity.
     /// </summary>
     /// <remarks>
-    /// The control is the last assertion. The same counter, on the same state, does move when identity is
-    /// assigned — so a zero above is the projection not allocating rather than the instrument not looking.
-    /// Structurally the guard is stronger than the count: <c>Project</c> and <c>Read</c> are handed
+    /// Asserted through the ordinary lookup, and controlled by the assignment made afterwards: it receives
+    /// the identity immediately after the item's, which it could not if three renders had spent any. The
+    /// structural guard is stronger still — <c>Project</c> and <c>Read</c> are handed
     /// <see cref="ICatalogIdentityReader"/>, which has no member that could allocate.
     /// </remarks>
     [Test]
@@ -214,7 +302,6 @@ internal sealed class ItemProjectionTests
         var identity = new CatalogIdentity();
         var assign = (ICatalogIdentityAssignment)identity;
         var reference = assign.Identify(Model.Kind, Model.Shape.Levels[0].Id, Sample.ExternalIds.Values);
-        var afterNaming = identity.Issued(Model.Kind);
 
         for (var render = 0; render < 3; render++)
         {
@@ -222,16 +309,16 @@ internal sealed class ItemProjectionTests
             Model.Read(Sample, "collections", identity);
         }
 
+        var named = assign.Identify(Model.Kind, Collection, [ExternalId.Of("tmdb-collection", "7")]);
+
         Assert.Multiple(() =>
         {
-            afterNaming.Should().Be(1, "the item itself was named once, deliberately");
-            identity.Issued(Model.Kind).Should().Be(
-                afterNaming,
-                "three renders of an item carrying an unheld group reference name nothing");
-            assign.Identify(Model.Kind, MediaLevelId.FromString("collection"), [ExternalId.Of("x", "1")]);
-            identity.Issued(Model.Kind).Should().Be(
-                afterNaming + 1,
-                "the control: the counter does move when something really is assigned");
+            identity.TryFind(Model.Kind, Collection, ExternalId.Of("tmdb-collection", "7"), out var found)
+                .Should().BeTrue("the control: the lookup does find the group once it is named");
+            found.Should().Be(named);
+            named.Id.Value.Should().Be(
+                reference.Id.Value + 1,
+                "and it takes the very next identity, so three renders spent none");
         });
     }
 

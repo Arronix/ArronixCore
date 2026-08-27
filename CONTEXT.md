@@ -184,6 +184,11 @@ coverage.
 - The production TMDb package supplies a typed Movie cataloger and curator through constrained Host activation.
   Its cataloger returns exact `Movie` values; its curator returns TMDb catalog references. Missing or
   incompatible Movies quarantines only the provider package.
+- The G07B identity and catalog-response boundary is built; the durable G07B vertical is not, and the two
+  must not be conflated on merge. Assignment is host-internal because it is not yet inside a durable library
+  take-in transaction — one unit of work over the identity assignment, the catalog entry and record, the
+  library row, and any merge the assignment reports. Until that transaction exists, no G07B exit-gate row is
+  satisfied.
 - `CatalogDispatcher` fetches through the cataloger that owns a reference's scheme, resolves a curated list
   through the catalogs its references name, and assigns durable identity only through its host-internal
   materializing member. A catalog call records success and failure against `ProviderStatusStore`, so the cataloger

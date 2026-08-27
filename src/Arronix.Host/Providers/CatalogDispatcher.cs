@@ -169,18 +169,28 @@ public sealed class CatalogDispatcher(
         ArgumentNullException.ThrowIfNull(kind);
         RequireItemType<TItem>(kind);
         RequireWellFormed(catalogId, nameof(catalogId));
+        cancellationToken.ThrowIfCancellationRequested();
 
         var authorities = RequireAuthorities(kind, catalogId.Scheme);
 
-        if (authorities.OutOfService is { } unavailable)
+        if (authorities.Available.Count == 0)
         {
-            return new CatalogFetch<TItem>(null, CatalogFetchOutcome.AuthorityUnavailable, unavailable);
+            return new CatalogFetch<TItem>(
+                null,
+                CatalogFetchOutcome.AuthorityUnavailable,
+                $"Every installed cataloger for '{catalogId.Scheme}' in media kind '{kind.Kind}' is out of "
+                + "service: "
+                + string.Join(", ", authorities.Unavailable.Select(static definition => $"'{definition.Name}'"))
+                + ". This is a back-off, not a missing installation.");
         }
 
-        var silent = new List<string>();
+        // An owner that was not asked cannot contribute to settling absence.
+        var silent = authorities.Unavailable.Select(NotAsked).ToList();
 
         foreach (var definition in authorities.Available)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!_providers.TryLease(definition.Provider, out var leased))
             {
                 silent.Add($"'{definition.Name}' is in service but could not be leased.");
@@ -206,8 +216,8 @@ public sealed class CatalogDispatcher(
                     .GetAsync(_tests.Invocation(definition), catalogId, cancellationToken)
                     .ConfigureAwait(false);
             }
-            // Only the caller's own cancellation. A provider that raises this from its own timeout has
-            // failed to answer, and is recorded as such rather than aborting the whole dispatch.
+            // Only the caller's own. A provider raising this from its own timeout has failed to answer,
+            // and is recorded as such rather than aborting the dispatch.
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
@@ -219,6 +229,9 @@ public sealed class CatalogDispatcher(
                 continue;
             }
 
+            // A cataloger may ignore its token. An answer produced after withdrawal is neither a record
+            // nor a contribution towards absence.
+            cancellationToken.ThrowIfCancellationRequested();
             _status.RecordSuccess(definition.Id);
 
             if (item is null)
@@ -276,6 +289,7 @@ public sealed class CatalogDispatcher(
         ArgumentNullException.ThrowIfNull(query);
         RequireItemType<TItem>(kind);
         RequireCanonicalScheme(scheme, nameof(scheme));
+        cancellationToken.ThrowIfCancellationRequested();
 
         if (query.Id is { } queryId)
         {
@@ -283,17 +297,13 @@ public sealed class CatalogDispatcher(
         }
 
         var authorities = RequireAuthorities(kind, scheme);
-
-        if (authorities.OutOfService is { } unavailable)
-        {
-            return new CatalogAnswer<TItem>([], IsPartialResult: true, [unavailable]);
-        }
-
         var found = new List<CatalogCandidate<TItem>>();
-        var warnings = new List<string>();
+        var warnings = authorities.Unavailable.Select(NotAsked).ToList();
 
         foreach (var definition in authorities.Available)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (!_providers.TryLease(definition.Provider, out var leased))
             {
                 warnings.Add($"'{definition.Name}' is in service but could not be leased.");
@@ -311,17 +321,28 @@ public sealed class CatalogDispatcher(
 
             IReadOnlyList<TItem> results;
 
+            // Calling a cataloger and reading what it returned are both its own code, so both sit inside
+            // the same containment: a collection that throws as it is enumerated is that authority failing,
+            // not the search failing.
             try
             {
+                var answered = await cataloger
+                    .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
+                    .ConfigureAwait(false);
+
+                // Before reading it: copying a page is work done for a caller who may have gone.
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // Copied inside the lease and into a host-owned list, so nothing the cataloger returned is
                 // enumerated after its ticket is released.
-                results = PluginBoundary.Snapshot(
-                    await cataloger
-                        .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
-                        .ConfigureAwait(false));
+                results = PluginBoundary.Snapshot(answered);
+
+                // Again, for a withdrawal that landed during the copy: the last point this answer can be
+                // dropped without having contributed.
+                cancellationToken.ThrowIfCancellationRequested();
             }
-            // Only the caller's own cancellation. A provider that raises this from its own timeout has
-            // failed to answer, and is recorded as such rather than aborting the whole dispatch.
+            // Only the caller's own. A provider raising this from its own timeout, or from enumerating what
+            // it returned, has failed to answer and is recorded as such rather than aborting the dispatch.
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
                 throw;
@@ -367,6 +388,7 @@ public sealed class CatalogDispatcher(
         ArgumentNullException.ThrowIfNull(kind);
         ArgumentNullException.ThrowIfNull(list);
         RequireItemType<TItem>(kind);
+        cancellationToken.ThrowIfCancellationRequested();
 
         foreach (var reference in list.Items)
         {
@@ -379,6 +401,8 @@ public sealed class CatalogDispatcher(
 
         foreach (var reference in list.Items)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var fetch = await FetchAsync<TItem>(kind, reference.CatalogId, cancellationToken).ConfigureAwait(false);
 
             if (fetch is { Outcome: CatalogFetchOutcome.Found, Candidate: { } candidate })
@@ -483,10 +507,14 @@ public sealed class CatalogDispatcher(
         ];
     }
 
-    /// <summary>Establishes who may be asked, separating an unowned scheme from backed-off owners.</summary>
+    /// <summary>Establishes who may be asked, and who owns the scheme but is backed off.</summary>
     /// <exception cref="ArronixException">
     /// No installed cataloger owns the scheme — the only negative that is an installation problem.
     /// </exception>
+    /// <remarks>
+    /// Backed-off owners are retained, not filtered away: they were not asked, so they cannot contribute to
+    /// establishing absence, and a caller must be able to see that an authority is missing from the answer.
+    /// </remarks>
     private Authorities RequireAuthorities(IMediaTypeRuntime kind, string scheme)
     {
         var configured = ConfiguredAuthoritiesFor(kind, scheme);
@@ -499,16 +527,22 @@ public sealed class CatalogDispatcher(
                 + "reference in that scheme cannot be resolved.");
         }
 
-        var available = configured.Where(definition => _status.IsAvailable(definition.Id)).ToArray();
+        var available = new List<ProviderDefinition>();
+        var unavailable = new List<ProviderDefinition>();
 
-        return available.Length > 0
-            ? new Authorities(available, null)
-            : new Authorities(
-                [],
-                $"Every installed cataloger for '{scheme}' in media kind '{kind.Kind}' is out of service: "
-                + string.Join(", ", configured.Select(static definition => $"'{definition.Name}'"))
-                + ". This is a back-off, not a missing installation.");
+        foreach (var definition in configured)
+        {
+            // One read each: asking twice lets a status change between the answers put an owner in both
+            // sets or in neither.
+            (_status.IsAvailable(definition.Id) ? available : unavailable).Add(definition);
+        }
+
+        return new Authorities(available, unavailable);
     }
+
+    /// <summary>Why one authority contributed nothing, when it was never asked.</summary>
+    private static string NotAsked(ProviderDefinition definition)
+        => $"'{definition.Name}' is out of service and was not asked.";
 
     /// <summary>Reads the item's catalog identity and the reference the platform holds it under, if any.</summary>
     private CatalogCandidate<TItem> Candidate<TItem>(
@@ -567,10 +601,10 @@ public sealed class CatalogDispatcher(
         return survivor;
     }
 
-    /// <summary>Who may be asked about a scheme.</summary>
+    /// <summary>Who owns a scheme, split by whether they may be asked right now.</summary>
     /// <param name="Available">The authorities in service, best priority first.</param>
-    /// <param name="OutOfService">Why there are none, when the scheme is owned but every owner is backed off.</param>
+    /// <param name="Unavailable">The authorities that own the scheme and are backed off.</param>
     private readonly record struct Authorities(
         IReadOnlyList<ProviderDefinition> Available,
-        string? OutOfService);
+        IReadOnlyList<ProviderDefinition> Unavailable);
 }
