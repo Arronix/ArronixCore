@@ -36,7 +36,12 @@ settings_rows = rows('select FieldId, Value from provider_definition_setting whe
 settings = {row['FieldId']: row['Value'] for row in settings_rows}
 identity = rows("select * from catalog_identity where Kind = 'movies' and Scheme = 'proof' order by Identity")
 allocation = rows("select * from catalog_allocation where Kind = 'movies'")
-records = rows("select * from catalog_record where Kind = 'movies' and CatalogScheme = 'proof' and CatalogValue = '42'")
+records = rows("""
+    select Kind, Level, Identity, CatalogScheme, CatalogValue, Title, CatalogState,
+           ContractMetadataHash, cast(Payload as text) as Payload, RefreshedAt, Revision
+    from catalog_record
+    where Kind = 'movies' and CatalogScheme = 'proof' and CatalogValue = '42'
+""")
 library = rows("select * from library_entry where Kind = 'movies'")
 monitor = rows('select * from library_entry_monitor')
 report = {'phase': arguments.phase, 'provider': provider, 'settings': settings_rows, 'identity': identity, 'allocation': allocation, 'records': records, 'library': library, 'monitor': monitor}
@@ -69,8 +74,8 @@ else:
     if not isinstance(metadata_hash, str) or not re.fullmatch(r'[0-9A-Fa-f]{64}', metadata_hash):
         raise SystemExit('error: stored metadata hash is not a nonempty SHA-256 hex value')
     try:
-        payload = json.loads(bytes(record['Payload']).decode('utf-8'))
-    except (TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        payload = json.loads(record['Payload'])
+    except (TypeError, json.JSONDecodeError) as error:
         raise SystemExit(f'error: stored typed Movie payload is not valid generated JSON: {error}') from error
     required_payload_fields = {'externalIds', 'title', 'catalogState', 'lifecycle', 'artwork', 'ratings', 'collections', 'overview', 'genres', 'keywords'}
     if missing_payload_fields := sorted(required_payload_fields - set(payload)):
