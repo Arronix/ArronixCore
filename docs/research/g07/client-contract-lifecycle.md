@@ -116,9 +116,15 @@ A mutation that fails to build proves nothing, so the runner refuses one.
 
 | Mutation | Result |
 | --- | --- |
-| Reunion accepts any build with the same identity (`Matches` compares identity alone) | 3 fail: the held tab reuses the new build instead of going terminal |
-| The sweep treats everything held as live, so it evicts nothing | 5 fail: the stale hash survives phase 2, and phase 3's store is not the live installation |
+| Reunion accepts any build with the same identity (`Matches` compares identity alone) | **26 of the 64 checks execute** before the run aborts on a locator timeout, and **4 of those fail**: the 3 direct refusals of the terminal behaviour — the held tab reuses the new build instead of going terminal — plus 1 cascading cross-phase failure |
+| The sweep treats everything held as live, so it evicts nothing | 5 of the 64 fail: the stale hash survives phase 2, and phase 3's store is not the live installation |
 | `ContractPayloadLoader` registered by type rather than by the composition root's factory | the composition case fails; before it existed, the whole contracts page failed to render |
+
+Only 3 of the first row's 4 failures are load-bearing. The fourth is the cross-phase navigation check,
+which is evaluated after cleanup and finds two tabs where a complete run opens three — a consequence of the
+abort rather than independent evidence about reunion. And 38 checks never ran at all, so nothing may be
+read into them: that row says the guard is load-bearing, not how much of the matrix depends on it. Only the
+second row completed the matrix, and its count is out of all 64.
 
 The orphan gate on the loader's `Current` — refusing to serve a resident assembly the installation no longer
 names — is **not** distinguishable by this matrix, and that is recorded rather than dressed up. `Admitted()`

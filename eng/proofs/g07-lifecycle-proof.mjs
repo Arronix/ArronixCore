@@ -85,12 +85,12 @@ const VIDEO = 'Arronix.Format.Video';
 const CONTRACT_CACHE = 'arronix-client-contracts-v1';
 const CONTRACT_PREFIX = '/arronix-contract/';
 
-// The only errors a page may write, and only while the host is deliberately down. Each requires a
-// browser-issued net::ERR_ cause, so an application failure cannot match.
+// The only errors a page may write, and only while the host is deliberately down. Every pattern requires a
+// browser-issued net::ERR_ cause, which is the whole guarantee: a rendering failure, a refused promise or a
+// Blazor exception cannot match one, and neither can a fetch failure reported without that cause.
 const TRANSPORT_NOISE = [
     /^Failed to load resource: net::ERR_[A-Z_]+$/,
     /^WebSocket connection to '[^']+' failed: .*net::ERR_[A-Z_]+$/,
-    /^TypeError: Failed to fetch$/,
 ];
 
 const { chromium } = await openPlaywright();

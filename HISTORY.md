@@ -53,8 +53,12 @@ non-zero. What that buys is bounded effort and a visible failure naming the pid,
 can survive: a process the run may not signal at all keeps running, and the next run refuses to start while
 it holds the port.
 
-Mutation: reunion accepting any build of the same identity fails three lifecycle checks; a sweep that
-evicts nothing fails five; registering the payload loader by type fails the composition case. Recorded
+Mutation: reunion accepting any build of the same identity executes 26 of the 64 checks before the run
+aborts on a locator timeout, and 4 of those fail — the 3 direct refusals of the terminal behaviour, plus one
+cross-phase check cascading off the abort because only two tabs were ever opened; 38 never run, so the row
+says the guard is load-bearing and nothing about the matrix beyond it. A sweep that evicts nothing fails 5
+of the 64 with the matrix running to the end. Registering the payload loader by type fails the composition
+case. Recorded
 rather than dressed up: the loader's orphan gate is not distinguishable by this matrix, because `Admitted()`
 is already gated by the report's package list — it is covered hermetically, and what the browser proves
 about removal is the rendered consequence.
