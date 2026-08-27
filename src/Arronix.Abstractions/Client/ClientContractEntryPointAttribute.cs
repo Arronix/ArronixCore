@@ -11,30 +11,19 @@ namespace Arronix.Abstractions.Client;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A browser that has verified and loaded a contract assembly holds no compile-time knowledge of anything
-/// inside it. The two ways out of that are opposites. It can enumerate the assembly's types and
-/// properties, which makes the client untrimmable, defeats ahead-of-time compilation, and turns property
-/// reflection into a second media schema beside the typed contracts. Or the contract can declare, once, at
-/// compile time, what a client may read out of it — which is this.
+/// A browser that has loaded a contract assembly knows nothing about what is inside it, and enumerating
+/// its types would make the client untrimmable and turn property reflection into a second media schema.
+/// The contract declares what a client may read instead.
 /// </para>
 /// <para>
-/// Every fact a decision is made on is a <b>constructor argument</b>, and that is the load-bearing part of
-/// the design rather than a style choice. Constructor arguments live in the custom attribute blob, so they
-/// can be read by a structured metadata reader over the exact bytes received, before the runtime has been
-/// handed anything, and by a host that holds the assembly without calling into it. A value exposed only by
-/// an overridden property is executable code: publishing it means running the package's code, and checking
-/// it means having already loaded the payload that was supposed to be checked first.
+/// Every fact a decision is made on is a <b>constructor argument</b>, so it lives in the custom attribute
+/// blob: readable from the received bytes before the runtime is handed them, and by a host that holds the
+/// assembly without calling into it. A value behind an overridden property is executable code.
 /// </para>
 /// <para>
-/// The behavior is the other half and is deliberately separate: <see cref="Deserialize"/> constructs the
-/// owning assembly's own typed value and hands it back as <see cref="object"/>, and
-/// <see cref="Project"/> turns that value into one-way presentation data. They are split because a single
-/// bytes-to-fields call proves nothing about whether a typed value ever existed, and existing is the claim.
-/// </para>
-/// <para>
-/// The class is abstract, and the runtime — not a client — constructs the generated implementation when
-/// the attribute is read. Nothing here needs <see cref="System.Activator"/>, a type name assembled from
-/// text, or a member the compiler did not see.
+/// <see cref="Deserialize"/> and <see cref="Project"/> are separate because one bytes-to-fields call proves
+/// nothing about whether a typed value existed. The class is abstract so the runtime, not a client,
+/// constructs the generated implementation.
 /// </para>
 /// </remarks>
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true, Inherited = false)]
@@ -74,47 +63,31 @@ public abstract class ClientContractEntryPointAttribute : Attribute
     /// <summary>
     /// Gets the SHA-256, upper-case hexadecimal, over the member graph the generated reader accepts.
     /// </summary>
-    /// <remarks>
-    /// Covers every member's wire name, declared shape and nullability, in declaration order, transitively.
-    /// Two builds that would read one payload differently have different values here, whether or not their
-    /// assembly version moved.
-    /// </remarks>
+    /// <remarks>Two builds that would read one payload differently differ here, whatever their version says.</remarks>
     public string GeneratedMetadataHash { get; }
 
     /// <summary>
     /// Gets the SHA-256, upper-case hexadecimal, over the field schema the generated projection produces.
     /// </summary>
-    /// <remarks>
-    /// Covers <see cref="Schema"/> exactly: each descriptor's identifier, name, shape, semantics,
-    /// prominence, cardinality, choices and components, in declaration order.
-    /// </remarks>
+    /// <remarks>Covers <see cref="Schema"/> exactly, in declaration order.</remarks>
     public string ProjectionSchemaHash { get; }
 
     /// <summary>Gets the exact CLR type this entry point reads and constructs.</summary>
     /// <remarks>
-    /// A constructor argument, so the blob carries the type reference itself rather than a name written
-    /// down beside it. A metadata reader decodes that reference from the bytes before anything loads; the
-    /// runtime resolves the same reference after. A separate name argument would be the same fact twice,
-    /// and two spellings of one fact are two things that can disagree. Any display name is taken from here,
-    /// after load.
+    /// A constructor argument, so the blob carries the reference itself: a metadata reader decodes it before
+    /// anything loads and the runtime resolves it after. Any display name is taken from here, after load.
     /// </remarks>
     public Type EntityType { get; }
 
     /// <summary>Gets the source-generated serialization metadata this entry point reads through.</summary>
-    /// <remarks>
-    /// The actual context, not a description of one. A consumer that wants to know what the wire shape is
-    /// asks it, rather than trusting a value that was written down beside it.
-    /// </remarks>
+    /// <remarks>The actual context, so a consumer asks it what the wire shape is.</remarks>
     public abstract JsonSerializerContext SerializationContext { get; }
 
     /// <summary>Gets the metadata for <see cref="EntityType"/> itself, the root of that graph.</summary>
     public abstract JsonTypeInfo EntityTypeInfo { get; }
 
     /// <summary>Gets what a projection from this entry point contains, in declaration order.</summary>
-    /// <remarks>
-    /// Available before any payload is, so a client can render an empty shape or refuse a disagreeing
-    /// schema without having fetched an entity at all.
-    /// </remarks>
+    /// <remarks>Available before any payload is.</remarks>
     public abstract IReadOnlyList<FieldDescriptor> Schema { get; }
 
     /// <summary>
@@ -124,9 +97,8 @@ public abstract class ClientContractEntryPointAttribute : Attribute
     /// <returns>The constructed value, whose type is <see cref="EntityType"/>.</returns>
     /// <exception cref="System.Text.Json.JsonException">The payload is not a readable entity.</exception>
     /// <remarks>
-    /// Returns <see cref="object"/> because a client cannot name the type — that is the whole reason this
-    /// exists. What it can do is ask the value what it is, which is a stronger check than any name
-    /// comparison: the answer carries the assembly the value was constructed in.
+    /// <see cref="object"/> because a client cannot name the type. It can ask the value what it is, and the
+    /// answer carries the assembly it was constructed in.
     /// </remarks>
     public abstract object Deserialize(ReadOnlySpan<byte> utf8Json);
 
@@ -138,10 +110,7 @@ public abstract class ClientContractEntryPointAttribute : Attribute
     /// <returns>The serialized entity, as UTF-8 bytes.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="entity"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="entity"/> is not of <see cref="EntityType"/>.</exception>
-    /// <remarks>
-    /// The other end of the same generated metadata, so that whatever holds a typed value — a host, a
-    /// fixture, a test — writes what this entry point reads rather than something that resembles it.
-    /// </remarks>
+    /// <remarks>The other end of the same metadata, so a holder of a typed value writes what this reads.</remarks>
     public abstract byte[] Serialize(object entity);
 
     /// <summary>

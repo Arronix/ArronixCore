@@ -5,11 +5,7 @@ namespace Arronix.Generators;
 /// <summary>
 /// The framework serialization types this generator reasons about, resolved from the compilation.
 /// </summary>
-/// <remarks>
-/// Held as symbols and compared by identity. A name comparison answers the same for a type an author
-/// declared with the same name in their own namespace, and what this generator decides is what a browser
-/// is handed.
-/// </remarks>
+/// <remarks>Compared by symbol identity: a name comparison answers the same for an author's own type.</remarks>
 internal sealed class FrameworkSymbols
 {
     private const string Namespace = "System.Text.Json.Serialization";
@@ -42,17 +38,9 @@ internal sealed class FrameworkSymbols
     /// <param name="compilation">The compilation being generated for.</param>
     /// <returns>The symbols, or <see langword="null"/>.</returns>
     /// <remarks>
-    /// <para>
-    /// Deliberately not <c>GetTypeByMetadataName</c>. That searches the compilation's own assembly first, so
-    /// a package declaring a type with the exact framework metadata name would be handed back instead of the
-    /// framework's — and this generator would then read that package's own attribute as the instruction that
-    /// keeps a member off the wire, while the real serializer wrote it anyway.
-    /// </para>
-    /// <para>
-    /// So every candidate is enumerated, the compilation's own assembly is excluded, and the assembly that
-    /// declares <c>JsonSerializerContext</c> is required to declare all the rest. Two referenced assemblies
-    /// declaring it is refused rather than guessed at.
-    /// </para>
+    /// Not <c>GetTypeByMetadataName</c>, which searches the compilation's own assembly first and so returns
+    /// an impostor declared under the exact framework name. Candidates are enumerated, the compilation's own
+    /// assembly excluded, and the assembly declaring <c>JsonSerializerContext</c> required to declare the rest.
     /// </remarks>
     internal static FrameworkSymbols? Resolve(Compilation compilation)
     {
@@ -115,11 +103,6 @@ internal sealed class FrameworkSymbols
     /// <summary>Determines whether an attribute is one of the framework's serialization attributes.</summary>
     /// <param name="attribute">The attribute.</param>
     /// <returns><see langword="true"/> when it comes from the framework's serialization namespace.</returns>
-    /// <remarks>
-    /// Compared by the namespace symbol of a type resolved from the compilation, so an author's own
-    /// <c>System.Text.Json.Serialization</c> in some other assembly is a different namespace and a
-    /// different answer.
-    /// </remarks>
     internal bool IsSerializationAttribute(AttributeData attribute) =>
         attribute.AttributeClass is { } declared
         && SymbolEqualityComparer.Default.Equals(declared.ContainingNamespace, Ignore.ContainingNamespace)

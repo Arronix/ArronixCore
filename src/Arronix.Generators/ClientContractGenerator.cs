@@ -162,6 +162,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
         var serialized = new List<INamedTypeSymbol>();
         AttributeData? options = null;
+        string? unsupported = null;
 
         foreach (var attribute in symbol.GetAttributes())
         {
@@ -170,6 +171,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 && attribute.ConstructorArguments[0].Value is INamedTypeSymbol serializedType)
             {
                 serialized.Add(serializedType);
+                unsupported ??= UnsupportedTarget(attribute, serializedType);
             }
             else if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, framework.GenerationOptions))
             {
@@ -179,7 +181,80 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
         return serialized.Count == 0
             ? null
-            : new SerializationContext(symbol, serialized, framework, Unsupported(options));
+            : new SerializationContext(symbol, serialized, framework, unsupported ?? Unsupported(options));
+    }
+
+    /// <summary>
+    /// Names the first declared target option this model does not describe.
+    /// </summary>
+    /// <remarks>
+    /// <c>GenerationMode</c> selects which halves the framework generates. The default inherits both, and
+    /// metadata is what a reader needs, so any value carrying the metadata flag is fine and a
+    /// serialization-only one is not. <c>TypeInfoPropertyName</c> renames the generated property, which this
+    /// contract never reads: the root is asked for by type. Admitted deliberately, not by omission.
+    /// </remarks>
+    private static string? UnsupportedTarget(AttributeData target, INamedTypeSymbol serialized)
+    {
+        foreach (var argument in target.NamedArguments)
+        {
+            switch (argument.Key)
+            {
+                case "GenerationMode":
+                    if (UnsupportedGenerationMode(argument.Value) is { } mode)
+                    {
+                        return $"its serialization context declares {mode} for "
+                            + $"'{serialized.ToDisplayString()}', which produces no metadata to read with";
+                    }
+
+                    break;
+
+                case "TypeInfoPropertyName":
+                    break;
+
+                default:
+                    return $"its serialization context declares '{argument.Key}' on the target for "
+                        + $"'{serialized.ToDisplayString()}', which this model does not describe";
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Names a generation mode that leaves a reader without metadata.</summary>
+    /// <remarks>
+    /// Read as flags, not as a member name. A combined value has no named field, so a comparison against
+    /// one would let it through unexamined.
+    /// </remarks>
+    private static string? UnsupportedGenerationMode(TypedConstant argument)
+    {
+        if (argument.Type is not INamedTypeSymbol { TypeKind: TypeKind.Enum } enumeration
+            || argument.Value is not int declared)
+        {
+            return "a generation mode this model cannot read";
+        }
+
+        if (Constant(enumeration, "Metadata") is not { } metadata)
+        {
+            return "a generation mode whose metadata flag this model cannot find";
+        }
+
+        // Zero inherits the options-level default, which carries metadata.
+        return declared == 0 || (declared & metadata) != 0
+            ? null
+            : "GenerationMode " + declared.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    private static int? Constant(INamedTypeSymbol enumeration, string name)
+    {
+        foreach (var member in enumeration.GetMembers(name).OfType<IFieldSymbol>())
+        {
+            if (member.HasConstantValue && member.ConstantValue is int value)
+            {
+                return value;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>

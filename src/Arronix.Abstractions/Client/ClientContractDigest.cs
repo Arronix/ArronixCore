@@ -9,22 +9,13 @@ using Arronix.Abstractions.Shape;
 namespace Arronix.Abstractions.Client;
 
 /// <summary>
-/// The canonical rendering, and hash, of what a client contract entry point actually holds.
+/// The canonical rendering, and hash, of a live serialization graph and a live projection schema.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Taken over the live <see cref="JsonTypeInfo"/> graph and the live <see cref="FieldDescriptor"/> schema,
-/// never over a description of them. A hash computed from the same model that produced the value it is
-/// checking proves nothing; this exists so a generator's compile-time answer can be checked against what
-/// the runtime actually does.
-/// </para>
-/// <para>
-/// Every type is resolved through the contract's own <see cref="JsonSerializerContext"/> and never through
-/// <see cref="JsonSerializerOptions"/>. The options can fall back to a reflection-based resolver, which
-/// would quietly describe a graph the compiler never generated — and a client that cannot be trimmed is
-/// exactly what the generated metadata exists to prevent. A type the context has no metadata for is a
-/// failure, not a gap to fill in.
-/// </para>
+/// Taken over the running metadata so a generator's compile-time answer can be checked against it. Types
+/// are resolved through the contract's own <see cref="JsonSerializerContext"/> and never through
+/// <see cref="JsonSerializerOptions"/>, which can fall back to a reflecting resolver. Metadata carrying
+/// state this rendering does not describe is refused rather than hashed.
 /// </remarks>
 public static class ClientContractDigest
 {
@@ -35,6 +26,7 @@ public static class ClientContractDigest
     /// <exception cref="ArgumentNullException">Either argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException"><paramref name="root"/> is not this context's metadata.</exception>
     /// <exception cref="InvalidOperationException">The context has no metadata for a reachable type.</exception>
+    /// <exception cref="NotSupportedException">The metadata carries state this rendering cannot describe.</exception>
     public static string RenderSerialization(JsonSerializerContext context, JsonTypeInfo root)
     {
         ArgumentNullException.ThrowIfNull(context);
@@ -54,8 +46,6 @@ public static class ClientContractDigest
         var pending = new Queue<JsonTypeInfo>();
         pending.Enqueue(root);
 
-        // Breadth first from the root, in member order. The traversal is what makes the rendering
-        // reproducible: a type is described once, at the point it is first reachable.
         while (pending.Count > 0)
         {
             var current = pending.Dequeue();
@@ -128,8 +118,53 @@ public static class ClientContractDigest
             .Append("|includeFields=").Append(Flag(options.IncludeFields))
             .Append('\n');
 
+    /// <summary>Refuses metadata whose behavior this rendering does not carry.</summary>
+    /// <remarks>
+    /// A hash taken over a graph that is only partly described says two contracts agree when what differs
+    /// is the part that was not looked at. Each check below is a framework feature the compile-time model
+    /// also refuses; they are asserted here so a contract that acquired one at run time cannot pass.
+    /// </remarks>
+    private static void Describable(JsonTypeInfo type)
+    {
+        var name = Name(type.Type);
+
+        if (type.Kind == JsonTypeInfoKind.Dictionary)
+        {
+            throw new NotSupportedException($"'{name}' is a dictionary, and dictionary keys are not described.");
+        }
+
+        Refuse(type.PolymorphismOptions is not null, name, "is polymorphic");
+        Refuse(type.NumberHandling is not null, name, "states its own number handling");
+        Refuse(type.UnmappedMemberHandling is not null, name, "states its own unmapped-member handling");
+        Refuse(
+            type.PreferredPropertyObjectCreationHandling is not null,
+            name,
+            "states its own object creation handling");
+
+        foreach (var property in type.Properties)
+        {
+            var member = name + "." + property.Name;
+
+            Refuse(property.CustomConverter is not null, member, "has a converter of its own");
+            Refuse(property.NumberHandling is not null, member, "states its own number handling");
+            Refuse(property.ObjectCreationHandling is not null, member, "states its own object creation handling");
+            Refuse(property.Order != 0, member, "states its own order");
+            Refuse(property.IsExtensionData, member, "is extension data");
+        }
+    }
+
+    private static void Refuse(bool unsupported, string subject, string what)
+    {
+        if (unsupported)
+        {
+            throw new NotSupportedException($"'{subject}' {what}, which this rendering does not describe.");
+        }
+    }
+
     private static void RenderType(StringBuilder rendering, JsonTypeInfo type)
     {
+        Describable(type);
+
         rendering.Append("type=").Append(Text(Name(type.Type))).Append("|kind=").Append(type.Kind);
 
         if (type.ElementType is { } element)
@@ -137,8 +172,7 @@ public static class ClientContractDigest
             rendering.Append("|element=").Append(Text(Name(element)));
         }
 
-        // An enumeration's wire form is a number in its underlying type, so widening one changes what a
-        // payload carries even though nothing about the member moved.
+        // An enumeration's wire form is a number in its underlying type.
         if (type.Type.IsEnum)
         {
             rendering.Append("|underlying=").Append(Text(Name(type.Type.GetEnumUnderlyingType())));
@@ -146,15 +180,13 @@ public static class ClientContractDigest
 
         rendering.Append('\n');
 
-        // Member order is the order a reader positions members in and a writer emits them, so it is
-        // rendered as it is rather than sorted.
+        // Member order is the order a reader positions members in, so it is rendered as it is.
         foreach (var property in type.Properties)
         {
             rendering.Append("  member=").Append(Text(property.Name));
 
-            // An ignored member contributes nothing to the wire, and what the framework leaves in its
-            // place varies with whether its type is reachable elsewhere. That it is ignored is the fact;
-            // the placeholder is an implementation detail.
+            // An ignored member contributes nothing, and its placeholder type varies with whether the real
+            // one is reachable elsewhere. That it is ignored is the fact.
             if (property.Get is null && property.Set is null)
             {
                 rendering.Append("|ignored\n");
@@ -189,9 +221,8 @@ public static class ClientContractDigest
 
     /// <summary>Renders a type the way both a running program and a compiler can spell it.</summary>
     /// <remarks>
-    /// Assembly qualification is left out deliberately. <see cref="Type.FullName"/> writes the version and
-    /// public key token of every generic argument's assembly, which would move this digest on a framework
-    /// patch that changed nothing about what a payload means.
+    /// Without assembly qualification, which <see cref="Type.FullName"/> adds for every generic argument
+    /// and which would move the hash on a framework patch that changed nothing.
     /// </remarks>
     private static string Name(Type type)
     {
@@ -255,13 +286,8 @@ public static class ClientContractDigest
         }
     }
 
-    /// <summary>Encodes free text so that no value can be mistaken for the structure around it.</summary>
-    /// <remarks>
-    /// A field's name, description or choice text is author-supplied and may contain the separator or a
-    /// line break. Concatenated raw, two different schemas render identically and hash alike — a rename
-    /// that also moved a separator would be invisible. Length-prefixing removes the ambiguity: the reader
-    /// of a rendering never has to find where a value ends. A null is its own mark, distinct from empty.
-    /// </remarks>
+    /// <summary>Length-prefixes author-supplied text so no value can be read as the structure around it.</summary>
+    /// <remarks>A null is its own mark, distinct from empty.</remarks>
     private static string Text(string? value) =>
         value is null ? "~" : value.Length.ToString(CultureInfo.InvariantCulture) + ":" + value;
 

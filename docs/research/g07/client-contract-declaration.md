@@ -175,6 +175,19 @@ measured on the pinned SDK: a public **field** carrying `[JsonInclude]` is seria
 non-public constructor **is** honoured by the framework, so the model reads it rather than looking only at
 the public ones; more than one named constructor is refused.
 
+The digest refuses at run time too, rather than hashing a graph it has only partly described: a dictionary,
+polymorphism, a type or member stating its own number handling, unmapped-member handling or object-creation
+handling, a member with its own converter, order, or extension-data role. A hash over a partly described
+graph says two contracts agree when what differs is the part nobody looked at.
+
+`[JsonSerializable]`'s own arguments are read as well. `GenerationMode` selects which halves the framework
+generates, and it is a flags value: zero inherits the options-level default, anything carrying the metadata
+flag gives a reader what it needs, and serialization-only does not. It is read as flags rather than as a
+member name, because a combined value has no named field and a name comparison lets it through unexamined.
+`TypeInfoPropertyName` renames the generated property, which this contract never reads — the root is asked
+for by type — so it is admitted deliberately, with a case proving a renamed property leaves both hashes
+unchanged. Any other target argument is refused by name.
+
 The declared options are held to one exact set — strict defaults plus the camel-case naming policy — and
 any other declared option is refused by name. Reading two options and ignoring the rest was the failure
 that mattered: a context that also set a number-handling mode would still have been published, under a hash
@@ -300,9 +313,9 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3520 enabled=3218 passed=3218 failed=0 skipped=302 inconclusive=0
+projects=14 total=3532 enabled=3230 passed=3230 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
-compileLogs=1 compileProjects=14 compileItems=343 boundSources=15
+compileLogs=1 compileProjects=14 compileItems=344 boundSources=15
 ```
 
 The registered skip count is unchanged at 302 and both ratchets pass. The baseline before this work was

@@ -12,18 +12,13 @@ namespace Arronix.Generators;
 /// The compile-time model of what the framework's serializer will do with one item graph.
 /// </summary>
 /// <remarks>
-/// Rendered in exactly the form <c>ClientContractDigest</c> renders the live metadata in, so the literal
-/// hash this generator emits can be checked against an independent recomputation from the running
-/// <c>JsonTypeInfo</c> graph. A model that produced its own rendering and hashed that would prove nothing.
+/// Rendered in the form <c>ClientContractDigest</c> renders live metadata in, so the emitted hash can be
+/// checked against an independent recomputation. Shapes the model cannot reproduce are refused.
 /// </remarks>
 internal static class ClientContractSerializationModel
 {
     /// <summary>Every option value <c>JsonSerializerDefaults.Strict</c> selects, in rendering order.</summary>
-    /// <remarks>
-    /// A table rather than a derivation, because the meaning of Strict belongs to the framework. If a
-    /// future framework changes it, the digest check fails and names the line, which is the correct
-    /// outcome: what a payload means would have changed.
-    /// </remarks>
+    /// <remarks>A table, not a derivation: a framework that changed Strict fails the digest check by design.</remarks>
     private const string StrictOptions =
         "options|caseInsensitive=false|unmapped=Disallow|duplicates=false|respectNullable=true"
         + "|respectRequiredCtorParameters=true|numbers=Strict|comments=Disallow|trailingCommas=false"
@@ -219,8 +214,8 @@ internal static class ClientContractSerializationModel
     }
 
     /// <remarks>
-    /// The framework's own preference order: a named constructor wins; otherwise a parameterless one, which
-    /// leaves every member to its own setter; otherwise the single parameterized one.
+    /// The framework's order: a named constructor wins, then a parameterless one, then the single
+    /// parameterized one.
     /// </remarks>
     private static IMethodSymbol? Constructor(INamedTypeSymbol type, FrameworkSymbols framework, ref string? refusal)
     {
@@ -305,9 +300,8 @@ internal static class ClientContractSerializationModel
     }
 
     /// <remarks>
-    /// Read from the declaration rather than from the substitution. A member declared as a type parameter
-    /// carries the nullability its constraints give it, not the closed type's: with nothing that rules out
-    /// null it is oblivious, and the framework reads oblivious as nullable.
+    /// From the declaration, not the substitution: a member declared as a type parameter has the nullability
+    /// its constraints give it, and nothing ruling out null is oblivious, which reads as nullable.
     /// </remarks>
     private static bool Nullable(IPropertySymbol property)
     {
@@ -332,10 +326,8 @@ internal static class ClientContractSerializationModel
 
     /// <summary>Reads a type's public instance properties the way the framework orders them.</summary>
     /// <remarks>
-    /// Most-derived first, then each base in turn, each level in its own declaration order. Measured rather
-    /// than assumed, and deliberately not the order Host's compiled shapes use: that one reads base first,
-    /// because it is describing an entity to a reader, and this one has to be the order a payload's members
-    /// are actually positioned in.
+    /// Most-derived first, then each base in turn. Measured, and deliberately not the base-first order
+    /// Host's compiled shapes use.
     /// </remarks>
     private static IReadOnlyList<IPropertySymbol> DeclaredFirst(INamedTypeSymbol type)
     {
@@ -365,11 +357,7 @@ internal static class ClientContractSerializationModel
     /// <summary>
     /// Determines whether one member's declaration is inside what this model describes.
     /// </summary>
-    /// <remarks>
-    /// Each refusal is a framework feature that changes what a payload means and that this model does not
-    /// yet reproduce. Describing one wrongly would produce a hash that disagrees with the wire while
-    /// looking like agreement, which is worse than refusing to publish the contract at all.
-    /// </remarks>
+    /// <remarks>Each refusal is a framework feature that changes a payload's meaning and is not modeled.</remarks>
     private static bool Modelable(IPropertySymbol property, FrameworkSymbols framework, ref string? refusal)
     {
         foreach (var attribute in property.GetAttributes())
@@ -431,10 +419,8 @@ internal static class ClientContractSerializationModel
     /// Determines whether a type puts anything on the wire through a member this model does not read.
     /// </summary>
     /// <remarks>
-    /// The model describes public properties, which is what the framework serializes by default — and
-    /// <c>[JsonInclude]</c> is how that default is overridden. Measured on the pinned SDK: a public field
-    /// carrying it is serialized even with <c>IncludeFields</c> off, and an internal property carrying it is
-    /// serialized too. Either would reach the wire without appearing in the digest, so either is refused.
+    /// Measured: a public field or an internal property carrying <c>[JsonInclude]</c> is serialized even
+    /// with <c>IncludeFields</c> off, so either would reach the wire without entering the digest.
     /// </remarks>
     private static bool HidesNoSerializedMember(
         ITypeSymbol type,
@@ -488,12 +474,7 @@ internal static class ClientContractSerializationModel
     /// <summary>
     /// Determines whether a shape is one this model has a described wire form for.
     /// </summary>
-    /// <remarks>
-    /// Each refusal is a shape whose wire form the model would have to guess at. An untyped value could be
-    /// anything; an interface or an abstract class is written as whatever was actually there, which the
-    /// declaration does not say; a generic nested inside another type flattens its arguments differently
-    /// on the two sides of the comparison; and a multidimensional array has no wire form at all.
-    /// </remarks>
+    /// <remarks>Shapes whose wire form the declaration does not state, so the model would have to guess.</remarks>
     private static bool Describable(ITypeSymbol type, ref string? refusal)
     {
         if (type.SpecialType == SpecialType.System_Object)
@@ -602,10 +583,7 @@ internal static class ClientContractSerializationModel
             or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
 
     /// <summary>Applies the framework's camel-case policy to a member name.</summary>
-    /// <remarks>
-    /// A leading run of capitals is lowered as a run, so an acronym stays one word; the first capital that
-    /// is followed by a lower-case letter starts the next word and is left alone.
-    /// </remarks>
+    /// <remarks>A leading run of capitals is lowered as a run, so an acronym stays one word.</remarks>
     internal static string CamelCase(string name)
     {
         if (name.Length == 0 || !char.IsUpper(name[0]))

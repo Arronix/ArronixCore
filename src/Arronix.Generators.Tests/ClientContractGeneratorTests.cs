@@ -51,7 +51,7 @@ internal sealed class ClientContractGeneratorTests
     private const string Context = """
 
         [JsonSourceGenerationOptions({{OPTIONS}})]
-        [JsonSerializable(typeof(SampleItem))]
+        [JsonSerializable(typeof(SampleItem){{TARGET}})]
         internal sealed partial class SampleContext : JsonSerializerContext;
         """;
 
@@ -585,6 +585,50 @@ internal sealed class ClientContractGeneratorTests
         Assert.That(refusals.Single(), Does.Contain("more than one constructor"));
     }
 
+    /// <remarks>
+    /// A serialization-only mode generates the write fast path and no metadata, so a reader has nothing.
+    /// Metadata alone is enough, the default inherits both, and a combined value has no named field at all
+    /// — which is why the flag is read rather than the member name.
+    /// </remarks>
+    [Test]
+    public void AGenerationModeWithoutMetadataIsRefused()
+    {
+        var refusals = Refusals(Build(target: ", GenerationMode = JsonSourceGenerationMode.Serialization"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refusals, Has.Length.EqualTo(1));
+            Assert.That(refusals[0], Does.Contain("no metadata to read with"));
+        });
+    }
+
+    [TestCase("JsonSourceGenerationMode.Default")]
+    [TestCase("JsonSourceGenerationMode.Metadata")]
+    [TestCase("JsonSourceGenerationMode.Metadata | JsonSourceGenerationMode.Serialization")]
+    public void AGenerationModeCarryingMetadataIsPublished(string mode)
+    {
+        Assert.That(Refusals(Build(target: ", GenerationMode = " + mode)), Is.Empty);
+    }
+
+    /// <remarks>
+    /// The property the framework's generator names after the type is never read — the root is asked for by
+    /// type — so renaming it changes nothing, including the hashes. Admitted deliberately, not by omission.
+    /// </remarks>
+    [Test]
+    public void RenamingTheGeneratedPropertyChangesNothing()
+    {
+        var renamed = Build(target: ", TypeInfoPropertyName = \"SomethingElse\"");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Refusals(renamed), Is.Empty);
+            Assert.That(Generated(renamed), Does.Contain("GetTypeInfo(typeof("));
+            Assert.That(Generated(renamed), Does.Not.Contain("Default.SomethingElse"));
+            Assert.That(Declaration(Generated(renamed)), Is.EqualTo(Declaration(Generated(Build()))),
+                "both hashes are unchanged");
+        });
+    }
+
     [Test]
     public void ADictionaryIsRefused()
     {
@@ -601,6 +645,7 @@ internal sealed class ClientContractGeneratorTests
         string extra = "",
         string outside = "",
         string entityAttribute = "",
+        string target = "",
         params string[] halves) =>
         new(
             Compose(
@@ -608,7 +653,9 @@ internal sealed class ClientContractGeneratorTests
                 item,
                 extra,
                 entityAttribute,
-                Context.Replace("{{OPTIONS}}", options, StringComparison.Ordinal),
+                Context
+                    .Replace("{{OPTIONS}}", options, StringComparison.Ordinal)
+                    .Replace("{{TARGET}}", target, StringComparison.Ordinal),
                 ["SampleContext", .. halves]),
             outside);
 
@@ -619,6 +666,8 @@ internal sealed class ClientContractGeneratorTests
         string outside = "",
         params string[] halves) =>
         new(Compose(timeline, item, extra, string.Empty, string.Empty, halves), outside);
+
+    private const string ContextTargetPlaceholder = "{{TARGET}}";
 
     private static string Compose(
         string timeline,
@@ -633,7 +682,8 @@ internal sealed class ClientContractGeneratorTests
             .Replace("{{ITEM}}", item, StringComparison.Ordinal)
             .Replace("{{EXTRA}}", extra, StringComparison.Ordinal)
             .Replace("{{ENTITY_ATTRIBUTE}}", entityAttribute, StringComparison.Ordinal)
-            .Replace("{{CONTEXT}}", context, StringComparison.Ordinal);
+            .Replace("{{CONTEXT}}", context, StringComparison.Ordinal)
+            .Replace(ContextTargetPlaceholder, string.Empty, StringComparison.Ordinal);
 
         foreach (var name in halves)
         {
