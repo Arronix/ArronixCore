@@ -1,5 +1,17 @@
 # Arronix History
 
+## 2026-08-28 — Accept the package-only external consumer
+
+Independent review accepted G07A at `8dd44db15ab1dba1b8f1e1e35c696a65b8f7e732`. The full .NET 11 rail
+passed 3,526 enabled cases across 14 projects with exactly 302 registered skips and no failures or
+inconclusive cases. A fresh disposable worktree then reproduced the 37-check external-consumer browser
+proof and its private-domain-copy quarantine mutation. The unchanged G07.3 proof passed separately as 30
+server checks, 43 G07.2 browser checks and 64 lifecycle checks. All proof ports were released and the
+disposable worktree was removed.
+
+G07A is therefore closed without combining its 37 checks with G07.3's 137. The retained external media,
+provider and fixture-writer projects remain package-only consumers of the published SDK and domain packages.
+
 ## 2026-08-28 — Hold G07A teardown to the accepted owned-process rule
 
 G07A's external-consumer proof now uses the accepted G07.3 lifecycle discipline for both its primary and

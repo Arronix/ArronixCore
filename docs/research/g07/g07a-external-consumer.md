@@ -1,10 +1,10 @@
 # G07A record — the package-only external consumer
 
-**Status:** the package, admission, identity, contract-loading and browser-rendering legs are all built,
-retained and executed. G07A is **not self-declared closed here**: it is a candidate for independent
-acceptance. It follows accepted G07.3; its 37-check external-consumer proof remains separate from G07.3's
-30 + 43 + 64 = 137 checks. §6 records what closing the browser leg found and fixed, because it changed a
-claim G07.2 had already made.
+**Status:** complete. Independent review accepted the exact pushed candidate after re-running the full .NET
+11 rail, the external-consumer proof and private-copy mutation, and the separate G07.3 browser lifecycle
+proof. G07A follows accepted G07.3; its 37-check external-consumer proof remains separate from G07.3's 30 +
+43 + 64 = 137 checks. §6 records what closing the browser leg found and fixed, because it changed a claim
+G07.2 had already made.
 
 **Retained proof:** `eng/proofs/g07a-external-consumer.sh`, with `eng/proofs/g07a-read-installation.py`,
 the two consumers under `eng/proofs/fixtures/g07a-media` and `eng/proofs/fixtures/g07a-provider`, the

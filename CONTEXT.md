@@ -344,7 +344,7 @@ work does not substitute for closing an earlier dependency.
   `docs/research/g07/client-contract-lifecycle.md`, which also records what the matrix does not
   distinguish. Independent review accepted the exact pushed candidate after reproducing the first mutation's
   partial-run result and re-running the full .NET 11 rail.
-- G07A is built and retained, pending independent acceptance. The external `northmark.shorts` media package
+- G07A is complete. The external `northmark.shorts` media package
   has a client-safe `ShortFilm` domain assembly plus an isolated entry assembly; the separately built
   `northmark.shorts.catalog` package restores only its published domain package and closes its cataloger
   over that exact type. The retained proof uses isolated feeds and empty consumer caches, refuses project,
@@ -352,12 +352,14 @@ work does not substitute for closing an earlier dependency.
   drives the unchanged Client payload panel in `g07a` mode. It projects the external ShortFilm fixture and
   its own premiere, lifecycle/status and inline artwork fields. Its 37 checks are independent evidence;
   they are never added to G07.3's 30 + 43 + 64 = 137 checks. See
-  `docs/research/g07/g07a-external-consumer.md`.
+  `docs/research/g07/g07a-external-consumer.md`. Independent review accepted the exact pushed candidate
+  after re-running the full .NET 11 rail, the external-consumer proof and its private-copy mutation, and the
+  separate G07.3 browser lifecycle proof.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
-it. All three G07 sub-gates are complete; G07A is the next candidate awaiting independent acceptance. Later gates
+it. All three G07 sub-gates and G07A are complete; G07B is the next gate. Later gates
 cover compatibility evidence,
 format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,

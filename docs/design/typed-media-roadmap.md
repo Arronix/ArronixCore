@@ -2,7 +2,7 @@
 
 **Status:** active
 
-**Current gate:** G07A — prove a package-only external consumer early
+**Current gate:** G07B — persist one narrow Movies catalog vertical
 
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
@@ -568,8 +568,9 @@ Exit gate:
 
 ### G07A — Prove a package-only external consumer early
 
-**Status:** built and retained, pending independent acceptance. The proof is deliberately separate from
-G07.3: its 37 checks are not added to G07.3's 137-check lifecycle identity.
+**Status:** complete. Independent review re-ran the full .NET 11 rail, the 37-check external-consumer proof
+and its private-copy mutation, and the separate 137-check G07.3 proof at the accepted candidate. The two
+proof identities remain separate.
 
 **Outcome:** package assets, analyzer packaging, generated accessibility, admission, and a generic Client
 payload projection work without a source or project-reference escape hatch.
