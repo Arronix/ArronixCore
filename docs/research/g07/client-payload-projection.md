@@ -126,7 +126,7 @@ declared measurements are the images' own.
 
 ### 4.1 Hermetic tests
 
-`Arronix.Client.Tests` moves from 56 to 182 cases; `Arronix.Plugin.Movies.Tests` gains the fixture cases;
+`Arronix.Client.Tests` moves from 56 to 194 cases; `Arronix.Plugin.Movies.Tests` gains the fixture cases;
 `Arronix.Architecture.Tests` gains the client-spelling rule.
 
 | Claim | Fixture |
