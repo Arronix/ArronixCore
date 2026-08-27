@@ -82,7 +82,7 @@ try {
 
     check(
         'every required assembly is resident',
-        assemblies.every(entry => entry.outcome === 2 || entry.outcome === 3),
+        assemblies.every(entry => entry.outcome === 'loaded' || entry.outcome === 'alreadyLoaded'),
         true);
     check(
         `the ${packageId} contract was fetched over the network`,
