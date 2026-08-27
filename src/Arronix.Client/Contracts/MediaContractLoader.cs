@@ -118,6 +118,24 @@ public sealed class MediaContractLoader
     }
 
     /// <summary>
+    /// Gets the verified client contracts one loaded assembly declares, in published order.
+    /// </summary>
+    /// <param name="assemblyName">The simple assembly name.</param>
+    /// <returns>The declarations, or empty when this page holds no complete verified installation.</returns>
+    /// <remarks>
+    /// The instances the post-load proof accepted, never a second resolution. Gated like
+    /// <see cref="Find"/>: one contract out of a failed installation is a partial projection.
+    /// </remarks>
+    public IReadOnlyList<ClientContractEntryPointAttribute> ContractsOf(string assemblyName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
+
+        return Report?.CanProject == true && _resident.TryGetValue(assemblyName, out var resident)
+            ? resident.EntryPoints
+            : [];
+    }
+
+    /// <summary>
     /// Reads what the host publishes, verifies everything this client would need, and loads it.
     /// </summary>
     /// <param name="cancellationToken">Abandons the load.</param>
@@ -290,7 +308,7 @@ public sealed class MediaContractLoader
 
             // Preflight proved what the bytes declare; this proves what the runtime did with them. A load
             // context may return an occupant rather than the bytes it was handed.
-            if (RuntimeDisagreement(assembly, published) is { } disagreement)
+            if (RuntimeDisagreement(assembly, published, out var entryPoints) is { } disagreement)
             {
                 _terminal = $"'{published.FileName}' was verified and the runtime produced something else: "
                     + disagreement
@@ -308,7 +326,8 @@ public sealed class MediaContractLoader
                     _terminal);
             }
 
-            _resident[published.AssemblyName] = new ResidentContract(assembly, published);
+            // Only now, and with the entry points the proof resolved, so reuse hands back what passed.
+            _resident[published.AssemblyName] = new ResidentContract(assembly, published, entryPoints);
 
             // Loaded, and only now. Until this line the report said Verified, which is what was true.
             verified[published.AssemblyName] = entry.Committed();
@@ -599,8 +618,12 @@ public sealed class MediaContractLoader
     /// assemblies with one name is exactly the failure a shared contract exists to prevent, and only the
     /// loader can say whether a particular load avoided it.
     /// </remarks>
-    private static string? RuntimeDisagreement(Assembly assembly, ClientContractAssembly published)
+    private static string? RuntimeDisagreement(
+        Assembly assembly,
+        ClientContractAssembly published,
+        out IReadOnlyList<ClientContractEntryPointAttribute> entryPoints)
     {
+        entryPoints = [];
         var loaded = assembly.GetName();
 
         if (!string.Equals(loaded.FullName, published.Identity, StringComparison.OrdinalIgnoreCase))
@@ -638,59 +661,80 @@ public sealed class MediaContractLoader
             return $"its reference to '{ContractAssemblyName}' could not be resolved: {resolution.Message}";
         }
 
-        return DeclarationDisagreement(assembly, published);
+        return DeclarationDisagreement(assembly, published, out entryPoints);
     }
 
     /// <summary>
-    /// Describes how the loaded assembly's declarations differ from what was published, or nothing.
+    /// Describes how the loaded assembly's declarations differ from what was published, or nothing, and
+    /// yields the resolved declarations when they agree.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// The third reading of one fact, and the first the runtime can answer. Preflight established what the
-    /// bytes declare; this establishes what the runtime made of them — the entity as a resolved
-    /// <see cref="Type"/> from the assembly that declared it, rather than as the name a blob spelled.
-    /// </para>
-    /// <para>
-    /// This is the first line that runs the payload's own code: reading the attribute constructs it, and the
-    /// declaration's constructor validates what it was given. That is why it happens here and not earlier,
-    /// and why it is contained — a payload that throws while describing itself has failed to describe
-    /// itself, which is a refusal rather than an escape.
-    /// </para>
+    /// Runs the payload's own code, so it is contained: a declaration that throws while describing itself
+    /// is refused rather than allowed to escape after an irreversible load.
     /// </remarks>
-    private static string? DeclarationDisagreement(Assembly assembly, ClientContractAssembly published)
+    private static string? DeclarationDisagreement(
+        Assembly assembly,
+        ClientContractAssembly published,
+        out IReadOnlyList<ClientContractEntryPointAttribute> entryPoints)
     {
-        ClientContractEntryPointAttribute[] resolved;
+        entryPoints = [];
 
+        // One boundary around construction and every member read; both are the payload's own code.
         try
         {
-            resolved = [.. assembly
-                .GetCustomAttributes<ClientContractEntryPointAttribute>()
-                .OrderBy(entry => entry.GetType().FullName, StringComparer.Ordinal)];
+            var resolved = ResolveDeclarations(assembly);
+
+            if (Disagreement(assembly, published, resolved) is { } disagreement)
+            {
+                return disagreement;
+            }
+
+            entryPoints = resolved;
+            return null;
         }
         catch (Exception failure)
         {
             return $"its client contract declarations could not be read once loaded: {failure.Message}";
         }
+    }
 
-        if (resolved.Length != published.Declarations.Count)
+    /// <summary>Resolves the exact declarations an assembly carries, in published order.</summary>
+    /// <remarks>One targeted attribute read; nothing enumerates types or members.</remarks>
+    private static ClientContractEntryPointAttribute[] ResolveDeclarations(Assembly assembly)
+        => [.. assembly
+            .GetCustomAttributes<ClientContractEntryPointAttribute>()
+            .OrderBy(entry => entry.GetType().FullName, StringComparer.Ordinal)];
+
+    private static string? Disagreement(
+        Assembly assembly,
+        ClientContractAssembly published,
+        IReadOnlyList<ClientContractEntryPointAttribute> resolved)
+    {
+        if (resolved.Count != published.Declarations.Count)
         {
-            return $"it declares {resolved.Length} client contract(s) once loaded; the host published "
+            return $"it declares {resolved.Count} client contract(s) once loaded; the host published "
                 + $"{published.Declarations.Count}.";
         }
 
-        for (var index = 0; index < resolved.Length; index++)
+        for (var index = 0; index < resolved.Count; index++)
         {
             var entry = resolved[index];
             var expected = published.Declarations[index];
+            var implementation = entry.GetType();
 
-            if (!string.Equals(entry.GetType().FullName, expected.EntryPointType, StringComparison.Ordinal))
+            if (!string.Equals(implementation.FullName, expected.EntryPointType, StringComparison.Ordinal))
             {
-                return $"it loaded the client contract entry point '{entry.GetType().FullName}' where the "
+                return $"it loaded the client contract entry point '{implementation.FullName}' where the "
                     + $"host published '{expected.EntryPointType}'.";
             }
 
-            // Object identity of the declaring assembly, not a name. The whole point of resolving the type
-            // rather than comparing spellings is that the answer carries where the value would come from.
+            // Object identity, not a name: a declaration is this assembly's statement about itself.
+            if (!ReferenceEquals(implementation.Assembly, assembly))
+            {
+                return $"'{expected.EntryPointType}' is implemented in "
+                    + $"'{implementation.Assembly.GetName().Name}' rather than in the assembly that declared it.";
+            }
+
             if (!ReferenceEquals(entry.EntityType.Assembly, assembly))
             {
                 return $"'{expected.EntryPointType}' resolves its entity type to "
@@ -709,6 +753,12 @@ public sealed class MediaContractLoader
             {
                 return $"'{expected.EntryPointType}' reports hashes once loaded that are not the ones the "
                     + "host published.";
+            }
+
+            // Read here so a throwing or empty schema is refused with everything else, not at first render.
+            if (entry.Schema is not { Count: > 0 })
+            {
+                return $"'{expected.EntryPointType}' publishes no projection schema once loaded.";
             }
         }
 
@@ -805,12 +855,13 @@ public sealed class MediaContractLoader
             failure);
 
     /// <summary>One contract this page has loaded, and the exact description it was verified against.</summary>
-    /// <remarks>
-    /// The description is retained rather than recomputed. A browser cannot unload an assembly, so the only
-    /// way to tell a reusable resident contract from a stale one is to remember what was proved about it
-    /// when it was admitted.
-    /// </remarks>
-    private sealed record ResidentContract(Assembly Assembly, ClientContractAssembly Verified);
+    /// <param name="Assembly">The loaded assembly.</param>
+    /// <param name="Verified">What the host published for it, proved against its bytes and its runtime.</param>
+    /// <param name="EntryPoints">The declarations that proof resolved, in published order.</param>
+    private sealed record ResidentContract(
+        Assembly Assembly,
+        ClientContractAssembly Verified,
+        IReadOnlyList<ClientContractEntryPointAttribute> EntryPoints);
 
     /// <summary>What verification decided about one published assembly, before anything was loaded.</summary>
     private sealed record Preflight(

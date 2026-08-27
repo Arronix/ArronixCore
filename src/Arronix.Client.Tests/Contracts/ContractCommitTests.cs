@@ -146,6 +146,11 @@ public sealed class ContractCommitTests
                 // hand the assembly out, and says nothing about whether the runtime holds it.
                 Resident("Arronix.Media.Movies").Should().BeFalse();
                 Resident(FixtureAssemblyName).Should().BeFalse();
+
+                // Nor are its declarations reachable. An assembly the runtime substituted must not become
+                // the source of a contract, and the accessor is the other door into one.
+                wrongLoader.ContractsOf("Arronix.Media.Movies").Should().BeEmpty();
+                wrongLoader.ContractsOf(FixtureAssemblyName).Should().BeEmpty();
                 loads.Should().Be(1, "the commit stopped at the entry the runtime got wrong");
             }
         }

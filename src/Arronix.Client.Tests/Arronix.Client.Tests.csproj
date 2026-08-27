@@ -32,6 +32,8 @@
 
   <ItemGroup>
     <PackageReference Include="FluentAssertions" />
+    <!-- Declaration fixtures whose own code throws are compiled here; no build can produce them. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
 
   <!--
