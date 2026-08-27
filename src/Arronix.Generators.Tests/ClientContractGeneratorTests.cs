@@ -14,10 +14,8 @@ namespace Arronix.Generators.Tests;
 /// What the client contract generator refuses to publish.
 /// </summary>
 /// <remarks>
-/// The generator emits a hash it computed from a compile-time model of the framework's serializer. A shape
-/// the model does not reproduce must be refused rather than described, because a hash that disagrees with
-/// the wire while looking like agreement is worse than no contract at all. Each case here is a shape that
-/// would otherwise be published under a wrong hash.
+/// A shape the model cannot reproduce is refused rather than described: a hash that disagrees with the wire
+/// while looking like agreement is worse than no contract.
 /// </remarks>
 [TestFixture]
 internal sealed class ClientContractGeneratorTests
@@ -117,10 +115,8 @@ internal sealed class ClientContractGeneratorTests
     }
 
     /// <remarks>
-    /// A computed member's name is refused wherever it appears in a payload, so it must not also be a name
-    /// some other type legitimately carries — the guard would then reject valid payloads. The bug this
-    /// pins is subtractive: removing the colliding names from the computed set before looking for a
-    /// collision empties the set the collision was in, and the check passes every time.
+    /// A computed member's name is refused wherever it appears, so it must not be a name another type
+    /// carries. Subtracting the collisions before looking for them empties the set they were in.
     /// </remarks>
     [Test]
     public void AComputedMemberSharingALiveMembersNameIsRefused()
@@ -627,6 +623,117 @@ internal sealed class ClientContractGeneratorTests
             Assert.That(Declaration(Generated(renamed)), Is.EqualTo(Declaration(Generated(Build()))),
                 "both hashes are unchanged");
         });
+    }
+
+    /// <remarks>
+    /// The framework runs these against the value on the way in or out, so a graph carrying one does
+    /// something no rendering of its members describes. Refused before load rather than at run time.
+    /// </remarks>
+    [TestCase("IJsonOnSerializing", "OnSerializing")]
+    [TestCase("IJsonOnSerialized", "OnSerialized")]
+    [TestCase("IJsonOnDeserializing", "OnDeserializing")]
+    [TestCase("IJsonOnDeserialized", "OnDeserialized")]
+    public void ATypeTheFrameworkRunsCodeForIsRefused(string contract, string member)
+    {
+        var facet = $$"""
+
+            public sealed class SampleFacet : {{contract}}
+            {
+                public string? Note { get; init; }
+                public void {{member}}()
+                {
+                }
+            }
+            """;
+
+        var refusals = Refusals(Build(item: "public SampleFacet? Facet { get; init; }", extra: facet));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refusals, Has.Length.EqualTo(1));
+            Assert.That(refusals[0], Does.Contain(contract));
+            Assert.That(refusals[0], Does.Contain("runs code against the value"));
+        });
+    }
+
+    /// <remarks>
+    /// A constructor parameter's nullability is its own. Reading the member's instead leaves two contracts
+    /// that read a missing or null value differently hashing alike; both types below expose a member that
+    /// is not nullable.
+    /// </remarks>
+    [Test]
+    public void AParameterNullabilityDifferentFromItsMembersChangesTheHash()
+    {
+        const string Strict = """
+
+            public sealed class SampleFacet
+            {
+                public SampleFacet(string note) => Note = note;
+
+                public string Note { get; }
+            }
+            """;
+
+        const string Lenient = """
+
+            public sealed class SampleFacet
+            {
+                public SampleFacet(string? note) => Note = note ?? string.Empty;
+
+                public string Note { get; }
+            }
+            """;
+
+        var strict = Generated(Build(item: "public SampleFacet? Facet { get; init; }", extra: Strict));
+        var lenient = Generated(Build(item: "public SampleFacet? Facet { get; init; }", extra: Lenient));
+
+        Assert.That(
+            Declaration(lenient),
+            Is.Not.EqualTo(Declaration(strict)),
+            "the member is not nullable in either, so only the parameter can have moved the hash");
+    }
+
+    /// <remarks>
+    /// A default decides what a member becomes when a payload omits it, so two contracts differing only in
+    /// one are different contracts.
+    /// </remarks>
+    [Test]
+    public void AConstructorDefaultChangesTheHash()
+    {
+        const string Without = """
+
+            public sealed class SampleFacet
+            {
+                public SampleFacet(int count) => Count = count;
+
+                public int Count { get; }
+            }
+            """;
+
+        var with = Without.Replace("int count)", "int count = 3)", StringComparison.Ordinal);
+
+        var absent = Generated(Build(item: "public SampleFacet? Facet { get; init; }", extra: Without));
+        var present = Generated(Build(item: "public SampleFacet? Facet { get; init; }", extra: with));
+
+        Assert.That(Declaration(present), Is.Not.EqualTo(Declaration(absent)));
+    }
+
+    [Test]
+    public void ADefaultThisModelCannotRenderIsRefused()
+    {
+        const string Facet = """
+
+            public sealed class SampleFacet
+            {
+                public SampleFacet(SampleStage stage = SampleStage.Unknown) => Stage = stage;
+
+                public SampleStage Stage { get; }
+            }
+            """;
+
+        var refusals = Refusals(Build(item: "public SampleFacet? Facet { get; init; }", extra: Facet));
+
+        Assert.That(refusals.Single(), Does.Contain("default value this model does not render"));
     }
 
     [Test]

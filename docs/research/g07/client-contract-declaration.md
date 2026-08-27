@@ -96,8 +96,8 @@ emits literals from a compile-time model of the framework's serializer, and `Cli
 recomputes the same canonical renderings from the **live** metadata. Measured, equal:
 
 ```text
-serialization      = 49A8334C12489C77DE502BE517B149A2A1103FE852E3AD17298FAF41788E302B
-declaredMetadata   = 49A8334C12489C77DE502BE517B149A2A1103FE852E3AD17298FAF41788E302B
+serialization      = 0962B8F5E9A3A13667A542691DB1B66A5CCBCA84AC1B7F802FB131AB173759C8
+declaredMetadata   = 0962B8F5E9A3A13667A542691DB1B66A5CCBCA84AC1B7F802FB131AB173759C8
 projection         = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 declaredProjection = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 ```
@@ -237,7 +237,62 @@ and a `ShouldSerialize` on a live member beside one on an ignored member that is
 options refusals and the added option fields fails seven of them and nothing else — they are the cases that
 kept the same digest before this work.
 
-### 4.5 One guard was inert when it was written
+### 4.5 The rest of the public surface, and what is deliberately not proved
+
+The earlier pass worked from a checklist. Enumerating the actual .NET 11 Preview 7 surface turned up
+members no checklist named — `JsonTypeInfo.TypeClassifier`, `UnionCases`, `UnionConstructor`,
+`UnionDeconstructor`, `IsReadOnly`; `JsonSerializerOptions.InferClosedTypePolymorphism`, `TypeClassifiers`,
+`IsReadOnly`, and the obsolete `IgnoreNullValues` — alongside the four `On*` callbacks,
+`ConstructorAttributeProvider`, `AttributeProvider`, `JsonPropertyInfo.AssociatedParameter` and
+`JsonTypeInfo<T>.SerializeHandler`.
+
+Baselined over all 34 movie wire types first:
+
+```text
+types=34 optionsSameInstance=34 props=63 propOptionsSame=63
+callbacks, TypeClassifier, UnionCases/Constructor/Deconstructor: none; every type IsReadOnly
+IgnoreNullValues=False (and setting it leaves DefaultIgnoreCondition at Never — independent)
+SerializeHandler: present under Default and Metadata|Serialization, absent under Metadata
+```
+
+**Refused**, none of which the baseline carries: any of the four callbacks; a `TypeClassifier`; a union
+constructor, deconstructor or case; a `JsonTypeInfo` or `JsonSerializerOptions` still open to change; a
+`JsonTypeInfo` or `JsonPropertyInfo` built for other options; `IgnoreNullValues`;
+`InferClosedTypePolymorphism`; `TypeClassifiers`. The generator refuses the four `IJsonOn…` contracts
+before load, resolved through `FrameworkSymbols` and compared by symbol identity, so a callback is a
+compile error rather than a run-time surprise.
+
+**Represented**, because it decides what a payload means: `JsonPropertyInfo.AssociatedParameter` and the
+`JsonParameterInfo` behind it — position, name, parameter type, member-initializer flag, nullability and
+default value. A default decides what a member becomes when a payload omits it, and two contracts differing
+only in one hashed alike before. A parameter's nullability is read from the **parameter**, not from its
+member: `AParametersNullabilityIsItsOwn` pins a member that is not nullable filled by one that is, and
+reading the member's answer instead fails `AParameterNullabilityDifferentFromItsMembersChangesTheHash`.
+An enumerated default is refused on both sides, because a compiler hands back the underlying number and the
+runtime hands back the enumeration value.
+
+**Consciously classified, with reasons:**
+
+- `ConstructorAttributeProvider` and `JsonPropertyInfo.AttributeProvider` are attribute lookup surfaces for
+  other resolvers. They carry no reading or writing behavior, and the constructor they describe is already
+  rendered through `AssociatedParameter` and requiredness.
+- `JsonTypeInfo<T>.SerializeHandler` is the generated write fast path. Reading uses the metadata, which both
+  accepted generation modes produce, and the fast path is emitted from the same member model — so the two
+  accepted modes cannot read or write a payload differently.
+  `TheAcceptedGenerationModesReadAndWriteAlike` asserts both directions against a type that has the handler
+  and one that does not.
+- Whitespace, line endings, buffer size and the encoder change the bytes, not the values recovered from
+  them.
+
+**The structural limit, stated rather than implied.** The digest renders the *presence* of a delegate —
+`CreateObject`, the fast-path writer, a converter — and never its behavior. Nothing here proves what a
+delegate does. What pins the code behind them is one layer up: G07.1 content-hashes the assembly's exact
+bytes and proves its CLR identity and module before it loads, and this rendering additionally requires that
+every `JsonTypeInfo` was resolved by the contract's own context and that the context and the entity ship in
+one assembly. A different delegate means different bytes, and different bytes mean a different content
+address.
+
+### 4.6 One guard was inert when it was written
 
 The check that a computed member's name does not collide
 with a live member's name subtracted the live names from the computed set *before* looking for the
@@ -350,7 +405,7 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3550 enabled=3248 passed=3248 failed=0 skipped=302 inconclusive=0
+projects=14 total=3567 enabled=3265 passed=3265 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=14 compileItems=344 boundSources=15
 ```

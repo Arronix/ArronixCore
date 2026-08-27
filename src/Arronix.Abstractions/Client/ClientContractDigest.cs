@@ -39,7 +39,7 @@ public static class ClientContractDigest
         }
 
         var rendering = new StringBuilder();
-        RenderOptions(rendering, context, root.Options);
+        RenderOptions(rendering, context, context.Options);
 
         var seen = new HashSet<Type> { root.Type };
         var pending = new Queue<JsonTypeInfo>();
@@ -113,7 +113,11 @@ public static class ClientContractDigest
     /// </remarks>
     private static void RenderOptions(StringBuilder rendering, JsonSerializerContext context, JsonSerializerOptions options)
     {
+        Refuse(!options.IsReadOnly, "these options", "are still open to change");
         Refuse(options.ReferenceHandler is not null, "these options", "preserve references");
+        Refuse(IgnoresNullValues(options), "these options", "drop null values");
+        Refuse(options.InferClosedTypePolymorphism, "these options", "infer polymorphism");
+        Refuse(options.TypeClassifiers.Count != 0, "these options", "carry type classifiers");
         Refuse(options.Converters.Count != 0, "these options", "carry converters of their own");
         Refuse(options.DictionaryKeyPolicy is not null, "these options", "name a dictionary key policy");
         Refuse(
@@ -173,6 +177,20 @@ public static class ClientContractDigest
             name,
             "has a converter of its own");
         Refuse(type.KeyType is not null, name, "is keyed");
+        Refuse(!ReferenceEquals(type.Options, context.Options), name, "was built for other options");
+        Refuse(!type.IsReadOnly, name, "is still open to change");
+        Refuse(type.TypeClassifier is not null, name, "is classified at run time");
+        Refuse(type.UnionCases.Count != 0, name, "is a union");
+        Refuse(type.UnionConstructor is not null, name, "is constructed as a union");
+        Refuse(type.UnionDeconstructor is not null, name, "is deconstructed as a union");
+
+        // A callback runs against the value on the way in or out and can change it, so a graph carrying one
+        // does something no rendering of its members describes. Generated metadata has none unless the type
+        // implements one of the framework's four callback contracts, which the generator refuses.
+        Refuse(type.OnSerializing is not null, name, "runs a callback before it is written");
+        Refuse(type.OnSerialized is not null, name, "runs a callback after it is written");
+        Refuse(type.OnDeserializing is not null, name, "runs a callback before it is read");
+        Refuse(type.OnDeserialized is not null, name, "runs a callback after it is read");
         Refuse(type.PolymorphismOptions is not null, name, "is polymorphic");
         Refuse(type.NumberHandling is not null, name, "states its own number handling");
         Refuse(type.UnmappedMemberHandling is not null, name, "states its own unmapped-member handling");
@@ -191,6 +209,7 @@ public static class ClientContractDigest
             Refuse(property.ObjectCreationHandling is not null, member, "states its own object creation handling");
             Refuse(property.Order != 0, member, "states its own order");
             Refuse(property.IsExtensionData, member, "is extension data");
+            Refuse(!ReferenceEquals(property.Options, context.Options), member, "was built for other options");
 
             // Generated metadata gives an ignored member one; on a member that is read or written it
             // decides at run time whether the member appears at all.
@@ -205,6 +224,14 @@ public static class ClientContractDigest
             throw new NotSupportedException($"'{subject}' {what}, which this rendering does not describe.");
         }
     }
+
+    /// <remarks>
+    /// The obsolete flag is independent of <see cref="JsonSerializerOptions.DefaultIgnoreCondition"/> —
+    /// measured, it leaves it at its value — so it is its own behavior and its own refusal.
+    /// </remarks>
+#pragma warning disable SYSLIB0020
+    private static bool IgnoresNullValues(JsonSerializerOptions options) => options.IgnoreNullValues;
+#pragma warning restore SYSLIB0020
 
     private static void RenderType(StringBuilder rendering, JsonSerializerContext context, JsonTypeInfo type)
     {
@@ -244,10 +271,47 @@ public static class ClientContractDigest
                 .Append("|write=").Append(Flag(property.Get is not null))
                 .Append("|required=").Append(Flag(property.IsRequired))
                 .Append("|getNullable=").Append(Flag(property.IsGetNullable))
-                .Append("|setNullable=").Append(Flag(property.IsSetNullable))
-                .Append('\n');
+                .Append("|setNullable=").Append(Flag(property.IsSetNullable));
+
+            RenderParameter(rendering, property.AssociatedParameter);
+            rendering.Append('\n');
         }
     }
+
+    /// <summary>Renders the constructor parameter, if any, that fills a member.</summary>
+    /// <remarks>
+    /// A default decides what a member becomes when a payload omits it, so it is part of what a payload
+    /// means. A required member with no constructor parameter still gets one, marked as a member
+    /// initializer.
+    /// </remarks>
+    private static void RenderParameter(StringBuilder rendering, JsonParameterInfo? parameter)
+    {
+        if (parameter is null)
+        {
+            rendering.Append("|parameter=~");
+            return;
+        }
+
+        rendering.Append("|parameter=").Append(Number(parameter.Position))
+            .Append('|').Append(Text(parameter.Name))
+            .Append('|').Append(Text(Name(parameter.ParameterType)))
+            .Append("|memberInitializer=").Append(Flag(parameter.IsMemberInitializer))
+            .Append("|nullable=").Append(Flag(parameter.IsNullable))
+            .Append("|default=").Append(parameter.HasDefaultValue ? Literal(parameter.DefaultValue) : "~");
+    }
+
+    /// <summary>Renders a default value the way a compiler renders the same constant.</summary>
+    private static string Literal(object? value) => value switch
+    {
+        null => "null",
+        string text => Text(text),
+        bool flag => Flag(flag),
+        Enum => throw new NotSupportedException(
+            "An enumerated default value is not one this rendering describes."),
+        IFormattable number => number.ToString(null, CultureInfo.InvariantCulture),
+        _ => throw new NotSupportedException(
+            $"A default value of type '{value.GetType()}' is not one this rendering describes."),
+    };
 
     private static IEnumerable<Type> Reachable(JsonTypeInfo type)
     {

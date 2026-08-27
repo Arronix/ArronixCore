@@ -67,12 +67,14 @@ public sealed class ClientContractDigestTests
             // Wire name, declared type, direction, requiredness and nullability.
             Assert.That(rendering, Does.Contain(
                 "  member=5:title|13:System.String|read=true|write=true|required=true"
-                + "|getNullable=false|setNullable=false\n"));
+                + "|getNullable=false|setNullable=false|parameter=0|5:Title|13:System.String"
+                + "|memberInitializer=true|nullable=false|default=~\n"));
 
             // A member the constructor writes and no setter reads.
             Assert.That(rendering, Does.Contain(
                 "  member=7:minimum|14:System.Decimal|read=false|write=true|required=true"
-                + "|getNullable=false|setNullable=false\n"));
+                + "|getNullable=false|setNullable=false|parameter=0|7:minimum|14:System.Decimal"
+                + "|memberInitializer=false|nullable=false|default=~\n"));
 
             // A derived member reaches the wire in neither direction.
             Assert.That(rendering, Does.Contain("  member=6:status|ignored\n"));
@@ -89,6 +91,20 @@ public sealed class ClientContractDigestTests
             Assert.That(rendering, Does.Contain(
                 "type=75:System.Collections.Generic.IReadOnlyList<Arronix.Abstractions.Media.Rating>"
                 + "|kind=Enumerable|createObject=false|element=33:Arronix.Abstractions.Media.Rating\n"));
+
+            // A constructor parameter, its position, and the default that decides what a missing member
+            // becomes. Before this was rendered, two contracts differing only in a default hashed alike.
+            Assert.That(rendering, Does.Contain(
+                "|parameter=4|10:sampleSize|29:System.Nullable<System.Int64>"
+                + "|memberInitializer=false|nullable=true|default=null\n"));
+
+            // A required member with no constructor parameter still gets one, standing for the object
+            // initializer that fills it.
+            Assert.That(rendering, Does.Contain(
+                "|parameter=1|9:Lifecycle|41:Arronix.Media.Movies.MovieReleaseTimeline"
+                + "|memberInitializer=true|nullable=true|default=~\n"));
+
+            Assert.That(rendering, Does.Contain("|parameter=~"), "a member no parameter fills says so");
 
             // Present for an object with a parameterless constructor and no required member, absent
             // otherwise. Measured, not assumed: Movie has one and does not carry a factory.

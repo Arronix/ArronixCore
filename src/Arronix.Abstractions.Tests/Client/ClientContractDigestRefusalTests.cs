@@ -12,11 +12,9 @@ namespace Arronix.Abstractions.Tests.Client;
 /// Live serializer behavior the digest either carries or refuses.
 /// </summary>
 /// <remarks>
-/// Every case here changes something a reader or a typed writer does. Before these checks each one left
-/// the digest identical, which is the failure: a hash that agrees while the wire differs. The baseline was
-/// measured against real source-generated metadata first — every generated type carries a converter and
-/// resolves through its own context, and an ignored member carries a <c>ShouldSerialize</c> — so those are
-/// not refused blindly.
+/// Each case changes something a reader or a typed writer does and previously left the digest identical.
+/// Baselined against real generated metadata first, so nothing honest is refused; see
+/// <c>docs/research/g07/client-contract-declaration.md</c>.
 /// </remarks>
 [TestFixture]
 public sealed class ClientContractDigestRefusalTests
@@ -32,12 +30,14 @@ public sealed class ClientContractDigestRefusalTests
             Action<JsonTypeInfo>? arrange = null,
             Type? memberType = null,
             JsonSerializerOptions? options = null,
-            bool ownResolver = true)
+            bool ownResolver = true,
+            bool foreignOptions = false)
             : base(options ?? Honest())
         {
-            _text = JsonTypeInfo.CreateJsonTypeInfo(typeof(string), Options);
-            _bag = JsonTypeInfo.CreateJsonTypeInfo(typeof(Dictionary<string, object>), Options);
-            _root = JsonTypeInfo.CreateJsonTypeInfo<Sample>(Options);
+            var built = foreignOptions ? Honest() : Options;
+            _text = JsonTypeInfo.CreateJsonTypeInfo(typeof(string), built);
+            _bag = JsonTypeInfo.CreateJsonTypeInfo(typeof(Dictionary<string, object>), built);
+            _root = JsonTypeInfo.CreateJsonTypeInfo<Sample>(built);
             _root.CreateObject = static () => new Sample();
 
             var property = _root.CreateJsonPropertyInfo(memberType ?? typeof(string), "note");
@@ -51,7 +51,11 @@ public sealed class ClientContractDigestRefusalTests
             }
 
             arrange?.Invoke(_root);
-            _root.MakeReadOnly();
+
+            foreach (var info in new[] { _root, _text, _bag })
+            {
+                info.MakeReadOnly();
+            }
         }
 
         internal JsonTypeInfo Root => _root;
@@ -97,10 +101,7 @@ public sealed class ClientContractDigestRefusalTests
 
     // ---------------------------------------------------------------- options
 
-    /// <remarks>
-    /// Reference handling puts <c>$id</c> and <c>$ref</c> into a payload and reads them back as object
-    /// identity. Nothing in either rendering describes that, and before this check the digest was unchanged.
-    /// </remarks>
+    /// <remarks>Reference handling puts <c>$id</c> and <c>$ref</c> in a payload; nothing renders that.</remarks>
     [Test]
     public void PreservingReferencesIsRefusedAndWouldOtherwiseHashTheSame()
     {
@@ -108,6 +109,31 @@ public sealed class ClientContractDigestRefusalTests
         options.ReferenceHandler = ReferenceHandler.Preserve;
 
         Refuses(new Probe(options: options), "preserve references");
+    }
+
+    /// <remarks>
+    /// The obsolete flag is independent of <c>DefaultIgnoreCondition</c> — measured, setting it leaves that
+    /// at <c>Never</c> — so the rendering does not cover it by proxy and it is refused on its own.
+    /// </remarks>
+    [Test]
+    public void DroppingNullValuesIsRefused()
+    {
+        var options = Probe.Honest();
+#pragma warning disable SYSLIB0020
+        options.IgnoreNullValues = true;
+        Assert.That(options.DefaultIgnoreCondition, Is.EqualTo(JsonIgnoreCondition.Never), "the premise");
+#pragma warning restore SYSLIB0020
+
+        Refuses(new Probe(options: options), "drop null values");
+    }
+
+    [Test]
+    public void InferringPolymorphismIsRefused()
+    {
+        var options = Probe.Honest();
+        options.InferClosedTypePolymorphism = true;
+
+        Refuses(new Probe(options: options), "infer polymorphism");
     }
 
     [Test]
@@ -192,6 +218,39 @@ public sealed class ClientContractDigestRefusalTests
         Refuses(new Probe(ownResolver: false), "other than this contract's own context");
     }
 
+    /// <remarks>
+    /// A callback runs against the value on the way in or out and can change it, so no rendering of a
+    /// type's members describes what a graph carrying one does.
+    /// </remarks>
+    [TestCase("OnSerializing", "before it is written")]
+    [TestCase("OnSerialized", "after it is written")]
+    [TestCase("OnDeserializing", "before it is read")]
+    [TestCase("OnDeserialized", "after it is read")]
+    public void ACallbackIsRefused(string callback, string because)
+    {
+        Refuses(
+            new Probe(info =>
+            {
+                switch (callback)
+                {
+                    case "OnSerializing": info.OnSerializing = static _ => { }; break;
+                    case "OnSerialized": info.OnSerialized = static _ => { }; break;
+                    case "OnDeserializing": info.OnDeserializing = static _ => { }; break;
+                    default: info.OnDeserialized = static _ => { }; break;
+                }
+            }),
+            because);
+    }
+
+    [Test]
+    public void MetadataBuiltForOtherOptionsIsRefused()
+    {
+        var probe = new Probe(foreignOptions: true);
+
+        Assert.That(() => Digest(probe), Throws.InstanceOf<NotSupportedException>()
+            .With.Message.Contains("built for other options"));
+    }
+
     [Test]
     public void ATypeStatingItsOwnNumberHandlingIsRefused() =>
         Refuses(new Probe(static info => info.NumberHandling = JsonNumberHandling.AllowReadingFromString), "number handling");
@@ -211,9 +270,8 @@ public sealed class ClientContractDigestRefusalTests
         Refuses(new Probe(static info => info.PolymorphismOptions = new JsonPolymorphismOptions()), "polymorphic");
 
     /// <remarks>
-    /// A converter replaces the whole reading and writing of a type, so nothing about its members describes
-    /// what a payload carries. Generated metadata always has one, so what is refused is a converter declared
-    /// outside the framework.
+    /// A converter replaces a type's whole reading and writing. Generated metadata always has one, so what
+    /// is refused is a converter declared outside the framework.
     /// </remarks>
     [Test]
     public void ATypeWithAConverterOfItsOwnIsRefused()
@@ -305,6 +363,19 @@ public sealed class ClientContractDigestRefusalTests
         Refuses(
             new Probe(static info => info.Properties[0].ShouldSerialize = static (_, _) => false),
             "decides for itself whether to be written");
+
+    /// <remarks>
+    /// A default decides what a member becomes when a payload omits it, which is part of what a payload
+    /// means. Before it was rendered, two contracts differing only in a default hashed alike.
+    /// </remarks>
+    [Test]
+    public void AConstructorParameterIsPartOfTheRendering()
+    {
+        var probe = new Probe();
+        var rendering = ClientContractDigest.RenderSerialization(probe, probe.Root);
+
+        Assert.That(rendering, Does.Contain("|parameter=~"), "a member no parameter fills says so");
+    }
 
     [Test]
     public void AnIgnoredMemberMayCarryOne()

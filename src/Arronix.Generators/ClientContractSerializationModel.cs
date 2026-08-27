@@ -151,6 +151,8 @@ internal static class ClientContractSerializationModel
                 return reachable;
             }
 
+            var initializers = 0;
+
             foreach (var property in DeclaredFirst(named))
             {
                 if (!Modelable(property, framework, ref refusal))
@@ -187,8 +189,30 @@ internal static class ClientContractSerializationModel
                     .Append("|write=").Append(Bool(property.GetMethod is { DeclaredAccessibility: Accessibility.Public }))
                     .Append("|required=").Append(Bool(property.IsRequired || parameter is { HasExplicitDefaultValue: false }))
                     .Append("|getNullable=").Append(Bool(nullable))
-                    .Append("|setNullable=").Append(Bool(nullable))
-                    .Append('\n');
+                    .Append("|setNullable=").Append(Bool(nullable));
+
+                if (parameter is not null)
+                {
+                    if (!RenderParameter(rendering, parameter.Ordinal, parameter.Name, Name(parameter.Type),
+                            memberInitializer: false, Nullable(parameter), parameter, ref refusal))
+                    {
+                        return reachable;
+                    }
+                }
+                else if (property.IsRequired)
+                {
+                    // A required member with no constructor parameter still gets one, standing for the
+                    // object initializer that fills it, numbered among the other required members.
+                    RenderParameter(rendering, initializers, property.Name, Name(property.Type),
+                        memberInitializer: true, nullable, parameter: null, ref refusal);
+                    initializers++;
+                }
+                else
+                {
+                    rendering.Append("|parameter=~");
+                }
+
+                rendering.Append('\n');
 
                 reachable.Add(new Reached(property.Type, $"'{property.Name}' on '{type.ToDisplayString()}'"));
             }
@@ -306,9 +330,16 @@ internal static class ClientContractSerializationModel
     /// From the declaration, not the substitution: a member declared as a type parameter has the nullability
     /// its constraints give it, and nothing ruling out null is oblivious, which reads as nullable.
     /// </remarks>
-    private static bool Nullable(IPropertySymbol property)
+    /// <summary>Reads a constructor parameter's own nullability, which may differ from its member's.</summary>
+    private static bool Nullable(IParameterSymbol parameter) =>
+        Nullable(parameter.OriginalDefinition.Type, parameter.Type);
+
+    private static bool Nullable(IPropertySymbol property) =>
+        Nullable(property.OriginalDefinition.Type, property.Type);
+
+    private static bool Nullable(ITypeSymbol declared, ITypeSymbol substituted)
     {
-        if (property.OriginalDefinition.Type is ITypeParameterSymbol parameter)
+        if (declared is ITypeParameterSymbol parameter)
         {
             // A constraint that rules out null is an annotation; a shape constraint is not. Only the
             // second leaves the member oblivious, and oblivious is read as nullable.
@@ -321,10 +352,8 @@ internal static class ClientContractSerializationModel
                 || parameter.ReferenceTypeConstraintNullableAnnotation == NullableAnnotation.Annotated;
         }
 
-        var type = property.Type;
-
-        return type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T }
-            || (type.IsReferenceType && type.NullableAnnotation != NullableAnnotation.NotAnnotated);
+        return substituted is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T }
+            || (substituted.IsReferenceType && substituted.NullableAnnotation != NullableAnnotation.NotAnnotated);
     }
 
     /// <summary>Reads a type's public instance properties the way the framework orders them.</summary>
@@ -415,6 +444,19 @@ internal static class ClientContractSerializationModel
             return false;
         }
 
+        foreach (var contract in framework.Callbacks)
+        {
+            foreach (var implemented in type.AllInterfaces)
+            {
+                if (SymbolEqualityComparer.Default.Equals(implemented, contract))
+                {
+                    refusal = $"'{type.ToDisplayString()}', reached through '{member}', implements "
+                        + $"{contract.Name}, so the framework runs code against the value on the way in or out";
+                    return false;
+                }
+            }
+        }
+
         return HidesNoSerializedMember(type, member, framework, ref refusal);
     }
 
@@ -472,6 +514,65 @@ internal static class ClientContractSerializationModel
         }
 
         return false;
+    }
+
+    /// <summary>Renders the constructor parameter, if any, that fills a member.</summary>
+    /// <remarks>A default decides what a member becomes when a payload omits it.</remarks>
+    private static bool RenderParameter(
+        StringBuilder rendering,
+        int position,
+        string name,
+        string parameterType,
+        bool memberInitializer,
+        bool nullable,
+        IParameterSymbol? parameter,
+        ref string? refusal)
+    {
+        var literal = "~";
+
+        if (parameter is { HasExplicitDefaultValue: true })
+        {
+            // Roslyn hands an enumeration's default back as its underlying number while the running
+            // metadata hands back the enumeration value, so the two would render differently.
+            if (StripNullable(parameter.Type).TypeKind == TypeKind.Enum
+                || !Literal(parameter.ExplicitDefaultValue, out literal))
+            {
+                refusal = $"'{name}' has a default value this model does not render";
+                return false;
+            }
+        }
+
+        rendering.Append("|parameter=").Append(Number(position))
+            .Append('|').Append(Text(name))
+            .Append('|').Append(Text(parameterType))
+            .Append("|memberInitializer=").Append(Bool(memberInitializer))
+            .Append("|nullable=").Append(Bool(nullable))
+            .Append("|default=").Append(literal);
+
+        return true;
+    }
+
+    /// <summary>Renders a default value the way the running metadata renders the same constant.</summary>
+    private static bool Literal(object? value, out string rendered)
+    {
+        switch (value)
+        {
+            case null:
+                rendered = "null";
+                return true;
+            case string text:
+                rendered = Text(text);
+                return true;
+            case bool flag:
+                rendered = Bool(flag);
+                return true;
+            case IFormattable number when value is not Enum:
+                rendered = number.ToString(null, CultureInfo.InvariantCulture);
+                return true;
+            default:
+                rendered = "~";
+                return false;
+        }
     }
 
     /// <summary>Determines whether the framework will hold a factory for a type.</summary>

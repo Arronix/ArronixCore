@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 
 namespace Arronix.Generators;
@@ -15,8 +16,10 @@ internal sealed class FrameworkSymbols
         INamedTypeSymbol serializable,
         INamedTypeSymbol generationOptions,
         INamedTypeSymbol ignore,
-        INamedTypeSymbol constructor)
+        INamedTypeSymbol constructor,
+        IReadOnlyList<INamedTypeSymbol> callbacks)
     {
+        Callbacks = callbacks;
         SerializerContext = serializerContext;
         Serializable = serializable;
         GenerationOptions = generationOptions;
@@ -33,6 +36,9 @@ internal sealed class FrameworkSymbols
     internal INamedTypeSymbol Ignore { get; }
 
     internal INamedTypeSymbol Constructor { get; }
+
+    /// <summary>The contracts whose presence makes the framework run code against a value.</summary>
+    internal IReadOnlyList<INamedTypeSymbol> Callbacks { get; }
 
     /// <summary>Resolves the framework types, or nothing when this compilation has no serializer.</summary>
     /// <param name="compilation">The compilation being generated for.</param>
@@ -54,10 +60,20 @@ internal sealed class FrameworkSymbols
         var generationOptions = DeclaredBy(compilation, Namespace + ".JsonSourceGenerationOptionsAttribute", framework);
         var ignore = DeclaredBy(compilation, Namespace + ".JsonIgnoreAttribute", framework);
         var constructor = DeclaredBy(compilation, Namespace + ".JsonConstructorAttribute", framework);
+        var callbacks = new List<INamedTypeSymbol>();
 
-        return serializable is null || generationOptions is null || ignore is null || constructor is null
+        foreach (var name in new[] { "IJsonOnSerializing", "IJsonOnSerialized", "IJsonOnDeserializing", "IJsonOnDeserialized" })
+        {
+            if (DeclaredBy(compilation, Namespace + "." + name, framework) is { } callback)
+            {
+                callbacks.Add(callback);
+            }
+        }
+
+        return callbacks.Count != 4
+            || serializable is null || generationOptions is null || ignore is null || constructor is null
             ? null
-            : new FrameworkSymbols(serializerContext, serializable, generationOptions, ignore, constructor);
+            : new FrameworkSymbols(serializerContext, serializable, generationOptions, ignore, constructor, callbacks);
     }
 
     /// <summary>Finds the one referenced declaration of a metadata name.</summary>

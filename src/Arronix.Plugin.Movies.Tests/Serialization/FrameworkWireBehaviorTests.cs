@@ -9,26 +9,14 @@ namespace Arronix.Plugin.Movies.Tests.Serialization;
 /// The framework behaviours the client contract generator's compile-time model depends on.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The generator predicts what the framework's serializer will do so that a hash computed while the
-/// assembly compiled can be checked against the running metadata. Two of those predictions cannot be
-/// exercised by the movie graph: it has no type that both inherits and declares members of its own, and no
-/// byte array. A model that had them wrong would agree with the runtime here and disagree the day a media
-/// kind introduced either.
-/// </para>
-/// <para>
-/// So they are pinned directly. These types exist only to ask the framework a question; nothing serializes
-/// a movie through this context.
-/// </para>
+/// Predictions the movie graph cannot exercise — inheritance with own members, a byte array, a parameter
+/// whose nullability differs from its member's — pinned directly against the framework. These types exist
+/// only to ask it a question.
 /// </remarks>
 [TestFixture]
 public sealed class FrameworkWireBehaviorTests
 {
-    /// <remarks>
-    /// Derived members first, then each base in turn, each level in its own declaration order. The
-    /// generator's serialization model orders members this way and Host's compiled shapes order them the
-    /// other way, so this is what says which of the two is the wire.
-    /// </remarks>
+    /// <remarks>Derived first, then each base. Host's compiled shapes use the other order.</remarks>
     [Test]
     public void MembersAreOrderedMostDerivedFirst()
     {
@@ -54,6 +42,53 @@ public sealed class FrameworkWireBehaviorTests
         {
             Assert.That(metadata.Kind, Is.EqualTo(JsonTypeInfoKind.None));
             Assert.That(metadata.ElementType, Is.Null);
+        });
+    }
+
+    /// <remarks>
+    /// A parameter's nullability is its own: the member here is not nullable and the parameter that fills
+    /// it is, so a model reading the member's answer would describe the wrong one.
+    /// </remarks>
+    [Test]
+    public void AParametersNullabilityIsItsOwn()
+    {
+        var member = WireBehaviorContext.Default.WireLenient!.Properties.Single(p => p.Name == "note");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(member.IsGetNullable, Is.False);
+            Assert.That(member.AssociatedParameter, Is.Not.Null);
+            Assert.That(member.AssociatedParameter!.IsNullable, Is.True);
+        });
+    }
+
+    /// <remarks>
+    /// Reading uses the metadata, which both accepted modes generate; the mode only decides whether a
+    /// generated write fast path exists beside it, and that path is emitted from the same member model. So
+    /// the two accepted modes cannot read or write a payload differently, which is why the digest does not
+    /// carry the mode. What pins the code behind either path is the assembly's content hash, not the digest.
+    /// </remarks>
+    [Test]
+    public void TheAcceptedGenerationModesReadAndWriteAlike()
+    {
+        var withFastPath = WireBehaviorContext.Default.WireLenient!;
+        var metadataOnly = MetadataOnlyContext.Default.WireLenient!;
+        var value = new WireLenient("note") { GrandOne = 1, GrandTwo = 2 };
+
+        var written = JsonSerializer.Serialize(value, withFastPath);
+        var writtenWithout = JsonSerializer.Serialize(value, metadataOnly);
+        var read = JsonSerializer.Deserialize(written, withFastPath)!;
+        var readWithout = JsonSerializer.Deserialize(written, metadataOnly)!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(withFastPath.SerializeHandler, Is.Not.Null, "the premise: one mode has the fast path");
+            Assert.That(metadataOnly.SerializeHandler, Is.Null, "and the other does not");
+
+            Assert.That(writtenWithout, Is.EqualTo(written));
+            Assert.That(readWithout.Note, Is.EqualTo(read.Note));
+            Assert.That(readWithout.GrandOne, Is.EqualTo(read.GrandOne));
+            Assert.That(readWithout.GrandTwo, Is.EqualTo(read.GrandTwo));
         });
     }
 
@@ -95,9 +130,28 @@ public class WireChild : WireParent
     public byte[]? Blob { get; init; }
 }
 
+/// <summary>A member that is not nullable, filled by a parameter that is.</summary>
+public class WireLenient : WireGrandparent
+{
+    /// <summary>Creates one.</summary>
+    /// <param name="note">The note, which may be absent.</param>
+    public WireLenient(string? note) => Note = note ?? string.Empty;
+
+    /// <summary>Gets the note, which never is.</summary>
+    public string Note { get; }
+}
+
 /// <summary>Metadata for the hierarchy above, declared exactly as a contract assembly declares its own.</summary>
 [JsonSourceGenerationOptions(
     JsonSerializerDefaults.Strict,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(WireChild))]
+[JsonSerializable(typeof(WireLenient))]
 internal sealed partial class WireBehaviorContext : JsonSerializerContext;
+
+/// <summary>The same graph without the generated write fast path.</summary>
+[JsonSourceGenerationOptions(
+    JsonSerializerDefaults.Strict,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSerializable(typeof(WireLenient), GenerationMode = JsonSourceGenerationMode.Metadata)]
+internal sealed partial class MetadataOnlyContext : JsonSerializerContext;
