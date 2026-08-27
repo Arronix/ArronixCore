@@ -76,6 +76,11 @@ public sealed class ClientContractDigestTests
             Assert.That(rendering, Does.Contain("  member=6:status|ignored\n"));
             Assert.That(rendering, Does.Contain("  member=15:normalizedValue|ignored\n"));
 
+            // An enumeration reaches the wire as a number, so the width of that number is part of the
+            // shape even though nothing about the member that carries it moved.
+            Assert.That(rendering, Does.Contain(
+                "type=45:Arronix.Abstractions.Media.CatalogRecordState|kind=None|underlying=12:System.Int32\n"));
+
             // Generic arguments are spelled without assembly qualification, so a framework patch that
             // changed nothing about a payload does not move the hash.
             Assert.That(rendering, Does.Contain(
@@ -150,12 +155,20 @@ public sealed class ClientContractDigestTests
             Throws.ArgumentException);
     }
 
+    /// <remarks>
+    /// The root is asked for by type, not reached through a property the framework's generator happens to
+    /// name after it. That name is a convention, and a convention can change under an author.
+    /// </remarks>
     [Test]
     public void TheDeclarationExposesTheRealSerializationContext()
     {
         Assert.Multiple(() =>
         {
             Assert.That(Declaration.SerializationContext, Is.Not.Null);
+            Assert.That(
+                Declaration.EntityTypeInfo,
+                Is.SameAs(Declaration.SerializationContext.GetTypeInfo(Declaration.EntityType)),
+                "the root is the one the context answers with for that type");
             Assert.That(Declaration.EntityTypeInfo.Type, Is.SameAs(Declaration.EntityType));
             Assert.That(Declaration.EntityTypeInfo.Options, Is.SameAs(Declaration.SerializationContext.Options));
             Assert.That(Declaration.EntityTypeInfo.Options.UnmappedMemberHandling,

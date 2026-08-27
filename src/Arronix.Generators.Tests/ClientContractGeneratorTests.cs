@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
@@ -38,10 +39,13 @@ internal sealed class ClientContractGeneratorTests
             {{TIMELINE}}
         }
 
+        {{ENTITY_ATTRIBUTE}}
         public sealed class SampleItem : MediaItem<SampleItem, SampleTimeline, SampleStage>
         {
             {{ITEM}}
         }
+        {{EXTRA}}
+        {{CONTEXT}}
         """;
 
     private const string Context = """
@@ -49,6 +53,30 @@ internal sealed class ClientContractGeneratorTests
         [JsonSourceGenerationOptions({{OPTIONS}})]
         [JsonSerializable(typeof(SampleItem))]
         internal sealed partial class SampleContext : JsonSerializerContext;
+        """;
+
+    /// <summary>
+    /// The half the framework's own generator would write, written by hand.
+    /// </summary>
+    /// <remarks>
+    /// That generator is not in this driver, so without this every case would compile with the context's
+    /// abstract members unimplemented — and a case allowed to have errors is a case that can pass over
+    /// source which never compiled. It exists to compile; nothing here runs it.
+    /// </remarks>
+    private const string Half = """
+
+        partial class {{NAME}}
+        {
+            public {{NAME}}() : base(new global::System.Text.Json.JsonSerializerOptions())
+            {
+            }
+
+            public static {{NAME}} Default { get; } = new();
+
+            protected override global::System.Text.Json.JsonSerializerOptions? GeneratedSerializerOptions => null;
+
+            public override global::System.Text.Json.Serialization.Metadata.JsonTypeInfo? GetTypeInfo(Type type) => null;
+        }
         """;
 
     private const string SupportedOptions =
@@ -72,7 +100,7 @@ internal sealed class ClientContractGeneratorTests
         {
             Assert.That(Refusals(Build()), Is.Empty);
             Assert.That(generated, Does.Contain("SampleItemClientContractEntryPointAttribute(typeof("));
-            Assert.That(generated, Does.Contain("SampleContext.Default.SampleItem"));
+            Assert.That(generated, Does.Contain("SampleContext.Default.GetTypeInfo(typeof("));
         });
     }
 
@@ -189,6 +217,374 @@ internal sealed class ClientContractGeneratorTests
         });
     }
 
+    /// <remarks>
+    /// Two contexts can declare different options, so picking either would publish a hash describing the
+    /// wire the other one writes.
+    /// </remarks>
+    [Test]
+    public void TwoContextsClaimingOneEntityAreRefused()
+    {
+        const string Second = """
+            [JsonSourceGenerationOptions(JsonSerializerDefaults.Strict, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+            [JsonSerializable(typeof(SampleItem))]
+            internal sealed partial class SecondContext : JsonSerializerContext;
+            """;
+
+        var refusals = Refusals(Build(extra: Second, halves: "SecondContext"));
+
+        Assert.That(refusals.Single(), Does.Contain("more than one serialization context"));
+    }
+
+    [Test]
+    public void AnUntypedValueIsRefused()
+    {
+        var refusals = Refusals(Build(item: "public object? Anything { get; init; }"));
+
+        Assert.That(refusals.Single(), Does.Contain("untyped value"));
+    }
+
+    [Test]
+    public void AnInterfaceValueIsRefused()
+    {
+        const string Contract = """
+
+            public interface ISampleFacet { string? Note { get; } }
+            """;
+
+        var refusals = Refusals(Build(item: "public ISampleFacet? Facet { get; init; }", extra: Contract));
+
+        Assert.That(refusals.Single(), Does.Contain("is an interface"));
+    }
+
+    [Test]
+    public void AnAbstractValueIsRefused()
+    {
+        const string Abstract = """
+
+            public abstract class SampleFacet { public string? Note { get; init; } }
+            """;
+
+        var refusals = Refusals(Build(item: "public SampleFacet? Facet { get; init; }", extra: Abstract));
+
+        Assert.That(refusals.Single(), Does.Contain("is abstract"));
+    }
+
+    /// <remarks>
+    /// A compiler lists a nested generic's own arguments; a runtime lists its containing type's as well.
+    /// The two renderings would disagree while describing the same type.
+    /// </remarks>
+    [Test]
+    public void AGenericNestedInsideAnotherTypeIsRefused()
+    {
+        const string Nested = """
+
+            public static class Outer
+            {
+                public sealed record Inner<T>(T Value);
+            }
+            """;
+
+        var refusals = Refusals(Build(item: "public Outer.Inner<string>? Nested { get; init; }", extra: Nested));
+
+        Assert.That(refusals.Single(), Does.Contain("nested inside another type"));
+    }
+
+    [Test]
+    public void AMultidimensionalArrayIsRefused()
+    {
+        var refusals = Refusals(Build(item: "public int[,]? Grid { get; init; }"));
+
+        Assert.That(refusals.Single(), Does.Contain("multidimensional array"));
+    }
+
+    /// <remarks>
+    /// The framework's attributes are matched by symbol identity. An author's own type with the same name
+    /// is a different type, so it neither exempts a member nor is mistaken for a shape this model refuses.
+    /// </remarks>
+    [Test]
+    public void AnAuthorsOwnAttributeWithAFrameworkNameIsNotTheFrameworksAttribute()
+    {
+        const string Decoy = """
+            using System;
+
+            namespace Sample.Decoy;
+
+            [AttributeUsage(AttributeTargets.Property)]
+            public sealed class JsonIgnoreAttribute : Attribute;
+            """;
+
+        var decoyed = Build(
+            timeline: "[Sample.Decoy.JsonIgnore] public string Note => string.Empty;",
+            outside: Decoy);
+        var genuine = Build(timeline: "[JsonIgnore] public string Note => string.Empty;");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Refusals(decoyed), Is.Empty);
+            Assert.That(Computed(Generated(decoyed)), Does.Not.Contain("note"),
+                "the decoy exempts nothing, so that member is an ordinary one");
+
+            Assert.That(Refusals(genuine), Is.Empty);
+            Assert.That(Computed(Generated(genuine)), Does.Contain("note"),
+                "the framework's attribute does, and its name is then refused in a payload");
+        });
+    }
+
+    /// <remarks>
+    /// The harder case, and the one a metadata-name lookup gets wrong: the impostor is in the framework's
+    /// exact namespace with the framework's exact name, so a use site in this compilation binds to it and
+    /// a compilation-first lookup hands it back as the framework's own. Reading it as the instruction that
+    /// keeps a member off the wire, while the real serializer writes that member, is the failure — and it
+    /// would look like a working contract until a payload arrived.
+    /// </remarks>
+    [Test]
+    public void AnImpostorInTheFrameworksOwnNamespaceIsNotTheFrameworksAttribute()
+    {
+        const string Impostor = """
+            namespace System.Text.Json.Serialization;
+
+            [System.AttributeUsage(System.AttributeTargets.Property)]
+            public sealed class JsonIgnoreAttribute : System.Attribute;
+            """;
+
+        var impersonated = Build(
+            timeline: "[JsonIgnore] public string Note => string.Empty;",
+            outside: Impostor);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Refusals(impersonated), Is.Empty);
+            Assert.That(Computed(Generated(impersonated)), Does.Not.Contain("note"),
+                "a package's own attribute keeps nothing off the wire, whatever it is called");
+            Assert.That(Computed(Generated(impersonated)), Does.Contain("status"),
+                "and the framework's own is still found, from the assembly that declares it");
+        });
+    }
+
+    /// <remarks>
+    /// The same lookup, for the declaration that says a context exists at all. An impostor
+    /// <c>JsonSerializable</c> in the framework's namespace declares nothing this generator can read, so the
+    /// item type has no context and is reported rather than published against a context that is not one.
+    /// </remarks>
+    [Test]
+    public void AnImpostorSerializableAttributeDeclaresNoContext()
+    {
+        const string Impostor = """
+            namespace System.Text.Json.Serialization;
+
+            [System.AttributeUsage(System.AttributeTargets.Class)]
+            public sealed class JsonSerializableAttribute(System.Type type) : System.Attribute
+            {
+                public System.Type Type { get; } = type;
+            }
+            """;
+
+        const string ImpostorContext = """
+
+            [JsonSerializable(typeof(SampleItem))]
+            internal sealed partial class ImpostorContext : JsonSerializerContext;
+            """;
+
+        var diagnostics = Run(Body(
+            string.Empty,
+            string.Empty,
+            extra: ImpostorContext,
+            outside: Impostor,
+            halves: "ImpostorContext"));
+
+        Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Is.EqualTo(new[] { "ARX1010" }));
+    }
+
+    /// <remarks>
+    /// The same rule for the context itself: a class deriving something else called
+    /// <c>JsonSerializerContext</c>, or carrying something else called <c>JsonSerializable</c>, is not a
+    /// declared serialization context and the item type has none.
+    /// </remarks>
+    [Test]
+    public void AnAuthorsOwnContextWithAFrameworkNameIsNotADeclaredContext()
+    {
+        const string Decoy = """
+            using System;
+
+            namespace Sample.Decoy;
+
+            [AttributeUsage(AttributeTargets.Class)]
+            public sealed class JsonSerializableAttribute(Type type) : Attribute
+            {
+                public Type Type { get; } = type;
+            }
+            """;
+
+        const string DecoyContext = """
+
+            [Sample.Decoy.JsonSerializable(typeof(SampleItem))]
+            internal sealed partial class DecoyContext;
+            """;
+
+        var diagnostics = Run(Body(string.Empty, string.Empty, extra: DecoyContext, outside: Decoy));
+
+        Assert.That(diagnostics.Select(diagnostic => diagnostic.Id), Is.EqualTo(new[] { "ARX1010" }));
+    }
+
+    /// <remarks>
+    /// An enumeration reaches the wire as a number in its underlying type, so widening one changes what a
+    /// payload carries while nothing about the member moves.
+    /// </remarks>
+    [Test]
+    public void AnEnumerationsUnderlyingTypeIsPartOfTheDescribedShape()
+    {
+        const string Carries = "public SampleStage Second { get; init; }";
+
+        var narrow = Build(item: Carries);
+        var wide = narrow with
+        {
+            Contract = narrow.Contract.Replace(
+                "public enum SampleStage { Unknown }",
+                "public enum SampleStage : long { Unknown }",
+                StringComparison.Ordinal),
+        };
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(wide.Contract, Does.Contain(": long"), "the widening actually happened");
+            Assert.That(Declaration(Generated(wide)), Is.Not.EqualTo(Declaration(Generated(narrow))));
+        });
+    }
+
+    /// <summary>Reads the member names the generated contract refuses to accept from a payload.</summary>
+    private static string[] Computed(string generated)
+    {
+        const string Marker = "Derived =";
+        var start = generated.IndexOf(Marker, StringComparison.Ordinal);
+
+        if (start < 0)
+        {
+            return [];
+        }
+
+        var end = generated.IndexOf("});", start, StringComparison.Ordinal);
+
+        return generated[start..end]
+            .Split('"')
+            .Where(static (part, index) => index % 2 == 1)
+            .ToArray();
+    }
+
+    /// <summary>Reads the emitted declaration line, which carries both hashes.</summary>
+    private static string Declaration(string generated) =>
+        generated.Split('\n').First(line => line.StartsWith("[assembly:", StringComparison.Ordinal));
+
+    /// <remarks>
+    /// The root is reached by nothing, so a rule applied only where a member declares a type never sees it.
+    /// </remarks>
+    [Test]
+    public void AnUnmodeledAttributeOnTheEntityItselfIsRefused()
+    {
+        var refusals = Refusals(Build(
+            item: "public string? Note { get; init; }",
+            entityAttribute: "[JsonNumberHandling(JsonNumberHandling.AllowReadingFromString)]"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refusals, Has.Length.EqualTo(1));
+            Assert.That(refusals[0], Does.Contain("JsonNumberHandling"));
+            Assert.That(refusals[0], Does.Contain("the entity itself"));
+        });
+    }
+
+    /// <remarks>
+    /// The element of a recognized sequence is reached without any member declaring it, so it is described
+    /// where it is dequeued rather than where a property named the list.
+    /// </remarks>
+    [Test]
+    public void AnUnrecognizedSequenceInsideARecognizedOneIsRefused()
+    {
+        var refusals = Refusals(Build(
+            item: "public IReadOnlyList<HashSet<string>> Groups { get; init; } = [];"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refusals, Has.Length.EqualTo(1));
+            Assert.That(refusals[0], Does.Contain("collection this model does not recognize"));
+            Assert.That(refusals[0], Does.Contain("the elements of"));
+        });
+    }
+
+    /// <remarks>
+    /// Measured on the pinned SDK: a public field carrying <c>[JsonInclude]</c> is serialized even with
+    /// <c>IncludeFields</c> off, so it would reach the wire without appearing in the digest.
+    /// </remarks>
+    [Test]
+    public void AFieldTheFrameworkSerializesIsRefused()
+    {
+        var refusals = Refusals(Build(item: "[JsonInclude] public string? OpenField;"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refusals, Has.Length.EqualTo(1));
+            Assert.That(refusals[0], Does.Contain("is a field the framework serializes"));
+        });
+    }
+
+    [Test]
+    public void ANonPublicMemberTheFrameworkSerializesIsRefused()
+    {
+        var refusals = Refusals(Build(item: "[JsonInclude] internal string? Hidden { get; set; }"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refusals, Has.Length.EqualTo(1));
+            Assert.That(refusals[0], Does.Contain("without being publicly readable"));
+        });
+    }
+
+    /// <remarks>
+    /// The framework honours a named constructor whatever its accessibility, so the model reads it rather
+    /// than looking at the public ones and silently choosing something else.
+    /// </remarks>
+    [Test]
+    public void ANonPublicNamedConstructorIsTheOneModeled()
+    {
+        const string Facet = """
+
+            public sealed class SampleFacet
+            {
+                public SampleFacet() => Note = "parameterless";
+
+                [JsonConstructor]
+                private SampleFacet(string note) => Note = note;
+
+                public string Note { get; }
+            }
+            """;
+
+        var generated = Generated(Build(item: "public SampleFacet? Facet { get; init; }", extra: Facet));
+
+        Assert.That(generated, Is.Not.Empty, "the shape is published rather than refused");
+    }
+
+    [Test]
+    public void MoreThanOneNamedConstructorIsRefused()
+    {
+        const string Facet = """
+
+            public sealed class SampleFacet
+            {
+                [JsonConstructor]
+                public SampleFacet(string note) => Note = note;
+
+                [JsonConstructor]
+                public SampleFacet(string note, int _) => Note = note;
+
+                public string Note { get; }
+            }
+            """;
+
+        var refusals = Refusals(Build(item: "public SampleFacet? Facet { get; init; }", extra: Facet));
+
+        Assert.That(refusals.Single(), Does.Contain("more than one constructor"));
+    }
+
     [Test]
     public void ADictionaryIsRefused()
     {
@@ -198,26 +594,77 @@ internal sealed class ClientContractGeneratorTests
         Assert.That(refusals.Single(), Does.Contain("dictionary"));
     }
 
-    private static string Build(
+    private static Sources Build(
         string timeline = "",
         string item = "",
         string options = SupportedOptions,
-        string extra = "") =>
-        Body(timeline, item, extra) + Context.Replace("{{OPTIONS}}", options, StringComparison.Ordinal);
+        string extra = "",
+        string outside = "",
+        string entityAttribute = "",
+        params string[] halves) =>
+        new(
+            Compose(
+                timeline,
+                item,
+                extra,
+                entityAttribute,
+                Context.Replace("{{OPTIONS}}", options, StringComparison.Ordinal),
+                ["SampleContext", .. halves]),
+            outside);
 
-    private static string Body(string timeline, string item, string extra = "") =>
-        Preamble
+    private static Sources Body(
+        string timeline,
+        string item,
+        string extra = "",
+        string outside = "",
+        params string[] halves) =>
+        new(Compose(timeline, item, extra, string.Empty, string.Empty, halves), outside);
+
+    private static string Compose(
+        string timeline,
+        string item,
+        string extra,
+        string entityAttribute,
+        string context,
+        IReadOnlyList<string> halves)
+    {
+        var source = Preamble
             .Replace("{{TIMELINE}}", timeline, StringComparison.Ordinal)
             .Replace("{{ITEM}}", item, StringComparison.Ordinal)
-        + extra;
+            .Replace("{{EXTRA}}", extra, StringComparison.Ordinal)
+            .Replace("{{ENTITY_ATTRIBUTE}}", entityAttribute, StringComparison.Ordinal)
+            .Replace("{{CONTEXT}}", context, StringComparison.Ordinal);
 
-    private static string[] Refusals(string source) =>
-        Run(source)
-            .Where(diagnostic => diagnostic.Id == "ARX1011")
-            .Select(diagnostic => diagnostic.GetMessage())
-            .ToArray();
+        foreach (var name in halves)
+        {
+            source += Half.Replace("{{NAME}}", name, StringComparison.Ordinal);
+        }
 
-    private static string Generated(string source)
+        return source;
+    }
+
+    /// <summary>One case's sources: the contract itself, and anything it shares a compilation with.</summary>
+    /// <remarks>
+    /// A second file rather than more text in the first. A namespace appended to a file-scoped one is a
+    /// compile error, and a type that does not compile shadows nothing — which is how a case meant to prove
+    /// shadowing passes without testing it.
+    /// </remarks>
+    private sealed record Sources(string Contract, string Companion);
+
+    /// <summary>The refusals a case produced, having first required that it produced nothing else.</summary>
+    private static string[] Refusals(Sources source)
+    {
+        var diagnostics = Run(source);
+
+        Assert.That(
+            diagnostics.Select(diagnostic => diagnostic.Id).Distinct(StringComparer.Ordinal),
+            Is.SubsetOf(new[] { "ARX1011" }),
+            "a refusal case reports refusals and nothing else");
+
+        return diagnostics.Select(diagnostic => diagnostic.GetMessage()).ToArray();
+    }
+
+    private static string Generated(Sources source)
     {
         var trees = Compile(source, out _).SyntaxTrees
             .Where(tree => tree.FilePath.EndsWith(".ClientContract.g.cs", StringComparison.Ordinal))
@@ -228,17 +675,24 @@ internal sealed class ClientContractGeneratorTests
             : throw new InvalidOperationException($"Expected one generated contract, found {trees.Length}.");
     }
 
-    private static ImmutableArray<Diagnostic> Run(string source)
+    private static ImmutableArray<Diagnostic> Run(Sources source)
     {
         Compile(source, out var diagnostics);
         return diagnostics;
     }
 
-    private static Compilation Compile(string source, out ImmutableArray<Diagnostic> diagnostics)
+    private static Compilation Compile(Sources source, out ImmutableArray<Diagnostic> diagnostics)
     {
+        var trees = new List<SyntaxTree> { CSharpSyntaxTree.ParseText(source.Contract, ParseOptions, "Contract.cs") };
+
+        if (!string.IsNullOrWhiteSpace(source.Companion))
+        {
+            trees.Add(CSharpSyntaxTree.ParseText(source.Companion, ParseOptions, "Companion.cs"));
+        }
+
         var compilation = CSharpCompilation.Create(
             "ClientContract_" + Guid.NewGuid().ToString("N"),
-            [CSharpSyntaxTree.ParseText(source, ParseOptions, "Contract.cs")],
+            trees,
             References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));
 
@@ -247,6 +701,16 @@ internal sealed class ClientContractGeneratorTests
             parseOptions: ParseOptions);
 
         driver.RunGeneratorsAndUpdateCompilation(compilation, out var updated, out diagnostics);
+
+        // Every case, including the generated output, compiles. A regression that reasons over source
+        // which did not compile proves nothing about source that does.
+        var errors = updated.GetDiagnostics()
+            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
+            .Select(diagnostic => diagnostic.Id + " " + diagnostic.Location.GetLineSpan() + ": " + diagnostic.GetMessage())
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(errors, Is.Empty, "the source this case reasons over did not compile");
 
         return updated;
     }

@@ -137,6 +137,13 @@ public static class ClientContractDigest
             rendering.Append("|element=").Append(Text(Name(element)));
         }
 
+        // An enumeration's wire form is a number in its underlying type, so widening one changes what a
+        // payload carries even though nothing about the member moved.
+        if (type.Type.IsEnum)
+        {
+            rendering.Append("|underlying=").Append(Text(Name(type.Type.GetEnumUnderlyingType())));
+        }
+
         rendering.Append('\n');
 
         // Member order is the order a reader positions members in and a writer emits them, so it is

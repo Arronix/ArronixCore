@@ -43,18 +43,20 @@ internal static class ClientContractSerializationModel
     [
         "System.String", "System.Boolean", "System.Char", "System.Byte", "System.SByte",
         "System.Int16", "System.UInt16", "System.Int32", "System.UInt32", "System.Int64", "System.UInt64",
-        "System.Single", "System.Double", "System.Decimal", "System.Object",
+        "System.Single", "System.Double", "System.Decimal",
         "System.DateOnly", "System.TimeOnly", "System.DateTime", "System.DateTimeOffset",
         "System.TimeSpan", "System.Guid", "System.Uri", "System.Version",
     ];
 
     /// <summary>Renders the serialization graph one entity will be read and written through.</summary>
     /// <param name="root">The entity type.</param>
+    /// <param name="framework">The framework serialization types, resolved from the compilation.</param>
     /// <param name="derived">The wire names of members the contract computes rather than reads.</param>
     /// <param name="refusal">Why the graph could not be modeled, when it could not.</param>
     /// <returns>The canonical rendering, or <see langword="null"/> when it was refused.</returns>
     internal static string? Render(
         INamedTypeSymbol root,
+        FrameworkSymbols framework,
         out IReadOnlyList<string> derived,
         out string? refusal)
     {
@@ -65,13 +67,22 @@ internal static class ClientContractSerializationModel
 
         var rendering = new StringBuilder(StrictOptions).Append('\n');
         var seen = new HashSet<ITypeSymbol>(SymbolEqualityComparer.Default) { root };
-        var pending = new Queue<ITypeSymbol>();
-        pending.Enqueue(root);
+        var pending = new Queue<Reached>();
+        pending.Enqueue(new Reached(root, "the entity itself"));
 
         while (pending.Count > 0)
         {
             var current = pending.Dequeue();
-            var reachable = RenderType(rendering, current, ignored, live, ref refusal);
+
+            // Every type the graph reaches is validated where it is described, not only where a member
+            // declares it. A collection's element, a nullable's underlying value and the root itself are
+            // all reached without any member naming them directly.
+            if (!Modelable(current.Type, current.Through, framework, ref refusal))
+            {
+                return null;
+            }
+
+            var reachable = RenderType(rendering, current.Type, framework, ignored, live, ref refusal);
 
             if (refusal is not null)
             {
@@ -80,7 +91,7 @@ internal static class ClientContractSerializationModel
 
             foreach (var next in reachable)
             {
-                if (seen.Add(next))
+                if (seen.Add(next.Type))
                 {
                     pending.Enqueue(next);
                 }
@@ -105,13 +116,15 @@ internal static class ClientContractSerializationModel
         return rendering.ToString();
     }
 
-    private static IReadOnlyList<ITypeSymbol> RenderType(
+    private static IReadOnlyList<Reached> RenderType(
         StringBuilder rendering,
         ITypeSymbol type,
+        FrameworkSymbols framework,
         ISet<string> ignoredNames,
         ISet<string> liveNames,
         ref string? refusal)
     {
+        var reachable = new List<Reached>();
         var element = ElementOf(type);
         var kind = Kind(type, element);
 
@@ -122,13 +135,18 @@ internal static class ClientContractSerializationModel
             rendering.Append("|element=").Append(Text(Name(element)));
         }
 
-        rendering.Append('\n');
+        // An enumeration's wire form is a number in its underlying type, so widening one is a change to
+        // what a payload carries even though nothing about the member moved.
+        if (type is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlying })
+        {
+            rendering.Append("|underlying=").Append(Text(Name(underlying)));
+        }
 
-        var reachable = new List<ITypeSymbol>();
+        rendering.Append('\n');
 
         if (kind == "Object" && type is INamedTypeSymbol named)
         {
-            var constructor = Constructor(named, ref refusal);
+            var constructor = Constructor(named, framework, ref refusal);
 
             if (refusal is not null)
             {
@@ -137,7 +155,7 @@ internal static class ClientContractSerializationModel
 
             foreach (var property in DeclaredFirst(named))
             {
-                if (!Modelable(property, ref refusal))
+                if (!Modelable(property, framework, ref refusal))
                 {
                     return reachable;
                 }
@@ -145,7 +163,7 @@ internal static class ClientContractSerializationModel
                 rendering.Append("  member=").Append(Text(CamelCase(property.Name)));
 
                 var ignore = property.GetAttributes().FirstOrDefault(
-                    attribute => attribute.AttributeClass?.Name == "JsonIgnoreAttribute");
+                    attribute => FrameworkSymbols.Is(attribute, framework.Ignore));
 
                 if (ignore is not null)
                 {
@@ -174,35 +192,59 @@ internal static class ClientContractSerializationModel
                     .Append("|setNullable=").Append(Bool(nullable))
                     .Append('\n');
 
-                reachable.Add(property.Type);
+                reachable.Add(new Reached(property.Type, $"'{property.Name}' on '{type.ToDisplayString()}'"));
             }
         }
 
         if (element is not null)
         {
-            reachable.Add(element);
+            reachable.Add(new Reached(element, $"the elements of '{type.ToDisplayString()}'"));
         }
 
         return reachable;
+    }
+
+    /// <summary>One type in the graph, and how it was first reached.</summary>
+    private sealed class Reached
+    {
+        internal Reached(ITypeSymbol type, string through)
+        {
+            Type = type;
+            Through = through;
+        }
+
+        internal ITypeSymbol Type { get; }
+
+        internal string Through { get; }
     }
 
     /// <remarks>
     /// The framework's own preference order: a named constructor wins; otherwise a parameterless one, which
     /// leaves every member to its own setter; otherwise the single parameterized one.
     /// </remarks>
-    private static IMethodSymbol? Constructor(INamedTypeSymbol type, ref string? refusal)
+    private static IMethodSymbol? Constructor(INamedTypeSymbol type, FrameworkSymbols framework, ref string? refusal)
     {
+        // The framework honours a named constructor whatever its accessibility, so this model reads it the
+        // same way rather than looking only at the public ones and silently choosing something else.
+        var named = type.InstanceConstructors
+            .Where(candidate => candidate.GetAttributes()
+                .Any(attribute => FrameworkSymbols.Is(attribute, framework.Constructor)))
+            .ToArray();
+
+        if (named.Length > 1)
+        {
+            refusal = $"'{type.ToDisplayString()}' names more than one constructor for a deserializer";
+            return null;
+        }
+
+        if (named.Length == 1)
+        {
+            return named[0];
+        }
+
         var accessible = type.InstanceConstructors
             .Where(candidate => candidate.DeclaredAccessibility == Accessibility.Public)
             .ToArray();
-
-        var named = accessible.FirstOrDefault(candidate => candidate.GetAttributes()
-            .Any(attribute => attribute.AttributeClass?.Name == "JsonConstructorAttribute"));
-
-        if (named is not null)
-        {
-            return named;
-        }
 
         if (accessible.Any(candidate => candidate.Parameters.Length == 0))
         {
@@ -328,11 +370,11 @@ internal static class ClientContractSerializationModel
     /// yet reproduce. Describing one wrongly would produce a hash that disagrees with the wire while
     /// looking like agreement, which is worse than refusing to publish the contract at all.
     /// </remarks>
-    private static bool Modelable(IPropertySymbol property, ref string? refusal)
+    private static bool Modelable(IPropertySymbol property, FrameworkSymbols framework, ref string? refusal)
     {
         foreach (var attribute in property.GetAttributes())
         {
-            if (IsSerializationAttribute(attribute) && attribute.AttributeClass?.Name != "JsonIgnoreAttribute")
+            if (framework.IsSerializationAttribute(attribute) && !FrameworkSymbols.Is(attribute, framework.Ignore))
             {
                 refusal = $"'{property.Name}' carries [{Shorten(attribute.AttributeClass!.Name)}], which "
                     + "this model does not describe";
@@ -340,17 +382,18 @@ internal static class ClientContractSerializationModel
             }
         }
 
-        return Modelable(property.Type, property.Name, ref refusal);
+        return Modelable(property.Type, property.Name, framework, ref refusal);
     }
 
-    private static bool Modelable(ITypeSymbol type, string member, ref string? refusal)
+    private static bool Modelable(ITypeSymbol type, string member, FrameworkSymbols framework, ref string? refusal)
     {
         // An allow list, not a deny list. A framework attribute this model has never heard of changes what
         // a payload means in some way, and the safe reading of "never heard of" is "not described".
         foreach (var attribute in type.GetAttributes())
         {
-            if (IsSerializationAttribute(attribute) && attribute.AttributeClass?.Name is not
-                ("JsonSerializableAttribute" or "JsonSourceGenerationOptionsAttribute"))
+            if (framework.IsSerializationAttribute(attribute)
+                && !FrameworkSymbols.Is(attribute, framework.Serializable)
+                && !FrameworkSymbols.Is(attribute, framework.GenerationOptions))
             {
                 refusal = $"'{type.ToDisplayString()}', reached through '{member}', carries "
                     + $"[{Shorten(attribute.AttributeClass!.Name)}], which this model does not describe";
@@ -358,10 +401,17 @@ internal static class ClientContractSerializationModel
             }
         }
 
+        // Before the shape rules below: a dictionary is also an interface, and naming it a dictionary sends
+        // an author somewhere useful.
         if (IsDictionary(type))
         {
             refusal = $"'{type.ToDisplayString()}', reached through '{member}', is a dictionary, and "
                 + "dictionary key handling is not modeled";
+            return false;
+        }
+
+        if (!Describable(type, ref refusal))
+        {
             return false;
         }
 
@@ -374,11 +424,115 @@ internal static class ClientContractSerializationModel
             return false;
         }
 
+        return HidesNoSerializedMember(type, member, framework, ref refusal);
+    }
+
+    /// <summary>
+    /// Determines whether a type puts anything on the wire through a member this model does not read.
+    /// </summary>
+    /// <remarks>
+    /// The model describes public properties, which is what the framework serializes by default — and
+    /// <c>[JsonInclude]</c> is how that default is overridden. Measured on the pinned SDK: a public field
+    /// carrying it is serialized even with <c>IncludeFields</c> off, and an internal property carrying it is
+    /// serialized too. Either would reach the wire without appearing in the digest, so either is refused.
+    /// </remarks>
+    private static bool HidesNoSerializedMember(
+        ITypeSymbol type,
+        string member,
+        FrameworkSymbols framework,
+        ref string? refusal)
+    {
+        for (var current = type as INamedTypeSymbol; current is not null; current = current.BaseType)
+        {
+            foreach (var declared in current.GetMembers())
+            {
+                if (declared.IsStatic || declared.IsImplicitlyDeclared || !Marked(declared, framework))
+                {
+                    continue;
+                }
+
+                if (declared is IFieldSymbol)
+                {
+                    refusal = $"'{current.ToDisplayString()}.{declared.Name}', reached through '{member}', is "
+                        + "a field the framework serializes, and this model describes properties";
+                    return false;
+                }
+
+                if (declared is IPropertySymbol property
+                    && (property.DeclaredAccessibility != Accessibility.Public
+                        || property.GetMethod?.DeclaredAccessibility != Accessibility.Public))
+                {
+                    refusal = $"'{current.ToDisplayString()}.{declared.Name}', reached through '{member}', is "
+                        + "serialized without being publicly readable, so this model would not describe it";
+                    return false;
+                }
+            }
+        }
+
         return true;
     }
 
-    private static bool IsSerializationAttribute(AttributeData attribute) =>
-        attribute.AttributeClass?.ContainingNamespace?.ToDisplayString() == "System.Text.Json.Serialization";
+    private static bool Marked(ISymbol member, FrameworkSymbols framework)
+    {
+        foreach (var attribute in member.GetAttributes())
+        {
+            if (framework.IsSerializationAttribute(attribute))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Determines whether a shape is one this model has a described wire form for.
+    /// </summary>
+    /// <remarks>
+    /// Each refusal is a shape whose wire form the model would have to guess at. An untyped value could be
+    /// anything; an interface or an abstract class is written as whatever was actually there, which the
+    /// declaration does not say; a generic nested inside another type flattens its arguments differently
+    /// on the two sides of the comparison; and a multidimensional array has no wire form at all.
+    /// </remarks>
+    private static bool Describable(ITypeSymbol type, ref string? refusal)
+    {
+        if (type.SpecialType == SpecialType.System_Object)
+        {
+            refusal = "an untyped value is on the wire, and what a payload may carry for it is not stated";
+            return false;
+        }
+
+        // The framework writes one array shape: a single-dimensional, zero-based array. A rank-one array
+        // with a non-zero lower bound is not that one, and neither is a multidimensional array.
+        if (type is IArrayTypeSymbol { IsSZArray: false } array)
+        {
+            refusal = $"'{type.ToDisplayString()}' is "
+                + (array.Rank > 1 ? "a multidimensional array" : "an array that is not zero-based")
+                + ", which has no wire form";
+            return false;
+        }
+
+        if (type is INamedTypeSymbol named)
+        {
+            if (named.ContainingType is { } containing && (named.IsGenericType || containing.IsGenericType))
+            {
+                refusal = $"'{type.ToDisplayString()}' is a generic nested inside another type, whose type "
+                    + "arguments a compiler and a runtime spell differently";
+                return false;
+            }
+
+            if ((named.TypeKind == TypeKind.Interface || named.IsAbstract)
+                && !IsScalar(named) && ElementOf(named) is null)
+            {
+                refusal = $"'{type.ToDisplayString()}' is "
+                    + (named.TypeKind == TypeKind.Interface ? "an interface" : "abstract")
+                    + ", so what a payload carries for it is decided by something this declaration does not say";
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     private static bool IsScalar(ITypeSymbol type) =>
         type.TypeKind == TypeKind.Enum

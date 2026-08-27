@@ -96,8 +96,8 @@ emits literals from a compile-time model of the framework's serializer, and `Cli
 recomputes the same canonical renderings from the **live** metadata. Measured, equal:
 
 ```text
-serialization      = F3B053D8A37B12DA10135C2F3CADABFB7EB51E33E6255BA856E6CFB6667A5D13
-declaredMetadata   = F3B053D8A37B12DA10135C2F3CADABFB7EB51E33E6255BA856E6CFB6667A5D13
+serialization      = 3D7A0D6FB047C8AC1E5FF4B5CCFCB19E3EB6C28D2EB0341C6CB38C0E0B1C2754
+declaredMetadata   = 3D7A0D6FB047C8AC1E5FF4B5CCFCB19E3EB6C28D2EB0341C6CB38C0E0B1C2754
 projection         = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 declaredProjection = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 ```
@@ -125,7 +125,9 @@ Getting the two sides to agree took four measurements the model would otherwise 
    is nullable unless a constraint rules null out: `MediaItem.Lifecycle` (`TReleaseTimeline` with an
    interface constraint) is nullable to the serializer, and `Localized<T>.Value` (`where T : notnull`) is
    not, whatever the closed types are.
-4. **An ignored member's placeholder is an implementation detail.** The framework leaves a
+4. **An enumeration reaches the wire as a number**, so its underlying type is part of the shape: widening
+   one changes what a payload carries while nothing about the member that carries it moves.
+5. **An ignored member's placeholder is an implementation detail.** The framework leaves a
    `JsonPropertyInfo` with no getter and no setter, whose `PropertyType` is `System.Object` when the real
    type is reachable nowhere else and the real type otherwise. The digest records that the member is
    ignored and nothing more.
@@ -140,25 +142,54 @@ say two contracts agree when they do not, which is the one thing it exists to ru
 `ClientContractDigestEncodingTests` proves it for a separator inside an identifier, a line break
 impersonating another field, choice text, and absent-versus-empty.
 
-### 4.2 What is refused rather than described
+### 4.2 Framework types are matched by identity, not by name
+
+`Compilation.GetTypeByMetadataName` searches the compilation's own assembly first, so a package declaring
+`System.Text.Json.Serialization.JsonIgnoreAttribute` would be handed back instead of the framework's — and
+this generator would then read that package's own attribute as the instruction keeping a member off the
+wire, while the real serializer wrote it anyway. Every framework type is therefore enumerated with
+`GetTypesByMetadataName`, the compilation's own assembly excluded, and the assembly declaring
+`JsonSerializerContext` required to declare all the rest. Regressions put an impostor in the framework's
+exact namespace, in its own syntax tree; reinstating the metadata-name lookup fails both.
+
+The root `JsonTypeInfo` is asked for with `GetTypeInfo(typeof(T))` rather than reached through the property
+the framework's generator happens to name after the type. That name is a convention.
+
+### 4.3 What is refused rather than described
 
 `ARX1011`, and the list is an **allow list** rather than a deny list. A framework attribute in
 `System.Text.Json.Serialization` the model has never heard of changes what a payload means in some way, and
 the safe reading of "never heard of" is "not described" — only `[JsonIgnore]` on a member, and
-`[JsonSerializable]`/`[JsonSourceGenerationOptions]` on a type, are modeled. Dictionaries are refused, and
-so is any type that implements `IEnumerable` and is not one of the sequence shapes the model recognizes:
-that one would otherwise be described as an object carrying the collection's own members, which is not what
-the framework writes.
+`[JsonSerializable]`/`[JsonSourceGenerationOptions]` on a type, are modeled. Also refused: dictionaries; any
+type implementing `IEnumerable` that is not a recognized sequence; an untyped value; an interface or
+abstract type; a generic nested inside another type, whose arguments a compiler and a runtime spell
+differently; and any array that is not single-dimensional and zero-based.
+
+The rules run for **every type the graph reaches**, at the point it is described, not only where a member
+declares one. A root-level attribute and the element of a recognized sequence are both reached without any
+member naming them, so `List<HashSet<string>>` and an attribute on the entity itself are caught.
+
+Two ways a type can put something on the wire without appearing in the digest are refused outright, both
+measured on the pinned SDK: a public **field** carrying `[JsonInclude]` is serialized even with
+`IncludeFields` off, and an `internal` property carrying it is serialized too. A `[JsonConstructor]` on a
+non-public constructor **is** honoured by the framework, so the model reads it rather than looking only at
+the public ones; more than one named constructor is refused.
 
 The declared options are held to one exact set — strict defaults plus the camel-case naming policy — and
 any other declared option is refused by name. Reading two options and ignoring the rest was the failure
 that mattered: a context that also set a number-handling mode would still have been published, under a hash
 describing a wire it did not have.
 
-Every refusal has a case in `ClientContractGeneratorTests`, each driven through a real compilation, and the
-supported shape is shown actually producing a contract so an empty refusal list cannot pass for agreement.
+Every refusal has a case in `ClientContractGeneratorTests`, each driven through a real compilation which is
+required to produce **no** compiler errors — the framework's half of each serialization context is written
+by hand for that reason. A case that reasons over source which did not compile proves nothing, and one did:
+the first impostor case appended a namespace after a file-scoped one, so the impostor never existed and the
+case passed without testing anything. The supported shape is also shown actually producing a contract, so
+an empty refusal list cannot pass for agreement.
 
-One of those guards was inert when it was written. The check that a computed member's name does not collide
+### 4.4 One guard was inert when it was written
+
+The check that a computed member's name does not collide
 with a live member's name subtracted the live names from the computed set *before* looking for the
 intersection, which empties the set the collision would have been found in, so it never fired — and the
 colliding names were dropped from the guard list as well, leaving them forgeable. Restoring the subtraction
@@ -269,7 +300,7 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3503 enabled=3201 passed=3201 failed=0 skipped=302 inconclusive=0
+projects=14 total=3520 enabled=3218 passed=3218 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=14 compileItems=343 boundSources=15
 ```

@@ -84,7 +84,19 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(entries.Combine(contexts), static (production, pair) =>
         {
             var (entry, declared) = pair;
-            var serializer = Match(entry.Symbol, declared);
+            var serializer = Match(entry.Symbol, declared, out var ambiguous);
+
+            if (ambiguous)
+            {
+                production.ReportDiagnostic(Diagnostic.Create(
+                    ShapeNotDescribable,
+                    entry.Location,
+                    entry.Symbol.ToDisplayString(),
+                    "more than one serialization context declares metadata for it, and they can declare "
+                    + "different options"));
+
+                return;
+            }
 
             if (serializer is null)
             {
@@ -118,11 +130,17 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     /// Finds the serialization context a compilation declares for one entity, by what it declares rather
     /// than by what it is called.
     /// </summary>
+    /// <remarks>
+    /// Every framework type is resolved from the compilation and compared by symbol identity. A name
+    /// comparison answers the same for a type somebody declared with the same name, and this generator
+    /// decides what a browser is handed.
+    /// </remarks>
     private static SerializationContext? FindSerializationContext(GeneratorSyntaxContext context)
     {
         var declaration = (ClassDeclarationSyntax)context.Node;
 
-        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol)
+        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol
+            || FrameworkSymbols.Resolve(context.SemanticModel.Compilation) is not { } framework)
         {
             return null;
         }
@@ -130,7 +148,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         var isContext = false;
         for (var current = symbol.BaseType; current is not null; current = current.BaseType)
         {
-            if (Is(current, "System.Text.Json.Serialization.JsonSerializerContext"))
+            if (SymbolEqualityComparer.Default.Equals(current, framework.SerializerContext))
             {
                 isContext = true;
                 break;
@@ -142,25 +160,26 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             return null;
         }
 
-        var serialized = new List<string>();
+        var serialized = new List<INamedTypeSymbol>();
+        AttributeData? options = null;
 
         foreach (var attribute in symbol.GetAttributes())
         {
-            if (attribute.AttributeClass?.Name == "JsonSerializableAttribute"
+            if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, framework.Serializable)
                 && attribute.ConstructorArguments.Length > 0
                 && attribute.ConstructorArguments[0].Value is INamedTypeSymbol serializedType)
             {
-                serialized.Add(TypeName(serializedType));
+                serialized.Add(serializedType);
+            }
+            else if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, framework.GenerationOptions))
+            {
+                options = attribute;
             }
         }
 
-        var options = symbol.GetAttributes().FirstOrDefault(
-            attribute => attribute.AttributeClass?.Name == "JsonSourceGenerationOptionsAttribute");
-
         return serialized.Count == 0
             ? null
-            : new SerializationContext(symbol, serialized, Unsupported(options));
-
+            : new SerializationContext(symbol, serialized, framework, Unsupported(options));
     }
 
     /// <summary>
@@ -229,24 +248,40 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         return camelCase ? null : "its serialization context does not declare the camel-case naming policy";
     }
 
+    /// <summary>Finds the one context that declares metadata for an entity.</summary>
+    /// <remarks>
+    /// Two contexts claiming one entity is refused rather than resolved. They can declare different
+    /// options, so picking either would publish a hash describing a wire the other one writes.
+    /// </remarks>
     private static SerializationContext? Match(
         INamedTypeSymbol entity,
-        System.Collections.Immutable.ImmutableArray<SerializationContext> declared)
+        System.Collections.Immutable.ImmutableArray<SerializationContext> declared,
+        out bool ambiguous)
     {
-        var wanted = TypeName(entity);
+        SerializationContext? found = null;
+        ambiguous = false;
 
         foreach (var candidate in declared)
         {
             foreach (var serialized in candidate.Serialized)
             {
-                if (string.Equals(serialized, wanted, StringComparison.Ordinal))
+                if (!SymbolEqualityComparer.Default.Equals(serialized, entity))
                 {
-                    return candidate;
+                    continue;
                 }
+
+                if (found is not null && !SymbolEqualityComparer.Default.Equals(found.Symbol, candidate.Symbol))
+                {
+                    ambiguous = true;
+                    return null;
+                }
+
+                found = candidate;
+                break;
             }
         }
 
-        return null;
+        return found;
     }
 
     private static Entry? FindEntry(GeneratorSyntaxContext context)
@@ -288,6 +323,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
         var graph = ClientContractSerializationModel.Render(
             entry.Symbol,
+            serializer.Framework,
             out var derived,
             out refusal);
 
@@ -352,6 +388,21 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.Append("internal static class ").AppendLine(contractName);
         source.AppendLine("{");
 
+        // Asked for by type rather than reached through a property the framework's generator happens to
+        // name after it. That name is a convention, and a convention is a thing that can change.
+        source.Append("    internal static readonly global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<")
+            .Append(TypeName(item)).AppendLine("> Root = ResolveRoot();");
+        source.AppendLine();
+        source.Append("    private static global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<")
+            .Append(TypeName(item)).AppendLine("> ResolveRoot()");
+        source.Append("        => ").Append(contextName).Append(".Default.GetTypeInfo(typeof(").Append(TypeName(item))
+            .AppendLine("))");
+        source.Append("            as global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<")
+            .Append(TypeName(item)).AppendLine(">");
+        source.AppendLine("            ?? throw new global::System.InvalidOperationException(");
+        source.Append("                \"'").Append(contextName).Append("' holds no metadata for '")
+            .Append(item.ToDisplayString()).AppendLine("'.\");");
+        source.AppendLine();
         source.AppendLine("    private static readonly global::System.Collections.ObjectModel.ReadOnlyCollection<global::Arronix.Abstractions.Shape.FieldDescriptor> Declared =");
         source.AppendLine("        new(new global::Arronix.Abstractions.Shape.FieldDescriptor[]");
         source.AppendLine("        {");
@@ -391,8 +442,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             source.AppendLine("        RefuseDerivedMembers(utf8Json);");
         }
 
-        source.Append("        return global::System.Text.Json.JsonSerializer.Deserialize(utf8Json, ")
-            .Append(contextName).Append(".Default.").Append(item.Name).AppendLine(")");
+        source.AppendLine("        return global::System.Text.Json.JsonSerializer.Deserialize(utf8Json, Root)");
         source.Append("            ?? throw new global::System.Text.Json.JsonException(\"The payload is a null ")
             .Append(item.Name).AppendLine(".\");");
         source.AppendLine("    }");
@@ -428,8 +478,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
         source.AppendLine("    /// <summary>Serializes one typed entity in exactly the shape the reader accepts.</summary>");
         source.Append("    public static byte[] Write(").Append(TypeName(item)).AppendLine(" value)");
-        source.Append("        => global::System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(value, ")
-            .Append(contextName).Append(".Default.").Append(item.Name).AppendLine(");");
+        source.AppendLine("        => global::System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(value, Root);");
         source.AppendLine();
 
         source.AppendLine("    /// <summary>Projects one typed entity into one-way presentation data.</summary>");
@@ -488,7 +537,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             .Append(contextName).AppendLine(".Default;");
         source.AppendLine();
         source.Append("    public override global::System.Text.Json.Serialization.Metadata.JsonTypeInfo EntityTypeInfo => ")
-            .Append(contextName).Append(".Default.").Append(item.Name).AppendLine(";");
+            .Append(contractName).AppendLine(".Root;");
         source.AppendLine();
         source.Append("    public override global::System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Schema => ")
             .Append(contractName).AppendLine(".Schema;");
@@ -660,17 +709,21 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     {
         internal SerializationContext(
             INamedTypeSymbol symbol,
-            IReadOnlyList<string> serialized,
+            IReadOnlyList<INamedTypeSymbol> serialized,
+            FrameworkSymbols framework,
             string? unsupported)
         {
             Symbol = symbol;
             Serialized = serialized;
+            Framework = framework;
             Unsupported = unsupported;
         }
 
         internal INamedTypeSymbol Symbol { get; }
 
-        internal IReadOnlyList<string> Serialized { get; }
+        internal IReadOnlyList<INamedTypeSymbol> Serialized { get; }
+
+        internal FrameworkSymbols Framework { get; }
 
         /// <summary>Gets why this context's declared options are not modeled, or <see langword="null"/>.</summary>
         internal string? Unsupported { get; }
