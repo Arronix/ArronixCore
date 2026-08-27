@@ -16,6 +16,21 @@ rather than being stated as a permanent fact; a claim about this branch's or a s
 commit is deliberately avoided, because that is exactly the kind of fact that goes stale the moment another
 session commits.
 
+**Provisional on G07.2's still-undesigned packaging surface.** §2's two-project split for Package 1 (a
+domain assembly plus an entry assembly) reflects only the mechanism G07.1 has already built and shipped.
+G07.2 — recorded `not started` — will add "generated client contract metadata... in the client-safe
+assembly" (`docs/design/typed-media-roadmap.md`, G07.2's own Implement list, quoted exactly), and the
+client-safe assembly is the *domain* assembly, not the entry assembly: `clientContracts` in `plugin.json` can
+only name members of `contractAssemblies`, and an entry assembly can never appear there (`INTERFACE.md` §5,
+`plugin.schema.json`). That means Package 1's domain project may end up needing its own generator or
+build-time metadata step once G07.2's actual mechanism is designed — a second, client-projection-shaped
+generated surface distinct from the existing Host-binding `CompiledShapes` reader, which stays on the entry
+assembly (§2) for a different, already-verified reason. Wherever this report states a specific file layout,
+`.csproj` reference list, or command for Package 1's domain project, read it as "correct against the
+mechanism that exists today, and explicitly open to revision once G07.2 defines where its own generated
+artifact lives" — not as a final design G07A's implementer should build to without rechecking G07.2's actual
+landed shape first. §2, §5, §8, and §9 each carry a pointer back to this note at the place it bears on.
+
 ## 0. Operational note: which `dotnet`
 
 This machine's default `dotnet` on `PATH` resolves to `/opt/homebrew/bin/dotnet`, Homebrew's Cellar install
@@ -95,10 +110,11 @@ it must prove it needs no repository project reference — a location such as
 `eng/proofs/fixtures/g07a-media/` keeps it discoverable without adding it to the solution):
 
 ```
-ExternalKind.Domain.csproj    -- PackageReference: Arronix.Abstractions only. No Sdk, no analyzer, no
-│                                 generator: this mirrors Arronix.Media.Movies exactly, which "declares no
-│                                 MediaType and takes no analyzer" for the same reason — a definition here
-│                                 would put its generated reader delegates on this assembly's shared cadence.
+ExternalKind.Domain.csproj    -- Under today's G07.1-only mechanism: PackageReference Arronix.Abstractions
+│                                 only, no Sdk, no analyzer, no generator — mirrors Arronix.Media.Movies,
+│                                 which "declares no MediaType and takes no analyzer" for the same reason.
+│                                 PROVISIONAL: see the note below the code block and the callout near the
+│                                 top of this document. This is this assembly's shape only until G07.2 lands.
 ├── ExternalItem.cs             -- the nominal item type, e.g. ExternalItem : MediaItem<ExternalItem,...>
 
 ExternalKind.csproj            -- PackageReference: Arronix.Sdk, the packed ExternalKind.Domain package
@@ -115,22 +131,40 @@ ExternalKind.csproj            -- PackageReference: Arronix.Sdk, the packed Exte
                                      clientContracts [ExternalKind.Domain.dll], capabilities ["media-kind"]
 ```
 
-**The generated Host binding reader stays on the entry assembly's cadence, never the domain assembly's.**
-`Arronix.Generators`' `MediaShapeGenerator` fires only on a partial class whose declared base is exactly
-`MediaType<TItem,TTarget,TRelease,TParser>` — confirmed directly in
-`src/Arronix.Generators/MediaShapeGenerator.cs`, which matches against that closed generic base before it
-emits anything. `ExternalKind` is that class, and it lives in `ExternalKind.csproj`; `ExternalItem` derives
-`MediaItem<...>`, not `MediaType<...>`, so the generator never fires on `ExternalKind.Domain.csproj` regardless
-of what that project references. This is not incidental to the two-project split — it is why the split is
-shaped the way it is: a shared contract assembly is admitted once per installation and released only once
-every dependant has withdrawn (`INTERFACE.md` §7, §8), while the entry assembly is isolated per package and
-torn down with it. `CompiledShapes` and its capture visitor are per-package binding machinery, generated fresh
-for that package's own `PluginLoadContext`; putting them on the domain assembly's shared cadence would pin
-them for the life of every dependant, including Package 2, rather than releasing them when Package 1's own
-entry assembly unloads. Concretely: `ExternalKind.Domain.csproj` takes no `Arronix.Generators` analyzer
-reference at all (§3 packs and restores it without one), and the packed `ExternalKind.Domain.nupkg` restored
-into Package 2 in §3 phase 3 carries no generated binding type for Package 2 to accidentally see — only
-`ExternalItem` itself, which is the one thing a cataloger is supposed to compile against.
+**The existing Host-binding reader stays on the entry assembly's cadence, never the domain assembly's — this
+part is settled, and it is the only part that is.** `Arronix.Generators`' `MediaShapeGenerator` fires only on
+a partial class whose declared base is exactly `MediaType<TItem,TTarget,TRelease,TParser>` — confirmed
+directly in `src/Arronix.Generators/MediaShapeGenerator.cs`, which matches against that closed generic base
+before it emits anything. `ExternalKind` is that class, and it lives in `ExternalKind.csproj`; `ExternalItem`
+derives `MediaItem<...>`, not `MediaType<...>`, so the generator never fires on `ExternalKind.Domain.csproj`
+regardless of what that project references. This is not incidental to the two-project split — it is why the
+split is shaped the way it is under today's mechanism: a shared contract assembly is admitted once per
+installation and released only once every dependant has withdrawn (`INTERFACE.md` §7, §8), while the entry
+assembly is isolated per package and torn down with it. `CompiledShapes` and its capture visitor are
+per-package Host-binding machinery, generated fresh for that package's own `PluginLoadContext`; putting them
+on the domain assembly's shared cadence would pin them for the life of every dependant, including Package 2,
+rather than releasing them when Package 1's own entry assembly unloads. Concretely, today: `ExternalKind.Domain.csproj`
+takes no `Arronix.Generators` analyzer reference at all (§3 packs and restores it without one), and the packed
+`ExternalKind.Domain.nupkg` restored into Package 2 in §3 phase 3 carries no generated Host-binding type for
+Package 2 to accidentally see — only `ExternalItem` itself, which is the one thing a cataloger is supposed to
+compile against.
+
+**G07.2 will very likely add a second, different generated surface, and the roadmap's own words put it on the
+domain assembly, not the entry assembly — the opposite side from the reader above.** G07.2's Implement list
+(quoted in full at the top of this document) calls for "generated client contract metadata... in the
+client-safe assembly." The client-safe assembly is whatever `clientContracts` names in `plugin.json`, and
+`clientContracts` can only name members of `contractAssemblies` — never the entry assembly, which cannot
+appear there at all (`INTERFACE.md` §5). For Package 1 that is `ExternalKind.Domain.dll`. So the paragraph
+above and this one are not in tension by accident: the existing Host-binding reader and G07.2's future
+client-projection metadata are two different generated shapes serving two different consumers (Host, and the
+browser), and the roadmap's own text points them at opposite assemblies. What is genuinely unknown is the
+*mechanism* — whether G07.2 adds a second Roslyn generator/analyzer to the domain project (which would make
+this document's "no analyzer, no generator" line above true only until G07.2 lands, not permanently), a
+post-build/post-publish tool that inspects the already-compiled domain assembly the way `IClientContractCatalog`
+already computes hashes from admitted bytes without needing generator involvement in the assembly itself, or
+something else. This report does not guess which; it records only that the domain project's "no generator"
+property, stated confidently above and in §5's matrix row for it, is scoped to *today's* mechanism and is not
+a design commitment this report is making about G07.2.
 
 **Package 2 — the provider package** (one project, built and versioned independently of Package 1, in a
 sibling location such as `eng/proofs/fixtures/g07a-provider/`):
@@ -221,7 +255,11 @@ invocation shown here is written against that variable, never bare `dotnet`, per
    `ExternalKind.Domain` must be packed and present in `$feed_root` *before* this restore, because
    `ExternalKind.csproj` takes it as an ordinary `PackageReference`, not a project sibling reference — that
    restore is the first point at which "the consumer needs no project reference" is actually exercised for the
-   cross-package edge, not merely for the SDK edge G06 already proved.
+   cross-package edge, not merely for the SDK edge G06 already proved. This one `pack` command is written
+   against today's `ExternalKind.Domain.csproj` (§2: no analyzer, plain `dotnet pack`); it is the specific
+   command §2's provisional note and §5's client-projection-surface matrix row flag as likely to gain a build
+   step once G07.2 defines its own generated client-metadata mechanism, so treat it as a placeholder for
+   "however Package 1's domain project is packed once that mechanism exists," not as a fixed recipe.
 
 3. **Restore and build Package 2 against the same feed**, which by now holds both the repository's packages
    and Package 1's domain package:
@@ -313,7 +351,8 @@ matrix, to be executed by the retained script plus a small number of hermetic un
 | Contract range | Both `plugin.json` files declare `>=0.9 <0.10` | Declare an incompatible range on either package (e.g. `>=0.1 <0.2`) | `PluginContractMismatch`, that package quarantined before construction |
 | Escape hatch: project reference | none present, in either package | add a `ProjectReference` to any in-repo project, or between the two external packages themselves | build proof must fail closed (script asserts neither `.csproj` contains a `ProjectReference`) |
 | Escape hatch: `InternalsVisibleTo` | none present, none needed, in either package | grant `InternalsVisibleTo` from any first-party assembly to either package | architecture-test-style assertion: grep the solution for a grant naming either fixture; today's five real grants (`Arronix.Host`, three `*.Tests` assemblies, `Arronix.Client.Tests`) are the complete list and none should ever name either fixture |
-| Generated binding cadence | `ExternalKind.Domain.dll` carries no `CompiledShapes` override and `ExternalKind.Domain.csproj` takes no `Arronix.Generators` analyzer reference | Move the partial `ExternalKind : MediaType<...>` declaration into `ExternalKind.Domain.csproj`, or add the analyzer reference there | build proof must fail closed (script asserts the domain project file names no analyzer, and reflects over the published `ExternalKind.Domain.dll` for the absence of a `CompiledShapes`-shaped member); if it instead built cleanly, the generator's own `MediaType<TItem,TTarget,TRelease,TParser>` base-type match (`MediaShapeGenerator.cs`) would have to be re-verified against the moved declaration |
+| Generated Host-binding cadence (today's mechanism only) | `ExternalKind.Domain.dll` carries no `CompiledShapes` override and `ExternalKind.Domain.csproj` takes no `Arronix.Generators` analyzer reference | Move the partial `ExternalKind : MediaType<...>` declaration into `ExternalKind.Domain.csproj`, or add the analyzer reference there | build proof must fail closed (script asserts the domain project file names no analyzer, and reflects over the published `ExternalKind.Domain.dll` for the absence of a `CompiledShapes`-shaped member); if it instead built cleanly, the generator's own `MediaType<TItem,TTarget,TRelease,TParser>` base-type match (`MediaShapeGenerator.cs`) would have to be re-verified against the moved declaration. **Provisional caveat:** this row asserts only that the *existing* Host-binding `CompiledShapes` reader stays off the domain assembly — it says nothing about, and must not be read as ruling out, whatever generator or build step G07.2 adds to the domain project for its own client-projection metadata (§2's provisional note). Once G07.2 lands, this row needs re-reading against its actual mechanism before being trusted as still correct. |
+| Generated client-projection surface (G07.2-dependent) | **Not yet specifiable.** §2's provisional note: G07.2's Implement list places generated client contract metadata "in the client-safe assembly," which for Package 1 is `ExternalKind.Domain.dll` — the same assembly the row above asserts carries no generator today. Whether that becomes a second analyzer reference on `ExternalKind.Domain.csproj`, a post-publish tool, or something else is undecided pending G07.2. | n/a until G07.2 defines the mechanism | — |
 | Client load | Package 1's client-safe assembly hashes, verifies, and loads under G07.1's two-pass loader | Flip one byte of Package 1's staged assembly (same mutation G07.1 already proves generically) | `ContentHashMismatch`, `CanProject=false`, nothing resident |
 | Browser fixture projection | **Open — see §6 and §8 item 1.** Not yet a single defined positive case until the G07.2 integration decision names what "reuse" means. | n/a until the positive case is defined | — |
 
@@ -323,7 +362,10 @@ belong in the proof script itself (grep/assert) rather than in a unit test that 
 side of the boundary. The cross-package and no-private-copy rows have no first-party precedent either, in a
 different sense: G03 and G05 prove those mechanisms exist, but always between packages built inside this
 repository from a shared `Directory.Packages.props`; nothing today exercises them between two packages that
-never shared a solution.
+never shared a solution. The two generated-surface rows are deliberately kept apart, not merged into one: the
+first is a real, currently executable assertion; the second is a placeholder recording that a corresponding
+assertion will be needed and cannot be written yet, so that a future re-read of this matrix does not mistake
+"G07A's own scope is settled" for "G07A's Package 1 topology is settled."
 
 ## 6. Fixture contract — what G07A's consumer may and must not depend on, and one integration decision that is not yet made
 
@@ -380,6 +422,13 @@ because the choice changes what G07.2's own "serialized fixture" artifact needs 
 (one Movie-shaped fixture only, versus a fixture-generation mechanism reusable against any admitted package's
 generated metadata) — recorded again in §8 item 1 and §9.
 
+This is the same underlying uncertainty §2's provisional note names from the packaging side, not a second,
+independent one: readings 1 and 2 above are only buildable at all once Package 1's domain assembly actually
+has *some* generated client-projection surface to run G07.2's mechanism against, and §2 records that neither
+this document nor any landed code yet says what that surface is. A reader who takes only reading 3 as settled
+and only §2's "no analyzer" line as settled could walk away thinking G07A's Package 1 topology is fully
+specified; it is not — both are provisional on the same still-undesigned piece of G07.2.
+
 ## 7. Open scoping decision: does Package 1 need its own format?
 
 `MediaType`'s primary constructor requires non-empty format composition (`INTERFACE.md` §3,
@@ -403,20 +452,30 @@ convenience into an undocumented decision (`CONTEXT.md`, owner-ledger O-33).
 
 ## 8. Blockers
 
-1. **G07.2 and G07.3 are recorded `not started`, as of 2026-08-27, and the "reuse" integration decision from
-   §6 is unmade because of it.** `docs/design/typed-media-roadmap.md` carries an explicit `**Status:**` line
-   per sub-gate — G07.1 `complete`, G07.2 `not started`, G07.3 `not started` — and that field, not a snapshot
-   of any branch's commit history, is this repository's authoritative record of gate progress; re-check it
+1. **G07.2 and G07.3 are recorded `not started`, as of 2026-08-27, and three distinct things are unmade
+   because of it, not one.** `docs/design/typed-media-roadmap.md` carries an explicit `**Status:**` line per
+   sub-gate — G07.1 `complete`, G07.2 `not started`, G07.3 `not started` — and that field, not a snapshot of
+   any branch's commit history, is this repository's authoritative record of gate progress; re-check it
    directly rather than trusting a git-log comparison frozen at the moment this report was written, since
-   other work can land on sibling branches at any time without this document being updated. This blocks two
-   distinct things, not one: G07A's browser half cannot run at all until G07.2 exists, *and*, separately, it
-   is not yet decided which of §6's three readings of "reuse" G07A's browser half is even supposed to prove —
-   that decision belongs to whoever implements G07.2, because only that implementation fixes whether the
-   serialized fixture is Movie-specific or parameterizable over any admitted package's generated metadata. The
-   roadmap states the sequencing dependency directly: "G07 is closed only when all three are closed; G07A and
-   G07B remain later gates and none of their work is folded into these." **This blocks only the
-   browser-fixture-projection portion of G07A**, not the package/restore/pack/admission/CLR-identity portion
-   across the two external packages in §2, which depends only on already-complete G01–G06.
+   other work can land on sibling branches at any time without this document being updated.
+   - G07A's browser half cannot run at all until G07.2 exists.
+   - Separately, it is not yet decided which of §6's three readings of "reuse" G07A's browser half is even
+     supposed to prove — that decision belongs to whoever implements G07.2, because only that implementation
+     fixes whether the serialized fixture is Movie-specific or parameterizable over any admitted package's
+     generated metadata.
+   - Separately again, §2's provisional note: G07.2's own Implement list places generated client contract
+     metadata "in the client-safe assembly," which for Package 1 is the domain assembly this report currently
+     describes as carrying no analyzer or generator. That description is accurate against today's mechanism
+     only; G07.2 may add a generator, a post-publish tool, or something else to that exact project, and this
+     report cannot specify which without guessing at an undesigned mechanism.
+
+   The roadmap states the sequencing dependency directly: "G07 is closed only when all three are closed; G07A
+   and G07B remain later gates and none of their work is folded into these." **This blocks the
+   browser-fixture-projection portion of G07A outright, and makes Package 1's exact domain-project shape
+   provisional rather than final** — but it does not block the package/restore/pack/admission/CLR-identity
+   portion across the two external packages in §2 from being *attempted*, which depends only on
+   already-complete G01–G06; only the domain project's final shape, not its buildability today, is at risk of
+   needing rework once G07.2 lands.
 2. **No retained external-consumer fixtures exist.** Confirmed by absence from `Arronix.sln` and by grep
    across the tree; this is expected (G06's proof was intentionally ephemeral, and it was also only ever one
    package) but means G07A starts from nothing rather than hardening an existing scaffold, for both the media
@@ -463,19 +522,29 @@ convenience into an undocumented decision (`CONTEXT.md`, owner-ledger O-33).
 Split G07A into three slices when it is implemented — one more than previously recorded here, because §6's
 open integration decision is now its own piece of work rather than an assumption folded into Slice B:
 
-- **Slice A (buildable now):** both external packages from §2 — pack, cross-package restore (the domain nupkg
-  chain in §3 phases 2–3), build, the private-copy check, provider-pairing admission, exact CLR identity, and
-  the full diagnostic matrix in §5 through the client-load row, ending at "both packages reach `Active` in an
-  unmodified `Arronix.Api`, in dependency order, and Package 1 publishes its client facet." Depends only on
-  G01–G06, all complete, and proves the two-package pairing G06 alone never attempted.
+- **Slice A (buildable now, but build it not to foreclose G07.2):** both external packages from §2 — pack,
+  cross-package restore (the domain nupkg chain in §3 phases 2–3), build, the private-copy check,
+  provider-pairing admission, exact CLR identity, and the full diagnostic matrix in §5 through the client-load
+  row, ending at "both packages reach `Active` in an unmodified `Arronix.Api`, in dependency order, and
+  Package 1 publishes its client facet." Depends only on G01–G06, all complete, and proves the two-package
+  pairing G06 alone never attempted. **Caveat, per §2's and §5's provisional notes:** Slice A's own proof
+  script should assert the domain project's current shape (no analyzer, no `CompiledShapes`) as a fact about
+  *today's* mechanism — labelled that way in the assertion's own failure message, not as a permanent
+  architectural rule — so that a future PR adding G07.2's client-metadata generator to that same project fails
+  a clearly-outdated check rather than being blocked by, or forced to silently delete, a check this report
+  never meant to be permanent.
 - **Slice B0 (a decision, not code):** whoever implements G07.2 records which of §6's three readings of
-  "reuse" applies, and states it in G07.2's own record before Slice B is scoped or estimated. This is
-  deliberately sequenced before Slice B rather than folded into it, so Slice B's own cost estimate is not
-  built on an assumption this document explicitly declined to make.
+  "reuse" applies, *and* what mechanism produces its generated client contract metadata on the domain
+  assembly (§2's provisional note) — both before Slice B is scoped or estimated, since Slice B's shape depends
+  on both answers together, not just the first. This is deliberately sequenced before Slice B rather than
+  folded into it, so Slice B's own cost estimate is not built on an assumption this document explicitly
+  declined to make.
 - **Slice B (blocked on G07.2 and on Slice B0):** the browser load of Package 1's client-safe assembly against
   the unmodified `Arronix.Client`, and the fixture-projection check — whose shape depends entirely on Slice
-  B0's answer: reading 1 or 2 (§6) requires Package 1's own generator output to reach the browser; reading 3
-  requires only that the pre-existing Movie fixture still renders after Package 1 is installed alongside it.
+  B0's answer: reading 1 or 2 (§6) requires Package 1's own generator output to reach the browser, which in
+  turn requires Slice B0 to have named the domain project's generated-client-metadata mechanism; reading 3
+  requires only that the pre-existing Movie fixture still renders after Package 1 is installed alongside it,
+  independent of what Package 1's own domain project ends up needing.
 
 Slice A retires the "not retained, compile-only" and "no cross-package pairing" halves of §1's gap list
 without waiting on work whose completion this document cannot itself certify — re-check the roadmap's
@@ -483,7 +552,8 @@ without waiting on work whose completion this document cannot itself certify —
 small addition once G07.2 lands and Slice B0 is answered, because it reuses G07.1's loader and whichever of
 G07.2's fixture mechanisms Slice B0 named, rather than inventing either.
 
-Both slices, and every command either one runs, use `/usr/local/share/dotnet/dotnet` (§0) — never the
-machine-default `dotnet` — and never relax `net11.0` or the pinned prerelease SDK to work around a restore or
-build failure; a failure caused by the wrong SDK being picked up is a script defect to fix, not a target to
-downgrade.
+All three pieces above, and every command any of them runs, use `/usr/local/share/dotnet/dotnet` (§0) — never
+the machine-default `dotnet` — and never relax `net11.0` or the pinned prerelease SDK to work around a restore
+or build failure; a failure caused by the wrong SDK being picked up is a script defect to fix, not a target to
+downgrade. None of the three should be read as fixing Package 1's domain-project topology as final: §2's
+provisional note applies to Slice A's own implementation as much as it applies to this report's prose.
