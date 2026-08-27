@@ -170,7 +170,9 @@ internal static class ClientContractSerializationModel
                 return reachable;
             }
 
-            var initializers = 0;
+            // Member-initializer positions continue after the constructor's own parameters rather than
+            // starting again at zero.
+            var initializers = constructor?.Parameters.Length ?? 0;
 
             foreach (var property in DeclaredFirst(named))
             {

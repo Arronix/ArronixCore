@@ -431,17 +431,72 @@ public sealed class ClientContractDigestRefusalTests
             new Probe(static info => info.Properties[0].ShouldSerialize = static (_, _) => false),
             "decides for itself whether to be written");
 
-    /// <remarks>
-    /// A default decides what a member becomes when a payload omits it, which is part of what a payload
-    /// means. Before it was rendered, two contracts differing only in a default hashed alike.
-    /// </remarks>
     [Test]
-    public void AConstructorParameterIsPartOfTheRendering()
+    public void AMemberNoParameterFillsSaysSo()
     {
         var probe = new Probe();
+
+        Assert.That(
+            ClientContractDigest.RenderSerialization(probe, probe.Root),
+            Does.Contain("|parameter=~"));
+    }
+
+    /// <remarks>
+    /// A default decides what a member becomes when a payload omits it, so it is rendered rather than
+    /// summarised. Built through the reflecting resolver because that is what fills in a parameter.
+    /// </remarks>
+    [Test]
+    public void AConstructorParameterAndItsDefaultAreRendered()
+    {
+        var probe = new Defaulted();
         var rendering = ClientContractDigest.RenderSerialization(probe, probe.Root);
 
-        Assert.That(rendering, Does.Contain("|parameter=~"), "a member no parameter fills says so");
+        Assert.Multiple(() =>
+        {
+            Assert.That(rendering, Does.Contain(
+                "|parameter=0|4:note|13:System.String|memberInitializer=false|nullable=true|default=~"));
+            Assert.That(rendering, Does.Contain(
+                "|parameter=1|5:count|12:System.Int32|memberInitializer=false|nullable=false|default=7"));
+        });
+    }
+
+    private sealed class Defaulted : JsonSerializerContext
+    {
+        private readonly JsonTypeInfo _root;
+        private readonly JsonTypeInfo _text;
+        private readonly JsonTypeInfo _number;
+
+        internal Defaulted()
+            : base(Probe.Honest())
+        {
+            _root = new DefaultJsonTypeInfoResolver().GetTypeInfo(typeof(WithDefault), Options)!;
+            _text = JsonTypeInfo.CreateJsonTypeInfo(typeof(string), Options);
+            _number = JsonTypeInfo.CreateJsonTypeInfo(typeof(int), Options);
+
+            foreach (var info in new[] { _root, _text, _number })
+            {
+                info.OriginatingResolver = this;
+                info.MakeReadOnly();
+            }
+        }
+
+        internal JsonTypeInfo Root => _root;
+
+        protected override JsonSerializerOptions? GeneratedSerializerOptions => Options;
+
+        public override JsonTypeInfo? GetTypeInfo(Type type)
+        {
+            if (type == typeof(WithDefault)) return _root;
+            if (type == typeof(string)) return _text;
+            return type == typeof(int) ? _number : null;
+        }
+    }
+
+    private sealed class WithDefault(string? note, int count = 7)
+    {
+        public string? Note { get; } = note;
+
+        public int Count { get; } = count;
     }
 
     [Test]

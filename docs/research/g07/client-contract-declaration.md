@@ -294,7 +294,25 @@ is refused too, because the options-level default also generates one. Removing t
 movies context fails the build with `ARX1011` naming it, and
 `NoReachableTypeCarriesAWriteFastPath` asserts the live graph over all 34 types.
 
-### 4.6 What the metadata cannot be asked, and is measured instead
+### 4.6 A shape the movie graph cannot exercise
+
+The movie graph has no type that has both constructor parameters and required members, so nothing in it
+positioned a required member's parameter after a constructor had taken positions of its own. The model
+numbered them from zero; the framework continues the constructor's count:
+
+```text
+first    pos=0 memberInit=False
+second   pos=1 memberInit=False   hasDefault=True default=9
+third    pos=2 memberInit=True
+fourth   pos=3 memberInit=True
+```
+
+The generator now runs over `Arronix.Plugin.Movies.Tests` so that such a shape can be declared, generated
+and checked in one assembly: `MixedShapeContractTests` asserts the positions the framework produced and
+that the hash the generator computed equals an independent recomputation from the running metadata.
+Seeding the count at zero again fails `TheDeclaredMetadataHashIsTheHashOfTheRunningGraph` and nothing else.
+
+### 4.7 What the metadata cannot be asked, and is measured instead
 
 Two holes survived the surface audit, and both are about believing what metadata says rather than checking
 it.
@@ -448,9 +466,9 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3572 enabled=3270 passed=3270 failed=0 skipped=302 inconclusive=0
+projects=14 total=3577 enabled=3275 passed=3275 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
-compileLogs=1 compileProjects=14 compileItems=344 boundSources=15
+compileLogs=1 compileProjects=14 compileItems=346 boundSources=15
 ```
 
 The registered skip count is unchanged at 302 and both ratchets pass. The baseline before this work was

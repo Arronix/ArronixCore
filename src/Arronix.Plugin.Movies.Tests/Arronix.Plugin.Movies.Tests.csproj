@@ -16,5 +16,13 @@
     <ProjectReference Include="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj" />
     <ProjectReference Include="..\Arronix.Host\Arronix.Host.csproj" />
     <ProjectReference Include="..\Arronix.Language.Reference\Arronix.Language.Reference.csproj" />
+    <!--
+         The client contract generator runs here so that a shape the movie graph cannot exercise - a type
+         with both constructor parameters and required members - can be checked for agreement between what
+         the generator computed and what the framework actually produced, in one assembly.
+    -->
+    <ProjectReference Include="..\Arronix.Generators\Arronix.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
