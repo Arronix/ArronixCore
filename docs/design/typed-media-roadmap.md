@@ -492,12 +492,11 @@ Exit gate:
 
 #### G07.2 — Generated client metadata, typed deserialization, and typed rendering
 
-**Status:** implemented; open pending independent re-review. Every numbered exit condition below is met
-against the real hosted server and a real browser, and the observed runs are recorded in
-`docs/research/g07/client-payload-projection.md`. One review round has reported and its code blocker — a
-schema hashed at admission but re-read from the contract's own lists at every payload — is fixed and
-proved. The gate is not marked complete here because the re-review has not reported; the remaining gate is
-that review, not any unbuilt part of the outcome.
+**Status:** complete. Every numbered exit condition below is met against the real hosted server and a real
+browser, and the observed runs are recorded in `docs/research/g07/client-payload-projection.md`. Independent
+review accepted the exact pushed commit after reproducing all nine mutation rows and re-running the full
+.NET 11 rail. The review's code blocker — a schema hashed at admission but re-read from the contract's own
+lists at every payload — is fixed and proved.
 
 **Outcome:** the browser reads an actual typed Movie graph out of the assembly it loaded, and renders its
 common and Movies-owned values, using generated metadata rather than property reflection.
@@ -1347,12 +1346,12 @@ telemetry reaching a sink registered after `AddArronixHost`. The
 threat model's WP-T2 telemetry items are closed with them; T-18 quotas and T-19 host-fact disclosure remain
 open and belong to WP-T5 and WP-T1.
 
-**G07.2 is implemented and awaiting independent re-review.** A browser holding a proved installation reads one
+**G07.2 is complete.** A browser holding a proved installation reads one
 serialized entity through the contract it admitted, proves the projection before rendering it, and draws a
 typed Movie with artwork, ratings, lifecycle/status and collections — with no media or format assembly in
 the Client build and no media kind spelled in its source. The server half, the browser half and the full
-rail are recorded in `docs/research/g07/client-payload-projection.md`. Nothing further is queued behind it
-until that review reports.
+rail are recorded in `docs/research/g07/client-payload-projection.md`; independent review reproduced the
+mutation evidence and re-ran the full rail at the accepted commit.
 
 The next gate after it is **G07.3**: cache update, removal, eviction, stale cache and stale tab in the real
 browser. G07.2 built the withdrawal rules its own correctness needed — an offer re-proved by contract object

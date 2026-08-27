@@ -1,7 +1,7 @@
 # G07.2 — reading one serialized entity through the contract a browser admitted
 
-**Status:** implemented; **not claimed as a closed gate.** Independent review is running, and G07.2's status
-in the roadmap stays open until it reports. What is recorded here is what was built and what was observed,
+**Status:** complete. Independent review accepted the exact pushed commit after reproducing every mutation
+row and re-running the full .NET 11 rail. What is recorded here is what was built and what was observed,
 including the real browser run and the two defects that run found.
 
 Every claim below is a named fixture, a quoted command output, or an observation from a browser this work
@@ -263,8 +263,8 @@ ratchets pass.
 
 ## 5. What this does not claim
 
-1. **G07.2 is not declared closed here.** Independent review is running. The roadmap status stays open until
-   it reports.
+1. **Closure is scoped to G07.2.** Independent review accepted the implementation and evidence recorded
+   here; no later gate is implied by that acceptance.
 2. **The browser half is still not on the hermetic rail.** `eng/ci/run-tests.sh` carries no browser
    toolchain, and adding one would put a browser download in the clean-repository proof.
    `g07-browser-proof.mjs` makes the run repeatable rather than a one-off reading, but it runs beside the

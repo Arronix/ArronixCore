@@ -286,21 +286,22 @@ work does not substitute for closing an earlier dependency.
   loads them from a clean store, reuses a warm store without refetching, and refuses a foreign contract
   line, a corrupted byte, a falsified identity, a falsified build and a malformed manifest — in every case
   before the runtime sees the payload. See `docs/research/g07/client-contract-loading.md`.
-- G07.2 is an implementation and proof candidate under independent acceptance review; it is not closed. A
+- G07.2 is complete. A
   page holding a verified installation reads one serialized entity through the contract it admitted, proves
   the projection before rendering it, and draws a typed Movie with artwork, ratings, lifecycle/status and
   collections, with no media or format assembly in the Client build. Both halves have been run: the server
   half is 25 checks in `eng/proofs/g07-client-contracts.sh`, and the browser half is
   `eng/proofs/g07-browser-proof.mjs` against the ordinary published client, whose observed run — including
   the inline poster decoding at the size it states, and the two defects that run found — is recorded in
-  `docs/research/g07/client-payload-projection.md`. The remaining gate is that review, not an unbuilt part
-  of the outcome. It claims nothing about cache update, removal and stale-tab behaviour (G07.3), about the
-  external-consumer vertical (G07A), or about provider-result ingestion.
+  `docs/research/g07/client-payload-projection.md`. Independent review accepted the exact pushed commit after
+  reproducing the mutation table and re-running the full .NET 11 rail. This gate claims nothing about cache
+  update, removal and stale-tab behaviour (G07.3), about the external-consumer vertical (G07A), or about
+  provider-result ingestion.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
-it. The open G07 sub-gate is G07.3, once G07.2's review reports. Later gates cover compatibility evidence,
+it. The open G07 sub-gate is G07.3. Later gates cover compatibility evidence,
 format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
