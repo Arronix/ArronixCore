@@ -43,7 +43,7 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `ReleaseOption<TTarget,TRelease>` joins a listing, interpreted release, and target match.
 - `ReleasePolicy<TRelease>` provides hard admission, lexicographic preference, and bounded facet comparison.
 - `ICataloger<TItem>` supplies authoritative shaped items. Its `ICataloger` floor declares the external identifier scheme it is the authority for and recognizes identifiers from that scheme when they occur in release text. Host captures that declaration at registration and rejects a reading in another scheme. `ICurator<TItem>` proposes `CuratedReference` values — a catalog identity, and optionally the curator's own `CuratedEntryId` — never items. Each contract answers its own closed pairing, so `TItem` is named once by the author and read back by registration.
-- `ProviderCatalogEntry` is what a consumer configures a provider from: the host-minted `ProviderId`, the family its registration fixed, and the extension's own `ProviderDescriptor`.
+- `ProviderCatalogEntry` is what a consumer configures or discovers a provider from: the host-minted `ProviderId`, the family its registration fixed, and the extension's own `ProviderDescriptor`. Its nullable singular `PairedMediaKind` is the one kind the closed media contract was admitted for; it is absent for a family with no media pairing. Its nullable `CatalogScheme` is captured at admission only for a cataloger and names that cataloger's canonical identifier namespace. Neither fact exposes the contributing CLR type or implementation.
 - `IIndexer`, `IDownloader`, and `INotifier` remain media-neutral provider families.
 - `ItemInfo` is the common title/overview value and `Localized<T>` attaches a language to a typed payload. `Rating`, `RatingScale`, and `ContentCertification` preserve common semantics without naming a media kind or vendor. `RatingScale` names its `(minimum, maximum)` constructor as the one a deserializer rebuilds it through: it is a validated interval with no settable member, so a reader that used the implicit parameterless constructor would produce zero-to-zero and the rating carrying it would then fail its own validation.
 - A derived value is not serialized. `MediaItem.Status`, `MovieReleaseTimeline.AvailableOn` and `Stage`, `Rating.NormalizedValue`, and `RatingScale.IsValid` are computed from values a payload already carries, so writing them beside those values would give an untrusted payload two ways to state one thing. A consumer reads them off the item it deserialized, which recomputes them. A get-only value a constructor writes — a rating's source, value, scale, voice and sample size — is authoritative and is still serialized.
@@ -159,7 +159,10 @@ Standard action descriptors are always derived for typed media. Execution is res
 Host capabilities. Monitoring is currently executable; an unimplemented standard operation returns 501
 and is never reported as accepted.
 
-Three routes reach a catalog, all kind-blind: `GET /api/v1/kinds/{kind}/catalog/search`,
+`GET /api/v1/providers?family={family}&kind={kind}` discovers registered provider declarations. A kind
+filter compares the requested kind with each declaration's exact `PairedMediaKind`; it does not infer service
+from extension ownership, so a separately packaged cataloger remains discoverable. Three routes reach a
+catalog, all kind-blind: `GET /api/v1/kinds/{kind}/catalog/search`,
 `POST /api/v1/kinds/{kind}/catalog/items` and `POST /api/v1/kinds/{kind}/catalog/items/{id}/refresh`. A
 search resolves the identity each hit would be held under and materializes nothing; an explicit add writes
 the catalog record and the user's presence in one transaction and answers `201` with a `Location`, or `200`
@@ -320,6 +323,9 @@ browser, and the limits of what that proves, are recorded in
 - Admission is against the exact active media type. A cataloger or curator whose closed item type no active
   media kind supplies is refused before its implementation is constructed. The non-generic `ICataloger`
   floor remains only for kind-blind external-identifier recognition.
+- The type-to-kind correspondence used to admit a closed provider contract is consumed at admission and
+  retained as the semantic `PairedMediaKind`; provider discovery, catalog routing and marker reading do not
+  retain or compare extension CLR types.
 - Durable media item identity is host-owned. A cataloger owns an item's identity in the scheme it declares,
   captured once and enforced as lower-case at activation, and every item it returns states exactly one
   identifier in that scheme. Host assigns `MediaItemId` when a catalog answers for an item — a search

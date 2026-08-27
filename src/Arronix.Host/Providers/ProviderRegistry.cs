@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
+using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
@@ -23,7 +24,7 @@ public sealed class RegisteredProvider
         ProviderDescriptor descriptor,
         IProvider provider,
         PluginId plugin,
-        Type? mediaItemType,
+        MediaKindId? pairedMediaKind,
         IInvocationLifetime? lifetime = null)
     {
         Lifetime = lifetime;
@@ -32,9 +33,11 @@ public sealed class RegisteredProvider
         Descriptor = descriptor;
         Provider = provider;
         Plugin = plugin;
-        MediaItemType = mediaItemType;
-        CatalogScheme = provider is ICataloger cataloger ? cataloger.CatalogScheme : null;
-        Catalog = new ProviderCatalogEntry(id, family, descriptor);
+        PairedMediaKind = pairedMediaKind;
+        CatalogScheme = family == ProviderFamily.Cataloger && provider is ICataloger cataloger
+            ? cataloger.CatalogScheme
+            : null;
+        Catalog = new ProviderCatalogEntry(id, family, descriptor, PairedMediaKind, CatalogScheme);
     }
 
     /// <summary>Gets the host-minted identifier.</summary>
@@ -64,13 +67,14 @@ public sealed class RegisteredProvider
     public PluginId Plugin { get; }
 
     /// <summary>
-    /// Gets the paired media item type for a typed cataloger or curator.
+    /// Gets the one media kind paired with this provider's closed contract.
     /// </summary>
     /// <remarks>
-    /// Internal: it is a type from the contributing extension's collectible context, so holding it outside
-    /// the host would keep that context alive after the extension has gone.
+    /// Admission resolves the extension-owned closed item type to this semantic identifier before this
+    /// registration is created. Retaining the identifier rather than the CLR type avoids pinning an
+    /// unloadable extension context and keeps routing independent of an implementation artifact.
     /// </remarks>
-    internal Type? MediaItemType { get; }
+    public MediaKindId? PairedMediaKind { get; }
 
     /// <summary>Gets the external identifier scheme a cataloger declared it is the authority for.</summary>
     /// <remarks>
@@ -281,7 +285,7 @@ public sealed class ProviderRegistry
     /// <param name="family">The family.</param>
     /// <param name="descriptor">The declaration.</param>
     /// <param name="implementation">The implementation.</param>
-    /// <param name="mediaItemType">The paired media item type, when the provider is media-shaped.</param>
+    /// <param name="pairedMediaKind">The paired media kind, when the provider is media-shaped.</param>
     /// <returns>The minted identifier.</returns>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="descriptor"/> or <paramref name="implementation"/> is <see langword="null"/>.
@@ -294,9 +298,9 @@ public sealed class ProviderRegistry
         ProviderFamily family,
         ProviderDescriptor descriptor,
         IProvider implementation,
-        Type? mediaItemType = null)
+        MediaKindId? pairedMediaKind = null)
     {
-        if (!TryPrepare(plugin, family, descriptor, implementation, mediaItemType, out var candidate, out var error))
+        if (!TryPrepare(plugin, family, descriptor, implementation, pairedMediaKind, out var candidate, out var error))
         {
             throw new ArronixException(CoreErrorCode.PluginIdConflict, error!);
         }
@@ -315,7 +319,7 @@ public sealed class ProviderRegistry
         ProviderFamily family,
         ProviderDescriptor descriptor,
         IProvider implementation,
-        Type? mediaItemType,
+        MediaKindId? pairedMediaKind,
         out RegisteredProvider candidate,
         out string? error,
         IInvocationLifetime? lifetime = null)
@@ -334,7 +338,7 @@ public sealed class ProviderRegistry
             Media.PluginBoundary.Snapshot(descriptor),
             implementation,
             plugin,
-            mediaItemType,
+            pairedMediaKind,
             lifetime);
 
         using var publication = _publication.EnterRead();
@@ -395,17 +399,21 @@ public sealed class ProviderRegistry
     }
 
     /// <summary>
-    /// Reads external identity markers using the installed catalogers paired with one media item type.
+    /// Reads external identity markers using the installed catalogers paired with one media kind.
     /// </summary>
-    /// <param name="mediaItemType">The exact media-owned item type being interpreted.</param>
+    /// <param name="mediaKind">The exact media kind being interpreted.</param>
     /// <param name="text">The complete release, file, or folder name.</param>
     /// <returns>Distinct recognized identities in provider and source order.</returns>
     /// <exception cref="InvalidOperationException">
     /// A cataloger returns a malformed marker or an identifier outside its declared scheme.
     /// </exception>
-    public IReadOnlyList<ExternalIdReading> ReadExternalIds(Type mediaItemType, string text)
+    public IReadOnlyList<ExternalIdReading> ReadExternalIds(MediaKindId mediaKind, string text)
     {
-        ArgumentNullException.ThrowIfNull(mediaItemType);
+        if (string.IsNullOrWhiteSpace(mediaKind.Value))
+        {
+            throw new ArgumentException("A media kind is required.", nameof(mediaKind));
+        }
+
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
 
         var readings = new List<ExternalIdReading>();
@@ -417,7 +425,7 @@ public sealed class ProviderRegistry
 
         foreach (var registered in catalogers)
         {
-            if (registered.MediaItemType != mediaItemType
+            if (registered.PairedMediaKind != mediaKind
                 || registered.Provider is not ICataloger cataloger
                 || registered.CatalogScheme is not { } catalogScheme)
             {

@@ -672,7 +672,7 @@ internal sealed class DurableProviderDefinitionTests
             ProviderFamily.Cataloger,
             Declared,
             new StubProvider(),
-            typeof(TypedMedia.Work));
+            Works);
 
     private static ProviderId RegisterOptionalOnly(ProviderRegistry registry)
         => registry.Register(
@@ -689,7 +689,7 @@ internal sealed class DurableProviderDefinitionTests
                 ],
             },
             new StubProvider(),
-            typeof(TypedMedia.Work));
+            Works);
 
     private static ProviderId RegisterRequiredReadable(
         ProviderRegistry registry,
@@ -705,7 +705,7 @@ internal sealed class DurableProviderDefinitionTests
                 Settings = [Field(fieldId, fieldId, sensitivity, required: true)],
             },
             new StubProvider(),
-            typeof(TypedMedia.Work));
+            Works);
 
     /// <summary>
     /// What the provider declares about its own settings, which is what says which are never read back.

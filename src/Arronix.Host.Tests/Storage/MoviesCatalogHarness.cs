@@ -102,7 +102,7 @@ internal sealed class MoviesCatalogHarness : IDisposable
                 ProviderFamily.Cataloger,
                 new ProviderDescriptor { LocalId = local, Name = local, Settings = [] },
                 cataloger,
-                typeof(Movie));
+                Kind);
 
             Definitions.AddAsync(new ProviderDefinition
             {

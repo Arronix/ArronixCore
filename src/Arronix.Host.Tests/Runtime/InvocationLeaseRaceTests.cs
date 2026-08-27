@@ -60,7 +60,7 @@ public class InvocationLeaseRaceTests
             ProviderFamily.Indexer,
             new ProviderDescriptor { LocalId = "blocking", Name = "Blocking", Settings = [] },
             provider,
-            mediaItemType: null,
+            pairedMediaKind: null,
             out var candidate,
             out _,
             lease.Invocation).Should().BeTrue();
@@ -223,7 +223,7 @@ public class InvocationLeaseRaceTests
             ProviderFamily.Indexer,
             new ProviderDescriptor { LocalId = "closed", Name = "Closed", Settings = [] },
             provider,
-            mediaItemType: null,
+            pairedMediaKind: null,
             out var candidate,
             out _,
             lease.Invocation).Should().BeTrue();
@@ -251,7 +251,7 @@ public class InvocationLeaseRaceTests
             ProviderFamily.Indexer,
             new ProviderDescriptor { LocalId = "gone", Name = "Gone", Settings = [] },
             provider,
-            mediaItemType: null,
+            pairedMediaKind: null,
             out var candidate,
             out _,
             lease.Invocation).Should().BeTrue();

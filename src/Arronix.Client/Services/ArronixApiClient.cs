@@ -137,19 +137,35 @@ public sealed class ArronixApiClient
     /// <param name="kind">The media kind whose catalog owns the identifier.</param>
     /// <param name="catalogId">The external catalog identity to add.</param>
     /// <param name="cancellationToken">Abandons the request.</param>
-    /// <returns>The typed view of the added item.</returns>
+    /// <returns>The typed view and whether this call created it.</returns>
     /// <remarks>
     /// The server returns 201 for a new materialization and 200 for an idempotent retry. Both bodies are
     /// the same contract; a Location header is navigation metadata and is never used as identity.
     /// </remarks>
-    public Task<CatalogItemView> AddCatalogItemAsync(
+    public async Task<CatalogAddResult> AddCatalogItemAsync(
         MediaKindId kind,
         ExternalId catalogId,
         CancellationToken cancellationToken = default)
-        => PostAsync<CatalogAddRequest, CatalogItemView>(
-            ApiPaths.CatalogItems(kind.Value),
-            new CatalogAddRequest(catalogId.ToString()),
-            cancellationToken);
+    {
+        var path = ApiPaths.CatalogItems(kind.Value);
+        using var content = JsonContent.Create(new CatalogAddRequest(catalogId.ToString()), options: _json);
+        using var response = await SendAsync(HttpMethod.Post, path, content, cancellationToken).ConfigureAwait(false);
+
+        if (response.StatusCode is not (HttpStatusCode.Created or HttpStatusCode.OK))
+        {
+            await EnsureSuccessAsync(response).ConfigureAwait(false);
+            throw new ApiRequestException(
+                response.StatusCode,
+                $"The server answered '{path}' with {(int)response.StatusCode}; a catalog add requires 200 or 201.");
+        }
+
+        var item = await ReadAsync<CatalogItemView>(response, cancellationToken).ConfigureAwait(false)
+            ?? throw new ApiRequestException(
+                HttpStatusCode.NoContent,
+                $"The server answered '{path}' with no content.");
+
+        return new CatalogAddResult(item, response.StatusCode == HttpStatusCode.Created);
+    }
 
     /// <summary>Refreshes one added item's catalog-owned facts.</summary>
     /// <param name="kind">The media kind whose catalog owns the item.</param>

@@ -24,7 +24,7 @@ internal sealed class TypedReleaseParserAdapter(
             return null;
         }
 
-        var ids = providers.ReadExternalIds(mediaType.ItemType, releaseTitle);
+        var ids = providers.ReadExternalIds(mediaType.Kind, releaseTitle);
         var release = mediaType.Parse(new ReleaseParseContext
         {
             Text = releaseTitle,

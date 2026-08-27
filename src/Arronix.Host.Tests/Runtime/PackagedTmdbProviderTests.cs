@@ -113,8 +113,10 @@ internal sealed class PackagedTmdbProviderTests
         state.Defects.Should().BeEmpty();
         tmdbProviders.Should().HaveCount(2);
         cataloger.CatalogScheme.Should().Be("tmdb");
-        cataloger.MediaItemType.Should().BeSameAs(itemType);
-        curator.MediaItemType.Should().BeSameAs(itemType);
+        cataloger.PairedMediaKind.Should().Be(Movies);
+        curator.PairedMediaKind.Should().Be(Movies);
+        cataloger.Catalog.PairedMediaKind.Should().Be(Movies);
+        cataloger.Catalog.CatalogScheme.Should().Be("tmdb");
         definition.Provider.Should().Be(cataloger.Id);
 
         first.Item.GetType().Should().BeSameAs(itemType);

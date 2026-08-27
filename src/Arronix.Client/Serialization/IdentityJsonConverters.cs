@@ -1,11 +1,34 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Client.Serialization;
+
+/// <summary>Reads and writes a media-kind identifier as its canonical text.</summary>
+public sealed class MediaKindIdJsonConverter : JsonConverter<MediaKindId>
+{
+    /// <inheritdoc />
+    public override MediaKindId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String || string.IsNullOrWhiteSpace(reader.GetString()))
+        {
+            throw new JsonException("A media-kind identifier must be a non-empty JSON string.");
+        }
+
+        return MediaKindId.FromString(reader.GetString()!);
+    }
+
+    /// <inheritdoc />
+    public override void Write(Utf8JsonWriter writer, MediaKindId value, JsonSerializerOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        writer.WriteStringValue(value.Value);
+    }
+}
 
 /// <summary>
 /// Reads and writes a media level identifier as the text it was created from.

@@ -116,10 +116,9 @@ internal static class ProviderEndpoints
                 return ApiRequests.UnknownKind(kind);
             }
 
-            // The narrowest honest reading of "providers for this kind": the ones the extension that owns
-            // the kind registered. A provider does not declare which kinds it serves, and inferring it from
-            // category overlap would be a guess presented as a fact.
-            registered = registered.Where(provider => provider.Id.Plugin == media.Plugin);
+            // Admission binds a media-shaped provider to exactly one semantic kind. Plugin ownership is
+            // intentionally irrelevant here: a separately packaged cataloger can serve this kind too.
+            registered = registered.Where(provider => provider.PairedMediaKind == media.Kind);
         }
 
         // The qualified identifier and the family are host-owned facts, so they are served with the

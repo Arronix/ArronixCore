@@ -203,7 +203,7 @@ public class PluginBoundarySnapshotTests
             ProviderFamily.Indexer,
             descriptor,
             new InertProvider(),
-            mediaItemType: null,
+            pairedMediaKind: null,
             out var candidate,
             out _).Should().BeTrue();
 

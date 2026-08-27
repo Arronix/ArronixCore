@@ -77,7 +77,7 @@ public sealed class CatalogDispatcher(
                 .Where(definition => _status.IsAvailable(definition.Id))
                 .Where(definition => _providers.TryGet(definition.Provider, out var registered)
                     && string.Equals(registered.CatalogScheme, scheme, StringComparison.Ordinal)
-                    && registered.MediaItemType == kind.ItemType)
+                    && registered.PairedMediaKind == kind.Kind)
                 .OrderBy(static definition => definition.Priority)
                 .ThenBy(static definition => definition.Id),
         ];

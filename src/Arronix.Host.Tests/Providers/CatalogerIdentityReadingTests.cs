@@ -1,4 +1,5 @@
 using Arronix.Abstractions.Plugins;
+using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Providers;
@@ -11,6 +12,9 @@ namespace Arronix.Host.Tests.Providers;
 [TestFixture]
 internal sealed class CatalogerIdentityReadingTests
 {
+    private static readonly MediaKindId Works = MediaKindId.FromString("works");
+    private static readonly MediaKindId ForeignWorks = MediaKindId.FromString("foreign-works");
+
     [Test]
     public void ReadsMarkersOnlyFromCatalogersPairedWithTheRequestedItemType()
     {
@@ -26,7 +30,7 @@ internal sealed class CatalogerIdentityReadingTests
             ProviderFamily.Cataloger,
             Descriptor("matching"),
             new ReadingCataloger(expected),
-            typeof(Work));
+            Works);
         registry.Register(
             PluginId.FromString("example.foreign"),
             ProviderFamily.Cataloger,
@@ -35,9 +39,9 @@ internal sealed class CatalogerIdentityReadingTests
                 ExternalId.Of("foreign", "9"),
                 "Example",
                 0)),
-            typeof(string));
+            ForeignWorks);
 
-        registry.ReadExternalIds(typeof(Work), text).Should().Equal(expected);
+        registry.ReadExternalIds(Works, text).Should().Equal(expected);
     }
 
     [Test]
@@ -52,9 +56,9 @@ internal sealed class CatalogerIdentityReadingTests
                 ExternalId.Of("catalog", "42"),
                 "{catalog-42}",
                 100)),
-            typeof(Work));
+            Works);
 
-        var act = () => registry.ReadExternalIds(typeof(Work), "Example Work");
+        var act = () => registry.ReadExternalIds(Works, "Example Work");
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*returned an external-id marker outside the supplied text*");
@@ -75,9 +79,9 @@ internal sealed class CatalogerIdentityReadingTests
                     ExternalId.Of("foreign", "9"),
                     "{foreign-9}",
                     text.IndexOf("{foreign-9}", StringComparison.Ordinal))),
-            typeof(Work));
+            Works);
 
-        var act = () => registry.ReadExternalIds(typeof(Work), text);
+        var act = () => registry.ReadExternalIds(Works, text);
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*declared scheme 'catalog'*marker for 'foreign'*");

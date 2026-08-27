@@ -325,8 +325,9 @@ work does not substitute for closing an earlier dependency.
   contract, item type and implementation agree, and that an admitted kind supplies that item type, before it
   constructs anything in the package, refusing with `PluginProviderContractInvalid` or
   `PluginMediaPairingUnsatisfied`; two kinds closed over one item type are refused at kind admission with
-  `MediaItemTypeConflict`; and consumers receive `ProviderCatalogEntry`, carrying the minted identifier and
-  the family the registration fixed, instead of reconstructing either.
+  `MediaItemTypeConflict`; and consumers receive `ProviderCatalogEntry`, carrying the minted identifier,
+  the family the registration fixed, one nullable semantic `PairedMediaKind`, and an admitted cataloger's
+  nullable `CatalogScheme`, instead of reconstructing any of them or retaining a provider CLR type.
 - Its identity half is answered and built. The owner settled the rule on 2026-08-25: a cataloger owns an
   item's identity in its own declared scheme, a curator returns references rather than items, and Host alone
   assigns `MediaItemId` when a catalog answers for an item. `IMediaEntity` no longer carries a key, `CatalogIdentity` is host
@@ -397,8 +398,11 @@ work does not substitute for closing an earlier dependency.
   Its standalone durable-core candidate was independently accepted at
   `9b202eda8a472e1a14604e926f36094682718ca9`: the full rail reported 3,895 total / 3,593 enabled and
   passed / 0 failed / 302 skipped, with all 3 required tests and compiler-input provenance checks green.
-  The post-merge generic typed Client/browser proof remains deliberately outstanding because it depends on
-  the accepted G07.3/G07A harness; final G07B gate acceptance awaits that combined evidence.
+  The generic Client catalog service and `/kinds/{kind}/catalog` workspace now discover only active,
+  configured cataloger schemes whose exact admitted pairing matches the selected kind; search, add and
+  refresh update typed local results through complete item references without media/provider branches. The
+  post-merge generic typed Client/browser proof remains deliberately outstanding because it depends on the
+  accepted G07.3/G07A harness; final G07B gate acceptance awaits that combined evidence.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and

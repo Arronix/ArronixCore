@@ -1,5 +1,18 @@
 # Arronix History
 
+## 2026-08-28 — Project admitted provider pairing into generic catalog discovery
+
+Provider discovery now publishes a singular nullable `PairedMediaKind` and an admitted cataloger's nullable
+`CatalogScheme` on `ProviderCatalogEntry`. The existing admission-validated item-type-to-kind map is consumed
+once to produce those semantic values; Host routing, marker reading and provider filtering no longer retain
+or compare contributing CLR types. Kind-filtered discovery therefore includes a separately packaged cataloger
+when its exact closed pairing serves the requested kind, rather than guessing from plugin ownership.
+
+The generic Client adds a descriptor-driven `/kinds/{kind}/catalog` workspace. It offers only active,
+enabled definitions whose scope admits the selected kind, treats 201 versus 200 add responses as created
+versus already-present state, and navigates/refreshes through complete item references. This advances the
+G07B candidate but does not close it: retained browser acceptance evidence remains outstanding.
+
 ## 2026-08-28 — Record standalone G07B durable-core acceptance
 
 Independent review accepted the standalone durable-core candidate at

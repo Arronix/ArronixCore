@@ -38,6 +38,8 @@
                 Level="_level?.Level"
                 OnCompleted="ReloadAsync" />
 
+    <a class="button" href="@($"kinds/{Uri.EscapeDataString(Kind.Kind.Value)}/catalog")">Find in catalog</a>
+
     @if (Workbenches.Count > 0)
     {
         <div class="workspace-benches">

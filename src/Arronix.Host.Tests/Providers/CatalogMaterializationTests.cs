@@ -392,6 +392,7 @@ internal sealed class CatalogMaterializationTests
             var status = new ProviderStatusStore(TimeProvider.System);
             var sessions = new ProviderSessionStore(TimeProvider.System);
             var tests = new ProviderTestService(providers, definitions, sessions, status);
+            var kind = MediaTypeModelFactory.Build<Work, WorkTarget, WorkRelease, WorkParser, Works>();
 
             var local = 0;
 
@@ -403,7 +404,7 @@ internal sealed class CatalogMaterializationTests
                     ProviderFamily.Cataloger,
                     new ProviderDescriptor { LocalId = name, Name = name, Settings = [] },
                     cataloger,
-                    typeof(Work));
+                    kind.Kind);
 
                 definitions.AddAsync(new ProviderDefinition
                 {
@@ -416,7 +417,7 @@ internal sealed class CatalogMaterializationTests
             }
 
             return new CatalogContext(
-                MediaTypeModelFactory.Build<Work, WorkTarget, WorkRelease, WorkParser, Works>(),
+                kind,
                 new CatalogDispatcher(providers, definitions, status, tests, new CatalogIdentity()));
         }
     }
