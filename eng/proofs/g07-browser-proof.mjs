@@ -133,6 +133,20 @@ try {
         (await poster.getAttribute('src')).startsWith('data:image/png;base64,'),
         true);
 
+    // The attributes only say what the document claims. This says the browser decoded the bytes the
+    // contract carried, which is the whole point of holding an inline image to its own signature.
+    await poster.evaluate(image => image.complete
+        ? true
+        : new Promise(resolve => { image.onload = resolve; image.onerror = resolve; }));
+    check(
+        'the poster decoded as a real image',
+        await poster.evaluate(image => image.complete && image.naturalWidth > 0),
+        true);
+    check(
+        'and it decoded at the size it states',
+        await poster.evaluate(image => [image.naturalWidth, image.naturalHeight]),
+        [8, 12]);
+
     check('nothing threw in the page', consoleErrors, []);
 
     // --- a payload this host does not serve fails visibly, with nothing projected ---

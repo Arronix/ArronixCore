@@ -35,6 +35,13 @@ public static class ClientContractLimits
     /// <remarks>A payload is one item, not a catalog; a response past this is refused rather than buffered.</remarks>
     public const int MaxPayloadBytes = 4_194_304;
 
+    /// <summary>The most text one projection may render, across every value in it.</summary>
+    /// <remarks>
+    /// Each value is bounded on its own; without a total, a graph of them multiplies out well past what a
+    /// browser should hold from a payload that is itself capped.
+    /// </remarks>
+    public const int MaxProjectionCharacters = 1_048_576;
+
     /// <summary>The largest pixel measurement an image may state.</summary>
     /// <remarks>A measurement exists so a consumer can choose without fetching; an absurd one is a defect.</remarks>
     public const int MaxImageEdge = 100_000;

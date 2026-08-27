@@ -172,8 +172,12 @@ public sealed class FieldValueRenderingTests
         text.Should().Contain("37,412 votes", "the parts that do have components keep them");
     }
 
+    /// <remarks>
+    /// Three states, not two. A film nobody has classified and a film classified as belonging to no genre
+    /// are different facts; the contract distinguishes them, so a reader is told which.
+    /// </remarks>
     [Test]
-    public void AbsentAndPresentEmptyRenderTheSameAndAreDifferentValues()
+    public void AbsentAndPresentEmptyReadDifferently()
     {
         var many = new FieldDescriptor
         {
@@ -183,10 +187,31 @@ public sealed class FieldValueRenderingTests
             Multivalued = true,
         };
 
+        var absent = FieldValueFormatter.Format(many, FieldValue.Absent(FieldValueKind.Text));
+        var empty = FieldValueFormatter.Format(many, FieldValue.OfItems(FieldValueKind.Text, []));
+        var held = FieldValueFormatter.Format(
+            many,
+            FieldValue.OfItems(FieldValueKind.Text, [FieldValue.OfText("Action")]));
+
         using var _ = new AssertionScope();
 
-        FieldValueFormatter.Format(many, FieldValue.Absent(FieldValueKind.Text)).Should().Be("—");
-        FieldValueFormatter.Format(many, FieldValue.OfItems(FieldValueKind.Text, [])).Should().Be("—");
+        absent.Should().Be("—");
+        empty.Should().Be("(none)");
+        empty.Should().NotBe(absent);
+        held.Should().Be("Action");
+    }
+
+    /// <remarks>The same three states for a multivalued composite, which is where the list is of tuples.</remarks>
+    [Test]
+    public void AnEmptyListOfTuplesReadsAsHoldingNoneRatherThanAsHavingNoValue()
+    {
+        var ratings = Rating(multivalued: true);
+
+        using var _ = new AssertionScope();
+
+        FieldValueFormatter.Format(ratings, FieldValue.Absent(FieldValueKind.Composite)).Should().Be("—");
+        FieldValueFormatter.Format(ratings, FieldValue.OfItems(FieldValueKind.Composite, []))
+            .Should().Be("(none)");
     }
 
     [Test]

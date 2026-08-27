@@ -9,6 +9,9 @@
     elements each carry the field's own shape; a composite's parts each carry their own component
     descriptor, and drawing them under the parent's would give every part the parent's kind, unit and
     choices.
+
+    Three states, not two: no value at all, no values, and values. The middle one is a fact the contract
+    stated and this draws it.
 *@
 
 @if (Value is null || Value.IsAbsent)
@@ -27,6 +30,10 @@ else if (Descriptor.Multivalued && !Element && Value.Items is { Count: > 0 } ele
             <FieldValueView Descriptor="Descriptor" Value="elements[index]" Compact="Compact" Element="true" />
         }
     </span>
+}
+else if (Descriptor.Multivalued && !Element && Value.Items is { Count: 0 })
+{
+    <span class="value value-empty" title="No entries">(none)</span>
 }
 else if (Value.Kind == FieldValueKind.Composite && Value.Items is { Count: > 0 } components)
 {

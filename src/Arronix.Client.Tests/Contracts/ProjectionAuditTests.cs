@@ -335,6 +335,61 @@ public sealed class ProjectionAuditTests
     }
 
     /// <remarks>
+    /// Every string is bounded on its own and the node budget bounds how many there are, but the two
+    /// multiply: a graph within both limits can still describe more text than a browser should hold from a
+    /// payload that is itself capped. The total is charged across the whole projection.
+    /// </remarks>
+    [Test]
+    public void MoreTextThanOneProjectionMayRenderIsRefusedEvenWhenEveryValueFits()
+    {
+        var many = Text() with { Multivalued = true };
+        var page = new string('x', ClientContractLimits.MaxTextLength);
+
+        FieldValue List(int count) => FieldValue.OfItems(
+            FieldValueKind.Text,
+            [.. Enumerable.Range(0, count).Select(_ => FieldValue.OfText(page))]);
+
+        var fits = ClientContractLimits.MaxProjectionCharacters / ClientContractLimits.MaxTextLength;
+
+        using var _ = new FluentAssertions.Execution.AssertionScope();
+
+        // Every value is exactly at its own limit, and the count is far inside the node budget.
+        fits.Should().BeLessThan(ClientContractLimits.MaxNodes);
+        Audit([many], List(fits - 1)).Should().BeNull();
+        Audit([many], List(fits + 1))!
+            .Message.Should().Contain("characters one projection may render in total");
+    }
+
+    /// <remarks>
+    /// An address is text this client writes into a document, in both shapes artwork takes. Charging the
+    /// whole image and not the bare address would leave the total reachable through a list of the latter.
+    /// </remarks>
+    [Test]
+    public void AnAddressIsChargedInBothShapesArtworkTakes()
+    {
+        var many = Text() with { ValueKind = FieldValueKind.Artwork, Multivalued = true };
+        var address = new Uri("https://example.test/" + new string('a', 4000));
+        var whole = new ArtworkImage("poster", address);
+        var perValue = address.OriginalString.Length;
+        var over = (ClientContractLimits.MaxProjectionCharacters / perValue) + 2;
+
+        FieldValue List(int count, bool bare) => FieldValue.OfItems(
+            FieldValueKind.Artwork,
+            [.. Enumerable.Range(0, count).Select(_ => bare
+                ? FieldValue.OfArtwork(address)
+                : FieldValue.OfArtwork(whole))]);
+
+        using var _ = new FluentAssertions.Execution.AssertionScope();
+
+        over.Should().BeLessThan(ClientContractLimits.MaxNodes, "the node budget is not what refuses this");
+
+        Audit([many], List(over, bare: false))!
+            .Message.Should().Contain("characters one projection may render in total");
+        Audit([many], List(over, bare: true))!
+            .Message.Should().Contain("characters one projection may render in total");
+    }
+
+    /// <remarks>
     /// A contract's list may throw from anything, and a throw is the same refusal as a wrong answer: it is
     /// contained here rather than escaping into whatever was rendering.
     /// </remarks>

@@ -17,12 +17,18 @@ namespace Arronix.Client.Rendering;
 /// </para>
 /// <para>
 /// Absent is not empty. A field the item has no value for reads as a dash, because an empty string in a
-/// column reads as a value that happens to be blank.
+/// column reads as a value that happens to be blank; a field holding an empty list says so in its own
+/// words, because it is a third thing again.
 /// </para>
 /// </remarks>
 public static class FieldValueFormatter
 {
     private const string AbsentMarker = "—";
+
+    /// <summary>
+    /// What a field holding no values reads as, which is not what a field with no value reads as.
+    /// </summary>
+    private const string EmptyMarker = "(none)";
 
     /// <summary>
     /// Renders a value for display.
@@ -63,10 +69,15 @@ public static class FieldValueFormatter
 
         if (descriptor.Multivalued && !element)
         {
-            return items is { Count: > 0 } elements
-                ? string.Join(", ", Enumerable.Range(0, elements.Count)
-                    .Select(index => Format(descriptor, elements[index], element: true)))
-                : AbsentMarker;
+            // A field holding no values and a field with no value are different facts, and a reader is
+            // told which. Collapsing them loses the one distinction the tagged value exists to keep.
+            return items switch
+            {
+                { Count: > 0 } elements => string.Join(", ", Enumerable.Range(0, elements.Count)
+                    .Select(index => Format(descriptor, elements[index], element: true))),
+                { Count: 0 } => EmptyMarker,
+                _ => AbsentMarker,
+            };
         }
 
         if (value.Kind == FieldValueKind.Composite)

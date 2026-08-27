@@ -9,7 +9,7 @@
     from the descriptor the contract shipped with it. Nothing here names a media kind.
 *@
 
-<section class="panel" id="contract-payload-panel">
+<section class="panel" id="contract-payload-panel" data-offer-count="@_offers.Count">
     <header class="panel-head">
         <h2>Typed payload</h2>
         <span class="chip" id="projection-status">@(_report?.Outcome ?? ContractPayloadOutcome.NotAttempted)</span>
@@ -87,12 +87,22 @@
     /// <summary>The proof input an ordinary published host serves beside the client.</summary>
     private const string DefaultAddress = "fixtures/g07/movie.json";
 
+    /// <summary>
+    /// Gets or sets the installation this page last read, which is when what may be projected changes.
+    /// </summary>
+    /// <remarks>
+    /// A render trigger and nothing more: a component whose parameters never change is never handed them
+    /// again, so a panel with none would read what could be projected once and keep that answer for the
+    /// life of the page. What it is allowed to project is always re-read from the loader.
+    /// </remarks>
+    [Parameter]
+    public ContractLoadReport? Installation { get; set; }
+
     private IReadOnlyList<ContractPayloadOffer> _offers = [];
     private ContractPayloadOffer? _offer;
     private ContractPayloadOffer? _projectedThrough;
     private ContractPayloadReport? _report;
     private string _address = DefaultAddress;
-    private int _requests;
     private bool _busy;
 
     private string ProofText => _report is null
@@ -125,8 +135,8 @@
     }
 
     /// <remarks>
-    /// One read at a time, and the newest wins. The button is disabled while one is in flight and a second
-    /// entry is refused anyway, so a slower earlier answer can never replace a later one.
+    /// One read at a time. A second entry while one is in flight is refused rather than queued, so there is
+    /// never an older answer to arrive late and replace a newer one.
     /// </remarks>
     private async Task ProjectAsync()
     {
@@ -136,32 +146,20 @@
         }
 
         _busy = true;
-        var request = ++_requests;
 
         try
         {
             Refresh();
 
             var offer = _offer;
-            var address = _address;
-            var report = offer is null
-                ? await Payloads.ProjectAsync(address)
-                : await Payloads.ProjectAsync(offer, address);
-
-            if (request != _requests)
-            {
-                return;
-            }
-
             _projectedThrough = offer;
-            _report = report;
+            _report = offer is null
+                ? await Payloads.ProjectAsync(_address)
+                : await Payloads.ProjectAsync(offer, _address);
         }
         finally
         {
-            if (request == _requests)
-            {
-                _busy = false;
-            }
+            _busy = false;
         }
     }
 }

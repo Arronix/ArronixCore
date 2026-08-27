@@ -10,7 +10,7 @@ namespace Arronix.Client.Contracts;
 /// <param name="Address">Where it is fetched from, or the inline payload itself.</param>
 /// <param name="Width">Its width in pixels, when the supplier stated one.</param>
 /// <param name="Height">Its height in pixels, when the supplier stated one.</param>
-public sealed record ContractPayloadImageProof(string Role, string Address, int? Width, int? Height);
+internal sealed record ContractPayloadImageProof(string Role, string Address, int? Width, int? Height);
 
 /// <summary>One projected field, as a proof reads it.</summary>
 /// <param name="FieldId">The identifier the contract declares the field by.</param>
@@ -21,7 +21,7 @@ public sealed record ContractPayloadImageProof(string Role, string Address, int?
 /// <param name="ItemCount">How many entries its list holds, when it holds one.</param>
 /// <param name="Text">What this client renders it as.</param>
 /// <param name="Images">The images it carries, whole rather than as addresses.</param>
-public sealed record ContractPayloadFieldProof(
+internal sealed record ContractPayloadFieldProof(
     string FieldId,
     string Name,
     string ValueKind,
@@ -38,7 +38,7 @@ public sealed record ContractPayloadFieldProof(
 /// Separate from <see cref="ContractPayloadReport"/>, which carries live CLR types no serializer writes.
 /// Everything here is a string, a number or a list of them, and the text is the text on the page.
 /// </remarks>
-public sealed record ContractPayloadProof(
+internal sealed record ContractPayloadProof(
     string Outcome,
     string Address,
     string? AssemblyName,
@@ -53,7 +53,7 @@ public sealed record ContractPayloadProof(
     /// <param name="report">The report.</param>
     /// <returns>The proof.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="report"/> is <see langword="null"/>.</exception>
-    public static ContractPayloadProof Of(ContractPayloadReport report)
+    internal static ContractPayloadProof Of(ContractPayloadReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
 

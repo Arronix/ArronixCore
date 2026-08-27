@@ -110,9 +110,9 @@ internal static class ProjectionAudit
                 $"This contract projected {count} field(s) where its schema declares {declared}.");
         }
 
-        var remaining = ClientContractLimits.MaxNodes;
+        var budget = new Budget();
 
-        if (Spend(ref remaining, count) is { } exhausted)
+        if (Spend(budget, count) is { } exhausted)
         {
             return exhausted;
         }
@@ -154,7 +154,7 @@ internal static class ProjectionAudit
 
             values[index] = projected.Value;
 
-            if (FreezeDescriptor(expected, ref remaining, out descriptors[index]) is { } undescribable)
+            if (FreezeDescriptor(expected, budget, out descriptors[index]) is { } undescribable)
             {
                 return undescribable;
             }
@@ -166,7 +166,7 @@ internal static class ProjectionAudit
         {
             var field = descriptors[index];
 
-            if (FreezeValue(field, values[index], field.FieldId, ref remaining, out var value) is { } defect)
+            if (FreezeValue(field, values[index], field.FieldId, budget, out var value) is { } defect)
             {
                 return defect;
             }
@@ -183,7 +183,7 @@ internal static class ProjectionAudit
     /// </summary>
     private static ProjectionDefect? FreezeDescriptor(
         FieldDescriptor root,
-        ref int remaining,
+        Budget budget,
         out FieldDescriptor frozen)
     {
         frozen = root;
@@ -211,7 +211,7 @@ internal static class ProjectionAudit
                 return Invalid(frame.Path, $"nests deeper than {ClientContractLimits.MaxDepth} levels");
             }
 
-            if (Spend(ref remaining, 1) is { } exhausted)
+            if (Spend(budget, 1) is { } exhausted)
             {
                 return exhausted;
             }
@@ -221,7 +221,7 @@ internal static class ProjectionAudit
                 return Invalid(frame.Path, "is described by a field that contains itself");
             }
 
-            if (Describable(frame, ref remaining) is { } undescribable)
+            if (Describable(frame, budget) is { } undescribable)
             {
                 return undescribable;
             }
@@ -249,29 +249,45 @@ internal static class ProjectionAudit
     }
 
     /// <summary>Holds a descriptor to the shape a consumer can draw, charging the lists it names.</summary>
-    private static ProjectionDefect? Describable(DescriptorFrame frame, ref int remaining)
+    private static ProjectionDefect? Describable(DescriptorFrame frame, Budget budget)
     {
         var field = frame.Source;
         var path = frame.Path;
 
-        if (Sized(field.FieldId, ClientContractLimits.MaxIdentifierLength) is { } identifier)
+        if (Sized(field.FieldId, ClientContractLimits.MaxIdentifierLength, budget) is { } identifier)
         {
             return Invalid(path, $"declares a field identifier that {identifier}");
         }
 
-        if (Sized(field.Name, ClientContractLimits.MaxTextLength) is { } name)
+        if (Sized(field.Name, ClientContractLimits.MaxTextLength, budget) is { } name)
         {
             return Invalid(path, $"declares a display name that {name}");
         }
 
-        if (field.Description is { } description && description.Length > ClientContractLimits.MaxTextLength)
+        if (field.Description is { } description)
         {
-            return Invalid(path, $"declares a description of {description.Length} characters");
+            if (description.Length > ClientContractLimits.MaxTextLength)
+            {
+                return Invalid(path, $"declares a description of {description.Length} characters");
+            }
+
+            if (Charge(budget, description.Length) is { } budgeted)
+            {
+                return Invalid(path, $"declares a description that {budgeted}");
+            }
         }
 
-        if (field.Unit is { } unit && unit.Length > ClientContractLimits.MaxIdentifierLength)
+        if (field.Unit is { } unit)
         {
-            return Invalid(path, $"declares a unit of {unit.Length} characters");
+            if (unit.Length > ClientContractLimits.MaxIdentifierLength)
+            {
+                return Invalid(path, $"declares a unit of {unit.Length} characters");
+            }
+
+            if (Charge(budget, unit.Length) is { } spent)
+            {
+                return Invalid(path, $"declares a unit that {spent}");
+            }
         }
 
         var components = field.Components;
@@ -283,7 +299,7 @@ internal static class ProjectionAudit
 
         var componentCount = components.Count;
 
-        if (Spend(ref remaining, componentCount) is { } componentBudget)
+        if (Spend(budget, componentCount) is { } componentBudget)
         {
             return componentBudget;
         }
@@ -317,7 +333,7 @@ internal static class ProjectionAudit
 
         var choiceCount = choices.Count;
 
-        if (Spend(ref remaining, choiceCount) is { } choiceBudget)
+        if (Spend(budget, choiceCount) is { } choiceBudget)
         {
             return choiceBudget;
         }
@@ -341,12 +357,12 @@ internal static class ProjectionAudit
         {
             var choice = choices[index];
 
-            if (Sized(choice.Value, ClientContractLimits.MaxIdentifierLength) is { } stored)
+            if (Sized(choice.Value, ClientContractLimits.MaxIdentifierLength, budget) is { } stored)
             {
                 return Invalid(path, $"declares a choice whose stored value {stored}");
             }
 
-            if (Sized(choice.Name, ClientContractLimits.MaxTextLength) is { } shown)
+            if (Sized(choice.Name, ClientContractLimits.MaxTextLength, budget) is { } shown)
             {
                 return Invalid(path, $"declares a choice whose display name {shown}");
             }
@@ -362,7 +378,7 @@ internal static class ProjectionAudit
         FieldDescriptor root,
         FieldValue value,
         string path,
-        ref int remaining,
+        Budget budget,
         out FieldValue? frozen)
     {
         frozen = null;
@@ -390,7 +406,7 @@ internal static class ProjectionAudit
                 return Invalid(frame.Path, $"nests deeper than {ClientContractLimits.MaxDepth} levels");
             }
 
-            if (Spend(ref remaining, 1) is { } exhausted)
+            if (Spend(budget, 1) is { } exhausted)
             {
                 return exhausted;
             }
@@ -400,7 +416,7 @@ internal static class ProjectionAudit
                 return Invalid(frame.Path, "contains itself");
             }
 
-            if (Enter(pending, frame, ref remaining) is { } defect)
+            if (Enter(pending, frame, budget) is { } defect)
             {
                 return defect;
             }
@@ -411,7 +427,7 @@ internal static class ProjectionAudit
     }
 
     /// <summary>Proves one value and schedules whatever it contains.</summary>
-    private static ProjectionDefect? Enter(Stack<ValueFrame> pending, ValueFrame frame, ref int remaining)
+    private static ProjectionDefect? Enter(Stack<ValueFrame> pending, ValueFrame frame, Budget budget)
     {
         var field = frame.Field;
         var value = frame.Source;
@@ -430,12 +446,12 @@ internal static class ProjectionAudit
 
         if (field.Multivalued && !frame.Element)
         {
-            return EnterList(pending, frame, items, absent, slots, ref remaining);
+            return EnterList(pending, frame, items, absent, slots, budget);
         }
 
         if (kind == FieldValueKind.Composite)
         {
-            return EnterComposite(pending, frame, items, absent, slots, ref remaining);
+            return EnterComposite(pending, frame, items, absent, slots, budget);
         }
 
         if (absent)
@@ -456,7 +472,7 @@ internal static class ProjectionAudit
         return slots != permitted.Value && !(kind == FieldValueKind.Artwork && slots == Slot.Link)
             ? Invalid(path, $"is a {kind} carrying {Describe(slots)}, and a {kind} carries "
                 + $"{Describe(permitted.Value)}")
-            : Content(field, value, kind, path);
+            : Content(field, value, kind, path, budget);
     }
 
     /// <summary>Proves the container of a multivalued field and schedules its elements.</summary>
@@ -466,7 +482,7 @@ internal static class ProjectionAudit
         IReadOnlyList<FieldValue>? items,
         bool absent,
         Slot slots,
-        ref int remaining)
+        Budget budget)
     {
         var path = frame.Path;
 
@@ -489,7 +505,7 @@ internal static class ProjectionAudit
 
         var count = items.Count;
 
-        if (Spend(ref remaining, count) is { } exhausted)
+        if (Spend(budget, count) is { } exhausted)
         {
             return exhausted;
         }
@@ -525,7 +541,7 @@ internal static class ProjectionAudit
         IReadOnlyList<FieldValue>? items,
         bool absent,
         Slot slots,
-        ref int remaining)
+        Budget budget)
     {
         var field = frame.Field;
         var path = frame.Path;
@@ -556,7 +572,7 @@ internal static class ProjectionAudit
             return Invalid(path, $"carries {count} component(s) where its field declares {declared}");
         }
 
-        if (Spend(ref remaining, count) is { } exhausted)
+        if (Spend(budget, count) is { } exhausted)
         {
             return exhausted;
         }
@@ -591,15 +607,16 @@ internal static class ProjectionAudit
         FieldDescriptor field,
         FieldValue value,
         FieldValueKind kind,
-        string path)
+        string path,
+        Budget budget)
         => kind switch
         {
             FieldValueKind.Text or FieldValueKind.MultilineText or FieldValueKind.FilePath =>
-                Sized(value.Text, ClientContractLimits.MaxTextLength) is { } text
+                Sized(value.Text, ClientContractLimits.MaxTextLength, budget) is { } text
                     ? Invalid(path, $"carries text that {text}")
                     : null,
 
-            FieldValueKind.Enumerated => Choice(field, value.Text, path),
+            FieldValueKind.Enumerated => Choice(field, value.Text, path, budget),
 
             FieldValueKind.Decimal => double.IsFinite(value.Real!.Value)
                 ? null
@@ -623,35 +640,37 @@ internal static class ProjectionAudit
                 : Invalid(path, $"carries {value.Number.Value.ToString(CultureInfo.InvariantCulture)}, and "
                     + $"a {kind} is never negative"),
 
-            FieldValueKind.Reference => Reference(value.Reference!.Value, path),
+            FieldValueKind.Reference => Reference(value.Reference!.Value, path, budget),
 
             FieldValueKind.Ordinal => value.Ordinals!.Value.Length > 0
                 ? null
                 : Invalid(path, "carries an ordinal with no components"),
 
-            FieldValueKind.ExternalIdentifier => External(value.External!.Value, path),
+            FieldValueKind.ExternalIdentifier => External(value.External!.Value, path, budget),
 
-            FieldValueKind.Language => Spoken(value.Language!, path),
+            FieldValueKind.Language => Spoken(value.Language!, path, budget),
 
             FieldValueKind.Quality =>
-                Sized(value.Quality!.Name, ClientContractLimits.MaxIdentifierLength) is { } quality
+                Sized(value.Quality!.Name, ClientContractLimits.MaxIdentifierLength, budget) is { } quality
                     ? Invalid(path, $"carries a quality whose name {quality}")
                     : null,
 
             FieldValueKind.Link => BrowserAddress.DescribeLink(value.Link) is { } link
                 ? new ProjectionDefect(ContractPayloadOutcome.AddressUnsafe, $"'{path}': {link}")
-                : null,
+                : Charge(budget, value.Link!.OriginalString.Length) is { } budgeted
+                    ? Invalid(path, $"carries an address that {budgeted}")
+                    : null,
 
-            FieldValueKind.Artwork => Artwork(value, path),
+            FieldValueKind.Artwork => Artwork(value, path, budget),
 
             _ => null,
         };
 
     /// <summary>Holds an enumerated value to the choices its own field declared.</summary>
     /// <remarks>An unknown value fails; showing it as text puts arbitrary text through a closed field.</remarks>
-    private static ProjectionDefect? Choice(FieldDescriptor field, string? stored, string path)
+    private static ProjectionDefect? Choice(FieldDescriptor field, string? stored, string path, Budget budget)
     {
-        if (Sized(stored, ClientContractLimits.MaxIdentifierLength) is { } sized)
+        if (Sized(stored, ClientContractLimits.MaxIdentifierLength, budget) is { } sized)
         {
             return Invalid(path, $"carries a stored choice that {sized}");
         }
@@ -671,14 +690,14 @@ internal static class ProjectionAudit
     }
 
     /// <summary>Holds an item reference to a triple that can resolve; all three are minted together.</summary>
-    private static ProjectionDefect? Reference(MediaItemRef reference, string path)
+    private static ProjectionDefect? Reference(MediaItemRef reference, string path, Budget budget)
     {
-        if (Sized(reference.Kind.Value, ClientContractLimits.MaxIdentifierLength) is { } kind)
+        if (Sized(reference.Kind.Value, ClientContractLimits.MaxIdentifierLength, budget) is { } kind)
         {
             return Invalid(path, $"carries a reference whose media kind {kind}");
         }
 
-        if (Sized(reference.Level.Value, ClientContractLimits.MaxIdentifierLength) is { } level)
+        if (Sized(reference.Level.Value, ClientContractLimits.MaxIdentifierLength, budget) is { } level)
         {
             return Invalid(path, $"carries a reference whose level {level}");
         }
@@ -690,44 +709,50 @@ internal static class ProjectionAudit
                 + "is positive");
     }
 
-    private static ProjectionDefect? External(ExternalId external, string path)
+    private static ProjectionDefect? External(ExternalId external, string path, Budget budget)
     {
-        if (Sized(external.Scheme, ClientContractLimits.MaxIdentifierLength) is { } scheme)
+        if (Sized(external.Scheme, ClientContractLimits.MaxIdentifierLength, budget) is { } scheme)
         {
             return Invalid(path, $"carries an identifier whose scheme {scheme}");
         }
 
-        return Sized(external.Value, ClientContractLimits.MaxIdentifierLength) is { } stored
+        return Sized(external.Value, ClientContractLimits.MaxIdentifierLength, budget) is { } stored
             ? Invalid(path, $"carries an identifier whose value {stored}")
             : null;
     }
 
-    private static ProjectionDefect? Spoken(Language language, string path)
+    private static ProjectionDefect? Spoken(Language language, string path, Budget budget)
     {
-        if (Sized(language.Code, ClientContractLimits.MaxIdentifierLength) is { } code)
+        if (Sized(language.Code, ClientContractLimits.MaxIdentifierLength, budget) is { } code)
         {
             return Invalid(path, $"carries a language whose code {code}");
         }
 
-        return Sized(language.Name, ClientContractLimits.MaxTextLength) is { } name
+        return Sized(language.Name, ClientContractLimits.MaxTextLength, budget) is { } name
             ? Invalid(path, $"carries a language whose name {name}")
             : null;
     }
 
     /// <summary>Holds artwork to a whole image whose address a browser may load.</summary>
-    private static ProjectionDefect? Artwork(FieldValue value, string path)
+    private static ProjectionDefect? Artwork(FieldValue value, string path, Budget budget)
     {
         var image = value.Image;
 
         if (image is null)
         {
-            // An address alone is the shape a producer holding nothing else uses, held to the same rule.
-            return BrowserAddress.DescribeArtwork(value.Link) is { } bare
-                ? new ProjectionDefect(ContractPayloadOutcome.AddressUnsafe, $"'{path}': {bare}")
+            // An address alone is the shape a producer holding nothing else uses, held to the same rule
+            // and charged the same way: it is text this client renders either way.
+            if (BrowserAddress.DescribeArtwork(value.Link) is { } bare)
+            {
+                return new ProjectionDefect(ContractPayloadOutcome.AddressUnsafe, $"'{path}': {bare}");
+            }
+
+            return Charge(budget, value.Link!.OriginalString.Length) is { } spent
+                ? Invalid(path, $"carries an address that {spent}")
                 : null;
         }
 
-        if (Sized(image.Role, ClientContractLimits.MaxIdentifierLength) is { } role)
+        if (Sized(image.Role, ClientContractLimits.MaxIdentifierLength, budget) is { } role)
         {
             return Invalid(path, $"carries an image whose role {role}");
         }
@@ -735,6 +760,11 @@ internal static class ProjectionAudit
         if (BrowserAddress.DescribeArtwork(image.Address) is { } address)
         {
             return new ProjectionDefect(ContractPayloadOutcome.AddressUnsafe, $"'{path}': {address}");
+        }
+
+        if (Charge(budget, image.Address.OriginalString.Length) is { } budgeted)
+        {
+            return Invalid(path, $"carries an image whose address {budgeted}");
         }
 
         if (Measurement(image.Width) is { } width)
@@ -759,30 +789,56 @@ internal static class ProjectionAudit
 
     /// <summary>Describes text that is missing, blank or too long, or nothing when it is none of those.</summary>
     /// <remarks>A semantic identifier made of spaces names nothing and renders as though it were unlabeled.</remarks>
-    private static string? Sized(string? value, int maximum)
+    private static string? Sized(string? value, int maximum, Budget budget)
         => value switch
         {
             null => "is not stated",
             { Length: 0 } => "is empty",
             _ when value.Length > maximum => $"is {value.Length} characters, past the {maximum} allowed",
             _ when string.IsNullOrWhiteSpace(value) => "is white space",
-            _ => null,
+            _ => Charge(budget, value.Length),
         };
+
+    /// <summary>Charges text against the total one projection may render.</summary>
+    /// <remarks>
+    /// Each string is bounded on its own and a graph may hold thousands of them, so the per-value limits
+    /// multiply out well past what a browser should hold from a payload that is itself capped. The whole
+    /// rendering is charged, so the total cannot be reached by repetition.
+    /// </remarks>
+    private static string? Charge(Budget budget, int length)
+    {
+        if (length > budget.Characters)
+        {
+            return $"is past the {ClientContractLimits.MaxProjectionCharacters} characters one projection "
+                + "may render in total";
+        }
+
+        budget.Characters -= length;
+        return null;
+    }
+
+    /// <summary>What a walk over one projection has left to spend.</summary>
+    private sealed class Budget
+    {
+        internal int Nodes { get; set; } = ClientContractLimits.MaxNodes;
+
+        internal int Characters { get; set; } = ClientContractLimits.MaxProjectionCharacters;
+    }
 
     private static ProjectionDefect Invalid(string path, string what)
         => new(ContractPayloadOutcome.ValueInvariant, $"'{path}' {what}.");
 
-    /// <summary>Charges part of the walk's budget, refusing a shape that asks for more than there is.</summary>
-    private static ProjectionDefect? Spend(ref int remaining, int cost)
+    /// <summary>Charges values against the walk's budget, refusing a shape that asks for more.</summary>
+    private static ProjectionDefect? Spend(Budget budget, int cost)
     {
-        if (cost < 0 || cost > remaining)
+        if (cost < 0 || cost > budget.Nodes)
         {
             return new ProjectionDefect(
                 ContractPayloadOutcome.ValueInvariant,
                 $"This contract's projection describes more than {ClientContractLimits.MaxNodes} values.");
         }
 
-        remaining -= cost;
+        budget.Nodes -= cost;
         return null;
     }
 
