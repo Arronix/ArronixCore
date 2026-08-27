@@ -312,7 +312,8 @@ work does not substitute for closing an earlier dependency.
   remain CLR-visible only where a cross-assembly bridge requires it; they are hidden from completion lists,
   concrete author values implement bridge members explicitly, `CompiledShapes` is generated and hidden from
   ordinary completion lists, and a concrete media type publicly exposes no `Capture`. `ARX1003` reports a missing `partial` modifier at the media
-  declaration. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
+  declaration; `ARX1004` reports an incomplete or duplicated referenced platform contract at that
+  declaration rather than silently disabling generation. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
   repository project reference, and the packed SDK contains only its readme, metapackage marker, and analyzer.
 
 - G07 is split into three numbered sub-gates. G07.1 is complete: a package declares a client facet, the
@@ -343,11 +344,20 @@ work does not substitute for closing an earlier dependency.
   `docs/research/g07/client-contract-lifecycle.md`, which also records what the matrix does not
   distinguish. Independent review accepted the exact pushed candidate after reproducing the first mutation's
   partial-run result and re-running the full .NET 11 rail.
+- G07A is built and retained, pending independent acceptance. The external `northmark.shorts` media package
+  has a client-safe `ShortFilm` domain assembly plus an isolated entry assembly; the separately built
+  `northmark.shorts.catalog` package restores only its published domain package and closes its cataloger
+  over that exact type. The retained proof uses isolated feeds and empty consumer caches, refuses project,
+  source-include and visibility escapes, admits the packages through unmodified Host/API composition, and
+  drives the unchanged Client payload panel in `g07a` mode. It projects the external ShortFilm fixture and
+  its own premiere, lifecycle/status and inline artwork fields. Its 37 checks are independent evidence;
+  they are never added to G07.3's 30 + 43 + 64 = 137 checks. See
+  `docs/research/g07/g07a-external-consumer.md`.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
-it. All three G07 sub-gates are complete. Later gates
+it. All three G07 sub-gates are complete; G07A is the next candidate awaiting independent acceptance. Later gates
 cover compatibility evidence,
 format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
@@ -361,6 +371,10 @@ duplicated checklist drifting from current state.
 - The format-capability loading and versioning lifecycle needs a first-class manifest/package design before independently distributed format packages are promised.
 - `ReleasePolicy<T>.Compile` still exposes builder callback choreography to media authors. Format defaults and media policy fragments must compose without making authors drive an internal compiler mechanism.
 - Movies still declares likely-standard workbenches, browse defaults, and title ordering. Audit them against Television, Music, and Books and derive any behaviour which is not a genuine media difference.
+- A media kind cannot currently be as small as its declaration suggests. `MediaType` supplies empty default
+  matching and query declarations which admission still requires to contain a key layer and tier; the G07A
+  fixture therefore declares trivial matching/query behaviour and corresponding capabilities it does not
+  otherwise need. Classify and derive those standard declarations at G17A rather than special-casing Shorts.
 - `IClosedCataloger` and `IClosedCurator` remain public CLR types because a public closed provider contract
   cannot inherit a less accessible marker. They are `EditorBrowsable(Never)` binding SPI which authors never
   implement directly. Deriving the pairing from the implemented contract still needs one-time type inspection

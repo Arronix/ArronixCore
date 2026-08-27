@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.CodeAnalysis;
 
 namespace Arronix.Generators;
@@ -15,21 +16,24 @@ internal static class CompilationSymbols
     /// <summary>Finds the one referenced declaration of a metadata name, if there is exactly one.</summary>
     internal static INamedTypeSymbol? Referenced(Compilation compilation, string metadataName)
     {
-        INamedTypeSymbol? found = null;
+        var candidates = ReferencedCandidates(compilation, metadataName);
+        return candidates.Count == 1 ? candidates[0] : null;
+    }
+
+    /// <summary>Finds every referenced declaration of a metadata name, in reference order.</summary>
+    /// <remarks>None and several are different answers to a caller that has to explain itself.</remarks>
+    internal static IReadOnlyList<INamedTypeSymbol> ReferencedCandidates(
+        Compilation compilation,
+        string metadataName)
+    {
+        var found = new List<INamedTypeSymbol>();
 
         foreach (var candidate in compilation.GetTypesByMetadataName(metadataName))
         {
-            if (SymbolEqualityComparer.Default.Equals(candidate.ContainingAssembly, compilation.Assembly))
+            if (!SymbolEqualityComparer.Default.Equals(candidate.ContainingAssembly, compilation.Assembly))
             {
-                continue;
+                found.Add(candidate);
             }
-
-            if (found is not null)
-            {
-                return null;
-            }
-
-            found = candidate;
         }
 
         return found;

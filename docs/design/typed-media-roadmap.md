@@ -2,7 +2,7 @@
 
 **Status:** active
 
-**Current gate:** G07 — prove exact typed media loading in Blazor
+**Current gate:** G07A — prove a package-only external consumer early
 
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
@@ -508,7 +508,8 @@ Implement:
   projection-schema hash the server publishes and the browser agrees on;
 - typed deserialization of a Movie graph, and rendering of common plus Movies-owned values including
   artwork, ratings, lifecycle and status, and collections;
-- the serialized fixture G07A later reuses.
+- a generic payload panel that G07A reuses unchanged with an independently authored fixture, rather than
+  reusing a Movie payload.
 
 Exit gate:
 
@@ -567,20 +568,24 @@ Exit gate:
 
 ### G07A — Prove a package-only external consumer early
 
-**Outcome:** package assets, analyzer packaging, generated accessibility, and admission work without a source
-or project-reference escape hatch.
+**Status:** built and retained, pending independent acceptance. The proof is deliberately separate from
+G07.3: its 37 checks are not added to G07.3's 137-check lifecycle identity.
+
+**Outcome:** package assets, analyzer packaging, generated accessibility, admission, and a generic Client
+payload projection work without a source or project-reference escape hatch.
 
 Implement a small consumer outside the Arronix solution using only packed SDK, generator, format, and language
 artifacts. It defines a trivial typed media kind and one typed provider, packages them, installs them into an
-unmodified Host, and loads its client-safe typed contract in the unmodified browser Client using the serialized
-G07 fixture. Provider-result ingestion and durable item rendering remain G19/G28 work.
+unmodified Host, and loads its client-safe typed contract in the unmodified browser Client using that
+consumer's own serialized fixture. Provider-result ingestion and durable item rendering remain G19/G28 work.
 
 Exit gate:
 
 - the consumer has no repository project reference, source include, `InternalsVisibleTo`, Host/Client
   dependency, or manual generated bridge;
 - restore, compile, package, admission, exact type identity, and browser rendering work from a clean package
-  cache, with the browser proof limited to contract loading and fixture projection;
+  cache, with the browser proof projecting the consumer's own item and own fields through the unchanged
+  generic payload panel;
 - normal author-facing diagnostics identify any incomplete declaration;
 - this smoke proof is retained permanently, while G28 later proves a complete independent vertical.
 

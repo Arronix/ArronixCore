@@ -1,5 +1,18 @@
 # Arronix History
 
+## 2026-08-28 — Port G07A after accepted G07.3
+
+The package-only external-consumer candidate was ported onto accepted G07.3 without changing the lifecycle
+browser harness or Client composition. `northmark.shorts` supplies the client-safe `ShortFilm` contract and
+isolated media entry; `northmark.shorts.catalog` is separately restored from the published domain package,
+then admitted as its typed cataloger. The retained proof holds the fixture bytes to the external domain's
+generated serializer, validates package-only boundaries and the private-domain-copy quarantine mutation, and
+uses the shared generic payload panel to render the external premiere, lifecycle/status and inline artwork.
+
+Observed at this port: G07A browser proof 37/37. The unchanged G07.3 proof remains 30 server + 43 G07.2
+browser + 64 lifecycle = 137, separately; it is never reported as 174. G07A remains pending independent
+acceptance.
+
 ## 2026-08-28 — Accept the browser contract lifecycle at its exact candidate
 
 Independent review accepted G07.3 at `4cfc0b92d97036a1524788f39db97efaa00eadc5`. The full .NET 11 rail

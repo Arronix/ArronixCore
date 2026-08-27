@@ -1,0 +1,6 @@
+<!-- Off, and stopping the upward search before it reaches the repository's own version graph. -->
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// G07 browser half — the checks a real browser has to make, driven rather than read by hand.
+// G07 / G07A browser half — the checks a real browser has to make, driven rather than read by hand.
 //
 // The client this drives is the one an ordinary `dotnet publish` produces, served by the real API from one
 // origin. Everything asserted here is read out of the rendered document: the page states its own load
@@ -10,6 +10,13 @@
 //
 //   node eng/proofs/g07-browser-proof.mjs --address http://127.0.0.1:5223 \
 //        --evidence artifacts/g07/evidence --fixture eng/proofs/fixtures/g07/movie.json
+//
+// G07A drives the same generic panel and loader against an independent external installation:
+//
+//   node eng/proofs/g07-browser-proof.mjs --mode g07a --address http://127.0.0.1:5224 \
+//        --evidence artifacts/g07a/evidence --fixture eng/proofs/fixtures/g07a/shortfilm.json \
+//        --fixture-address fixtures/g07a/shortfilm.json --package northmark.shorts \
+//        --entity-type Northmark.Shorts.ShortFilm
 //
 // Needs Playwright's Chromium. This repository's hermetic rail carries no browser toolchain, so this is
 // run beside it rather than inside it, and its output is written to the evidence directory as JSON.
@@ -22,9 +29,17 @@ import {
 } from './g07-browser-support.mjs';
 
 const options = parse(process.argv.slice(2));
+const mode = options.mode ?? 'g07';
 const address = options.address ?? 'http://127.0.0.1:5223';
 const evidence = options.evidence ?? 'artifacts/g07/evidence';
 const fixturePath = options.fixture ?? 'eng/proofs/fixtures/g07/movie.json';
+const fixtureAddress = options['fixture-address'] ?? `fixtures/${fixturePath.split('/').slice(-2).join('/')}`;
+const packageId = options.package ?? 'movies';
+const entityType = options['entity-type'] ?? 'Arronix.Media.Movies.Movie';
+
+if (mode !== 'g07' && mode !== 'g07a') {
+    throw new Error(`Unknown mode '${mode}'. Expected 'g07' or 'g07a'.`);
+}
 
 const { chromium } = await openPlaywright();
 
@@ -70,12 +85,12 @@ try {
         assemblies.every(entry => entry.outcome === 2 || entry.outcome === 3),
         true);
     check(
-        'the movies contract was fetched over the network',
-        requested().some(url => url.includes('/api/v1/client-contracts/movies/')),
+        `the ${packageId} contract was fetched over the network`,
+        requested().some(url => url.includes(`/api/v1/client-contracts/${packageId}/`)),
         true);
     check(
         'the client build carries no media assembly of its own',
-        requested().some(url => /_framework\/Arronix\.(Media|Format|Plugin)\./.test(url)),
+        requested().some(url => /_framework\/(Arronix\.(Media|Format|Plugin)|Northmark)\./.test(url)),
         false);
 
     // --- G07.2: one serialized entity, read through the contract that was admitted ---
@@ -83,12 +98,12 @@ try {
     // a default would be one installation's fixture compiled into every deployment. The proof supplies it.
     check('the client carries no payload address of its own', await value(page, '#contract-payload'), '');
 
-    await page.fill('#contract-payload', 'fixtures/g07/movie.json');
+    await page.fill('#contract-payload', fixtureAddress);
 
     // The response the browser actually handed the contract, captured around the click. Fetching the file
     // again from Node would hash a second request, which says nothing about what this page read.
     const payloadResponse = page.waitForResponse(
-        response => response.url().endsWith('/fixtures/g07/movie.json'),
+        response => response.url().endsWith(`/${fixtureAddress}`),
         { timeout: 60_000 });
 
     await page.click('#project-contract-payload');
@@ -101,9 +116,9 @@ try {
     check(
         'it was read into the contract\'s own entity type',
         await text(page, '#projected-entity-type'),
-        'Arronix.Media.Movies.Movie');
+        entityType);
 
-    const payloadRequest = requested().find(url => url.endsWith('/fixtures/g07/movie.json'));
+    const payloadRequest = requested().find(url => url.endsWith(`/${fixtureAddress}`));
     check('the payload arrived as a serialized network payload', Boolean(payloadRequest), true);
 
     const served = await payloadResponse;
@@ -117,12 +132,54 @@ try {
     check('the payload length the page reports is the fixture', proof.payloadLength, fixture.length);
     check('the projection carries every declared field', proof.fieldCount, proof.fields.length);
 
-    // --- the five values the gate names, read from the document rather than from the proof ---
-    for (const fieldId of ['artwork', 'ratings', 'lifecycle', 'status', 'collections']) {
-        const field = page.locator(`[data-field-id="${fieldId}"]`);
-        check(`the document carries one '${fieldId}' field`, await field.count(), 1);
-        check(`'${fieldId}' is present`, await field.getAttribute('data-absent'), 'false');
-    }
+    if (mode === 'g07a') {
+        // The external domain's own fields, rendered by the unchanged generic panel.
+        for (const fieldId of ['artwork', 'premiere', 'lifecycle', 'status']) {
+            const field = page.locator(`[data-field-id="${fieldId}"]`);
+            check(`the document carries one '${fieldId}' field`, await field.count(), 1);
+            check(`'${fieldId}' is present`, await field.getAttribute('data-absent'), 'false');
+        }
+
+        const premiered = page.locator('[data-field-id="lifecycle"] [data-component-id="premiered"]');
+        check('the lifecycle composite carries its own premiered part', await premiered.count(), 1);
+        check('the premiered date is rendered, not absent', (await text(page, '[data-field-id="lifecycle"] [data-component-id="premiered"]')).length > 0, true);
+        check('status renders the stage the premiere date puts this film in', (await text(page, '[data-field-id="status"]')).toLowerCase().includes('festival'), true);
+
+        const premiereLabels = await page.locator('[data-field-id="premiere"] [data-component-id]').evaluateAll(
+            parts => parts.map(part => part.dataset.componentId));
+        check(
+            'the premiere composite\'s own parts are drawn under their own components',
+            ['festival', 'edition'].filter(id => !premiereLabels.includes(id)),
+            []);
+
+        const premiere = await text(page, '[data-field-id="premiere"]');
+        check('the premiere carries the festival this fixture named', premiere.includes('Sundance'), true);
+        check('and the edition year it named', premiere.replace(/\D/g, '').includes('2024'), true);
+
+        const poster = page.locator('[data-field-id="artwork"] img').first();
+        check('the poster is rendered as an image', await poster.count(), 1);
+        check('the poster keeps its role', await poster.getAttribute('data-artwork-role'), 'poster');
+        check('the poster is inline, so this proof fetches no image', (await poster.getAttribute('src')).startsWith('data:image/png;base64,'), true);
+
+        await poster.scrollIntoViewIfNeeded();
+        const decoded = await poster.evaluate(
+            (image, budget) => image.complete && image.naturalWidth > 0
+                ? true
+                : new Promise(resolve => {
+                    const settle = () => resolve(image.complete && image.naturalWidth > 0);
+                    image.addEventListener('load', settle, { once: true });
+                    image.addEventListener('error', () => resolve(false), { once: true });
+                    setTimeout(() => resolve(false), budget);
+                }),
+            15_000);
+        check('the poster decoded as a real image', decoded, true);
+    } else {
+        // --- the five values the gate names, read from the document rather than from the proof ---
+        for (const fieldId of ['artwork', 'ratings', 'lifecycle', 'status', 'collections']) {
+            const field = page.locator(`[data-field-id="${fieldId}"]`);
+            check(`the document carries one '${fieldId}' field`, await field.count(), 1);
+            check(`'${fieldId}' is present`, await field.getAttribute('data-absent'), 'false');
+        }
 
     check('status renders its declared choice', (await text(page, '[data-field-id="status"]')).includes('Released'), true);
     check('ratings carries both ratings', await page.locator('[data-field-id="ratings"]').getAttribute('data-item-count'), '2');
@@ -182,12 +239,13 @@ try {
         'each part carries its component\'s declared name, separated from its value',
         ratings.includes('Voice: Audience') && ratings.includes('Source: tmdb'),
         true);
-    check('and no label runs into the value beside it', /[A-Za-z]:[^\s]/.test(ratings), false);
+        check('and no label runs into the value beside it', /[A-Za-z]:[^\s]/.test(ratings), false);
+    }
 
     check('nothing threw in the page', consoleErrors(), []);
 
     // --- a payload this host does not serve fails visibly, with nothing projected ---
-    await page.fill('#contract-payload', 'fixtures/g07/absent.json');
+    await page.fill('#contract-payload', fixtureAddress.replace(/[^/]+$/, 'absent.json'));
     await page.click('#project-contract-payload');
     await page.waitForFunction(
         () => document.querySelector('#projection-status')?.textContent?.trim() !== 'Projected',
@@ -235,7 +293,11 @@ try {
     // Last, so it records the teardown as well as the run.
     try {
         evidencePath = writeEvidence(evidence, 'browser-half.json', {
+            mode,
             address,
+            packageId,
+            entityType,
+            fixtureAddress,
             fixtureHash,
             results,
             requested: requested(),

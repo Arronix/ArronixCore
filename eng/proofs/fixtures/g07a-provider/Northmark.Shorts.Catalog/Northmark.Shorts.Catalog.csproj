@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Northmark.Shorts.Catalog</RootNamespace>
+    <AssemblyName>Northmark.Shorts.Catalog</AssemblyName>
+    <Version>1.0.0</Version>
+    <Description>A separately built catalog package for the Northmark short-film kind.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Arronix.Abstractions" Version="0.9.0" />
+    <!--
+         Compile only. The domain assembly is published by the package this one depends on, and a copy
+         here would be a second CLR identity for the exact type the pairing is about.
+    -->
+    <PackageReference Include="Northmark.Shorts.Domain" Version="1.0.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
