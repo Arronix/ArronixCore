@@ -1,5 +1,53 @@
 # Arronix History
 
+## 2026-08-27 — Publish by deciding, and name an operation for what it acts on
+
+Three corrections to the transaction that landed in `6d701b05f`.
+
+- **A guard that had already advanced did not stop the caller it had advanced for.** `ContractView` asked
+  `NewestWins` for the right to commit and assigned the snapshot on the next line — two atomics with an
+  ordinary preemption window between them, not an await. An older transaction could take the right at
+  sequence two, be preempted, be overtaken by a newer one at three that published and announced, and then
+  resume and assign two over it: a page showing an installation it had already stopped showing, with the
+  sequence guard reading three and permitting nothing to correct it. Deciding and publishing are now one
+  compare-and-swap inside the holder, which returns the commit it published. The view has no snapshot field
+  to assign — it reads what stands — so the split is not merely untested but unrepresentable. An
+  announcement's refusals attach to the commit that raised them, matched by identity, or to nothing.
+- **A rule that reads text was holding names that text cannot tell apart, and only where it looked.** The
+  lifecycle rule scanned for `.ReadAsync(`, `.WriteAsync(`, `.ClearAsync(` and their kind, which an HTTP
+  stream, a cache or a component loading its own data all carry — G07.2's payload loader reads an HTTP body,
+  and the rule would have refused it the day that branch merged. It also required an open parenthesis, so
+  handing `Store.ClearContractsAsync` on as a method group walked past it. The store's operations are named
+  for what they act on now, the scan matches the member rather than the call, and both boundaries of a name
+  are checked. A second rule holds the vocabulary itself against the generic names.
+- **Two alternate doors were still open.** Nothing stopped a component injecting the loader and rendering
+  its live `Report` beside a committed snapshot — one moment's installation next to another's stored keys —
+  or an ordinary consumer reaching the transaction directly and changing what this page holds with nothing
+  committing the result. Markup and its code-behind may not name the loader; the transaction is reached only
+  from the view that shows what it produced, its own definition and the composition root. Ordinary code may
+  still hold the loader to read back what an admitted contract declares, which is what typed projection
+  needs and is not presentation state.
+
+Eleven cases beyond the ones already standing: what stands cannot regress when an older transaction resumes
+last, and everything left to that transaction is refused; every overtaken transaction is refused, not only
+the one before last; refusals attach to the commit that raised them and leave its installation exactly where
+it was; a transaction overtaken while announcing publishes nothing over the one that overtook it; the
+lifecycle rule's matcher permits an ordinary `ReadAsync` and a declaration while refusing a contract read, a
+method group and a `nameof`; its type matcher refuses `ContractReloader` and permits `NotAContractReloader`,
+`ContractReloaderFactory` and `ContractReloadResult`; and a component's markup and its code-behind are both
+what the markup rule reads. Two standing witnesses gained a barrier rather than a start: a second
+transaction is now observed to have entered the reloader and read nothing, which is the lease holding,
+because an async method runs synchronously until its first incomplete await.
+
+Mutation: thirty-two in the standing set, each failing a named test, and two run out of band — the compiling
+split that restores acceptance and publication as separate atomics, and a code-behind file reaching the
+loader. Removing either lease now fails its witness on five consecutive runs rather than passing on
+scheduling luck.
+
+G07.3 is still open, and `docs/design/typed-media-roadmap.md` now says so accurately rather than "not
+started": the hermetic core is implemented and proved in the rail, and update, removal, stale cache and
+stale tab have not been exercised in a real browser.
+
 ## 2026-08-27 — One transaction, one record, one moment
 
 The lifecycle core had one ordering authority for load and sweep, and everything around it was still free to

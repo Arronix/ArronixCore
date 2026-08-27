@@ -66,7 +66,7 @@ internal sealed class ContractLifecycleTests
         using var http = host.Connect();
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
-        (await loader.LoadAsync()).CanProject.Should().BeTrue("both packages verify and load");
+        (await loader.LoadInstallationAsync()).CanProject.Should().BeTrue("both packages verify and load");
 
         var declarations = loader.ContractsOf(domain);
         declarations.Should().ContainSingle();
@@ -76,7 +76,7 @@ internal sealed class ContractLifecycleTests
             "2222222222222222222222222222222222222222222222222222222222222222",
             Package(Shared, "Shared", "2.4.0", sharedPayload.Published)));
 
-        var withdrawn = await loader.LoadAsync();
+        var withdrawn = await loader.LoadInstallationAsync();
 
         using (new AssertionScope())
         {
@@ -107,7 +107,7 @@ internal sealed class ContractLifecycleTests
         // It comes back, byte for byte what this page already verified.
         host.Publishes(both);
         var before = host.ByteRequests;
-        var reunited = await loader.LoadAsync();
+        var reunited = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -150,10 +150,10 @@ internal sealed class ContractLifecycleTests
         using var http = host.Connect();
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
-        (await loader.LoadAsync()).CanProject.Should().BeTrue();
+        (await loader.LoadInstallationAsync()).CanProject.Should().BeTrue();
 
         host.Publishes(Manifest("4444444444444444444444444444444444444444444444444444444444444444"));
-        (await loader.LoadAsync()).Orphaned.Should().ContainSingle("the package left this installation");
+        (await loader.LoadInstallationAsync()).Orphaned.Should().ContainSingle("the package left this installation");
 
         // It returns as a different build under the same simple name.
         host.Publishes(Manifest(
@@ -168,7 +168,7 @@ internal sealed class ContractLifecycleTests
                     ModuleVersionId = Guid.Parse("99999999-8888-7777-6666-555555555555"),
                 })));
 
-        var replaced = await loader.LoadAsync();
+        var replaced = await loader.LoadInstallationAsync();
 
         using (new AssertionScope())
         {
@@ -182,7 +182,7 @@ internal sealed class ContractLifecycleTests
 
         // And it stays terminal when the host goes back to what this page holds.
         host.Publishes(offered);
-        (await loader.LoadAsync()).Compatibility.Should().Be(
+        (await loader.LoadInstallationAsync()).Compatibility.Should().Be(
             ContractCompatibility.Terminal,
             "a page that can never satisfy an installation does not recover because the host relented");
     }
@@ -210,7 +210,7 @@ internal sealed class ContractLifecycleTests
         using var http = host.Connect();
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
-        (await loader.LoadAsync()).CanProject.Should().BeTrue();
+        (await loader.LoadInstallationAsync()).CanProject.Should().BeTrue();
 
         var refusal = new ClientContractRefusal(
             Domain,
@@ -224,7 +224,7 @@ internal sealed class ContractLifecycleTests
             Refused = [refusal],
         });
 
-        var withheld = (await loader.LoadAsync()).Orphaned.Should().ContainSingle().Subject;
+        var withheld = (await loader.LoadInstallationAsync()).Orphaned.Should().ContainSingle().Subject;
 
         using (new AssertionScope())
         {
@@ -242,7 +242,7 @@ internal sealed class ContractLifecycleTests
             "8888888888888888888888888888888888888888888888888888888888888888",
             Package(Domain, "Domain", "1.2.0", successor.Published)));
 
-        var dropped = (await loader.LoadAsync()).Orphaned.Should().ContainSingle().Subject;
+        var dropped = (await loader.LoadInstallationAsync()).Orphaned.Should().ContainSingle().Subject;
 
         using var assertions = new AssertionScope();
 
@@ -275,10 +275,10 @@ internal sealed class ContractLifecycleTests
         using var http = host.Connect();
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
-        (await loader.LoadAsync()).CanProject.Should().BeTrue();
+        (await loader.LoadInstallationAsync()).CanProject.Should().BeTrue();
         host.ByteRequests.Should().Be(1, "the first pass fetched the payload");
 
-        var again = await loader.LoadAsync();
+        var again = await loader.LoadInstallationAsync();
 
         using (new AssertionScope())
         {
@@ -310,7 +310,7 @@ internal sealed class ContractLifecycleTests
                     ],
                 })));
 
-        var restated = await loader.LoadAsync();
+        var restated = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -347,7 +347,7 @@ internal sealed class ContractLifecycleTests
         using var http = host.Connect();
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
-        var compatible = await loader.LoadAsync();
+        var compatible = await loader.LoadInstallationAsync();
         compatible.CanProject.Should().BeTrue();
 
         // The host drops the package this page holds and offers a different one, so this pass both orphans
@@ -364,7 +364,7 @@ internal sealed class ContractLifecycleTests
         };
 
         await FluentActions
-            .Awaiting(() => loader.LoadAsync(abandoned.Token))
+            .Awaiting(() => loader.LoadInstallationAsync(abandoned.Token))
             .Should().ThrowAsync<OperationCanceledException>();
 
         host.BeforeBytes = null;
@@ -378,7 +378,7 @@ internal sealed class ContractLifecycleTests
         }
 
         // The same manifest, read through. Now the bookkeeping moves, together with the report.
-        var withdrawn = await loader.LoadAsync();
+        var withdrawn = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 

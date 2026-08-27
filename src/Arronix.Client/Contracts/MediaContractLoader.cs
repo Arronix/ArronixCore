@@ -158,7 +158,8 @@ internal sealed class MediaContractLoader
     /// Reading is all this does. Telling anyone belongs to the transaction that also sheds the bytes the
     /// installation no longer names, because a signal raised here would describe a page mid-sweep.
     /// </remarks>
-    internal async Task<ContractLoadReport> LoadAsync(CancellationToken cancellationToken = default)
+    internal async Task<ContractLoadReport> LoadInstallationAsync(
+        CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -389,7 +390,7 @@ internal sealed class MediaContractLoader
 
             if (entry.Source == ContractByteSource.Network)
             {
-                await _store.WriteAsync(published.ContentHash, content).ConfigureAwait(false);
+                await _store.WriteContractAsync(published.ContentHash, content).ConfigureAwait(false);
             }
         }
 
@@ -445,7 +446,7 @@ internal sealed class MediaContractLoader
 
         try
         {
-            var held = await _store.ReadAsync(published.ContentHash).ConfigureAwait(false);
+            var held = await _store.ReadContractAsync(published.ContentHash).ConfigureAwait(false);
 
             if (held is not null)
             {
@@ -622,7 +623,7 @@ internal sealed class MediaContractLoader
     {
         if (source == ContractByteSource.Store)
         {
-            await _store.RemoveAsync(published.ContentHash).ConfigureAwait(false);
+            await _store.RemoveContractAsync(published.ContentHash).ConfigureAwait(false);
         }
     }
 

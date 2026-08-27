@@ -34,10 +34,12 @@ internal sealed class ContractReloaderTests
 
     /// <summary>Two transactions cannot overlap, so no older sweep lands last.</summary>
     /// <remarks>
-    /// The first sweep is held at its listing while a second transaction is started. Serialized, the second
-    /// cannot even read until the first has finished, and the store ends holding exactly what the newest
-    /// installation names. Unserialized, the second load writes its bytes while the first sweep is still
-    /// holding the older installation's live set, and resuming it discards them.
+    /// The first sweep is held at its listing while a second transaction is started, and the second is not
+    /// merely started but observed to have entered: an async method runs synchronously until its first
+    /// incomplete await, so a lease that admitted it would already have read this host by the time the call
+    /// returned its task. Reading nothing is what proves it was held. Unserialized, that read fetches and
+    /// writes bytes the first sweep is still holding an older live set against, and resuming it discards
+    /// them.
     /// </remarks>
     [Test]
     public async Task TwoTransactionsCannotOverlap()
@@ -65,7 +67,13 @@ internal sealed class ContractReloaderTests
 
         // The host moves on, and a second transaction is asked for while that sweep is still held.
         host.Publishes(Manifest("2222222222222222222222222222222222222222222222222222222222222222", Second, newer));
-        var second = Task.Run(() => reloader.ReloadAsync());
+        var second = Entered(() => reloader.ReloadAsync(), out var entered);
+        await entered.WaitAsync(TimeSpan.FromSeconds(5));
+
+        host.ManifestReads.Should().Be(
+            1,
+            "the second transaction has entered the reloader and read nothing, which is the lease holding; "
+            + "one that admitted it would have let it fetch and write bytes this sweep is about to evict");
 
         release.SetResult();
 
@@ -124,8 +132,9 @@ internal sealed class ContractReloaderTests
     /// <summary>Discarding the stored bytes shares the lease a reload runs under.</summary>
     /// <remarks>
     /// Emptying the store beside a read would let a sweep evict from a store a discard had already emptied,
-    /// or let a transaction seal keys another one is in the middle of removing. Held at its listing, a
-    /// discard cannot begin, and it seals the same installation without reading one.
+    /// or let a transaction seal keys another one is in the middle of removing. Observed to have entered
+    /// rather than merely started, for the reason <see cref="TwoTransactionsCannotOverlap"/> gives, and it
+    /// seals the same installation without reading one.
     /// </remarks>
     [Test]
     public async Task ADiscardWaitsForTheTransactionInFront()
@@ -144,11 +153,13 @@ internal sealed class ContractReloaderTests
         var reload = Task.Run(() => reloader.ReloadAsync());
         await sweeping.WaitAsync(TimeSpan.FromSeconds(5));
 
-        var discard = Task.Run(() => reloader.DiscardStoredBytesAsync());
+        var discard = Entered(() => reloader.DiscardStoredBytesAsync(), out var entered);
+        await entered.WaitAsync(TimeSpan.FromSeconds(5));
 
         browser.Keys.Should().Equal(
             new[] { payload.Published.ContentHash },
-            "the discard cannot empty a store the transaction in front is still sweeping");
+            "the discard has entered the reloader and emptied nothing, which is the lease holding; one "
+            + "that admitted it would have cleared this store before its call returned");
 
         release.SetResult();
 
@@ -188,6 +199,30 @@ internal sealed class ContractReloaderTests
 
         await reload.Should().ThrowAsync<OutOfMemoryException>()
             .WithMessage("this browser ran out of memory");
+    }
+
+    /// <summary>Starts a transaction and reports when the call itself has returned.</summary>
+    /// <param name="start">The transaction to start.</param>
+    /// <param name="entered">Completed once <paramref name="start"/> has returned its task.</param>
+    /// <returns>The transaction.</returns>
+    /// <remarks>
+    /// An async method runs synchronously until its first incomplete await, so a transaction that got past
+    /// the lease has already done everything up to that point by the time its call returns. That makes "it
+    /// entered and did nothing" an observation rather than a wait.
+    /// </remarks>
+    private static Task<ContractReloadResult> Entered(
+        Func<Task<ContractReloadResult>> start,
+        out Task entered)
+    {
+        var reached = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        entered = reached.Task;
+
+        return Task.Run(() =>
+        {
+            var running = start();
+            reached.SetResult();
+            return running;
+        });
     }
 
     private static ContractReloader Reloader(HttpClient http, InMemoryContractStore browser)

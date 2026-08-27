@@ -53,7 +53,7 @@ internal sealed class ContractStore : IAsyncDisposable
     /// </summary>
     /// <param name="contentHash">The content hash naming the bytes.</param>
     /// <returns>The bytes, or <see langword="null"/> when this browser is not holding them.</returns>
-    public async Task<byte[]?> ReadAsync(string contentHash)
+    public async Task<byte[]?> ReadContractAsync(string contentHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
 
@@ -80,7 +80,7 @@ internal sealed class ContractStore : IAsyncDisposable
     /// <param name="contentHash">The content hash naming the bytes.</param>
     /// <param name="content">The bytes.</param>
     /// <returns>Whether they were held.</returns>
-    public async Task<bool> WriteAsync(string contentHash, byte[] content)
+    public async Task<bool> WriteContractAsync(string contentHash, byte[] content)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
         ArgumentNullException.ThrowIfNull(content);
@@ -105,7 +105,7 @@ internal sealed class ContractStore : IAsyncDisposable
     /// Lists the content hashes this browser is currently holding.
     /// </summary>
     /// <returns>The held hashes, in no particular order.</returns>
-    public async Task<IReadOnlyList<string>> KeysAsync()
+    public async Task<IReadOnlyList<string>> ListContractHashesAsync()
     {
         var module = await OpenAsync();
         if (module is null)
@@ -128,7 +128,7 @@ internal sealed class ContractStore : IAsyncDisposable
     /// </summary>
     /// <param name="contentHash">The content hash naming the bytes.</param>
     /// <returns>Whether anything was discarded.</returns>
-    public async Task<bool> RemoveAsync(string contentHash)
+    public async Task<bool> RemoveContractAsync(string contentHash)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(contentHash);
 
@@ -152,7 +152,7 @@ internal sealed class ContractStore : IAsyncDisposable
     /// Discards everything this browser is holding, which is what a clean start means.
     /// </summary>
     /// <returns>Whether the store was discarded.</returns>
-    public async Task<bool> ClearAsync()
+    public async Task<bool> ClearContractsAsync()
     {
         var module = await OpenAsync();
         if (module is null)

@@ -387,7 +387,7 @@ public sealed class MediaContractLoaderTests
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
         stall = true;
-        var timedOut = await loader.LoadAsync();
+        var timedOut = await loader.LoadInstallationAsync();
 
         using (new AssertionScope())
         {
@@ -406,7 +406,7 @@ public sealed class MediaContractLoaderTests
         using var assertions = new AssertionScope();
 
         await FluentActions
-            .Awaiting(() => loader.LoadAsync(abandoned.Token))
+            .Awaiting(() => loader.LoadInstallationAsync(abandoned.Token))
             .Should().ThrowAsync<OperationCanceledException>();
 
         loader.Report.Should().BeSameAs(
@@ -422,7 +422,7 @@ public sealed class MediaContractLoaderTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://host.invalid/") };
 
         _loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
-        return await _loader.LoadAsync();
+        return await _loader.LoadInstallationAsync();
     }
 
     /// <summary>The description that is true of the staged fixture in every respect.</summary>

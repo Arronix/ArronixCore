@@ -517,7 +517,15 @@ Exit gate:
 
 #### G07.3 — Contract cache lifecycle in the browser
 
-**Status:** not started.
+**Status:** in progress. The hermetic lifecycle core is implemented and proved in the test rail: orphaning
+with its refusal and its attribution, exact reunion without a fetch, terminal replacement, the `410`/`404`/
+transport separation, selective store eviction with the unreadable-manifest refusal, the unchanged-
+installation early-out, and the `PluginStateChanged`-driven re-read. Reading an installation, shedding the
+bytes it no longer names and emptying the store are one serialized transaction with no second door, held
+there by an architecture rule; each transaction is numbered under its lease and seals its report, its
+post-sweep keys and every failure it contained as one value, and what a view shows moves only forward. None
+of that is browser evidence. The exit gate below is unchanged and entirely outstanding: update, removal,
+stale cache and stale tab have not been exercised in a real browser, so this gate is open.
 
 **Outcome:** installing, updating, and removing a package, and holding a tab open across those changes, all
 behave predictably in the browser and fail visibly rather than projecting partial data.

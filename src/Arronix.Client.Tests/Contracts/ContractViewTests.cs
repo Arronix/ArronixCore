@@ -101,14 +101,16 @@ internal sealed class ContractViewTests
             "these are refusals of the announcement, not of anything the transaction itself did");
     }
 
-    /// <summary>A refusal cannot land on the snapshot that overtook the transaction it came from.</summary>
+    /// <summary>A transaction overtaken while announcing publishes nothing over the one that overtook it.</summary>
     /// <remarks>
     /// Telling subscribers is where a newer transaction can commit, because a subscriber is free to start
-    /// one. A refusal recorded after that without asking again would report an older transaction's failure
-    /// over the newer one's.
+    /// one. This is the interleaving that separate atomics lose: a transaction that took a right to commit,
+    /// then paused, would publish over the newer one that ran while it waited, and a guard that had already
+    /// advanced would not stop it. Deciding and publishing are one compare-and-swap, so what stands can only
+    /// move forward, and refusals reach the commit that raised them or nothing.
     /// </remarks>
     [Test]
-    public async Task ARefusalCannotLandOnTheSnapshotThatOvertookIt()
+    public async Task ATransactionOvertakenWhileAnnouncingPublishesNothingOverIt()
     {
         var view = new ContractView(Reloader(new InMemoryContractStore()));
 
@@ -134,7 +136,11 @@ internal sealed class ContractViewTests
 
         using var assertions = new AssertionScope();
 
-        view.Snapshot.Sequence.Should().Be(2, "the newer transaction committed from inside the older one");
+        view.Snapshot.Sequence.Should().Be(
+            2,
+            "the older transaction resumed after the newer one committed, and what a view shows never "
+            + "goes backwards");
+
         view.Refused.Should().ContainSingle()
             .Which.Message.Should().Be(
                 "refusal 1",

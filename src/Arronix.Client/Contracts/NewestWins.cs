@@ -1,38 +1,65 @@
 namespace Arronix.Client.Contracts;
 
-/// <summary>Lets only the newest of several completed transactions commit what it produced.</summary>
+/// <summary>A committed transaction, and what refused the signal that announced it.</summary>
+/// <param name="Result">What that transaction sealed.</param>
+/// <param name="Refused">Every subscriber that refused its announcement, in the order they were told.</param>
+internal sealed record ContractCommit(
+    ContractReloadResult Result,
+    IReadOnlyList<ContractFailure> Refused)
+{
+    /// <summary>Gets what stands before any transaction has committed.</summary>
+    internal static ContractCommit None { get; } = new(ContractReloadResult.None, []);
+}
+
+/// <summary>Holds the newest committed transaction, and only ever moves forward.</summary>
 /// <remarks>
 /// Transactions are numbered under the lease that runs them, but their callers resume in whatever order the
-/// scheduler chooses, so an older result can arrive last. Numbering by completion is what makes "newest"
-/// mean the newest installation rather than the newest await.
+/// scheduler chooses, so an older result can arrive last. Deciding and publishing are one compare-and-swap
+/// here rather than two steps in a caller: an older result that wins a separate right-to-commit and is then
+/// paused would publish over the newer one that ran while it waited, and a guard that had already advanced
+/// would not stop it.
 /// </remarks>
 internal sealed class NewestWins
 {
-    private long _committed;
+    private ContractCommit _commit = ContractCommit.None;
 
-    /// <summary>Takes the right to commit a numbered result, if nothing newer already has.</summary>
-    /// <param name="sequence">The transaction's number.</param>
-    /// <returns><see langword="false"/> for a result a newer one has already overtaken.</returns>
-    public bool Accepts(long sequence)
+    /// <summary>Gets what stands now.</summary>
+    public ContractCommit Current => Volatile.Read(ref _commit);
+
+    /// <summary>Publishes a result, unless one at least as new already stands.</summary>
+    /// <param name="result">The sealed transaction to publish.</param>
+    /// <returns>The commit published, or <see langword="null"/> when it was overtaken.</returns>
+    /// <remarks>Deciding and publishing are the same step, so there is no moment between them.</remarks>
+    public ContractCommit? Publish(ContractReloadResult result)
     {
+        var candidate = new ContractCommit(result, []);
+
         while (true)
         {
-            var committed = Volatile.Read(ref _committed);
+            var current = Volatile.Read(ref _commit);
 
-            if (sequence <= committed)
+            if (result.Sequence <= current.Result.Sequence)
             {
-                return false;
+                return null;
             }
 
-            if (Interlocked.CompareExchange(ref _committed, sequence, committed) == committed)
+            if (ReferenceEquals(Interlocked.CompareExchange(ref _commit, candidate, current), current))
             {
-                return true;
+                return candidate;
             }
         }
     }
 
-    /// <summary>Determines whether a committed result is still the newest one committed.</summary>
-    /// <param name="sequence">The transaction's number.</param>
-    /// <returns><see langword="false"/> once a newer result has committed over it.</returns>
-    public bool IsNewest(long sequence) => sequence == Volatile.Read(ref _committed);
+    /// <summary>Attaches an announcement's refusals to the commit that raised it.</summary>
+    /// <param name="published">The commit whose announcement they came from.</param>
+    /// <param name="refused">What refused it.</param>
+    /// <returns><see langword="false"/> once a newer commit stands, so nothing was attached.</returns>
+    /// <remarks>
+    /// Matched by identity, not by number: a refusal belongs to the announcement it came from, and the
+    /// installation this leaves standing is the same object either way.
+    /// </remarks>
+    public bool Attach(ContractCommit published, IReadOnlyList<ContractFailure> refused)
+        => ReferenceEquals(
+            Interlocked.CompareExchange(ref _commit, published with { Refused = refused }, published),
+            published);
 }

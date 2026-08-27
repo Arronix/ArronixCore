@@ -49,7 +49,7 @@ internal sealed class ContractReloader
 
             try
             {
-                read = await _contracts.LoadAsync(cancellationToken).ConfigureAwait(false);
+                read = await _contracts.LoadInstallationAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -65,7 +65,7 @@ internal sealed class ContractReloader
                 // This read's own installation, so no sweep is ever computed from an older one. Bytes only.
                 if (read is { } proved)
                 {
-                    await _janitor.SweepAsync(proved).ConfigureAwait(false);
+                    await _janitor.SweepStoreAsync(proved).ConfigureAwait(false);
                 }
             }
             catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
@@ -97,7 +97,7 @@ internal sealed class ContractReloader
 
         try
         {
-            await _store.ClearAsync().ConfigureAwait(false);
+            await _store.ClearContractsAsync().ConfigureAwait(false);
             return await SealAsync(_contracts.Report, []).ConfigureAwait(false);
         }
         finally
@@ -115,7 +115,7 @@ internal sealed class ContractReloader
         ContractLoadReport? report,
         IReadOnlyList<ContractFailure> failures)
     {
-        var keys = await _store.KeysAsync().ConfigureAwait(false);
+        var keys = await _store.ListContractHashesAsync().ConfigureAwait(false);
 
         return new ContractReloadResult(Interlocked.Increment(ref _sequence), report, keys, failures);
     }

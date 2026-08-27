@@ -65,7 +65,7 @@ internal sealed class ContractDeclarationProofTests
         const string name = "Fixture.Client.Verified";
         var loader = Loader(name, Misbehaviour.None, out _);
 
-        var first = await loader.LoadAsync();
+        var first = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -79,7 +79,7 @@ internal sealed class ContractDeclarationProofTests
             loader.Find(name),
             "the entity comes from the assembly that declared it");
 
-        var second = await loader.LoadAsync();
+        var second = await loader.LoadInstallationAsync();
         second.Packages.Single().Assemblies.Single().Outcome.Should().Be(ContractLoadOutcome.AlreadyLoaded);
         loader.ContractsOf(name).Single().Should().BeSameAs(
             contracts[0],
@@ -99,7 +99,7 @@ internal sealed class ContractDeclarationProofTests
         const string name = "Fixture.Client.EmptySchema";
         var loader = Loader(name, Misbehaviour.EmptySchema, out _);
 
-        var report = await loader.LoadAsync();
+        var report = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -115,7 +115,7 @@ internal sealed class ContractDeclarationProofTests
         const string name = "Fixture.Client.Withheld";
         var loader = Loader(name, Misbehaviour.ThrowingSchema, out _);
 
-        var report = await loader.LoadAsync();
+        var report = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
         report.CanProject.Should().BeFalse();
@@ -131,7 +131,7 @@ internal sealed class ContractDeclarationProofTests
     private static async Task<ContractLoadReport> LoadAsync(string name, Misbehaviour misbehaviour)
     {
         var loader = Loader(name, misbehaviour, out _);
-        return await loader.LoadAsync();
+        return await loader.LoadInstallationAsync();
     }
 
     private static MediaContractLoader Loader(string name, Misbehaviour misbehaviour, out byte[] image)

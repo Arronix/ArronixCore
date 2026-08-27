@@ -36,7 +36,7 @@ internal sealed class ContractStoreJanitor
     /// so its empty package list is ignorance rather than an empty installation and the sweep is refused. A
     /// host that genuinely offers nothing still states a hash, and sweeping to empty is then correct.
     /// </remarks>
-    public async Task<ContractStoreSweep> SweepAsync(ContractLoadReport report)
+    public async Task<ContractStoreSweep> SweepStoreAsync(ContractLoadReport report)
     {
         ArgumentNullException.ThrowIfNull(report);
 
@@ -52,14 +52,14 @@ internal sealed class ContractStoreJanitor
 
         var evicted = new List<string>();
 
-        foreach (var key in await _store.KeysAsync().ConfigureAwait(false))
+        foreach (var key in await _store.ListContractHashesAsync().ConfigureAwait(false))
         {
             if (live.Contains(key))
             {
                 continue;
             }
 
-            if (await _store.RemoveAsync(key).ConfigureAwait(false))
+            if (await _store.RemoveContractAsync(key).ConfigureAwait(false))
             {
                 evicted.Add(key);
             }

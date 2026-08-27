@@ -25,7 +25,7 @@ internal sealed class ContractStoreJanitorTests
     public async Task OnlyTheAddressesTheInstallationDoesNotNameAreDiscarded()
     {
         var store = new InMemoryContractStore(Live, Dead);
-        var sweep = await new ContractStoreJanitor(store.Open()).SweepAsync(Report(Live));
+        var sweep = await new ContractStoreJanitor(store.Open()).SweepStoreAsync(Report(Live));
 
         using var assertions = new AssertionScope();
 
@@ -49,7 +49,7 @@ internal sealed class ContractStoreJanitorTests
         var store = new InMemoryContractStore(Live, Dead);
         var unreadable = Report(Live) with { InstallationHash = null, Packages = [] };
 
-        var sweep = await new ContractStoreJanitor(store.Open()).SweepAsync(unreadable);
+        var sweep = await new ContractStoreJanitor(store.Open()).SweepStoreAsync(unreadable);
 
         using var assertions = new AssertionScope();
 
@@ -65,7 +65,7 @@ internal sealed class ContractStoreJanitorTests
         var store = new InMemoryContractStore(Live, Dead);
         var empty = Report(Live) with { Packages = [] };
 
-        var sweep = await new ContractStoreJanitor(store.Open()).SweepAsync(empty);
+        var sweep = await new ContractStoreJanitor(store.Open()).SweepStoreAsync(empty);
 
         using var assertions = new AssertionScope();
 

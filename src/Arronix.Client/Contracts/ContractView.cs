@@ -26,15 +26,19 @@ internal sealed class ContractView
     public event EventHandler? Changed;
 
     /// <summary>Gets what the newest committed transaction observed.</summary>
-    /// <remarks>Assigned once per transaction, before <see cref="Changed"/>, and never re-published.</remarks>
-    public ContractReloadResult Snapshot { get; private set; } = ContractReloadResult.None;
+    /// <remarks>
+    /// Read off the one committed value rather than kept beside it. Deciding and publishing are a single
+    /// compare-and-swap, so this can only ever move forward, whatever order callers resume in.
+    /// </remarks>
+    public ContractReloadResult Snapshot => _commits.Current.Result;
 
     /// <summary>Gets every subscriber that refused the last committed signal, in order.</summary>
     /// <remarks>
-    /// Beside the snapshot, not in it: a refusal happens after that subscriber was shown the value, so no
-    /// announcement can carry the record of its own refusals.
+    /// Attached to the commit that raised the announcement, never to whichever one happens to stand when
+    /// it finishes: a refusal happens after that subscriber was shown the value, so no announcement can
+    /// carry the record of its own refusals.
     /// </remarks>
-    public IReadOnlyList<ContractFailure> Refused { get; private set; } = [];
+    public IReadOnlyList<ContractFailure> Refused => _commits.Current.Refused;
 
     /// <summary>Reloads the installation and shows the result.</summary>
     /// <param name="cancellationToken">Abandons the reload.</param>
@@ -59,20 +63,18 @@ internal sealed class ContractView
     {
         var result = await transaction.ConfigureAwait(false);
 
-        if (!_commits.Accepts(result.Sequence))
+        if (_commits.Publish(result) is not { } published)
         {
             return;
         }
 
-        Snapshot = result;
-
         var refused = Announcement.ToEachSubscriber(Changed, this, ContractFailureStage.Changed);
 
-        // Asked again: a subscriber is free to start a newer transaction while it is being told, and this
-        // one's refusals recorded over that would describe the moment this view has stopped showing.
-        if (_commits.IsNewest(result.Sequence))
+        // Attached to the commit that raised this announcement, and only while it still stands: a
+        // subscriber is free to start a newer transaction while it is being told.
+        if (refused.Count > 0)
         {
-            Refused = refused;
+            _commits.Attach(published, refused);
         }
     }
 }

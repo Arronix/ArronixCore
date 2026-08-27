@@ -122,7 +122,7 @@ public sealed class ContractCommitTests
                     ? impostor
                     : AssemblyLoadContext.Default.LoadFromStream(new MemoryStream(bytes, writable: false)));
 
-            var wrong = await wrongLoader.LoadAsync();
+            var wrong = await wrongLoader.LoadInstallationAsync();
             var byWrongPackage = wrong.Packages.ToDictionary(package => package.Id.Value, StringComparer.Ordinal);
 
             using (new AssertionScope())
@@ -172,7 +172,7 @@ public sealed class ContractCommitTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://host.invalid/") };
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
-        var first = await loader.LoadAsync();
+        var first = await loader.LoadInstallationAsync();
 
         using (new AssertionScope())
         {
@@ -191,7 +191,7 @@ public sealed class ContractCommitTests
 
         // A second pass finds it resident. It is reused rather than reloaded, and the report says where the
         // bytes did not come from as precisely as it says where they did.
-        var second = await loader.LoadAsync();
+        var second = await loader.LoadInstallationAsync();
 
         using (new AssertionScope())
         {
@@ -212,7 +212,7 @@ public sealed class ContractCommitTests
             ModuleVersionId = Guid.Parse("99999999-8888-7777-6666-555555555555"),
         };
 
-        var third = await loader.LoadAsync();
+        var third = await loader.LoadInstallationAsync();
 
         using var assertions = new AssertionScope();
 
@@ -224,7 +224,7 @@ public sealed class ContractCommitTests
 
         // And it stays terminal even if the host goes back to what this page already holds.
         published = truthful;
-        (await loader.LoadAsync()).Compatibility.Should().Be(ContractCompatibility.Terminal);
+        (await loader.LoadInstallationAsync()).Compatibility.Should().Be(ContractCompatibility.Terminal);
     }
 
     /// <summary>
@@ -278,7 +278,7 @@ public sealed class ContractCommitTests
         using var http = new HttpClient(handler) { BaseAddress = new Uri("https://host.invalid/") };
         var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
 
-        (await loader.LoadAsync()).Packages.Single().Assemblies.Single().Outcome.Should().Be(
+        (await loader.LoadInstallationAsync()).Packages.Single().Assemblies.Single().Outcome.Should().Be(
             ContractLoadOutcome.Loaded,
             "nothing else in this process loads this payload, so this pass is the one that does");
 
@@ -295,7 +295,7 @@ public sealed class ContractCommitTests
             ],
         };
 
-        var restated = await loader.LoadAsync();
+        var restated = await loader.LoadInstallationAsync();
         var entry = restated.Packages.Single().Assemblies.Single();
 
         using var assertions = new AssertionScope();

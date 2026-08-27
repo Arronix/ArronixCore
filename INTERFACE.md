@@ -195,8 +195,8 @@ serialized transaction with no second door — an operator's reload and an exten
 overlap, so no older sweep evicts what a newer read just fetched, and no store is emptied beside a read. A
 transaction is numbered under the lease that runs it and seals its report, the keys the browser holds after
 its sweep, and every failure it contained, in order, as one value handed back to its caller. What a view
-shows is that value, committed by sequence rather than by the order callers happened to resume in, published
-by one reference assignment before the view announces, and read once per render. A subscriber refusing that
+shows is that value, published by the one compare-and-swap that decides it rather than by a guard a caller
+consults and then acts on, so what a page shows only ever moves forward, and read once per render. A subscriber refusing that
 announcement is reported beside the record and not inside it, because a refusal happens after the value was
 handed over. Cancellation is the caller's token and nothing else: a request timeout is an ordinary
 `Unreachable` or `Unavailable` outcome that replaces the report it failed to read, and no boundary in this
