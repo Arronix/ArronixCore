@@ -32,11 +32,11 @@ namespace Arronix.Plugin.Movies.Tests.Support;
 /// construction, so there is nothing per-test to reset.
 /// </para>
 /// <para>
-/// <b>What is still out of reach from here.</b> The host now has durable catalog storage, but this fixture
-/// configures no cataloger and adds no items. Everything that needs an item from that empty catalog —
-/// matching, query planning, catalog projection, and any rename that has to resolve an item — therefore has
-/// nothing to answer with, and the fixtures that need those stay ignored with that as their reason. Parsing
-/// needs no items at all, which is why the parse corpus runs here.
+/// <b>What is still out of reach from here.</b> The bound kind's item source is the host's pre-storage one
+/// and holds no rows, because this milestone has no persistence and no metadata pipeline. Everything that
+/// reads items through it — matching, query planning, catalog projection, and any rename that has to
+/// resolve an item — therefore has nothing to answer with, and the fixtures that need those stay ignored
+/// with that as their reason. Parsing needs no items at all, which is why the parse corpus runs here.
 /// </para>
 /// </remarks>
 internal static class MoviesEngines
@@ -88,7 +88,6 @@ internal static class MoviesEngines
             {
                 ["Arronix:Host:ExtensionFolder"] = Path.Combine(root, "extensions"),
                 ["Arronix:Plugins:RootFolder"] = Path.Combine(root, "extensions"),
-                ["Arronix:Store:DataSource"] = Path.Combine(root, "arronix.db"),
                 ["Arronix:Library:RootFolders:0"] = root,
             })
             .Build();

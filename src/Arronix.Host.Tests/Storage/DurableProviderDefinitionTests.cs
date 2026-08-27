@@ -241,6 +241,7 @@ internal sealed class DurableProviderDefinitionTests
     /// queued regardless, which is the part order depends on.
     /// </remarks>
     [Test]
+    [Repeat(20)]
     public async Task ASubscriberThatChangesTheStoreFromItsOwnHandlerDoesNotDeadlock()
     {
         var registry = new ProviderRegistry();
@@ -426,6 +427,7 @@ internal sealed class DurableProviderDefinitionTests
     /// announcing" would make the second skip its wait and report a delivery that had not happened.
     /// </remarks>
     [Test]
+    [Repeat(20)]
     public async Task AHandlerForOneStoreIsAnOrdinaryCallerOfAnother()
     {
         var registry = new ProviderRegistry();
@@ -745,6 +747,7 @@ internal sealed class DurableProviderDefinitionTests
     private sealed class ReentrantBus : IEventPublisher
     {
         private readonly ConcurrentQueue<ProviderChangeKind> _published = [];
+        private int _completed;
         private int _first;
 
         internal Func<Task>? OnFirst { get; set; }
@@ -753,7 +756,7 @@ internal sealed class DurableProviderDefinitionTests
 
         internal async Task Delivered(int count)
         {
-            for (var attempt = 0; attempt < 200 && _published.Count < count; attempt++)
+            for (var attempt = 0; attempt < 200 && Volatile.Read(ref _completed) < count; attempt++)
             {
                 await Task.Delay(10).ConfigureAwait(false);
             }
@@ -771,6 +774,8 @@ internal sealed class DurableProviderDefinitionTests
             {
                 await reentrant().ConfigureAwait(false);
             }
+
+            Interlocked.Increment(ref _completed);
         }
     }
 
