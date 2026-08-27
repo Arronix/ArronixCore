@@ -56,17 +56,67 @@ fi
 
 api_pid=""
 is_running() { [[ -n "$1" ]] && ps -o state= -p "$1" 2>/dev/null | tr -d ' ' | grep -qv '^Z'; }
+
+wait_for_exit() {
+    local pid="$1"
+    local attempts="$2"
+    for _ in $(seq 1 "$attempts"); do
+        is_running "$pid" || return 0
+        sleep .5
+    done
+    ! is_running "$pid"
+}
+
+wait_for_port_release() {
+    for _ in $(seq 1 20); do
+        port_listening "$port" || return 0
+        sleep .5
+    done
+    ! port_listening "$port"
+}
+
 stop_api() {
     [[ -z "$api_pid" ]] && return 0
-    if is_running "$api_pid"; then kill -TERM "$api_pid" 2>/dev/null || true; fi
-    for _ in $(seq 1 30); do is_running "$api_pid" || break; sleep .5; done
-    if is_running "$api_pid"; then kill -KILL "$api_pid" 2>/dev/null || true; fi
-    for _ in $(seq 1 20); do is_running "$api_pid" || break; sleep .5; done
-    if is_running "$api_pid"; then echo "error: proof-owned API pid $api_pid survived shutdown." >&2; return 1; fi
+    local pid="$api_pid"
+    if is_running "$pid"; then
+        kill -TERM "$pid" 2>/dev/null || true
+        wait_for_exit "$pid" 30 || true
+    fi
+    if is_running "$pid"; then
+        kill -KILL "$pid" 2>/dev/null || true
+        wait_for_exit "$pid" 20 || true
+    fi
+    if is_running "$pid"; then
+        echo "error: proof-owned API pid $pid survived bounded shutdown." >&2
+        return 1
+    fi
     wait "$api_pid" 2>/dev/null || true
+    if ! wait_for_port_release; then
+        echo "error: API port $port remained bound after proof-owned pid $pid exited." >&2
+        return 1
+    fi
     api_pid=""
 }
-trap stop_api EXIT INT TERM HUP
+
+on_signal() {
+    local signal="$1"
+    trap - EXIT INT TERM HUP
+    echo "error: received $signal; stopping the proof-owned API." >&2
+    stop_api || true
+    exit 128
+}
+
+on_exit() {
+    local status="$1"
+    trap - EXIT INT TERM HUP
+    stop_api || true
+    exit "$status"
+}
+
+trap 'on_exit $?' EXIT
+trap 'on_signal INT' INT
+trap 'on_signal TERM' TERM
+trap 'on_signal HUP' HUP
 
 rm -rf "$proof_root"
 mkdir -p "$feed_root" "$cache_root" "$package_root" "$client_root" "$state_root" "$(dirname "$database")" "$evidence_root"
@@ -78,20 +128,25 @@ for project in Arronix.Abstractions Arronix.Media.Movies; do
 done
 
 echo "== build the proof-only cataloger against the packed contracts =="
-rm -rf "$(dirname "$provider_project")/bin" "$(dirname "$provider_project")/obj"
-"$dotnet_command" restore "$provider_project" --source "$feed_root" --packages "$cache_root"
-"$dotnet_command" build "$provider_project" --configuration Release --no-restore -warnaserror
+provider_output_root="$proof_root/provider-build/"
+provider_intermediate_root="$proof_root/provider-intermediate/"
+provider_properties=(
+    "-p:G07BProofOutputRoot=$provider_output_root"
+    "-p:G07BProofIntermediateRoot=$provider_intermediate_root"
+)
+"$dotnet_command" restore "$provider_project" --source "$feed_root" --packages "$cache_root" "${provider_properties[@]}"
+"$dotnet_command" build "$provider_project" --configuration Release --no-restore -warnaserror "${provider_properties[@]}"
 
 echo "== stage only published payloads =="
 "$dotnet_command" publish "$repository_root/src/Arronix.Plugin.Movies/Arronix.Plugin.Movies.csproj" --configuration Release --no-build --output "$package_root/movies"
 "$dotnet_command" publish "$repository_root/src/Arronix.Format.Video/Arronix.Format.Video.csproj" --configuration Release --no-build --output "$package_root/arronix.format.video"
-"$dotnet_command" publish "$provider_project" --configuration Release --no-build --output "$package_root/proof.movies.catalog"
+"$dotnet_command" publish "$provider_project" --configuration Release --no-build --output "$package_root/proof.movies.catalog" "${provider_properties[@]}"
 "$dotnet_command" publish "$repository_root/src/Arronix.Client/Arronix.Client.csproj" --configuration Release --output "$client_root"
 
 api="$repository_root/src/Arronix.Api/bin/Release/net11.0/Arronix.Api.dll"
 ASPNETCORE_URLS="http://127.0.0.1:$port" \
 ASPNETCORE_ENVIRONMENT=Production \
-ASPNETCORE_CONTENTROOT="$(dirname "$api")" \
+ASPNETCORE_CONTENTROOT="$repository_root/src/Arronix.Api" \
 Arronix__Plugins__RootFolder="$package_root" \
 Arronix__Plugins__StateFolder="$state_root" \
 Arronix__Store__DataSource="$database" \
@@ -99,11 +154,16 @@ Arronix__Api__ClientRoot="$client_root/wwwroot" \
     "$dotnet_command" "$api" > "$evidence_root/server.log" 2>&1 &
 api_pid=$!
 address="http://127.0.0.1:$port"
+ready=0
 for _ in $(seq 1 60); do
-    if curl -fsS -o /dev/null "$address/api" 2>/dev/null; then break; fi
+    if curl -fsS -o /dev/null "$address/api" 2>/dev/null; then ready=1; break; fi
     if ! is_running "$api_pid"; then echo "error: API stopped before readiness; see $evidence_root/server.log" >&2; exit 1; fi
     sleep 1
 done
+if [[ $ready -ne 1 ]]; then
+    echo "error: API did not become ready within 60 seconds; see $evidence_root/server.log" >&2
+    exit 1
+fi
 curl -fsS "$address/api/v1/providers?family=Cataloger&kind=movies" > "$evidence_root/providers-for-movies.json"
 curl -fsS "$address/api/v1/providers?family=Cataloger" > "$evidence_root/catalogers.json"
 curl -fsS "$address/api/v1/client-contracts" > "$evidence_root/client-contracts.json"
@@ -138,11 +198,97 @@ import json, sys
 print(json.load(open(sys.argv[1]))[0]['provider'])
 PY
 )
-definition=$(printf '{"id":0,"provider":"%s","family":0,"name":"G07B proof","enabled":true,"settings":{"revision":"1"},"mediaKinds":["movies"]}' "$provider")
+definition=$(printf '{"id":0,"provider":"%s","family":3,"name":"G07B proof","enabled":true,"settings":{"revision":"1"},"mediaKinds":["movies"]}' "$provider")
 curl -fsS -H 'content-type: application/json' -d "$definition" "$address/api/v1/providers/definitions" > "$evidence_root/provider-revision-1.json"
 id=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])' < "$evidence_root/provider-revision-1.json")
-python3 "$script_directory/g07b-read-store.py" --database "$database" --definition "$id" --phase searched --contract-manifest "$evidence_root/client-contracts.json" --output "$evidence_root/store-before-search.json"
+python3 - "$evidence_root/provider-revision-1.json" <<'PY'
+import json, sys
+definition = json.load(open(sys.argv[1]))
+if definition.get('family') not in (3, 'cataloger', 'Cataloger'):
+    raise SystemExit('error: the configured proof definition is not a Cataloger family provider')
+PY
 
-if [[ $browser -eq 1 ]]; then
-    node "$script_directory/g07b-catalog-browser-proof.mjs" --address "$address" --evidence "$evidence_root"
+# A snapshot is always taken after the phase it names.  In particular, a catalog search deliberately mints
+# identity/allocation but must not materialize a record or user facet.  The UI phases use fresh ordinary
+# browser contexts; this proof does not claim stale-tab continuity across the restart.
+snapshot() {
+    local phase="$1"
+    local previous="${2:-}"
+    local output="$evidence_root/store-$phase.json"
+    local arguments=(
+        --database "$database"
+        --definition "$id"
+        --phase "$phase"
+        --contract-manifest "$evidence_root/client-contracts.json"
+        --output "$output"
+    )
+    [[ -n "$previous" ]] && arguments+=(--previous "$evidence_root/store-$previous.json")
+    python3 "$script_directory/g07b-read-store.py" "${arguments[@]}"
+}
+
+run_browser_phase() {
+    local phase="$1"
+    local item_ref="${2:-}"
+    local arguments=(--address "$address" --evidence "$evidence_root" --phase "$phase")
+    [[ -n "$item_ref" ]] && arguments+=(--item-ref "$item_ref")
+    node "$script_directory/g07b-catalog-browser-proof.mjs" \
+        "${arguments[@]}"
+}
+
+if [[ $browser -ne 1 ]]; then
+    echo "G07B foundation staged. Re-run with --browser after the generic catalog UI is integrated." >&2
+    exit 0
 fi
+
+run_browser_phase search
+snapshot searched
+
+# First add is a visible ordinary-Client action.  The separate API retry proves durable idempotence without
+# requiring the UI to expose a redundant Add button after it has already succeeded.
+run_browser_phase add
+snapshot added searched
+item_ref=$(python3 - "$evidence_root/browser-add.json" <<'PY'
+import json, sys
+value = json.load(open(sys.argv[1])).get('itemRef')
+if not isinstance(value, str) or not value:
+    raise SystemExit('error: first visible Add did not report a durable item reference')
+print(value)
+PY
+)
+curl -fsS -H 'content-type: application/json' -d '{"catalogId":"proof:42"}' \
+    "$address/api/v1/kinds/movies/catalog/items" > "$evidence_root/api-retry-add.json"
+snapshot retried added
+
+run_browser_phase monitor "$item_ref"
+snapshot monitored retried
+
+revision_two=$(printf '{"id":%s,"provider":"%s","family":3,"name":"G07B proof","enabled":true,"settings":{"revision":"2"},"mediaKinds":["movies"]}' "$id" "$provider")
+curl -fsS -X PUT -H 'content-type: application/json' -d "$revision_two" \
+    "$address/api/v1/providers/definitions/$id" > "$evidence_root/provider-revision-2.json"
+run_browser_phase refresh "$item_ref"
+snapshot refreshed monitored
+
+stop_api
+# A restart uses the persisted state but a new API process.  It never reuses a browser tab from before the
+# restart, which keeps the proof claim intentionally narrower than stale-tab continuity.
+ASPNETCORE_URLS="http://127.0.0.1:$port" \
+ASPNETCORE_ENVIRONMENT=Production \
+ASPNETCORE_CONTENTROOT="$repository_root/src/Arronix.Api" \
+Arronix__Plugins__RootFolder="$package_root" \
+Arronix__Plugins__StateFolder="$state_root" \
+Arronix__Store__DataSource="$database" \
+Arronix__Api__ClientRoot="$client_root/wwwroot" \
+    "$dotnet_command" "$api" > "$evidence_root/server-restart.log" 2>&1 &
+api_pid=$!
+ready=0
+for _ in $(seq 1 60); do
+    if curl -fsS -o /dev/null "$address/api" 2>/dev/null; then ready=1; break; fi
+    if ! is_running "$api_pid"; then echo "error: API stopped before restart readiness; see $evidence_root/server-restart.log" >&2; exit 1; fi
+    sleep 1
+done
+if [[ $ready -ne 1 ]]; then
+    echo "error: API did not become ready after restart within 60 seconds; see $evidence_root/server-restart.log" >&2
+    exit 1
+fi
+run_browser_phase restart "$item_ref"
+snapshot restarted refreshed

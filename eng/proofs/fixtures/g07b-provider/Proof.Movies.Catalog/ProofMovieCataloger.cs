@@ -1,3 +1,4 @@
+using System.Globalization;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
@@ -90,7 +91,8 @@ public sealed class ProofMovieCataloger : ICataloger<Movie>
     private static int? Revision(ProviderDefinition definition)
     {
         ArgumentNullException.ThrowIfNull(definition);
-        return definition.Settings.TryGetValue(RevisionField, out var text) && int.TryParse(text, out var revision)
+        return definition.Settings.TryGetValue(RevisionField, out var text)
+            && int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var revision)
             && revision is 1 or 2
                 ? revision
                 : null;
@@ -104,7 +106,9 @@ public sealed class ProofMovieCataloger : ICataloger<Movie>
         Overview = revision == 1
             ? "Provider-owned revision one catalog facts."
             : "Provider-owned revision two catalog facts.",
-        CatalogState = CatalogRecordState.Active,
+        // A withdrawn catalog record remains addressable: refresh must update catalog facts without
+        // silently removing the user's library facet.
+        CatalogState = revision == 1 ? CatalogRecordState.Active : CatalogRecordState.Withdrawn,
         Lifecycle = new MovieReleaseTimeline
         {
             Digital = revision == 1 ? new DateOnly(2024, 1, 1) : new DateOnly(2024, 2, 1),
@@ -112,5 +116,32 @@ public sealed class ProofMovieCataloger : ICataloger<Movie>
         },
         Genres = revision == 1 ? ["Proof one"] : ["Proof two"],
         Keywords = ["g07b", $"revision-{revision}"],
+        Artwork = ArtworkSet.Of(
+            new ArtworkImage(
+                "poster",
+                new Uri("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Jx90AAAAASUVORK5CYII="),
+                1,
+                1)),
+        Ratings =
+        [
+            new Rating("proof audience", revision == 1 ? 7.1m : 8.2m, RatingScale.OutOfTen, RatingVoice.Audience, 42),
+            new Rating("proof critics", revision == 1 ? 71m : 82m, RatingScale.Percent, RatingVoice.Critic, 7),
+        ],
+        Collections =
+        [
+            new MediaCollection<Movie>
+            {
+                ExternalIds = ExternalIdSet.Of(ExternalId.Of("proof", "collection-7")),
+                Title = "Proof Collection",
+                Overview = "A deterministic collection carried by the proof cataloger.",
+                Artwork = ArtworkSet.Of(
+                    new ArtworkImage(
+                        "poster",
+                        new Uri("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Jx90AAAAASUVORK5CYII="),
+                        1,
+                        1)),
+                MemberCount = 1,
+            },
+        ],
     };
 }
