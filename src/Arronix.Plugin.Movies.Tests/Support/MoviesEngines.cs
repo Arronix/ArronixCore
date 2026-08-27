@@ -88,6 +88,7 @@ internal static class MoviesEngines
             {
                 ["Arronix:Host:ExtensionFolder"] = Path.Combine(root, "extensions"),
                 ["Arronix:Plugins:RootFolder"] = Path.Combine(root, "extensions"),
+                ["Arronix:Store:DataSource"] = Path.Combine(root, "arronix.db"),
                 ["Arronix:Library:RootFolders:0"] = root,
             })
             .Build();

@@ -20,8 +20,9 @@ namespace Arronix.Host.Media.Catalog;
 /// here carries the whole scope rather than the number alone.
 /// </para>
 /// <para>
-/// In memory in this milestone. What a persistent implementation has to reproduce is the assignment rule,
-/// not this storage.
+/// The rule is here; where its answers are written down is not. A composed host supplies a journal, so an
+/// identity that was handed out was recorded and a restart continues the sequence instead of reissuing
+/// numbers the library is already keyed by. The unjournaled form exists for fixtures and unit tests.
 /// </para>
 /// </remarks>
 public sealed class CatalogIdentity
@@ -30,13 +31,67 @@ public sealed class CatalogIdentity
     private readonly Dictionary<Assignment, MediaItemId> _superseded = [];
     private readonly Dictionary<MediaKindId, long> _issued = [];
     private readonly Lock _gate = new();
+    private readonly ICatalogIdentityJournal? _journal;
+
+    /// <summary>
+    /// Creates an allocator that keeps its answers only for as long as it lives.
+    /// </summary>
+    /// <remarks>
+    /// The form a projection fixture and a unit test use, where nothing outlives the assertion. A running
+    /// host composes the journaled form; this one is never registered.
+    /// </remarks>
+    public CatalogIdentity()
+    {
+    }
+
+    /// <summary>
+    /// Creates an allocator that writes its answers down and continues from what it reads.
+    /// </summary>
+    /// <param name="journal">Where the answers are kept.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="journal"/> is <see langword="null"/>.</exception>
+    internal CatalogIdentity(ICatalogIdentityJournal journal)
+    {
+        ArgumentNullException.ThrowIfNull(journal);
+        _journal = journal;
+
+        var state = journal.Load();
+
+        foreach (var assignment in state.Assignments)
+        {
+            _assigned[new Scope(assignment.Kind, assignment.Level, assignment.CatalogId)] = assignment.Identity;
+        }
+
+        foreach (var supersession in state.Supersessions)
+        {
+            _superseded[new Assignment(supersession.Kind, supersession.Level, supersession.Superseded)] =
+                supersession.Surviving;
+        }
+
+        foreach (var allocation in state.Allocations)
+        {
+            _issued[allocation.Kind] = allocation.Issued;
+        }
+    }
 
     /// <summary>Determines whether a scheme is in the canonical form the platform routes by.</summary>
     /// <param name="scheme">The scheme.</param>
-    /// <returns><see langword="true"/> when it is non-empty, lower-case and free of white space.</returns>
+    /// <returns>
+    /// <see langword="true"/> when it is non-empty, lower-case, free of white space, and carries no
+    /// <c>:</c>.
+    /// </returns>
+    /// <remarks>
+    /// The separator is excluded because an identifier is written and read back as <c>scheme:value</c>,
+    /// split at the first <c>:</c>. A scheme containing one renders text that reads back as a different
+    /// identifier — <c>foo:bar</c> with value <c>x</c> becomes <c>foo:bar:x</c>, which parses as scheme
+    /// <c>foo</c> and value <c>bar:x</c>. Nothing else about the spelling is decided here.
+    /// </remarks>
     public static bool IsCanonicalScheme(string? scheme)
         => !string.IsNullOrWhiteSpace(scheme)
-            && scheme.All(static character => !char.IsWhiteSpace(character) && !char.IsUpper(character));
+            && scheme.All(static character =>
+                !char.IsWhiteSpace(character) && !char.IsUpper(character) && character != SchemeSeparator);
+
+    /// <summary>The character an identifier's written form puts between its scheme and its value.</summary>
+    private const char SchemeSeparator = ':';
 
     /// <summary>
     /// Assigns, idempotently, the reference one catalog item is held under.
@@ -79,7 +134,13 @@ public sealed class CatalogIdentity
                 .OrderBy(static existing => existing.Value)
                 .ToArray();
 
-            var identity = known.Length == 0 ? Mint(kind) : known[0];
+            var minted = known.Length == 0 ? _issued.GetValueOrDefault(kind) + 1 : (long?)null;
+            var identity = minted is { } next ? MediaItemId.FromInt64(next) : known[0];
+
+            // Keyed by identifier: the same one arrives more than once whenever the identifier asked for is
+            // also the one the catalog answered with, and a binding is one row per identifier either way.
+            var bindings = new Dictionary<ExternalId, MediaItemId>();
+            var supersessions = new List<CatalogIdentitySupersession>();
 
             // Identifiers assigned separately have turned out to name one entity. The later assignments are
             // superseded by the earlier one and recorded as such, so a caller still holding one resolves.
@@ -87,22 +148,46 @@ public sealed class CatalogIdentity
             // another scope belongs to another entity.
             foreach (var superseded in known.Skip(1))
             {
-                _superseded[new Assignment(kind, level, superseded)] = identity;
+                supersessions.Add(new CatalogIdentitySupersession(kind, level, superseded, identity));
 
                 foreach (var moved in _assigned
                     .Where(entry => entry.Key.Kind == kind
                         && entry.Key.Level == level
                         && entry.Value == superseded)
-                    .Select(static entry => entry.Key)
+                    .Select(static entry => entry.Key.Id)
                     .ToArray())
                 {
-                    _assigned[moved] = identity;
+                    bindings[moved] = identity;
                 }
             }
 
             foreach (var candidate in catalogIds)
             {
-                _assigned[new Scope(kind, level, candidate)] = identity;
+                bindings[candidate] = identity;
+            }
+
+            var assignments = bindings
+                .Select(binding => new CatalogIdentityAssignment(kind, level, binding.Key, binding.Value))
+                .ToArray();
+
+            // Written before it is believed. The change is computed against the state as it stands, so a
+            // journal that refuses leaves the allocator exactly as the caller found it rather than holding
+            // an identity nothing recorded.
+            _journal?.Commit(new CatalogIdentityCommit(kind, level, assignments, supersessions, minted));
+
+            foreach (var supersession in supersessions)
+            {
+                _superseded[new Assignment(kind, level, supersession.Superseded)] = supersession.Surviving;
+            }
+
+            foreach (var assignment in assignments)
+            {
+                _assigned[new Scope(kind, level, assignment.CatalogId)] = assignment.Identity;
+            }
+
+            if (minted is { } issued)
+            {
+                _issued[kind] = issued;
             }
 
             return new MediaItemRef(kind, level, identity);
@@ -142,8 +227,9 @@ public sealed class CatalogIdentity
     /// <param name="reference">The reference held by the caller.</param>
     /// <returns>The surviving reference, or <paramref name="reference"/> when it was never superseded.</returns>
     /// <remarks>
-    /// This resolves the identity only. Library rows already written under a superseded identity are not
-    /// moved; migrating them is a store operation this milestone does not have.
+    /// This resolves the identity. The rows keyed by a superseded one are moved when the merge is recorded,
+    /// in the same transaction, so a caller holding an old reference and a caller holding the surviving one
+    /// reach the same record and the same library entry.
     /// </remarks>
     public MediaItemRef Canonical(MediaItemRef reference)
     {
@@ -179,14 +265,6 @@ public sealed class CatalogIdentity
         }
     }
 
-    /// <summary>Issues the next identity for one kind. Local identity is unique within its kind.</summary>
-    private MediaItemId Mint(MediaKindId kind)
-    {
-        var next = _issued.GetValueOrDefault(kind) + 1;
-        _issued[kind] = next;
-        return MediaItemId.FromInt64(next);
-    }
-
     internal static void RequireWellFormed(ExternalId catalogId, string parameterName)
     {
         if (string.IsNullOrWhiteSpace(catalogId.Value))
@@ -198,7 +276,7 @@ public sealed class CatalogIdentity
         {
             throw new ArgumentException(
                 $"'{catalogId.Scheme}' is not a canonical catalog scheme; a scheme is lower-case and carries "
-                + "no white space.",
+                + "no white space and no ':'.",
                 parameterName);
         }
     }

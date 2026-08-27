@@ -55,6 +55,21 @@ public sealed class ProviderHealthContributor(
                 "Their settings are kept. They start working again as soon as the extension providing them loads."));
         }
 
+        var incomplete = all.Where(definition => definition.State == DefinitionState.Incomplete).ToList();
+
+        if (incomplete.Count > 0)
+        {
+            checks.Add(HealthCheck.Degraded(
+                "providers/incomplete",
+                "Providers missing a credential",
+                HealthSeverity.Warning,
+                string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"{incomplete.Count} configured providers are missing a value they require: {string.Join(", ", incomplete.Select(definition => definition.Name))}."),
+                "A credential or secret is never read back, so it is not stored and does not survive a "
+                + "restart. Enter it again to make the provider usable."));
+        }
+
         var backedOff = all
             .Where(definition => definition.Enabled
                 && definition.State == DefinitionState.Active

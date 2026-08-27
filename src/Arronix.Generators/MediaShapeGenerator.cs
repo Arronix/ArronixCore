@@ -69,7 +69,40 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
             item,
             related.ToImmutableArray(),
             namespaceName,
-            Sanitize(symbol.ToDisplayString()) + ".MediaShape.g.cs");
+            Sanitize(symbol.ToDisplayString()) + ".MediaShape.g.cs",
+            FindCodecHolder(context.SemanticModel.Compilation, item));
+    }
+
+    /// <summary>
+    /// Finds the generated storage bridge the item type's own assembly published, if it published one.
+    /// </summary>
+    /// <remarks>
+    /// Resolved from the compilation, so the reference is checked by the compiler rather than looked up at
+    /// run time. One source generator cannot read another's output within a single compilation, so this
+    /// finds a holder only in a referenced assembly — which is where a media domain type lives, because a
+    /// shared contract assembly is exactly what a separately packaged provider and a browser both bind to.
+    /// A media type declared in the same assembly as its item simply gets no bridge.
+    /// </remarks>
+    private static string? FindCodecHolder(Compilation compilation, ITypeSymbol item)
+    {
+        if (item.ContainingNamespace is null)
+        {
+            return null;
+        }
+
+        var name = item.ContainingNamespace.IsGlobalNamespace
+            ? item.Name + "ItemCodec"
+            : item.ContainingNamespace.ToDisplayString() + "." + item.Name + "ItemCodec";
+
+        if (compilation.GetTypeByMetadataName(name) is not { IsStatic: true } holder
+            || !compilation.IsSymbolAccessibleWithin(holder, compilation.Assembly)
+            || holder.GetMembers("Declared").OfType<IPropertySymbol>().FirstOrDefault() is not { IsStatic: true } declared
+            || !compilation.IsSymbolAccessibleWithin(declared, compilation.Assembly))
+        {
+            return null;
+        }
+
+        return "global::" + name;
     }
 
     private static void CollectReferencedEntities(MediaShapeModel shape, ITypeSymbol type, ISet<ITypeSymbol> found)
@@ -124,7 +157,16 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
             source.Append("                RelatedShape").Append(index).AppendLine(",");
         }
 
-        source.AppendLine("            });");
+        if (definition.CodecHolder is { } codec)
+        {
+            source.Append("            },").AppendLine();
+            source.Append("            ").Append(codec).AppendLine(".Declared);");
+        }
+        else
+        {
+            source.AppendLine("            });");
+        }
+
         source.AppendLine();
         EmitShape(source, definition.Shape, "ItemShape", definition.Item);
 
@@ -338,7 +380,8 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
             ITypeSymbol item,
             ImmutableArray<ITypeSymbol> related,
             string? namespaceName,
-            string hintName)
+            string hintName,
+            string? codecHolder)
         {
             Shape = shape;
             Symbol = symbol;
@@ -346,6 +389,7 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
             Related = related;
             Namespace = namespaceName;
             HintName = hintName;
+            CodecHolder = codecHolder;
         }
 
         internal MediaShapeModel Shape { get; }
@@ -359,5 +403,11 @@ public sealed class MediaShapeGenerator : IIncrementalGenerator
         internal string? Namespace { get; }
 
         internal string HintName { get; }
+
+        /// <summary>
+        /// The fully qualified generated holder of the item's storage bridge, when the item's own assembly
+        /// published one.
+        /// </summary>
+        internal string? CodecHolder { get; }
     }
 }

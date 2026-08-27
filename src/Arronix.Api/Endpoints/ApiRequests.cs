@@ -63,7 +63,12 @@ internal static class ApiRequests
         if (levelText is null
             || idText is null
             || !MediaLevelId.TryParse(levelText, out var level)
-            || !long.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id))
+            || !long.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+
+            // The host issues identities from one upward, so zero and below name nothing it ever assigned.
+            // Reading one as an item that happens not to exist would turn a malformed address into a
+            // plausible "not found".
+            || id < 1)
         {
             return false;
         }
@@ -194,6 +199,48 @@ internal static class ApiRequests
             {
                 ["errorCode"] = (int)code,
             });
+
+    /// <summary>
+    /// Turns a refusal the platform raised into the problem document for it.
+    /// </summary>
+    /// <remarks>
+    /// The status says what the caller should do; the platform's own code, which travels in the extension
+    /// member, says what happened. Mapping them here means a route never has to invent either, and a
+    /// refusal the host considered worth naming never reaches a client as an unexplained failure.
+    /// </remarks>
+    /// <param name="failure">The refusal.</param>
+    /// <returns>The problem result.</returns>
+    internal static ProblemHttpResult Refused(Abstractions.Errors.ArronixException failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+        return Problem(StatusFor(failure.ErrorCode), failure.ErrorCode, failure.Message);
+    }
+
+    private static int StatusFor(CoreErrorCode code) => code switch
+    {
+        CoreErrorCode.MediaKindNotFound or CoreErrorCode.MediaItemNotFound => StatusCodes.Status404NotFound,
+
+        // The installation is wrong, not the request: no cataloger owns the scheme, or a stored record was
+        // written by a contract this build cannot read. Both are fixed by changing what is installed.
+        CoreErrorCode.CatalogSchemeUnowned or CoreErrorCode.CatalogRecordUnreadable
+            => StatusCodes.Status503ServiceUnavailable,
+
+        // Something the platform depends on did not answer. The request was well formed and would succeed
+        // if it were asked again once the external service is reachable, so it is not the caller's fault
+        // and must not be reported as though it were.
+        CoreErrorCode.CatalogerConnectionFailed
+            or CoreErrorCode.CatalogerSearchFailed
+            or CoreErrorCode.IndexerConnectionFailed
+            or CoreErrorCode.IndexerSearchFailed
+            or CoreErrorCode.DownloaderConnectionFailed
+            or CoreErrorCode.DownloadSendFailed
+            => StatusCodes.Status502BadGateway,
+
+        // Two writers, or an extension that answered with something that cannot be reconciled.
+        CoreErrorCode.CatalogIdentityInvalid => StatusCodes.Status409Conflict,
+
+        _ => StatusCodes.Status400BadRequest,
+    };
 
     /// <summary>
     /// The refusal used when a route names a media kind no extension declared.

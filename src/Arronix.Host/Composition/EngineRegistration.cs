@@ -5,6 +5,8 @@ using Arronix.Host.Engines.Naming;
 using Arronix.Host.Engines.Search;
 using Arronix.Host.Media;
 using Arronix.Host.Languages;
+using Arronix.Host.Media.Catalog;
+using Arronix.Host.Storage;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -33,8 +35,7 @@ namespace Arronix.Host.Composition;
 /// <para>
 /// The item source is shared across the slots rather than rebuilt per engine. The matcher, the planner and
 /// the namer all read the same items as the registry's own <see cref="RegisteredMediaKind.Items"/>, and two
-/// instances answering for one kind would be two catalogs the moment the storage milestone gives them rows
-/// to hold.
+/// instances answering for one kind would be two catalogs over the same rows.
 /// </para>
 /// </remarks>
 internal static class EngineRegistration
@@ -54,6 +55,13 @@ internal static class EngineRegistration
             var strategies = MatchStrategyRegistry.CreateDefault(
                 provider.GetRequiredService<TimeProvider>(),
                 languages);
+
+            var records = provider.GetRequiredService<ICatalogRecordStore>();
+            var identity = provider.GetRequiredService<CatalogIdentity>();
+
+            HostItemSource ItemsOf(ValidatedDefinition definition) => Sources.GetValue(
+                definition,
+                resolved => new HostItemSource(resolved, records, identity));
 
             return new DefinitionEngineCatalog
             {
@@ -84,12 +92,4 @@ internal static class EngineRegistration
 
         return services;
     }
-
-    /// <summary>
-    /// Returns the one item source serving a definition, building it on first ask.
-    /// </summary>
-    /// <param name="definition">The kind's validated definition.</param>
-    /// <returns>The item source.</returns>
-    private static HostItemSource ItemsOf(ValidatedDefinition definition)
-        => Sources.GetValue(definition, static resolved => new HostItemSource(resolved));
 }

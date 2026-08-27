@@ -47,12 +47,17 @@ else
     {
         DefinitionState.Active => "active",
         DefinitionState.Orphaned => "orphaned",
+        DefinitionState.Incomplete => "needs a value",
     };
 
     private static string StateClass(DefinitionState state) => state switch
     {
         DefinitionState.Active => ToneMap.ClassFor(StateTone.Positive),
         DefinitionState.Orphaned => ToneMap.ClassFor(StateTone.Problem),
+
+        // A definition the platform will not route work to reads as a problem, because it is one until
+        // somebody enters the value it is missing.
+        DefinitionState.Incomplete => ToneMap.ClassFor(StateTone.Problem),
     };
 
     private static string SeverityClass(ProviderMessageSeverity severity) => severity switch

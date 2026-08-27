@@ -29,6 +29,7 @@ internal static class ArronixHostOptionsValidation
         services.AddValidatedOptions<LibraryOptions>(configuration, LibraryOptions.SectionName);
         services.AddValidatedOptions<SchedulerOptions>(configuration, SchedulerOptions.SectionName);
         services.AddValidatedOptions<HealthOptions>(configuration, HealthOptions.SectionName);
+        services.AddValidatedOptions<StoreOptions>(configuration, StoreOptions.SectionName);
 
         return services;
     }

@@ -1,5 +1,63 @@
 # Arronix History
 
+## 2026-08-28 — One narrow Movies catalog vertical becomes durable
+
+**Decision.** The host keeps a catalog record for an item somebody explicitly added, in a local SQLite file
+reached through EF Core, and reads it back through the media kind's own projector. A search resolves the
+identity a hit would be held under and materializes nothing; an add is the decision that writes.
+
+**Why the payload is the item's own serialization.** The alternative — a column per common fact — cannot
+hold a media type's own values. `MovieReleaseTimeline`'s milestones are Movies-owned, and the common
+contract deliberately refuses to flatten them into a universal date table, so a flattened schema would have
+stored a Movie that came back missing its lifecycle. It would also have hardened a cross-media catalog
+schema before G13–G17A constrained what such a schema must carry. The record therefore holds the item as
+its own generated metadata writes it, with the writing build's hash beside it, and title and catalog state
+as indexes over that payload so a page can be ordered and a withdrawn record found without reading every
+row.
+
+**Why the codec is carried rather than discovered.** Reading the contract entry point off an assembly's
+attributes would have been discovery, and reusing that attribute as the platform's persistence object would
+have made one declaration answer for two boundaries. Instead the client contract generator publishes a
+second, hidden, inert holder per item type; the assembly declaring the media type names it, and the media
+shape generator carries it onto `CompiledShapes`. The holder is public because which assembly declares the
+media type is the author's choice, not this generator's — an `InternalsVisibleTo` from a shared domain
+assembly to one named implementation assembly would have made the contract name its own consumer and broken
+any other package layout. Two topology rules that pinned the movies domain's exported surface to exactly
+three types were narrowly widened to admit that one generated registration SPI, and now assert its shape.
+
+**What the two halves cost.** Identity convergence and record materialization are serialized behind one
+admission gate: a merge that commits between an assignment and the write that depends on it moves the rows
+existing at that instant, and a record written afterwards lands under an identity nothing resolves to. The
+gate costs concurrency between catalog operations, which this vertical can afford; a silently unreachable
+record is not. The transaction that records a merge now also re-keys the catalog record and library entry
+onto the survivor, closing the G04 limitation that a merge moved nothing.
+
+**Ownership.** A cataloger remains the sole identity authority; no curator identity was introduced. Two
+catalogers that converge on one work produce one record, owned by whichever materialized it — being asked
+second does not transfer ownership, and a refresh that discovers the merge continues through the surviving
+record's own catalog rather than overwriting it, bounded to one handover.
+
+**Credentials were not quietly moved to disk.** Making provider definitions durable would have written
+every settings value into the file, TMDb's read access token among them. `SettingSensitivity.Credential`
+and `Secret` already declare that such a value is never read back, and writing one to a local database reads
+it back — so persisting them would have contradicted the field's own contract and invented an at-rest
+protection story with no owner decision and no key management behind it. They are therefore not written.
+A definition missing a value its provider declares required reads back as `Incomplete` rather than Active,
+so nothing routes work to a provider whose settings are already known to be short, and a health check and a
+message name what to enter again. Whether the platform should offer protected storage instead is an owner
+decision this gate did not take.
+
+**A limit worth stating.** The storage bridge is resolved from a referenced assembly, because one source
+generator cannot read another's output in the same compilation. A media type declared beside its own item
+therefore has no bridge and its catalog add and browse refuse loudly. That is the shipped movies topology,
+so what is proved is durability for a package with a separate domain assembly — not for every otherwise
+valid media declaration.
+
+**What is not here.** Files, unit-file links, group memberships, profiles, operation records and import
+state have no tables: later gates constrain those relationships, and a composed host refuses a write to one
+rather than accepting it into memory. The browser half of typed Client browse is merge-dependent on the
+G07.3/G07A harness and is not duplicated here. G07B is a candidate; independent acceptance is not claimed.
+
 ## 2026-08-27 — Read one serialized entity through the contract a browser admitted
 
 G07.1 left a page holding contract assemblies whose bytes, CLR identity, build and universal-contract

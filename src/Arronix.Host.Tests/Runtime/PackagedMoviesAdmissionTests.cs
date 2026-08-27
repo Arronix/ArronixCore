@@ -61,6 +61,7 @@ internal sealed class PackagedMoviesAdmissionTests
                 ["Arronix:Host:ExtensionFolder"] = pluginRoot,
                 ["Arronix:Plugins:RootFolder"] = pluginRoot,
                 ["Arronix:Plugins:StateFolder"] = Path.Combine(_stateRoot, "state"),
+                ["Arronix:Store:DataSource"] = Path.Combine(_stateRoot, "arronix.db"),
                 ["Arronix:Library:RootFolders:0"] = Path.Combine(_stateRoot, "library"),
             })
             .Build();

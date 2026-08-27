@@ -584,6 +584,17 @@ workflow merely to make this smoke test render provider results.
 **Outcome:** provider pairing, identity materialization, and typed item queries are proven against real durable
 state before the same assumptions are copied into three more media kinds.
 
+**Status:** candidate, not closed. The durable slice is built and proved in the test rail: catalog identity,
+redirects and allocation survive a restart; an explicit add writes the catalog record and the user's presence
+in one transaction and is idempotent by catalog identifier; a refresh replaces only the catalog-owned half;
+a withdrawn record stays addressable and browse says so; `HostItemSource` reads real records through the
+media kind's own projector; and the catalog routes reach `CatalogDispatcher` kind-blind. Identity collision,
+cross-catalog convergence, three-way merge, redirect and retry are proved against the G04 contract, and the
+two limitations that gate recorded — a merge moving nothing, and nothing persisting — are closed. The
+exit-gate line on typed Client browse is deliberately outstanding: the browser proof is merge-dependent on
+the G07.3/G07A harness, and duplicating that harness would weaken it. Independent acceptance has not been
+sought.
+
 Implement only the narrow EF Core/LINQ slice needed for:
 
 - configured provider definitions;

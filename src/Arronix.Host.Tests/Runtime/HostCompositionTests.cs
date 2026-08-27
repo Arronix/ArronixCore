@@ -73,6 +73,7 @@ internal sealed class HostCompositionTests
             {
                 ["Arronix:Host:ExtensionFolder"] = Path.Combine(_root, "extensions"),
                 ["Arronix:Plugins:RootFolder"] = Path.Combine(_root, "extensions"),
+                ["Arronix:Store:DataSource"] = Path.Combine(_root, "arronix.db"),
                 ["Arronix:Library:RootFolders:0"] = _root,
             })
             .Build();

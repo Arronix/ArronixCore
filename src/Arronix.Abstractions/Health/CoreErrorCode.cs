@@ -107,6 +107,13 @@ public enum CoreErrorCode
     /// </summary>
     CatalogIdentityInvalid = 3005,
 
+    /// <summary>
+    /// A durable catalog record cannot be read back into the typed item it holds, because the contract that
+    /// wrote it is absent or is a build whose reader accepts a different member graph. The record is intact
+    /// and is refused rather than read as something else.
+    /// </summary>
+    CatalogRecordUnreadable = 3006,
+
     /// <summary>Parsing failed.</summary>
     ParsingFailed = 4000,
 

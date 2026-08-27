@@ -56,7 +56,7 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
 - The `MediaType` primary constructor captures its stable kind identifier, singular/plural display names, non-empty format composition, typed minimum-availability selection, and file binding. File binding defaults to `OnePerItem`; other relationships must state their shape explicitly. Kind identity is never derived from mutable display wording. The remaining optional or repeatable media-specific declarations are virtual values for identity, groups, additional selections, searches, matching, release policy, query planning, naming, summaries, intent exceptions, workbenches, and derivations. Parsing is the deliberate exception: `IReleaseParser<TRelease>.Parse` is static abstract because the parser type itself is the executable declaration. `CompiledShapes` is a generator-supplied public override marked `EditorBrowsable(Never)`; its visibility preserves the immutable G01 executable-generator sentinel, while ordinary authors neither implement nor call it. Capture is an explicit hidden-interface operation and is absent from concrete media types' public surface. There are no public whole-media replay builders, per-kind action transcripts, parse-declaration DSLs on typed media, `IUses...` capability badges, or test corpora on the runtime contract.
 - `IMediaEntity` is the minimum interface shared by items and groups. `MediaItem<TReleaseTimeline,TReleaseStage>` is directly usable; `MediaItem<TItem,TReleaseTimeline,TReleaseStage>` retains the exact derived item type for relationships. `MediaCollection<TItem>` is the common group class.
 - `ReleaseTarget<TItem>` is the concrete one-item acquisition target. `Release<TRepresentation>` is the concrete common release carrying title, year, edition, and format-owned representation. Media types use the closed common types directly unless they add real coverage or release facts. Television's set-shaped target and coordinate-bearing release are the counterexamples which justify media-owned types.
-- The common item class exposes external identifiers, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. It carries no durable key: `MediaItemId` is host-assigned at materialization and is not a media entity fact. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
+- The common item class exposes external identifiers, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. It carries no durable key: `MediaItemId` is host-assigned when a catalog answers for the item and is not a media entity fact. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
 - Entity and workbench-row descriptor shapes are generated from their CLR definitions at build time. Host consumes generated closed getters and validates the result; it does not discover media schema with property or attribute reflection.
 - `ItemInfo` is the common localized title/overview payload. `Localized<ItemInfo>` is used when no media-specific localized facts exist.
 - The plugin SDK has no second non-generic `IMediaType`. Host-only `IMediaTypeRuntime` is the kind-blind bridge.
@@ -64,7 +64,7 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
 - Identity at the catalog boundary has one rule. A cataloger owns an item's identity in its own declared
   scheme, and every item it returns states exactly one identifier in that scheme. A curator returns
   references to catalog identities, never items, and its own entry identifier is a separate type that cannot
-  stand in for one. Host alone assigns `MediaItemId`, at materialization, and holds it as host state scoped
+  stand in for one. Host alone assigns `MediaItemId`, when a catalog answers for an item, and holds it as host state scoped
   by kind and level, so a reload that rebuilds a kind's runtime does not reissue it. Routing is by scheme,
   never by provider identifier or implementation type. See `docs/research/g04/media-item-identity.md`.
 - A provider author names the media item type once, in the contract the implementation closes. Registration
@@ -178,9 +178,18 @@ coverage.
   Its cataloger returns exact `Movie` values; its curator returns TMDb catalog references. Missing or
   incompatible Movies quarantines only the provider package.
 - `CatalogDispatcher` fetches through the cataloger that owns a reference's scheme, assigns durable identity,
-  and materializes a curated list through the catalogs its references name. The installed TMDb proof executes
-  that full generic path, but no API/Client user workflow reaches it yet. `CatalogIdentity` and `IMediaStore`
-  remain in memory, and a merge does not move library rows already keyed by a superseded reference.
+  and materializes a curated list through the catalogs its references name. It now has a production caller:
+  `CatalogLibrary` and the three catalog routes reach it kind-blind, through a Host-internal binding the
+  closed typed runtime supplies, so an HTTP route never names a media item type and never constructs a
+  generic method at run time. A cataloger's own exception is contained at that lease boundary and becomes
+  the platform's statement that the catalog did not answer. Results from two configured catalogers for one
+  scheme are deduplicated by the identity the host assigned, best priority first; a later cataloger's item
+  is dropped rather than merged over the first.
+- `CatalogIdentity` is journaled and `IMediaStore`'s library facet is durable. One assignment is one
+  transaction over its bindings, its merges and the kind's allocation high-water mark, and the same
+  transaction re-keys the catalog record and library entry onto a surviving identity — so the G04 limitation
+  that a merge moved nothing is closed. Where both identities were added, the survivor's record stands, the
+  earlier addition date is kept, and a monitoring axis the survivor does not answer is carried over.
 - Typed workbench proposal/commit values and generic standard rows exist, but the current `IMediaItemSource` execution seam still projects proposals and commits through the kind-blind wire form.
 - A package declares a client facet: `clientContracts` names zero or more of its own published shared
   contract assemblies a browser may download, validated as a subset so an entry assembly or an unpublished
@@ -256,6 +265,30 @@ coverage.
   ordinary outcome that replaces the report it failed to read — and no boundary in the client's contract
   path contains an exhausted heap or stack, corrupted memory or a structured native failure.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
+- One narrow durable store stands behind the catalog and library seams: nine tables in a local SQLite file
+  reached through EF Core, holding catalog identity, redirects and allocation, one catalog record per added
+  item, the user's presence and monitoring beside it, and the operator's configured provider definitions. A
+  catalog record holds the item exactly as its own contract serialized it, under the reference the host
+  assigned, with the writing build's metadata hash beside it and title and catalog state as indexes over
+  that payload; the media type's own facts appear in no column. `HostItemSource` reads those records back
+  through the media kind's own projector — the same one that ran when the item was added — so browse after a
+  restart projects identically to browse before it. Files, unit-file links and group memberships have no
+  durable home yet and a composed host refuses a write to one rather than accepting it into memory.
+- The bridge that stores and reads a media item is generated, not discovered. A media contract assembly
+  publishes one hidden, inert `ICompiledItemCodec` holder per item type; the assembly declaring the media
+  type names it, and the generator carries it onto `CompiledShapes`, from which the closed runtime hands it
+  to Host. Nothing reads an assembly's attributes, resolves a type by name, or constructs anything at run
+  time, and no package has to friend another. A kind whose item type has no generated bridge — one
+  implementing the entity contract directly rather than deriving from the common item — is admitted
+  normally and says so when its items are asked for, rather than reporting an empty library.
+- An operator's provider settings are durable except the ones a field declares are never read back.
+  `SettingSensitivity.Credential` and `Secret` both say exactly that, so those values are not written to the
+  store: doing so would read them back, in plain text, off whatever medium the file sits on, which is a
+  protection decision this vertical has no mandate or key management to make. They live for as long as the
+  process they were given to. A definition missing a value its provider declares *required* reads back as
+  `DefinitionState.Incomplete` — not Active, so nothing routes work to it — with a message naming the fields
+  to enter again, and a health check reporting it; an optional one simply stays absent. A provider whose
+  implementation is not loaded cannot say which of its fields are sensitive, so nothing is written for it.
 
 ## Completion and continuity discipline
 
@@ -296,7 +329,7 @@ work does not substitute for closing an earlier dependency.
   the family the registration fixed, instead of reconstructing either.
 - Its identity half is answered and built. The owner settled the rule on 2026-08-25: a cataloger owns an
   item's identity in its own declared scheme, a curator returns references rather than items, and Host alone
-  assigns `MediaItemId` at materialization. `IMediaEntity` no longer carries a key, `CatalogIdentity` is host
+  assigns `MediaItemId` when a catalog answers for an item. `IMediaEntity` no longer carries a key, `CatalogIdentity` is host
   state, and `CatalogDispatcher` routes by scheme and materializes. The invariant and its current limits are
   in `docs/research/g04/media-item-identity.md`: a merge resolves the superseded reference but moves no
   library rows and nothing persists. The full close rail is
@@ -332,6 +365,22 @@ work does not substitute for closing an earlier dependency.
   reproducing the mutation table and re-running the full .NET 11 rail. This gate claims nothing about cache
   update, removal and stale-tab behaviour (G07.3), about the external-consumer vertical (G07A), or about
   provider-result ingestion.
+- G07B is a candidate, not closed. One narrow Movies catalog vertical is durable end to end: a real
+  provider result becomes a valid `Movie`, an explicit add writes its record and the user's presence in one
+  transaction, a refresh replaces the catalog-owned half and cannot reach the user-owned one, a withdrawn
+  record stays addressable and browse says so, and everything survives a restart. `HostItemSource` no longer
+  returns an empty placeholder. Identity collision, redirect, three-way merge and add retry are proved
+  against the G04 contract, including cross-catalog convergence and ownership handover during a refresh.
+  The browser half of the roadmap's typed Client browse is deliberately not attempted here: it is
+  merge-dependent on the G07.3/G07A proof harness and duplicating that harness would weaken it. Independent
+  acceptance is not claimed.
+- The G07B checkpoint's evidence is focused-suite evidence, not a rail run. `eng/ci/run-tests.sh` has not been
+  executed against this branch: the last observed counts are Host 668 passed / 1 failed / 0 skipped, Api 19,
+  Generators 72, Movies 424 passed with 301 registered skips, Architecture 402 passed with 1 skip, and
+  Plugins, Abstractions, Client and Common green. The one Host failure is
+  `APlantedStaleAssemblyInTheSourceBuildOutputCannotEnterAStagedPayload`, which fails identically on a
+  pristine `git archive` of `b043abc5a` and is a rail-only test rather than a regression. The exact skip
+  ratchet and the compatibility validation still have to be run before any acceptance claim.
 - G07.3 is open. Its hermetic lifecycle core is built — orphaning and its refusal, exact reunion, terminal
   replacement, the `410`/`404`/transport separation, selective store eviction, the unchanged-installation
   early-out, and the `PluginStateChanged`-driven re-read — but the gate names update, removal, stale cache
@@ -349,6 +398,17 @@ duplicated checklist drifting from current state.
 ## Technical debt
 
 - `MediaKindModel`, legacy shapes, `ParsedRelease`, and quality ladders remain during migration.
+- Durable catalog records need the item type to live in a different assembly from the media type that
+  declares it. One source generator cannot read another's output in the same compilation, so
+  `MediaShapeGenerator` resolves the storage bridge only from a *referenced* assembly. A media type declared
+  beside its own item therefore carries no bridge, and its catalog add and browse refuse loudly rather than
+  answering empty. That is the shipped movies topology — a shared domain assembly plus an isolated
+  extension — so G07B proves durability for that shape, not for every otherwise-valid media declaration.
+  Closing it needs either a generator that can see the other's output or a second declared route to the
+  codec, and neither is decided.
+- Provider credentials do not survive a restart, by construction rather than by omission: a field declaring
+  itself never read back is never written down. Whether the platform should offer protected storage for
+  them, and with what key management, is an owner decision this vertical did not take.
 - Lifecycle internals currently project as one composite field. The typed `Status` projection is top-level, but selected lifecycle milestones are not yet independent top-level sort/filter axes.
 - The format-capability loading and versioning lifecycle needs a first-class manifest/package design before independently distributed format packages are promised.
 - `ReleasePolicy<T>.Compile` still exposes builder callback choreography to media authors. Format defaults and media policy fragments must compose without making authors drive an internal compiler mechanism.

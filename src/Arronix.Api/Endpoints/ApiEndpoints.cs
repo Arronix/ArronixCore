@@ -64,6 +64,7 @@ internal static class ApiEndpoints
 
         v1.MapKindEndpoints();
         v1.MapItemEndpoints();
+        v1.MapCatalogEndpoints();
         v1.MapActionEndpoints();
         v1.MapWorkbenchEndpoints();
         v1.MapProviderEndpoints();

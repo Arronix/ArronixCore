@@ -1,4 +1,5 @@
 using System.Linq;
+using Arronix.Abstractions.Errors;
 using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Identity;
 using Arronix.Abstractions.Shape;
@@ -123,7 +124,36 @@ internal static class ItemEndpoints
         }
 
         var query = BuildQuery(registered, levelId, parent, context, options.Value, ApiRequests.Filters(context.Request));
-        var page = await items.QueryAsync(registered.Kind, query, cancellationToken).ConfigureAwait(false);
+
+        return await PageAsync(kind, registered, query, items, projection, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Runs one browse query and publishes its page, turning a refusal into the problem document for it.
+    /// </summary>
+    /// <remarks>
+    /// The item source refuses a query it cannot answer rather than answering a narrower one, so a filter
+    /// or an ordering this build does not serve arrives here as a stated reason instead of a page that
+    /// quietly means something else.
+    /// </remarks>
+    private static async Task<Results<Ok<ItemDetailPage>, ProblemHttpResult>> PageAsync(
+        string kind,
+        RegisteredMediaKind registered,
+        ItemQuery query,
+        MediaItemBroker items,
+        MediaItemProjection projection,
+        CancellationToken cancellationToken)
+    {
+        ItemPage? page;
+
+        try
+        {
+            page = await items.QueryAsync(registered.Kind, query, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ArronixException failure)
+        {
+            return ApiRequests.Refused(failure);
+        }
 
         if (page is null)
         {
@@ -162,7 +192,17 @@ internal static class ItemEndpoints
                 $"'{id}' is not a well-formed item reference for '{kind}'; the form is 'level:id'.");
         }
 
-        var item = await items.GetAsync(registered.Kind, reference, cancellationToken).ConfigureAwait(false);
+        ItemView? item;
+
+        try
+        {
+            item = await items.GetAsync(registered.Kind, reference, cancellationToken).ConfigureAwait(false);
+        }
+        catch (ArronixException failure)
+        {
+            return ApiRequests.Refused(failure);
+        }
+
         if (item is null)
         {
             return ApiRequests.Problem(
@@ -219,19 +259,8 @@ internal static class ItemEndpoints
         }
 
         var query = BuildQuery(registered, child.Id, reference, context, options.Value, ApiRequests.Filters(context.Request));
-        var page = await items.QueryAsync(registered.Kind, query, cancellationToken).ConfigureAwait(false);
 
-        if (page is null)
-        {
-            return ApiRequests.Problem(
-                StatusCodes.Status404NotFound,
-                CoreErrorCode.MediaKindNotFound,
-                $"'{kind}' is no longer installed.");
-        }
-
-        var projected = await projection.ProjectAsync(registered, page, cancellationToken).ConfigureAwait(false);
-
-        return TypedResults.Ok(projected);
+        return await PageAsync(kind, registered, query, items, projection, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<Results<Ok<ItemDetailPage>, ProblemHttpResult>> GetGroup(
@@ -277,19 +306,8 @@ internal static class ItemEndpoints
         }
 
         var query = BuildQuery(registered, axis.MemberLevelId, null, context, options.Value, filters);
-        var page = await items.QueryAsync(registered.Kind, query, cancellationToken).ConfigureAwait(false);
 
-        if (page is null)
-        {
-            return ApiRequests.Problem(
-                StatusCodes.Status404NotFound,
-                CoreErrorCode.MediaKindNotFound,
-                $"'{kind}' is no longer installed.");
-        }
-
-        var projected = await projection.ProjectAsync(registered, page, cancellationToken).ConfigureAwait(false);
-
-        return TypedResults.Ok(projected);
+        return await PageAsync(kind, registered, query, items, projection, cancellationToken).ConfigureAwait(false);
     }
 
     private static ItemQuery BuildQuery(

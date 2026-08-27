@@ -23,12 +23,27 @@ internal static class ProviderRegistration
     internal static IServiceCollection AddProviderRegistry(this IServiceCollection services)
     {
         services.TryAddSingleton<ProviderRegistry>();
-        services.TryAddSingleton<ProviderDefinitionStore>();
+
+        // The journaled forms. A composed host reads back what a previous process configured and assigned;
+        // the unjournaled constructors exist for fixtures and unit tests and are never registered.
+        services.TryAddSingleton(provider => new ProviderDefinitionStore(
+            provider.GetRequiredService<ProviderRegistry>(),
+            provider.GetRequiredService<Abstractions.Events.IEventPublisher>(),
+            provider.GetRequiredService<TimeProvider>(),
+            provider.GetRequiredService<IProviderDefinitionJournal>()));
         services.TryAddSingleton<ProviderStatusStore>();
         services.TryAddSingleton<ProviderSessionStore>();
         services.TryAddSingleton<ProviderTestService>();
-        services.TryAddSingleton<CatalogIdentity>();
+        services.TryAddSingleton(provider => new CatalogIdentity(
+            provider.GetRequiredService<ICatalogIdentityJournal>()));
         services.TryAddSingleton<CatalogDispatcher>();
+        services.TryAddSingleton(provider => new CatalogLibrary(
+            provider.GetRequiredService<Media.MediaKindRegistry>(),
+            provider.GetRequiredService<CatalogDispatcher>(),
+            provider.GetRequiredService<Storage.ICatalogRecordStore>(),
+            provider.GetRequiredService<Storage.IMediaStore>(),
+            provider.GetRequiredService<CatalogIdentity>(),
+            provider.GetRequiredService<TimeProvider>()));
         services.TryAddSingleton<IndexerDispatcher>();
         services.TryAddSingleton<NotificationDispatcher>();
 

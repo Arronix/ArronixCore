@@ -86,7 +86,18 @@ public enum DefinitionState
     Active = 0,
 
     /// <summary>The implementation is absent. The definition is retained and quarantined.</summary>
-    Orphaned = 1
+    Orphaned = 1,
+
+    /// <summary>
+    /// The implementation is loaded, and a value the provider requires is missing.
+    /// </summary>
+    /// <remarks>
+    /// Distinct from <see cref="Orphaned"/> because nothing is wrong with the installation, and distinct
+    /// from <see cref="Active"/> because the definition is not usable: routing it would call a provider with
+    /// settings already known to be incomplete. The ordinary cause is a value the field declares is never
+    /// read back, which a restart therefore does not carry.
+    /// </remarks>
+    Incomplete = 2
 }
 
 /// <summary>
