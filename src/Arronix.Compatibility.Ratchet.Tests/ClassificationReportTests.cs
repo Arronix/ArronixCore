@@ -11,7 +11,7 @@ public class ClassificationReportTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(report.Schema, Is.EqualTo(ClassificationReportGenerator.Schema));
+            Assert.That(report.Format, Is.EqualTo(ClassificationReportGenerator.Format));
             Assert.That(report.SchemaVersion, Is.EqualTo(1));
             Assert.That(report.SkipCounts, Is.EqualTo(new ClassificationSkipCounts
             {
@@ -42,6 +42,9 @@ public class ClassificationReportTests
             value.Sources.Any(source => source.ProofUse == ProofUse.BaselineOnly));
         var candidate = report.Requirements.First(value =>
             value.Disposition == RequirementDisposition.CandidateDivergence);
+        var declaredSource = ledger.Sources.Single(source =>
+            source.SourceId == baselineOnly.Sources.First(source => source.ProofUse == ProofUse.BaselineOnly).SourceId);
+        var projectedSource = baselineOnly.Sources.First(source => source.SourceId == declaredSource.SourceId);
 
         Assert.Multiple(() =>
         {
@@ -53,6 +56,14 @@ public class ClassificationReportTests
                 value.Sources.Select(static source => source.SourceId).SequenceEqual(
                     value.Sources.Select(static source => source.SourceId).Order(StringComparer.Ordinal))), Is.True);
             Assert.That(baselineOnly.Sources.Any(source => source.ProofUse == ProofUse.BaselineOnly), Is.True);
+            Assert.That(projectedSource.DeclaredCaseCount, Is.EqualTo(declaredSource.CaseCount));
+            Assert.That(projectedSource.Provenance, Is.EqualTo(new ClassificationSourceProvenance
+            {
+                Independence = declaredSource.Provenance.Independence,
+                Access = declaredSource.Provenance.Access,
+                Currency = declaredSource.Provenance.Currency,
+                PinState = declaredSource.Provenance.PinState
+            }));
             Assert.That(candidate.Disposition, Is.EqualTo(RequirementDisposition.CandidateDivergence));
             Assert.That(report.Requirements.Any(value => value.OwnerState == OwnerState.Provisional), Is.True);
             Assert.That(report.Requirements.Any(value => value.OwnerState == OwnerState.Unresolved), Is.True);
@@ -79,7 +90,7 @@ public class ClassificationReportTests
             {
                 Assert.That(File.ReadAllText(first), Is.EqualTo(File.ReadAllText(second)));
                 Assert.That(Directory.EnumerateFiles(directory, "*.tmp"), Is.Empty);
-                Assert.That(File.ReadAllText(first), Does.Contain("\"$schema\""));
+                Assert.That(File.ReadAllText(first), Does.Contain("\"format\""));
             });
         }
         finally
@@ -121,7 +132,7 @@ public class ClassificationReportTests
             Throws.TypeOf<CompatibilityDocumentException>());
     }
 
-    private static ClassificationRequirementCount ByDisposition(
+    private static ClassificationDispositionCount ByDisposition(
         CompatibilityClassificationReport report,
         RequirementDisposition disposition)
         => report.RequirementsByDisposition.Single(value => value.Disposition == disposition);

@@ -32,6 +32,11 @@ public static class RatchetApplication
 
         try
         {
+            if (options.ClassificationReportPath is not null)
+            {
+                ClassificationReportWriter.Delete(options.ClassificationReportPath);
+            }
+
             var ledger = CompatibilityDocumentReader.ReadLedger(options.LedgerDirectory);
             var previous = options.PreviousLedgerDirectory is null
                 ? null
@@ -90,10 +95,6 @@ public static class RatchetApplication
                     ClassificationReportWriter.Write(
                         options.ClassificationReportPath,
                         ClassificationReportGenerator.Generate(ledger, run));
-                }
-                else
-                {
-                    ClassificationReportWriter.Delete(options.ClassificationReportPath);
                 }
             }
 

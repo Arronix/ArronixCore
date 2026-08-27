@@ -8,7 +8,7 @@ namespace Arronix.Compatibility.Ratchet;
 /// <summary>Projects the canonical ledger into a stable classification inventory without evaluating compatibility proof.</summary>
 public static class ClassificationReportGenerator
 {
-    public const string Schema = "arronix.compatibility.classification-report/v1";
+    public const string Format = "arronix.compatibility.classification-report";
     public const int SchemaVersion = 1;
 
     /// <summary>Builds a deterministic inventory from facts already declared in the ledger and execution result.</summary>
@@ -23,7 +23,7 @@ public static class ClassificationReportGenerator
 
         return new CompatibilityClassificationReport
         {
-            Schema = Schema,
+            Format = Format,
             SchemaVersion = SchemaVersion,
             SkipCounts = new ClassificationSkipCounts
             {
@@ -40,15 +40,50 @@ public static class ClassificationReportGenerator
                     Skipped = value.Skipped
                 }).ToArray(),
             RequirementsByDisposition = Enum.GetValues<RequirementDisposition>()
-                .Select(disposition => ClassificationRequirementCount.ForDisposition(requirements, disposition)).ToArray(),
+                .Select(disposition => new ClassificationDispositionCount
+                {
+                    Disposition = disposition,
+                    RequirementCount = requirements.Count(requirement => requirement.Disposition == disposition),
+                    CaseCount = requirements
+                        .Where(requirement => requirement.Disposition == disposition)
+                        .Sum(static requirement => requirement.CaseCount)
+                }).ToArray(),
             RequirementsByOwnerState = Enum.GetValues<OwnerState>()
-                .Select(ownerState => ClassificationRequirementCount.ForOwnerState(requirements, ownerState)).ToArray(),
+                .Select(ownerState => new ClassificationOwnerStateCount
+                {
+                    OwnerState = ownerState,
+                    RequirementCount = requirements.Count(requirement => requirement.Owner.State == ownerState),
+                    CaseCount = requirements
+                        .Where(requirement => requirement.Owner.State == ownerState)
+                        .Sum(static requirement => requirement.CaseCount)
+                }).ToArray(),
             SourcesByProofUse = Enum.GetValues<ProofUse>()
-                .Select(proofUse => ClassificationSourceCount.ForProofUse(sources, proofUse)).ToArray(),
+                .Select(proofUse => new ClassificationProofUseCount
+                {
+                    ProofUse = proofUse,
+                    SourceCount = sources.Count(source => source.ProofUse == proofUse),
+                    DeclaredCaseCount = sources
+                        .Where(source => source.ProofUse == proofUse)
+                        .Sum(static source => source.CaseCount ?? 0)
+                }).ToArray(),
             SourcesByArtifactState = Enum.GetValues<ArtifactState>()
-                .Select(artifactState => ClassificationSourceCount.ForArtifactState(sources, artifactState)).ToArray(),
+                .Select(artifactState => new ClassificationArtifactStateCount
+                {
+                    ArtifactState = artifactState,
+                    SourceCount = sources.Count(source => source.ArtifactState == artifactState),
+                    DeclaredCaseCount = sources
+                        .Where(source => source.ArtifactState == artifactState)
+                        .Sum(static source => source.CaseCount ?? 0)
+                }).ToArray(),
             SourcesByEvidenceClass = Enum.GetValues<EvidenceClass>()
-                .Select(evidenceClass => ClassificationSourceCount.ForEvidenceClass(sources, evidenceClass)).ToArray(),
+                .Select(evidenceClass => new ClassificationEvidenceClassCount
+                {
+                    EvidenceClass = evidenceClass,
+                    SourceCount = sources.Count(source => source.EvidenceClass == evidenceClass),
+                    DeclaredCaseCount = sources
+                        .Where(source => source.EvidenceClass == evidenceClass)
+                        .Sum(static source => source.CaseCount ?? 0)
+                }).ToArray(),
             Requirements = requirements.Select(requirement => new ClassificationRequirement
             {
                 RequirementId = requirement.RequirementId,
@@ -83,7 +118,15 @@ public static class ClassificationReportGenerator
             SourceId = source.SourceId,
             ProofUse = source.ProofUse,
             ArtifactState = source.ArtifactState,
-            EvidenceClass = source.EvidenceClass
+            EvidenceClass = source.EvidenceClass,
+            DeclaredCaseCount = source.CaseCount,
+            Provenance = new ClassificationSourceProvenance
+            {
+                Independence = source.Provenance.Independence,
+                Access = source.Provenance.Access,
+                Currency = source.Provenance.Currency,
+                PinState = source.Provenance.PinState
+            }
         };
     }
 }
@@ -91,16 +134,15 @@ public static class ClassificationReportGenerator
 /// <summary>The versioned, generated classification inventory. It is not compatibility or parity proof.</summary>
 public sealed record CompatibilityClassificationReport
 {
-    [JsonPropertyName("$schema")]
-    public required string Schema { get; init; }
+    public required string Format { get; init; }
     public required int SchemaVersion { get; init; }
     public required ClassificationSkipCounts SkipCounts { get; init; }
     public required IReadOnlyList<ClassificationBaselineRun> BaselineRuns { get; init; }
-    public required IReadOnlyList<ClassificationRequirementCount> RequirementsByDisposition { get; init; }
-    public required IReadOnlyList<ClassificationRequirementCount> RequirementsByOwnerState { get; init; }
-    public required IReadOnlyList<ClassificationSourceCount> SourcesByProofUse { get; init; }
-    public required IReadOnlyList<ClassificationSourceCount> SourcesByArtifactState { get; init; }
-    public required IReadOnlyList<ClassificationSourceCount> SourcesByEvidenceClass { get; init; }
+    public required IReadOnlyList<ClassificationDispositionCount> RequirementsByDisposition { get; init; }
+    public required IReadOnlyList<ClassificationOwnerStateCount> RequirementsByOwnerState { get; init; }
+    public required IReadOnlyList<ClassificationProofUseCount> SourcesByProofUse { get; init; }
+    public required IReadOnlyList<ClassificationArtifactStateCount> SourcesByArtifactState { get; init; }
+    public required IReadOnlyList<ClassificationEvidenceClassCount> SourcesByEvidenceClass { get; init; }
     public required IReadOnlyList<ClassificationRequirement> Requirements { get; init; }
 }
 
@@ -120,78 +162,44 @@ public sealed record ClassificationBaselineRun
     public required int Skipped { get; init; }
 }
 
-/// <summary>An aggregate over requirement records and their declared case inventory.</summary>
-public sealed record ClassificationRequirementCount
+/// <summary>An aggregate over requirements in one declared disposition.</summary>
+public sealed record ClassificationDispositionCount
 {
-    public RequirementDisposition? Disposition { get; init; }
-    public OwnerState? OwnerState { get; init; }
+    public required RequirementDisposition Disposition { get; init; }
     public required int RequirementCount { get; init; }
     public required int CaseCount { get; init; }
-
-    internal static ClassificationRequirementCount ForDisposition(
-        IReadOnlyList<CompatibilityRequirement> requirements,
-        RequirementDisposition disposition)
-        => Create(requirements.Where(requirement => requirement.Disposition == disposition), disposition, null);
-
-    internal static ClassificationRequirementCount ForOwnerState(
-        IReadOnlyList<CompatibilityRequirement> requirements,
-        OwnerState ownerState)
-        => Create(requirements.Where(requirement => requirement.Owner.State == ownerState), null, ownerState);
-
-    private static ClassificationRequirementCount Create(
-        IEnumerable<CompatibilityRequirement> requirements,
-        RequirementDisposition? disposition,
-        OwnerState? ownerState)
-    {
-        var values = requirements.ToArray();
-        return new ClassificationRequirementCount
-        {
-            Disposition = disposition,
-            OwnerState = ownerState,
-            RequirementCount = values.Length,
-            CaseCount = values.Sum(static value => value.CaseCount)
-        };
-    }
 }
 
-/// <summary>An aggregate over declared compatibility sources.</summary>
-public sealed record ClassificationSourceCount
+/// <summary>An aggregate over requirements in one declared owner state.</summary>
+public sealed record ClassificationOwnerStateCount
 {
-    public ProofUse? ProofUse { get; init; }
-    public ArtifactState? ArtifactState { get; init; }
-    public EvidenceClass? EvidenceClass { get; init; }
+    public required OwnerState OwnerState { get; init; }
+    public required int RequirementCount { get; init; }
+    public required int CaseCount { get; init; }
+}
+
+/// <summary>An aggregate over sources with one declared proof-use status.</summary>
+public sealed record ClassificationProofUseCount
+{
+    public required ProofUse ProofUse { get; init; }
     public required int SourceCount { get; init; }
     public required int DeclaredCaseCount { get; init; }
+}
 
-    internal static ClassificationSourceCount ForProofUse(IReadOnlyList<CompatibilitySource> sources, ProofUse proofUse)
-        => Create(sources.Where(source => source.ProofUse == proofUse), proofUse, null, null);
+/// <summary>An aggregate over sources with one declared artifact state.</summary>
+public sealed record ClassificationArtifactStateCount
+{
+    public required ArtifactState ArtifactState { get; init; }
+    public required int SourceCount { get; init; }
+    public required int DeclaredCaseCount { get; init; }
+}
 
-    internal static ClassificationSourceCount ForArtifactState(
-        IReadOnlyList<CompatibilitySource> sources,
-        ArtifactState artifactState)
-        => Create(sources.Where(source => source.ArtifactState == artifactState), null, artifactState, null);
-
-    internal static ClassificationSourceCount ForEvidenceClass(
-        IReadOnlyList<CompatibilitySource> sources,
-        EvidenceClass evidenceClass)
-        => Create(sources.Where(source => source.EvidenceClass == evidenceClass), null, null, evidenceClass);
-
-    private static ClassificationSourceCount Create(
-        IEnumerable<CompatibilitySource> sources,
-        ProofUse? proofUse,
-        ArtifactState? artifactState,
-        EvidenceClass? evidenceClass)
-    {
-        var values = sources.ToArray();
-        return new ClassificationSourceCount
-        {
-            ProofUse = proofUse,
-            ArtifactState = artifactState,
-            EvidenceClass = evidenceClass,
-            SourceCount = values.Length,
-            DeclaredCaseCount = values.Sum(static value => value.CaseCount ?? 0)
-        };
-    }
+/// <summary>An aggregate over sources with one declared evidence class.</summary>
+public sealed record ClassificationEvidenceClassCount
+{
+    public required EvidenceClass EvidenceClass { get; init; }
+    public required int SourceCount { get; init; }
+    public required int DeclaredCaseCount { get; init; }
 }
 
 /// <summary>One stable requirement row projected directly from the canonical ledger.</summary>
@@ -221,6 +229,17 @@ public sealed record ClassificationSourceEvidence
     public required ProofUse ProofUse { get; init; }
     public required ArtifactState ArtifactState { get; init; }
     public required EvidenceClass EvidenceClass { get; init; }
+    public required int? DeclaredCaseCount { get; init; }
+    public required ClassificationSourceProvenance Provenance { get; init; }
+}
+
+/// <summary>The declared provenance facts for a source; this record does not judge their sufficiency.</summary>
+public sealed record ClassificationSourceProvenance
+{
+    public required Independence Independence { get; init; }
+    public required EvidenceAccess Access { get; init; }
+    public required EvidenceCurrency Currency { get; init; }
+    public required PinState PinState { get; init; }
 }
 
 /// <summary>Writes a report by replacing the target only after a complete JSON payload is available.</summary>

@@ -106,4 +106,41 @@ public class RatchetApplicationTests
             Assert.That(error.ToString(), Does.StartWith("input error:"));
         });
     }
+
+    [Test]
+    public void InputFailureRemovesTheRequestedStaleClassificationReport()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "arronix-ratchet-stale-report-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var report = Path.Combine(directory, "classification-report.json");
+            File.WriteAllText(report, "stale successful report");
+            using var output = new StringWriter();
+            using var error = new StringWriter();
+
+            var exitCode = RatchetApplication.Run(
+                [
+                    "validate",
+                    "--ledger", "/definitely/missing",
+                    "--results", "/also/missing",
+                    "--required-tests", "/required/missing.tsv",
+                    "--compile-inputs", "/compile-inputs/missing",
+                    "--classification-report", report
+                ],
+                output,
+                error);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(exitCode, Is.EqualTo(2));
+                Assert.That(File.Exists(report), Is.False);
+                Assert.That(error.ToString(), Does.StartWith("input error:"));
+            });
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }
