@@ -1,9 +1,10 @@
 # G07.3 — contract cache lifecycle in a real browser
 
-**Status:** implementation and proof candidate under independent acceptance review. Every exit condition of
-G07.3 has been exercised in a real browser; the gate is not self-declared closed here. The hermetic
-lifecycle core this drives was recorded when it landed; what is new is that update, removal, stale cache and
-stale tab have now been driven through a real Chromium against real restarts of the real API.
+**Status:** complete. Independent review accepted the exact pushed candidate after re-running the full .NET
+11 rail and reproducing the first mutation's documented partial-run result. Every exit condition of G07.3
+has been exercised in a real browser. The hermetic lifecycle core this drives was recorded when it landed;
+what is new is that update, removal, stale cache and stale tab have now been driven through a real Chromium
+against real restarts of the real API.
 
 This is a record of a change, not a proposal. Every claim below is asserted by a named check in a script
 whose observed output is quoted.

@@ -439,10 +439,12 @@ resolves to the client's own compiled copy by object identity. The Client's buil
 project reference, on Abstractions, and roots that assembly for the trimmer because a dynamically loaded
 contract binds to members the trimmer never saw.
 
-Still open: cache update, removal and stale-tab behaviour (G07.3), signing and package integrity,
-side-by-side contract versions, and any reload that involves shared contracts
-— an admitted store takes a second graph only when neither shares anything, because matching identifiers,
-versions and file names do not prove matching bytes, identities or dependency closures.
+The browser lifecycle is explicit: an exact resident build reunites without a fetch; a changed build with
+the same CLR identity makes that page terminal until the document itself is reloaded; and a withdrawn
+contract remains attributable but cannot project or survive cache eviction. Still open are signing and
+package integrity, side-by-side contract versions, and in-process replacement of shared contract graphs —
+matching identifiers, versions and file names do not prove matching bytes, identities or dependency
+closures.
 
 ## 8. Lifecycle and execution
 

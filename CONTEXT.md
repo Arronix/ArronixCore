@@ -332,7 +332,7 @@ work does not substitute for closing an earlier dependency.
   reproducing the mutation table and re-running the full .NET 11 rail. This gate claims nothing about cache
   update, removal and stale-tab behaviour (G07.3), about the external-consumer vertical (G07A), or about
   provider-result ingestion.
-- G07.3 is an implementation and proof candidate under independent acceptance review. Update, removal,
+- G07.3 is complete. Update, removal,
   stale cache and stale tab have been exercised in a real browser: one `BrowserContext` and one origin
   across three real API restarts, with the tabs opened before each restart never navigated again and driven
   only through the contracts page's own reload. A held tab becomes terminal on a rebuilt contract of the
@@ -341,12 +341,13 @@ work does not substitute for closing an earlier dependency.
   unchanged video bytes from the store; a withdrawn package is reported as held-but-uninstalled while what
   remains stays compatible, and its bytes are evicted. See
   `docs/research/g07/client-contract-lifecycle.md`, which also records what the matrix does not
-  distinguish.
+  distinguish. Independent review accepted the exact pushed candidate after reproducing the first mutation's
+  partial-run result and re-running the full .NET 11 rail.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
-it. All three G07 sub-gates now have their exercises run; G07.3 awaits independent acceptance. Later gates
+it. All three G07 sub-gates are complete. Later gates
 cover compatibility evidence,
 format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,

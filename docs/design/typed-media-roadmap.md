@@ -531,7 +531,7 @@ panel take an external consumer's contract at G07A.
 
 #### G07.3 — Contract cache lifecycle in the browser
 
-**Status:** candidate under independent acceptance review. The hermetic lifecycle core is implemented and
+**Status:** complete. The hermetic lifecycle core is implemented and
 proved in the test rail: orphaning with its refusal and its attribution, exact reunion without a fetch,
 terminal replacement, the `410`/`404`/transport separation, selective store eviction with the
 unreadable-manifest refusal, the unchanged-installation early-out, and the `PluginStateChanged`-driven
@@ -546,7 +546,8 @@ across three real API restarts — install, an update of the same CLR identity t
 page's own reload. 64 lifecycle checks beside the 43 the G07.2 half already asserts, with machine-readable
 evidence. `docs/research/g07/client-contract-lifecycle.md` records what was proved and the five things it
 does not claim, including that no shipped host raises `PluginStateChanged` yet, so the event-driven trigger
-remains proved in the rail rather than in a browser. This gate is not self-declared closed.
+remains proved in the rail rather than in a browser. Independent review re-ran the full .NET 11 rail and
+reproduced the first mutation's exact partial-run result at the accepted candidate.
 
 **Outcome:** installing, updating, and removing a package, and holding a tab open across those changes, all
 behave predictably in the browser and fail visibly rather than projecting partial data.
@@ -1368,7 +1369,7 @@ the Client build and no media kind spelled in its source. The server half, the b
 rail are recorded in `docs/research/g07/client-payload-projection.md`; independent review reproduced the
 mutation evidence and re-ran the full rail at the accepted commit.
 
-**G07.3 is a candidate under independent acceptance review.** Cache update, removal, eviction, stale cache
+**G07.3 is complete.** Cache update, removal, eviction, stale cache
 and stale tab have been driven in the real browser across three restarts of the real API at one origin, with
 the held tabs never navigated again. G07.2 built the withdrawal rules its own correctness needed — an offer
 re-proved by contract object identity before a fetch, after it and before any value is handed back, and a

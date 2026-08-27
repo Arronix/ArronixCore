@@ -1,5 +1,18 @@
 # Arronix History
 
+## 2026-08-28 — Accept the browser contract lifecycle at its exact candidate
+
+Independent review accepted G07.3 at `4cfc0b92d97036a1524788f39db97efaa00eadc5`. The full .NET 11 rail
+passed 3,509 enabled cases across 14 projects, retained exactly 302 registered skips, and reported zero
+failures or inconclusive cases. The reviewer then changed reunion to compare CLR identity alone in a
+disposable worktree and reproduced the recorded partial lifecycle result exactly: 26 of 64 checks executed,
+4 failed — 3 direct terminal-behaviour refusals and 1 cascading navigation check — the run aborted on the
+expected locator timeout, and 38 checks did not run. The disposable worktree and proof process were removed.
+
+That acceptance closes G07.3. Its browser proof remains its own 137-check result — 30 server checks, 43
+G07.2 browser checks and 64 lifecycle checks — and is not combined with the separate G07A external-consumer
+proof.
+
 ## 2026-08-27 — Drive update, removal and a held tab through a real browser
 
 G07.3's hermetic core was built and proved in the rail; its exit gate names update, removal, stale cache and
