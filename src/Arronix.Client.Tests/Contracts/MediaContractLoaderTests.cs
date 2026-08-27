@@ -213,7 +213,8 @@ public sealed class MediaContractLoaderTests
             metadata!.Identity,
             Convert.ToHexString(SHA256.HashData(content)),
             metadata.ModuleVersionId,
-            content.Length);
+            content.Length,
+            []);
 
         var report = await LoadAsync(Serve(Manifest(published), content));
         var assembly = report.Packages.Single().Assemblies.Single();
@@ -251,7 +252,8 @@ public sealed class MediaContractLoaderTests
             metadata!.Identity,
             new string('0', 64),
             metadata.ModuleVersionId,
-            content.Length);
+            content.Length,
+            []);
 
         // The dependant is the real fixture, described truthfully, so it verifies. Whether it became
         // resident is therefore an unambiguous witness of whether the loader loaded anything at all.
@@ -325,7 +327,8 @@ public sealed class MediaContractLoaderTests
             _declared.Identity,
             Convert.ToHexString(SHA256.HashData(_fixture)),
             _declared.ModuleVersionId,
-            _fixture.Length);
+            _fixture.Length,
+            []);
 
     private static PluginId Id(string value) => PluginId.FromString(value);
 

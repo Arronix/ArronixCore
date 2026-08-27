@@ -26,6 +26,11 @@ namespace Arronix.Plugins.Loading;
 /// The set is bounded by the shared contract assemblies of an installation, which are domain contracts.
 /// </param>
 /// <param name="Assembly">The one loaded assembly object every dependant must receive.</param>
+/// <param name="ClientContracts">
+/// What these bytes declared about the client contracts they carry, decoded at staging. Retained rather
+/// than re-derived, for the same reason the bytes are: it was read once, from the file this installation
+/// proved, without running any of it.
+/// </param>
 internal sealed record AdmittedContract(
     PluginId Publisher,
     AssemblyIdentity Identity,
@@ -33,7 +38,8 @@ internal sealed record AdmittedContract(
     string ContentHash,
     Guid ModuleVersionId,
     ReadOnlyMemory<byte> Content,
-    Assembly Assembly);
+    Assembly Assembly,
+    StagedClientContracts ClientContracts);
 
 /// <summary>Why a package's shared-contract declaration was refused.</summary>
 /// <param name="Code">The failure class.</param>
@@ -975,7 +981,8 @@ internal sealed class SharedContractStore
                     contract.Staged.ContentHash,
                     contract.Staged.ModuleVersionId,
                     contract.Staged.Content,
-                    assembly));
+                    assembly,
+                    contract.Staged.ClientContracts));
             }
         }
 

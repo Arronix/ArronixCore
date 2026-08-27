@@ -121,6 +121,42 @@ internal sealed class MoviesActivationTests
         manifest.RootElement.GetProperty("refused").EnumerateArray().Should().BeEmpty();
     }
 
+    /// <summary>
+    /// A real server publishes what each admitted assembly declares about the contracts it holds.
+    /// </summary>
+    /// <remarks>
+    /// Read from the staged bytes at admission, without loading the assembly or calling into the package, so
+    /// what reaches a browser is what the file says rather than what running it would report. The video
+    /// format declares nothing and that is a fact rather than an omission: it owns no item.
+    /// </remarks>
+    [Test]
+    public async Task TheClientContractManifestPublishesWhatEachAssemblyDeclaresAsync()
+    {
+        using var manifest = await ReadAsync("/api/v1/client-contracts").ConfigureAwait(false);
+
+        var packages = manifest.RootElement.GetProperty("packages").EnumerateArray().ToArray();
+
+        using var assertions = new AssertionScope();
+
+        Declarations(packages[0]).Should().BeEmpty(
+            "the video format owns no item, so it declares no client contract");
+
+        var declarations = Declarations(packages[1]);
+        declarations.Should().HaveCount(1);
+
+        var declaration = declarations[0];
+        declaration.GetProperty("entityTypeName").GetString().Should().Be("Arronix.Media.Movies.Movie");
+        declaration.GetProperty("entryPointType").GetString().Should()
+            .StartWith("Arronix.Media.Movies.", "the entry point is the contract assembly's own type");
+
+        foreach (var name in new[] { "generatedMetadataHash", "projectionSchemaHash" })
+        {
+            declaration.GetProperty(name).GetString().Should().MatchRegex(
+                "^[0-9A-F]{64}$",
+                $"'{name}' is a SHA-256 a browser recomputes and compares");
+        }
+    }
+
     [Test]
     public async Task EveryPublishedAddressServesTheBytesItNamesAsync()
     {
@@ -175,6 +211,10 @@ internal sealed class MoviesActivationTests
     private static IReadOnlyList<string?> Files(JsonElement package)
         => [.. package.GetProperty("assemblies").EnumerateArray()
             .Select(assembly => assembly.GetProperty("fileName").GetString())];
+
+    private static IReadOnlyList<JsonElement> Declarations(JsonElement package)
+        => [.. package.GetProperty("assemblies").EnumerateArray()
+            .SelectMany(assembly => assembly.GetProperty("declarations").EnumerateArray())];
 
     private async Task<JsonDocument> ReadAsync(string route)
     {

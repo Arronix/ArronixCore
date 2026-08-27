@@ -3,6 +3,43 @@ using Arronix.Abstractions.Plugins;
 namespace Arronix.Abstractions.Wire;
 
 /// <summary>
+/// One client contract an admitted assembly declares, read from its own metadata.
+/// </summary>
+/// <param name="EntryPointType">
+/// The full name of the generated attribute type carrying the declaration. It is the type the declaration
+/// <i>is</i>, so a consumer that resolved it and a host that read it are naming one thing.
+/// </param>
+/// <param name="EntityTypeName">
+/// The full name of the CLR type this entry point reads and constructs, as the declaration's own type
+/// argument states it.
+/// </param>
+/// <param name="GeneratedMetadataHash">
+/// The SHA-256, upper-case hexadecimal, over the member graph the generated reader accepts.
+/// </param>
+/// <param name="ProjectionSchemaHash">
+/// The SHA-256, upper-case hexadecimal, over the field schema the generated projection produces.
+/// </param>
+/// <remarks>
+/// <para>
+/// Every value here is decoded from the exact admitted bytes by a structured metadata reader, before
+/// anything is loaded and without calling into the package. That is possible because each is a constructor
+/// argument of the declaration attribute, and constructor arguments live in the custom attribute blob; a
+/// fact exposed only by an overridden property would be executable code, and publishing it would mean
+/// running the package to describe it.
+/// </para>
+/// <para>
+/// The two hashes are checked, never adopted. The content hash already proves both parties hold one file;
+/// these prove they read the same meaning out of it, and a consumer recomputes each from the contract it
+/// loaded rather than believing what was published here.
+/// </para>
+/// </remarks>
+public sealed record ClientContractDeclaration(
+    string EntryPointType,
+    string EntityTypeName,
+    string GeneratedMetadataHash,
+    string ProjectionSchemaHash);
+
+/// <summary>
 /// One client-safe assembly, as the running host admitted it.
 /// </summary>
 /// <param name="AssemblyName">The simple name the runtime binds on.</param>
@@ -14,6 +51,11 @@ namespace Arronix.Abstractions.Wire;
 /// <param name="ContentHash">The SHA-256 of the admitted bytes, upper-case hexadecimal.</param>
 /// <param name="ModuleVersionId">The module identifier of that exact build.</param>
 /// <param name="Length">The number of admitted bytes.</param>
+/// <param name="Declarations">
+/// The client contracts this assembly declares, ordered by entry point name. Empty for a shared assembly
+/// that owns no item — a format's representation vocabulary declares none — and plural for one that owns
+/// several.
+/// </param>
 /// <remarks>
 /// <para>
 /// Four independent statements about the same file, and a client is expected to check all four before the
@@ -22,6 +64,12 @@ namespace Arronix.Abstractions.Wire;
 /// produced. Bytes that hash correctly but declare a different module identifier are not a corrupted
 /// download — they are a different build being served under a name this installation already decided the
 /// meaning of, and the difference is only visible before loading.
+/// </para>
+/// <para>
+/// A list rather than an optional single value, because the count is a fact about the assembly rather than
+/// a case to be handled: none, one and several are the same shape read the same way. An optional singular
+/// field would have had to answer "which one" for an assembly owning two items, and the honest answer is
+/// that the question is wrong.
 /// </para>
 /// <para>
 /// No signing information beyond the public key token appears here, and that is a limit rather than an
@@ -35,7 +83,8 @@ public sealed record ClientContractAssembly(
     string Identity,
     string ContentHash,
     Guid ModuleVersionId,
-    int Length);
+    int Length,
+    IReadOnlyList<ClientContractDeclaration> Declarations);
 
 /// <summary>
 /// One installed package, as far as a browser client is concerned.

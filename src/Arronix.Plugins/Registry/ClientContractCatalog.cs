@@ -275,6 +275,7 @@ public sealed class ClientContractCatalog : IClientContractCatalog
 
             var assemblies = new List<OfferedAssembly>(package.ClientContractAssemblies.Count);
             var unadmitted = new List<string>();
+            var undeclarable = new List<string>();
 
             foreach (var fileName in package.ClientContractAssemblies)
             {
@@ -290,6 +291,12 @@ public sealed class ClientContractCatalog : IClientContractCatalog
                     continue;
                 }
 
+                // A defective declaration withholds the facet and nothing else. The assembly is admitted
+                // either way: what is unreadable is its description of a client surface, not the shared
+                // contract every dependant of this package binds to.
+                undeclarable.AddRange(contract.ClientContracts.Defects.Select(
+                    defect => $"'{fileName}': {defect}"));
+
                 assemblies.Add(new OfferedAssembly(
                     new ClientContractAssembly(
                         contract.Identity.Name,
@@ -297,7 +304,8 @@ public sealed class ClientContractCatalog : IClientContractCatalog
                         contract.Identity.ToString(),
                         contract.ContentHash,
                         contract.ModuleVersionId,
-                        contract.Content.Length),
+                        contract.Content.Length,
+                        contract.ClientContracts.Declarations),
                     contract.Content,
                     new ReadOnlyCollection<string>(
                         [.. contract.Assembly.GetReferencedAssemblies()
@@ -313,7 +321,8 @@ public sealed class ClientContractCatalog : IClientContractCatalog
                     [.. package.Requirements.Select(requirement => requirement.PackageId)]),
                 new ReadOnlyCollection<OfferedAssembly>(
                     [.. assemblies.OrderBy(assembly => assembly.View.AssemblyName, StringComparer.Ordinal)]),
-                new ReadOnlyCollection<string>([.. unadmitted.Order(StringComparer.Ordinal)])));
+                new ReadOnlyCollection<string>([.. unadmitted.Order(StringComparer.Ordinal)]),
+                new ReadOnlyCollection<string>([.. undeclarable.Order(StringComparer.Ordinal)])));
         }
 
         return ClientFacetResolver.Resolve(candidates, admitted);
@@ -339,13 +348,18 @@ internal sealed record OfferedAssembly(
 /// File names it offers which this installation admitted no contract for. A non-empty list withholds the
 /// package before any closure rule runs.
 /// </param>
+/// <param name="Undeclarable">
+/// Why a client contract declaration in an offered assembly could not be read. A non-empty list withholds
+/// the facet, and only the facet: the assemblies remain admitted shared contracts.
+/// </param>
 internal sealed record ClientFacetCandidate(
     PluginId Id,
     string Version,
     string Name,
     ReadOnlyCollection<PluginId> Requires,
     ReadOnlyCollection<OfferedAssembly> Assemblies,
-    ReadOnlyCollection<string> Unadmitted);
+    ReadOnlyCollection<string> Unadmitted,
+    ReadOnlyCollection<string> Undeclarable);
 
 /// <summary>The facets this host will serve, the ones it will not, and the closures over them.</summary>
 internal sealed class ResolvedClientFacets
@@ -451,21 +465,38 @@ internal static class ClientFacetResolver
         var withheld = new HashSet<PluginId>();
         var declared = candidates.Select(candidate => candidate.Id).ToHashSet();
 
-        // A facet naming a file this installation admitted no contract for is withheld before any closure
-        // rule runs: there is nothing to reason about its references with.
+        // A facet naming a file this installation admitted no contract for, or one whose declaration could
+        // not be read, is withheld before any closure rule runs: there is nothing to reason about its
+        // references or its contracts with.
         foreach (var candidate in candidates)
         {
-            if (candidate.Unadmitted.Count == 0)
+            if (candidate.Unadmitted.Count == 0 && candidate.Undeclarable.Count == 0)
             {
                 offering[candidate.Id] = candidate;
                 continue;
             }
 
+            var reason = new StringBuilder();
+
+            if (candidate.Unadmitted.Count > 0)
+            {
+                reason.Append(
+                    $"Package '{candidate.Id}' offers a client facet this host cannot serve: this "
+                    + "installation admitted no shared contract under "
+                    + string.Join(", ", candidate.Unadmitted.Select(name => $"'{name}'")) + ".");
+            }
+
+            if (candidate.Undeclarable.Count > 0)
+            {
+                reason.Append(reason.Length > 0 ? " It also offers" : $"Package '{candidate.Id}' offers")
+                    .Append(" an assembly whose client contract declaration this host could not read: ")
+                    .Append(string.Join(" ", candidate.Undeclarable))
+                    .Append(" The assemblies remain admitted; only the client facet is withheld.");
+            }
+
             refusals.Add(new ClientContractRefusal(
                 candidate.Id,
-                $"Package '{candidate.Id}' offers a client facet this host cannot serve: this installation "
-                + "admitted no shared contract under "
-                + string.Join(", ", candidate.Unadmitted.Select(name => $"'{name}'")) + ".",
+                reason.ToString(),
                 new ReadOnlyCollection<string>([]),
                 candidate.Unadmitted,
                 new ReadOnlyCollection<PluginId>([])));

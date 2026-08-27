@@ -52,6 +52,43 @@ public sealed class ClientFacetResolverTests
     }
 
     /// <summary>
+    /// A facet whose declaration could not be read is withheld, and its dependants with it.
+    /// </summary>
+    /// <remarks>
+    /// The narrowest outcome that is still honest. The assembly is an admitted shared contract either way —
+    /// what failed to decode is its description of a client surface, not the contract every dependant of the
+    /// package binds to — so quarantining the package would cost an installation a working media kind over
+    /// a browser-only defect. Withholding the facet costs it the browser and nothing else.
+    /// </remarks>
+    [Test]
+    public void AFacetWhoseDeclarationCouldNotBeReadIsWithheldWithoutQuarantiningAnything()
+    {
+        var resolved = ClientFacetResolver.Resolve(
+            [
+                Candidate("a", ["b"], Offers("Alpha", "Beta")),
+                Candidate("b", [], Offers("Beta"), undeclarable: ["'Beta.dll': the blob is truncated."]),
+            ],
+            Admitted);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(resolved.Offering, Is.Empty, "a dependant of a withheld facet is withheld too");
+
+            var refused = Refusal(resolved, "b");
+            Assert.That(refused.Reason, Does.Contain("could not read"));
+            Assert.That(refused.Reason, Does.Contain("Beta.dll"));
+            Assert.That(
+                refused.Reason,
+                Does.Contain("remain admitted"),
+                "an operator reading this must not conclude the package was quarantined");
+            Assert.That(refused.UnadmittedFiles, Is.Empty, "the file was admitted; its declaration was not read");
+            Assert.That(refused.MissingAssemblies, Is.Empty);
+
+            Assert.That(Refusal(resolved, "a").CausedBy.Select(id => id.Value), Is.EqualTo(new[] { "b" }));
+        });
+    }
+
+    /// <summary>
     /// Withholding cascades along a chain, however the identifiers happen to sort.
     /// </summary>
     /// <remarks>
@@ -276,7 +313,8 @@ public sealed class ClientFacetResolverTests
                 assemblyName + ", Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
                 new string('a', 64),
                 Guid.Empty,
-                1),
+                1,
+                []),
             ReadOnlyMemory<byte>.Empty,
             new ReadOnlyCollection<string>(references));
 
@@ -284,12 +322,14 @@ public sealed class ClientFacetResolverTests
         string id,
         string[] requires,
         OfferedAssembly offers,
-        string[]? unadmitted = null)
+        string[]? unadmitted = null,
+        string[]? undeclarable = null)
         => new(
             PluginId.FromString(id),
             "1.0.0",
             id,
             new ReadOnlyCollection<PluginId>([.. requires.Select(PluginId.FromString)]),
             new ReadOnlyCollection<OfferedAssembly>([offers]),
-            new ReadOnlyCollection<string>(unadmitted ?? []));
+            new ReadOnlyCollection<string>(unadmitted ?? []),
+            new ReadOnlyCollection<string>(undeclarable ?? []));
 }

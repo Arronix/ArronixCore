@@ -121,7 +121,8 @@ public sealed class ContractManifestValidatorTests
             simpleName + ", Version=1.0.0.0, Culture=neutral, PublicKeyToken=null",
             Sha,
             Guid.Parse("11111111-2222-3333-4444-555555555555"),
-            1024);
+            1024,
+            []);
 
     private static ClientContractManifest Malformed(string defect) => defect switch
     {

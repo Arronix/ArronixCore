@@ -5,6 +5,7 @@ using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
+using Arronix.Abstractions.Client;
 
 namespace Arronix.Plugins.Loading;
 
@@ -35,7 +36,8 @@ internal sealed class StagedAssembly
         Guid moduleVersionId,
         ReadOnlyCollection<AssemblyIdentity> references,
         bool hasModuleInitializer,
-        bool hasEntryPoint)
+        bool hasEntryPoint,
+        StagedClientContracts clientContracts)
     {
         Path = path;
         _bytes = bytes;
@@ -45,6 +47,7 @@ internal sealed class StagedAssembly
         References = references;
         HasModuleInitializer = hasModuleInitializer;
         HasEntryPoint = hasEntryPoint;
+        ClientContracts = clientContracts;
     }
 
     /// <summary>Gets the file the bytes were read from.</summary>
@@ -72,6 +75,13 @@ internal sealed class StagedAssembly
 
     /// <summary>Gets a value indicating whether the file declares a managed entry point.</summary>
     public bool HasEntryPoint { get; }
+
+    /// <summary>Gets the client contracts the file declares, and why any could not be read.</summary>
+    /// <remarks>
+    /// Decoded here, with everything else, from the one read of the bytes. Describing it later by loading
+    /// the assembly would mean running the package to find out what it says.
+    /// </remarks>
+    public StagedClientContracts ClientContracts { get; }
 
     /// <summary>Gets the number of staged bytes.</summary>
     public int Length => _bytes.Length;
@@ -273,8 +283,17 @@ internal sealed class StagedAssembly
             metadata.GetGuid(metadata.GetModuleDefinition().Mvid),
             references.AsReadOnly(),
             DeclaresModuleInitializer(metadata),
-            peReader.PEHeaders.CorHeader?.EntryPointTokenOrRelativeVirtualAddress is not (null or 0));
+            peReader.PEHeaders.CorHeader?.EntryPointTokenOrRelativeVirtualAddress is not (null or 0),
+            ClientContractDeclarationReader.Read(metadata, HostContractIdentity));
     }
+
+    /// <summary>Gets the identity of the universal contract assembly this host is running.</summary>
+    /// <remarks>
+    /// Read from the declaration's own type, so a declaration is held to the assembly actually in this
+    /// process rather than to a name written down twice.
+    /// </remarks>
+    private static AssemblyIdentity HostContractIdentity { get; } =
+        AssemblyIdentity.From(typeof(ClientContractEntryPointAttribute).Assembly.GetName());
 
     private static bool DeclaresModuleInitializer(MetadataReader metadata)
     {
