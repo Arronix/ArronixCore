@@ -10,21 +10,10 @@ namespace Arronix.Abstractions.Client;
 /// The declared way a client-safe assembly says what it holds, without a client enumerating it.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A browser that has loaded a contract assembly knows nothing about what is inside it, and enumerating
-/// its types would make the client untrimmable and turn property reflection into a second media schema.
-/// The contract declares what a client may read instead.
-/// </para>
-/// <para>
-/// Every fact a decision is made on is a <b>constructor argument</b>, so it lives in the custom attribute
-/// blob: readable from the received bytes before the runtime is handed them, and by a host that holds the
-/// assembly without calling into it. A value behind an overridden property is executable code.
-/// </para>
-/// <para>
-/// <see cref="Deserialize"/> and <see cref="Project"/> are separate because one bytes-to-fields call proves
-/// nothing about whether a typed value existed. The class is abstract so the runtime, not a client,
-/// constructs the generated implementation.
-/// </para>
+/// Every fact a consumer decides on is a constructor argument, so it lives in the custom attribute blob and
+/// is readable from the received bytes before the runtime is handed them. <see cref="Deserialize"/> and
+/// <see cref="Project"/> are separate so that a typed value having existed is observable. Abstract, so the
+/// runtime constructs the generated implementation rather than a client.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Assembly, AllowMultiple = true, Inherited = false)]
 [EditorBrowsable(EditorBrowsableState.Never)]

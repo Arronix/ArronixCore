@@ -13,9 +13,8 @@ namespace Arronix.Abstractions.Client;
 /// </summary>
 /// <remarks>
 /// Taken over the running metadata so a generator's compile-time answer can be checked against it. Types
-/// are resolved through the contract's own <see cref="JsonSerializerContext"/> and never through
-/// <see cref="JsonSerializerOptions"/>, which can fall back to a reflecting resolver. Metadata carrying
-/// state this rendering does not describe is refused rather than hashed.
+/// resolve through the contract's own context, never through options, which can fall back to a reflecting
+/// resolver. State this rendering does not carry is refused rather than partly hashed.
 /// </remarks>
 public static class ClientContractDigest
 {
@@ -40,7 +39,7 @@ public static class ClientContractDigest
         }
 
         var rendering = new StringBuilder();
-        RenderOptions(rendering, root.Options);
+        RenderOptions(rendering, context, root.Options);
 
         var seen = new HashSet<Type> { root.Type };
         var pending = new Queue<JsonTypeInfo>();
@@ -49,7 +48,7 @@ public static class ClientContractDigest
         while (pending.Count > 0)
         {
             var current = pending.Dequeue();
-            RenderType(rendering, current);
+            RenderType(rendering, context, current);
 
             foreach (var next in Reachable(current))
             {
@@ -104,7 +103,32 @@ public static class ClientContractDigest
             $"This contract's serialization context holds no metadata for '{type}', so the graph it "
             + "describes is not the graph a compiler generated.");
 
-    private static void RenderOptions(StringBuilder rendering, JsonSerializerOptions options) =>
+    /// <summary>
+    /// Renders the reader and typed-writer settings, having refused the ones this rendering cannot carry.
+    /// </summary>
+    /// <remarks>
+    /// Whitespace and buffering are excluded on purpose: <c>WriteIndented</c>, <c>IndentCharacter</c>,
+    /// <c>IndentSize</c>, <c>NewLine</c>, <c>DefaultBufferSize</c> and <c>Encoder</c> change the bytes a
+    /// payload is written as, and every conforming reader recovers the same values from them.
+    /// </remarks>
+    private static void RenderOptions(StringBuilder rendering, JsonSerializerContext context, JsonSerializerOptions options)
+    {
+        Refuse(options.ReferenceHandler is not null, "these options", "preserve references");
+        Refuse(options.Converters.Count != 0, "these options", "carry converters of their own");
+        Refuse(options.DictionaryKeyPolicy is not null, "these options", "name a dictionary key policy");
+        Refuse(
+            !ReferenceEquals(options.PropertyNamingPolicy, JsonNamingPolicy.CamelCase),
+            "these options",
+            "name a property naming policy other than camel case");
+
+        // The contract's own context answers for this graph and nothing else answers for any of it.
+        Refuse(
+            !ReferenceEquals(options.TypeInfoResolver, context)
+            || options.TypeInfoResolverChain.Count != 1
+            || !ReferenceEquals(options.TypeInfoResolverChain[0], context),
+            "these options",
+            "resolve metadata through something other than this contract's own context");
+
         rendering.Append("options")
             .Append("|caseInsensitive=").Append(Flag(options.PropertyNameCaseInsensitive))
             .Append("|unmapped=").Append(options.UnmappedMemberHandling)
@@ -116,15 +140,22 @@ public static class ClientContractDigest
             .Append("|trailingCommas=").Append(Flag(options.AllowTrailingCommas))
             .Append("|ignoreCondition=").Append(options.DefaultIgnoreCondition)
             .Append("|includeFields=").Append(Flag(options.IncludeFields))
+            .Append("|maxDepth=").Append(Number(options.MaxDepth))
+            .Append("|preferredObjectCreation=").Append(options.PreferredObjectCreationHandling)
+            .Append("|unknownType=").Append(options.UnknownTypeHandling)
+            .Append("|outOfOrderMetadata=").Append(Flag(options.AllowOutOfOrderMetadataProperties))
+            .Append("|ignoreReadOnlyProperties=").Append(Flag(options.IgnoreReadOnlyProperties))
+            .Append("|ignoreReadOnlyFields=").Append(Flag(options.IgnoreReadOnlyFields))
+            .Append("|namingPolicy=camelCase")
             .Append('\n');
+    }
 
     /// <summary>Refuses metadata whose behavior this rendering does not carry.</summary>
     /// <remarks>
-    /// A hash taken over a graph that is only partly described says two contracts agree when what differs
-    /// is the part that was not looked at. Each check below is a framework feature the compile-time model
-    /// also refuses; they are asserted here so a contract that acquired one at run time cannot pass.
+    /// Measured against generated metadata, not assumed: every type there carries a converter and resolves
+    /// through its own context, and an ignored member carries a <c>ShouldSerialize</c>.
     /// </remarks>
-    private static void Describable(JsonTypeInfo type)
+    private static void Describable(JsonSerializerContext context, JsonTypeInfo type)
     {
         var name = Name(type.Type);
 
@@ -133,6 +164,15 @@ public static class ClientContractDigest
             throw new NotSupportedException($"'{name}' is a dictionary, and dictionary keys are not described.");
         }
 
+        Refuse(
+            !ReferenceEquals(type.OriginatingResolver, context),
+            name,
+            "was resolved by something other than this contract's own context");
+        Refuse(
+            type.Converter.GetType().Assembly != typeof(JsonSerializer).Assembly,
+            name,
+            "has a converter of its own");
+        Refuse(type.KeyType is not null, name, "is keyed");
         Refuse(type.PolymorphismOptions is not null, name, "is polymorphic");
         Refuse(type.NumberHandling is not null, name, "states its own number handling");
         Refuse(type.UnmappedMemberHandling is not null, name, "states its own unmapped-member handling");
@@ -144,12 +184,17 @@ public static class ClientContractDigest
         foreach (var property in type.Properties)
         {
             var member = name + "." + property.Name;
+            var ignored = property.Get is null && property.Set is null;
 
             Refuse(property.CustomConverter is not null, member, "has a converter of its own");
             Refuse(property.NumberHandling is not null, member, "states its own number handling");
             Refuse(property.ObjectCreationHandling is not null, member, "states its own object creation handling");
             Refuse(property.Order != 0, member, "states its own order");
             Refuse(property.IsExtensionData, member, "is extension data");
+
+            // Generated metadata gives an ignored member one; on a member that is read or written it
+            // decides at run time whether the member appears at all.
+            Refuse(!ignored && property.ShouldSerialize is not null, member, "decides for itself whether to be written");
         }
     }
 
@@ -161,11 +206,12 @@ public static class ClientContractDigest
         }
     }
 
-    private static void RenderType(StringBuilder rendering, JsonTypeInfo type)
+    private static void RenderType(StringBuilder rendering, JsonSerializerContext context, JsonTypeInfo type)
     {
-        Describable(type);
+        Describable(context, type);
 
-        rendering.Append("type=").Append(Text(Name(type.Type))).Append("|kind=").Append(type.Kind);
+        rendering.Append("type=").Append(Text(Name(type.Type))).Append("|kind=").Append(type.Kind)
+            .Append("|createObject=").Append(Flag(type.CreateObject is not null));
 
         if (type.ElementType is { } element)
         {

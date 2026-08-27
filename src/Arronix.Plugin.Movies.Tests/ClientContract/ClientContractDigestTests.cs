@@ -58,9 +58,11 @@ public sealed class ClientContractDigestTests
             Assert.That(rendering, Does.StartWith(
                 "options|caseInsensitive=false|unmapped=Disallow|duplicates=false|respectNullable=true"
                 + "|respectRequiredCtorParameters=true|numbers=Strict|comments=Disallow|trailingCommas=false"
-                + "|ignoreCondition=Never|includeFields=false\n"));
+                + "|ignoreCondition=Never|includeFields=false|maxDepth=0|preferredObjectCreation=Replace"
+                + "|unknownType=JsonElement|outOfOrderMetadata=false|ignoreReadOnlyProperties=false"
+                + "|ignoreReadOnlyFields=false|namingPolicy=camelCase\n"));
 
-            Assert.That(rendering, Does.Contain("type=26:Arronix.Media.Movies.Movie|kind=Object\n"));
+            Assert.That(rendering, Does.Contain("type=26:Arronix.Media.Movies.Movie|kind=Object|createObject=false\n"));
 
             // Wire name, declared type, direction, requiredness and nullability.
             Assert.That(rendering, Does.Contain(
@@ -79,13 +81,19 @@ public sealed class ClientContractDigestTests
             // An enumeration reaches the wire as a number, so the width of that number is part of the
             // shape even though nothing about the member that carries it moved.
             Assert.That(rendering, Does.Contain(
-                "type=45:Arronix.Abstractions.Media.CatalogRecordState|kind=None|underlying=12:System.Int32\n"));
+                "type=45:Arronix.Abstractions.Media.CatalogRecordState|kind=None|createObject=false"
+                + "|underlying=12:System.Int32\n"));
 
             // Generic arguments are spelled without assembly qualification, so a framework patch that
             // changed nothing about a payload does not move the hash.
             Assert.That(rendering, Does.Contain(
                 "type=75:System.Collections.Generic.IReadOnlyList<Arronix.Abstractions.Media.Rating>"
-                + "|kind=Enumerable|element=33:Arronix.Abstractions.Media.Rating\n"));
+                + "|kind=Enumerable|createObject=false|element=33:Arronix.Abstractions.Media.Rating\n"));
+
+            // Present for an object with a parameterless constructor and no required member, absent
+            // otherwise. Measured, not assumed: Movie has one and does not carry a factory.
+            Assert.That(rendering, Does.Contain(
+                "type=37:Arronix.Abstractions.Media.ArtworkSet|kind=Object|createObject=true\n"));
         });
     }
 

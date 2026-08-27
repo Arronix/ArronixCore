@@ -22,7 +22,9 @@ internal static class ClientContractSerializationModel
     private const string StrictOptions =
         "options|caseInsensitive=false|unmapped=Disallow|duplicates=false|respectNullable=true"
         + "|respectRequiredCtorParameters=true|numbers=Strict|comments=Disallow|trailingCommas=false"
-        + "|ignoreCondition=Never|includeFields=false";
+        + "|ignoreCondition=Never|includeFields=false|maxDepth=0|preferredObjectCreation=Replace"
+        + "|unknownType=JsonElement|outOfOrderMetadata=false|ignoreReadOnlyProperties=false"
+        + "|ignoreReadOnlyFields=false|namingPolicy=camelCase";
 
     private static readonly string[] Sequences =
     [
@@ -123,7 +125,8 @@ internal static class ClientContractSerializationModel
         var element = ElementOf(type);
         var kind = Kind(type, element);
 
-        rendering.Append("type=").Append(Text(Name(type))).Append("|kind=").Append(kind);
+        rendering.Append("type=").Append(Text(Name(type))).Append("|kind=").Append(kind)
+            .Append("|createObject=").Append(Bool(CreatesObject(type, kind, framework)));
 
         if (element is not null)
         {
@@ -469,6 +472,36 @@ internal static class ClientContractSerializationModel
         }
 
         return false;
+    }
+
+    /// <summary>Determines whether the framework will hold a factory for a type.</summary>
+    /// <remarks>
+    /// Measured: a factory is present for an object with a parameterless constructor and no required
+    /// member, and absent otherwise, including for a type whose members are all set through a constructor.
+    /// </remarks>
+    private static bool CreatesObject(ITypeSymbol type, string kind, FrameworkSymbols framework)
+    {
+        if (kind != "Object" || type is not INamedTypeSymbol named)
+        {
+            return false;
+        }
+
+        string? refusal = null;
+
+        if (Constructor(named, framework, ref refusal) is not null || refusal is not null)
+        {
+            return false;
+        }
+
+        foreach (var property in DeclaredFirst(named))
+        {
+            if (property.IsRequired)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

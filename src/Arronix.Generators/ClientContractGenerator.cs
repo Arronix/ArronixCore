@@ -15,26 +15,12 @@ namespace Arronix.Generators;
 /// Emits the declared client contract entry point of a media item type.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A browser that has verified and loaded a contract assembly holds no compile-time knowledge of anything
-/// inside it. Enumerating its types and properties would answer that, at the price of making the client
-/// untrimmable and turning property reflection into a second media schema. So the contract says what it
-/// holds, at compile time, here.
-/// </para>
-/// <para>
-/// Three parts, and the split is the design. A serialization context, which is a
-/// <c>[JsonSerializable]</c> declaration the framework's own source generator completes, so nothing here
-/// reimplements dates, numbers, escaping, constructor selection or collection semantics. A one-way
-/// projection of a typed value into declared presentation data. And an assembly attribute whose
-/// <b>constructor arguments</b> carry every fact a decision is made on, so a structured metadata reader
-/// over the received bytes and a host holding the assembly can both read them without anything running.
-/// </para>
-/// <para>
-/// The shape is read through <see cref="MediaShapeModel"/>, the same reading Host's compiled shapes are
-/// generated from. Where the two outputs differ they differ deliberately and visibly: Host projects a
-/// nested entity as a reference to a durable identity it assigned, and a browser holding a payload has no
-/// such identity, so this projects a nested entity as its own values kept together.
-/// </para>
+/// Emits three things: a one-way projection of a typed value into declared presentation data, an assembly
+/// attribute whose constructor arguments carry every fact a consumer decides on, and the hashes over both.
+/// Serialization itself is the framework's own generator, from a declared <c>[JsonSerializable]</c>
+/// context. The shape is read through <see cref="MediaShapeModel"/>, which Host's compiled shapes also use;
+/// where the two outputs differ they differ deliberately, and the differences are recorded in
+/// <c>docs/research/g07/client-contract-declaration.md</c>.
 /// </remarks>
 [Generator(LanguageNames.CSharp)]
 public sealed class ClientContractGenerator : IIncrementalGenerator

@@ -96,8 +96,8 @@ emits literals from a compile-time model of the framework's serializer, and `Cli
 recomputes the same canonical renderings from the **live** metadata. Measured, equal:
 
 ```text
-serialization      = 3D7A0D6FB047C8AC1E5FF4B5CCFCB19E3EB6C28D2EB0341C6CB38C0E0B1C2754
-declaredMetadata   = 3D7A0D6FB047C8AC1E5FF4B5CCFCB19E3EB6C28D2EB0341C6CB38C0E0B1C2754
+serialization      = 49A8334C12489C77DE502BE517B149A2A1103FE852E3AD17298FAF41788E302B
+declaredMetadata   = 49A8334C12489C77DE502BE517B149A2A1103FE852E3AD17298FAF41788E302B
 projection         = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 declaredProjection = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 ```
@@ -175,11 +175,6 @@ measured on the pinned SDK: a public **field** carrying `[JsonInclude]` is seria
 non-public constructor **is** honoured by the framework, so the model reads it rather than looking only at
 the public ones; more than one named constructor is refused.
 
-The digest refuses at run time too, rather than hashing a graph it has only partly described: a dictionary,
-polymorphism, a type or member stating its own number handling, unmapped-member handling or object-creation
-handling, a member with its own converter, order, or extension-data role. A hash over a partly described
-graph says two contracts agree when what differs is the part nobody looked at.
-
 `[JsonSerializable]`'s own arguments are read as well. `GenerationMode` selects which halves the framework
 generates, and it is a flags value: zero inherits the options-level default, anything carrying the metadata
 flag gives a reader what it needs, and serialization-only does not. It is read as flags rather than as a
@@ -200,7 +195,49 @@ the first impostor case appended a namespace after a file-scoped one, so the imp
 case passed without testing anything. The supported shape is also shown actually producing a contract, so
 an empty refusal list cannot pass for agreement.
 
-### 4.4 One guard was inert when it was written
+### 4.4 The live serializer surface, measured then closed
+
+A hash over a partly described graph says two contracts agree when what differs is the part nobody looked
+at, so every setting that changes reading or typed writing is either rendered on both sides or refused.
+The baseline was measured against the real generated context first, and two of its facts would have made a
+blind refusal wrong:
+
+```text
+types walked=34  converter assemblies: framework
+ShouldSerialize Movie.status, MovieReleaseTimeline.availableOn, MovieReleaseTimeline.stage,
+                Rating.normalizedValue, RatingScale.isValid
+CreateObject factory: ArtworkSet, ExternalId, ExternalIdSet   (and no other of the 34)
+```
+
+Every type carries a converter and resolves through its own context, and every ignored member carries a
+`ShouldSerialize`. So what is refused is a converter declared **outside the framework assembly**, metadata
+whose `OriginatingResolver` is not this contract's own context — the check that separates a generated graph
+from a hand-built one — and a `ShouldSerialize` on a member that is actually read or written.
+
+`CreateObject` turned out to be present for an object with a parameterless constructor **and no required
+member**, and absent otherwise, which is not what "has a parameterless constructor" predicts: `Movie`,
+`MediaCollection<Movie>` and `MovieReleaseTimeline` all have one and carry no factory. It is rendered on
+both sides rather than refused, and the compile-time model reproduces all 34 answers.
+
+Rendered in the options line, and previously absent from it: `maxDepth`, `preferredObjectCreation`,
+`unknownType`, `outOfOrderMetadata`, `ignoreReadOnlyProperties`, `ignoreReadOnlyFields`, `namingPolicy`.
+Refused outright, because nothing in either rendering describes what they do: a `ReferenceHandler` (it puts
+`$id` and `$ref` in the payload), options-level `Converters`, a `DictionaryKeyPolicy`, a naming policy other
+than camel case, and a `TypeInfoResolver` or resolver chain that is not exactly this contract's context.
+
+**Consciously formatting-only**, and excluded by decision rather than oversight: `WriteIndented`,
+`IndentCharacter`, `IndentSize`, `NewLine`, `DefaultBufferSize` and `Encoder`. They change the bytes a
+payload is written as; every conforming reader recovers the same values.
+`FormattingSettingsDoNotChangeTheDigest` asserts the boundary directly.
+
+`ClientContractDigestRefusalTests` carries a witness for each: 25 cases over a stand-in context, including
+a non-default `ReferenceHandler`, a type-level `[JsonConverter]` built through the reflecting resolver
+(created by hand the attribute is not read, and the case would prove nothing), a member `CustomConverter`,
+and a `ShouldSerialize` on a live member beside one on an ignored member that is admitted. Removing the
+options refusals and the added option fields fails seven of them and nothing else — they are the cases that
+kept the same digest before this work.
+
+### 4.5 One guard was inert when it was written
 
 The check that a computed member's name does not collide
 with a live member's name subtracted the live names from the computed set *before* looking for the
@@ -313,7 +350,7 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3532 enabled=3230 passed=3230 failed=0 skipped=302 inconclusive=0
+projects=14 total=3550 enabled=3248 passed=3248 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=14 compileItems=344 boundSources=15
 ```
