@@ -322,6 +322,71 @@ internal sealed class ContractLifecycleTests
         host.ByteRequests.Should().Be(1, "no pass here needed a byte");
     }
 
+    /// <summary>
+    /// A caller that abandons a load leaves this page describing the installation it last actually read.
+    /// </summary>
+    /// <remarks>
+    /// Applying the bookkeeping before the cancellable fetches would pair the previous report with the next
+    /// installation's residency: a page still claiming to be compatible while <c>Find</c> had already
+    /// changed its mind about which names it serves.
+    /// </remarks>
+    [Test]
+    public async Task ACanceledLoadLeavesResidencyAndTheReportDescribingTheSameInstallation()
+    {
+        const string held = "Fixture.Client.Lifecycle.Held";
+        var payload = Payload(held);
+        var arriving = Payload("Fixture.Client.Lifecycle.Arriving");
+
+        var host = new Installation(
+            Manifest(
+                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                Package(Domain, "Domain", "1.0.0", payload.Published)),
+            payload,
+            arriving);
+
+        using var http = host.Connect();
+        var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
+
+        var compatible = await loader.LoadAsync();
+        compatible.CanProject.Should().BeTrue();
+
+        // The host drops the package this page holds and offers a different one, so this pass both orphans
+        // a name and has bytes to fetch. The caller withdraws while it is fetching them.
+        host.Publishes(Manifest(
+            "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB",
+            Package(Shared, "Shared", "1.0.0", arriving.Published)));
+
+        using var abandoned = new CancellationTokenSource();
+        host.BeforeBytes = _ =>
+        {
+            abandoned.Cancel();
+            throw new OperationCanceledException(abandoned.Token);
+        };
+
+        await FluentActions
+            .Awaiting(() => loader.LoadAsync(abandoned.Token))
+            .Should().ThrowAsync<OperationCanceledException>();
+
+        host.BeforeBytes = null;
+
+        using (new AssertionScope())
+        {
+            loader.Report.Should().BeSameAs(compatible, "nothing was read to replace it with");
+            loader.Report!.Orphaned.Should().BeEmpty();
+            loader.Find(held).Should().NotBeNull("the installation this page last read still names it");
+            loader.ContractsOf(held).Should().NotBeEmpty();
+        }
+
+        // The same manifest, read through. Now the bookkeeping moves, together with the report.
+        var withdrawn = await loader.LoadAsync();
+
+        using var assertions = new AssertionScope();
+
+        withdrawn.Orphaned.Should().ContainSingle().Which.Verified.AssemblyName.Should().Be(held);
+        loader.Find(held).Should().BeNull();
+        loader.ContractsOf(held).Should().BeEmpty();
+    }
+
     private static ClientContractManifest Manifest(string installationHash, params ClientContractPackage[] packages)
         => new(MediaContractLoader.ClientContractIdentity, installationHash, packages, []);
 
@@ -363,6 +428,9 @@ internal sealed class ContractLifecycleTests
         /// <summary>Gets how many times a client has asked this host for bytes.</summary>
         public int ByteRequests { get; private set; }
 
+        /// <summary>Gets or sets what happens before this host answers for bytes.</summary>
+        public Action<string>? BeforeBytes { get; set; }
+
         public void Publishes(ClientContractManifest next) => _manifest = next;
 
         public HttpClient Connect()
@@ -382,6 +450,7 @@ internal sealed class ContractLifecycleTests
             }
 
             ByteRequests++;
+            BeforeBytes?.Invoke(path);
 
             var payload = payloads.FirstOrDefault(candidate =>
                 path.Contains(candidate.Published.AssemblyName, StringComparison.Ordinal));

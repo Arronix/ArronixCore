@@ -33,20 +33,39 @@ failure G07.3's exit gate names, except worse than a rendering bug: nothing down
   using the primitives the store already had. It cannot touch residency, and it refuses to run against a
   report whose manifest was never proved whole — an empty package list from an unreachable host is an
   absence of knowledge, and sweeping on it would make every failed fetch a cold start.
-- **A connected tab re-reads for itself.** One subscriber, on `EventKind.PluginStateChanged` only, calling
-  the loader's own already-serialized `LoadAsync`. A trigger, not a second manifest reader: this client
-  keeps one description of an installation and one place that proves it. Ahead of it, an unchanged
-  `InstallationHash` decides whether to look and never decides what is true — every required assembly must
-  still match the description the fresh manifest states, over values already in memory, because the
-  published closure hash covers identity and content and not what a payload declares.
+- **A connected tab re-reads for itself, and sheds bytes while it is there.** One subscriber, on
+  `EventKind.PluginStateChanged` only, calling the loader's own already-serialized `LoadAsync` and then the
+  janitor. A trigger, not a second manifest reader: this client keeps one description of an installation and
+  one place that proves it. Ahead of it, an unchanged `InstallationHash` decides whether to look and never
+  decides what is true — every required assembly must still match the description the fresh manifest states,
+  over values already in memory, because the published closure hash covers identity and content and not what
+  a payload declares.
+- **One load is one transition.** The orphan and owner bookkeeping a pass computes is applied only with the
+  report it publishes. Applying it first — as the first cut did — paired the previous report with the next
+  installation's residency whenever a caller abandoned a load mid-fetch: a page still claiming to be
+  compatible while `Find` had already changed its mind about which names it serves. A completed load now
+  raises a change notification too, because the consumer showing a report is rarely the one that asked for
+  it, and a page that snapshots it once would render an installation the loader has already stopped serving.
+  The watcher raises its own signal after it has swept, on success and on a contained failure alike: the
+  loader's notification arrives before the sweep, so a consumer refreshing on that alone would read an
+  evicted address as still held with nothing afterwards to correct it.
+- **Cancellation is the caller's token and nothing else.** A request timeout arrives as the same
+  `OperationCanceledException` and had been propagating as an abandoned load, leaving the previous report
+  standing as this page's description of an installation it had just failed to read. It is now an ordinary
+  `Unreachable` or `Unavailable` outcome. Beside it, no boundary in the client's contract path contains an
+  exhausted heap or stack, corrupted memory or a structured native failure any more, and the watcher — which
+  has no caller to return anything to — states every failure it does contain rather than swallowing it.
 
-Eleven cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
+Fifteen cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
 and no fetch, the withdraw-then-replace terminal, the three withdrawn-address answers, selective eviction
-with live-hash preservation and the unreadable-manifest refusal, and the state-change filter with its
-disposal. Mutation: dropping the orphan flag from `Find`, trusting the installation hash without checking
-what was published, and skipping reconciliation each fail. Removing the early-out *entirely* fails nothing,
-which is recorded as debt rather than dressed up — the reuse path it precedes already returns before any
-fetch or hash.
+with live-hash preservation and the unreadable-manifest refusal, the state-change filter with its eviction,
+its disposal, its stated failure and its sweep-before-signal ordering, and two witnesses for abandonment — a timeout that becomes an outcome,
+and a cancelled load that leaves residency and the report describing one installation. Mutation: dropping
+the orphan flag from `Find`, trusting the installation hash without checking what was published, skipping
+reconciliation, applying the bookkeeping before the cancellable work, dropping the watcher's sweep, and
+signalling before it each fail. Removing the early-out
+*entirely* fails nothing, which is recorded as debt rather than dressed up — the reuse path it precedes
+already returns before any fetch or hash.
 
 G07.3 is not closed. Its exit gate names update, removal, stale cache and stale tab as exercises in a real
 browser; this is the hermetic core they will be driven through.

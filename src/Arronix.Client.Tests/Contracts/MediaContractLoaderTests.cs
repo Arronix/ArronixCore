@@ -360,6 +360,60 @@ public sealed class MediaContractLoaderTests
         _loader!.Find(FixtureAssemblyName).Should().BeNull();
     }
 
+    /// <summary>
+    /// A request that timed out is an outcome; a caller that withdrew the question is not.
+    /// </summary>
+    /// <remarks>
+    /// Both arrive as <see cref="OperationCanceledException"/> and only the caller's own token separates
+    /// them. Reading the type alone leaves the previous report standing as this page's description of an
+    /// installation it just failed to read.
+    /// </remarks>
+    [Test]
+    public async Task ATimeoutIsAnOutcomeAndAnAbandonedLoadLeavesTheLastReportStanding()
+    {
+        var stall = false;
+
+        using var handler = new StubHandler(path =>
+        {
+            var manifest = path.EndsWith("client-contracts", StringComparison.Ordinal);
+
+            // No token of this caller's is cancelled, so HttpClient reads this as its own timeout.
+            return stall && !manifest ? throw new TaskCanceledException() : manifest
+                ? Json(Manifest(Truthful()))
+                : Bytes(_fixture);
+        });
+
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://host.invalid/") };
+        var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
+
+        stall = true;
+        var timedOut = await loader.LoadAsync();
+
+        using (new AssertionScope())
+        {
+            timedOut.Packages.Single().Assemblies.Single().Outcome.Should().Be(
+                ContractLoadOutcome.Unavailable,
+                "the host failed to answer, which is a fact about the host and not about this caller");
+            timedOut.Compatibility.Should().Be(ContractCompatibility.Refused);
+            loader.Report.Should().BeSameAs(timedOut, "a timeout replaces the description it failed to read");
+            IsResident(FixtureAssemblyName).Should().BeFalse();
+        }
+
+        // Now the caller genuinely withdraws, which says nothing about the host.
+        using var abandoned = new CancellationTokenSource();
+        await abandoned.CancelAsync();
+
+        using var assertions = new AssertionScope();
+
+        await FluentActions
+            .Awaiting(() => loader.LoadAsync(abandoned.Token))
+            .Should().ThrowAsync<OperationCanceledException>();
+
+        loader.Report.Should().BeSameAs(
+            timedOut,
+            "an abandoned load states nothing, so the last thing this page actually read still stands");
+    }
+
     private MediaContractLoader? _loader;
 
     private async Task<ContractLoadReport> LoadAsync(Func<string, HttpResponseMessage> respond)

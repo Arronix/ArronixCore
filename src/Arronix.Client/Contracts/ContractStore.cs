@@ -1,3 +1,4 @@
+using Arronix.Client.Diagnostics;
 using Microsoft.JSInterop;
 
 namespace Arronix.Client.Contracts;
@@ -14,8 +15,10 @@ namespace Arronix.Client.Contracts;
 /// <para>
 /// The store is an optimization and is treated as one. Every failure — no secure context, a browser with
 /// storage switched off, a quota refusal — degrades to refetching over the network, which is slower and
-/// exactly as correct. What must never happen is loading bytes because they were in a store: the loader
-/// hashes whatever it gets, from wherever it got it, before the runtime sees it.
+/// exactly as correct. An unsound process is the exception: reporting an exhausted heap as an absent entry
+/// would be this boundary lying about which failure it survived. What must never happen is loading bytes
+/// because they were in a store: the loader hashes whatever it gets, from wherever it got it, before the
+/// runtime sees it.
 /// </para>
 /// <para>
 /// Bytes cross the interop boundary as base64 text. It costs a third more transfer for an assembly measured
@@ -67,7 +70,7 @@ public sealed class ContractStore : IAsyncDisposable
             var encoded = await module.InvokeAsync<string?>("read", contentHash);
             return encoded is null ? null : Convert.FromBase64String(encoded);
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return null;
         }
@@ -94,7 +97,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<bool>("write", contentHash, Convert.ToBase64String(content));
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return false;
         }
@@ -116,7 +119,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<string[]>("keys");
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return [];
         }
@@ -141,7 +144,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<bool>("remove", contentHash);
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return false;
         }
@@ -163,7 +166,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             return await module.InvokeAsync<bool>("clear");
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return false;
         }
@@ -183,7 +186,7 @@ public sealed class ContractStore : IAsyncDisposable
         {
             await module.DisposeAsync();
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             // A page being torn down has already disconnected the script host in some browsers, and there
             // is nothing left for a failure here to protect.
@@ -209,7 +212,7 @@ public sealed class ContractStore : IAsyncDisposable
             _module = module;
             return module;
         }
-        catch (Exception)
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             _unavailable = true;
             IsAvailable = false;

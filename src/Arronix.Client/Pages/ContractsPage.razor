@@ -3,9 +3,12 @@
 }
 @using Arronix.Client.Contracts
 @using Arronix.Client.Serialization
+@using Arronix.Client.Services
+@implements IDisposable
 @inject MediaContractLoader Contracts
 @inject ContractStore Store
 @inject ContractStoreJanitor Janitor
+@inject ContractStateWatcher Watcher
 @*
     What this browser verified, what it loaded, and what the host said each of them should be.
 
@@ -71,6 +74,13 @@ else
         @if (_report.Failure is { Length: > 0 } failure)
         {
             <p class="panel-detail tone-problem" id="contract-failure">@failure</p>
+        }
+
+        @if (Watcher.LastFailure is { Length: > 0 } contained)
+        {
+            <p class="panel-detail tone-problem" id="contract-recheck-failure">
+                The last automatic re-check failed: @contained
+            </p>
         }
     </section>
 
@@ -244,8 +254,30 @@ else
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
+        // A load this page did not start still changes what it is showing. ReportChanged covers every
+        // load; the watcher's own signal comes after it has swept, which is the only point at which the
+        // stored-key count below is the one this installation left behind.
+        Contracts.ReportChanged += OnLoaded;
+        Watcher.Rechecked += OnLoaded;
+
         _report = Contracts.Report;
         await ReloadAsync();
+    }
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        Contracts.ReportChanged -= OnLoaded;
+        Watcher.Rechecked -= OnLoaded;
+    }
+
+    private void OnLoaded(object? sender, EventArgs e) => _ = RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        _report = Contracts.Report;
+        _storedKeys = await Store.KeysAsync();
+        await InvokeAsync(StateHasChanged);
     }
 
     private static bool IsResident(LoadedContractAssembly assembly)
@@ -270,12 +302,10 @@ else
 
         try
         {
-            _report = await Contracts.LoadAsync();
-
             // Bytes only. Held addresses this installation does not name cost storage and buy nothing, and
             // discarding one can only make a later load slower, never wrong.
-            await Janitor.SweepAsync(_report);
-            _storedKeys = await Store.KeysAsync();
+            await Janitor.SweepAsync(await Contracts.LoadAsync());
+            await RefreshAsync();
         }
         finally
         {

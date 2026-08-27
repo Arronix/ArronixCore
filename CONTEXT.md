@@ -209,7 +209,16 @@ coverage.
   are three distinct outcomes, none of them terminal. An unchanged `InstallationHash` decides whether to look
   and never decides what is true, so an unchanged installation costs one manifest read and no bytes.
   `EventKind.PluginStateChanged` drives that re-read on a connected tab through the loader's own serialized
-  entry point, and store eviction discards only hashes the verified installation does not name.
+  entry point and sheds the bytes the new installation no longer names, and store eviction discards only
+  hashes the verified installation does not name.
+- One client load is one transition. Orphan and owner bookkeeping is computed before the cancellable fetches
+  and applied only with the report it publishes, so an abandoned load leaves residency and the report
+  describing the same installation; a completed load raises a change notification, because the consumer
+  showing a report is often not the one that asked for it, and the event-driven re-check announces itself
+  only after it has swept. Cancellation means the caller's own token: a
+  request timeout is an ordinary outcome that replaces the report it failed to read, and no boundary in the
+  client's contract path contains an exhausted heap or stack, corrupted memory or a structured native
+  failure.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -322,8 +331,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-27) reports 3,208 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,510 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,212 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,514 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

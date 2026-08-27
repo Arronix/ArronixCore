@@ -184,9 +184,17 @@ none of the three is a statement about what the page holds. An unchanged `Instal
 to look and never decides what is true — every required assembly must still match the description this
 manifest states, over values already in memory, so an unchanged installation costs one manifest read and no
 bytes. `EventKind.PluginStateChanged` drives that re-read on a connected tab, through the loader's own
-serialized entry point rather than a second manifest reader. Store eviction discards content hashes the
-verified installation does not name, never touches residency, and is refused outright against a manifest
-that was not proved whole.
+serialized entry point rather than a second manifest reader, and the same trigger sheds the bytes the new
+installation no longer names. Store eviction discards content hashes the verified installation does not
+name, never touches residency, and is refused outright against a manifest that was not proved whole.
+
+One load is one transition. The orphan and owner bookkeeping a pass computes is applied only with the
+report it publishes, so a caller that abandons a load mid-fetch leaves residency and the report describing
+the same installation. A load that finishes raises a change notification, because the consumer showing a
+report is often not the one that asked for it, and the event-driven re-check raises its own only once it
+has swept. Cancellation is the caller's token and nothing else: a
+request timeout is an ordinary `Unreachable` or `Unavailable` outcome that replaces the report it failed to
+read, and no boundary in this path contains an unsound process.
 
 ## 5. Invariants
 
