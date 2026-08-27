@@ -72,7 +72,7 @@ async function status(row, text) {
     check(`catalog row visibly reports ${text}`, (await value.textContent())?.trim(), text);
 }
 
-async function search(page) {
+async function search(page, currentTitle, revision) {
     await page.locator(catalog.form).waitFor({ state: 'visible', timeout: 10000 });
     await page.locator(catalog.scheme).selectOption('proof');
     await page.locator(catalog.query).fill('Proof Movie');
@@ -84,9 +84,9 @@ async function search(page) {
     const row = page.locator(`${catalog.result}[${catalog.catalogId}="${expected.catalogId}"]`);
     await row.waitFor({ state: 'visible', timeout: 10000 });
     check('catalog result declares proof:42', await row.getAttribute(catalog.catalogId), expected.catalogId);
-    const title = row.getByRole('heading', { level: 3, name: expected.initialTitle, exact: true });
+    const title = row.getByRole('heading', { level: 3, name: currentTitle, exact: true });
     await title.waitFor({ state: 'visible', timeout: 10000 });
-    check('catalog result visibly renders revision-one title', (await title.textContent())?.trim(), expected.initialTitle);
+    check(`catalog result visibly renders current ${revision} title`, (await title.textContent())?.trim(), currentTitle);
     const artwork = row.locator('img');
     await artwork.waitFor({ state: 'visible', timeout: 10000 });
     check('catalog result visibly renders inline typed artwork', (await artwork.getAttribute('src'))?.startsWith('data:image/'), true);
@@ -150,7 +150,9 @@ try {
         for (const [name, selector] of Object.entries({ form: catalog.form, scheme: catalog.scheme, query: catalog.query, id: catalog.id })) {
             check(`ordinary catalog UI exposes ${name}`, await page.locator(selector).count(), 1);
         }
-        const row = await search(page);
+        const searchTitle = phase === 'refresh' ? expected.refreshedTitle : expected.initialTitle;
+        const revision = phase === 'refresh' ? 'revision-two' : 'revision-one';
+        const row = await search(page, searchTitle, revision);
         if (phase === 'add') await completeVisibleAdd(page, row);
         if (phase === 'refresh') await completeVisibleRefresh(page, row);
     }
