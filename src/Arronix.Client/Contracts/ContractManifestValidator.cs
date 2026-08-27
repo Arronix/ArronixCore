@@ -306,6 +306,77 @@ internal static class ContractManifestValidator
             {
                 return $"package '{package.Id}' states no module identifier for '{assembly.FileName}'.";
             }
+
+            if (Describe(package, assembly) is { } declarationDefect)
+            {
+                return declarationDefect;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Proves one assembly's declarations, before anything is counted, compared or rendered.</summary>
+    /// <remarks>
+    /// Untrusted like the rest of the document, and acted on the same way: the list is counted against what
+    /// the bytes declare, compared entry by entry in order, and shown to an operator. Zero declarations is
+    /// valid — a shared assembly owning no item declares none.
+    /// </remarks>
+    private static string? Describe(ClientContractPackage package, ClientContractAssembly assembly)
+    {
+        if (assembly.Declarations is null)
+        {
+            return $"package '{package.Id}' states no declaration list for '{assembly.FileName}'.";
+        }
+
+        var entryPoints = new HashSet<string>(StringComparer.Ordinal);
+        var entities = new HashSet<string>(StringComparer.Ordinal);
+        string? previous = null;
+
+        foreach (var declaration in assembly.Declarations)
+        {
+            if (declaration is null)
+            {
+                return $"package '{package.Id}' has a null declaration for '{assembly.FileName}'.";
+            }
+
+            if (string.IsNullOrWhiteSpace(declaration.EntryPointType)
+                || string.IsNullOrWhiteSpace(declaration.EntityTypeName))
+            {
+                return $"package '{package.Id}' declares a client contract for '{assembly.FileName}' with no "
+                    + "entry point or no entity type.";
+            }
+
+            if (!IsDeclaredHash(declaration.GeneratedMetadataHash)
+                || !IsDeclaredHash(declaration.ProjectionSchemaHash))
+            {
+                return $"package '{package.Id}' states a hash for '{declaration.EntryPointType}' that is not "
+                    + "64 upper-case hexadecimal characters.";
+            }
+
+            // Ordered, because the order is compared. Two lists holding one set of declarations differently
+            // describe two documents, and a client that sorted this itself would be repairing the answer it
+            // is checking. Non-decreasing here and unique below, which together are strictly sorted while
+            // letting a repeated entry be reported as the duplicate it is.
+            if (previous is not null && string.CompareOrdinal(previous, declaration.EntryPointType) > 0)
+            {
+                return $"package '{package.Id}' lists the declarations of '{assembly.FileName}' out of order.";
+            }
+
+            previous = declaration.EntryPointType;
+
+            if (!entryPoints.Add(declaration.EntryPointType))
+            {
+                return $"package '{package.Id}' declares '{declaration.EntryPointType}' more than once for "
+                    + $"'{assembly.FileName}'.";
+            }
+
+            if (!entities.Add(declaration.EntityTypeName))
+            {
+                return $"package '{package.Id}' declares two client contracts for "
+                    + $"'{declaration.EntityTypeName}' in '{assembly.FileName}', so a consumer resolving one "
+                    + "has no way to choose.";
+            }
         }
 
         return null;
@@ -346,4 +417,14 @@ internal static class ContractManifestValidator
 
     private static bool IsSha256(string? hash)
         => hash is { Length: 64 } && hash.All(Uri.IsHexDigit);
+
+    /// <summary>Whether text is a declared hash: 64 upper-case hexadecimal characters, exactly.</summary>
+    /// <remarks>
+    /// Stricter than <see cref="IsSha256"/>, and deliberately not the same rule. A content hash is compared
+    /// case-insensitively, so either spelling of one is the same value; a declared hash is compared
+    /// ordinally against the literal in the payload's own metadata, where the other spelling is a mismatch.
+    /// </remarks>
+    private static bool IsDeclaredHash(string? hash)
+        => hash is { Length: 64 }
+            && hash.All(static character => character is >= '0' and <= '9' or >= 'A' and <= 'F');
 }

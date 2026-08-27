@@ -58,6 +58,15 @@ public sealed class ContractManifestValidatorTests
     [TestCase("null-assembly-list", "absent list rather than an empty one")]
     [TestCase("null-refusal-entry", "refusals is null")]
     [TestCase("duplicate-file-name", "more than once")]
+    [TestCase("null-declaration-list", "states no declaration list")]
+    [TestCase("null-declaration-entry", "null declaration")]
+    [TestCase("blank-entry-point", "no entry point or no entity type")]
+    [TestCase("blank-entity", "no entry point or no entity type")]
+    [TestCase("lowercase-metadata-hash", "64 upper-case hexadecimal")]
+    [TestCase("short-projection-hash", "64 upper-case hexadecimal")]
+    [TestCase("declarations-out-of-order", "out of order")]
+    [TestCase("duplicate-entry-point", "more than once")]
+    [TestCase("duplicate-entity", "no way to choose")]
     public void AManifestThatDoesNotDescribeAnInstallationIsNamed(string defect, string expected)
         => ContractManifestValidator.Describe(Malformed(defect))
             .Should().NotBeNull().And.Subject.Should().Contain(expected);
@@ -123,6 +132,13 @@ public sealed class ContractManifestValidatorTests
             Guid.Parse("11111111-2222-3333-4444-555555555555"),
             1024,
             []);
+
+    /// <summary>A manifest whose one assembly carries the declarations supplied.</summary>
+    private static ClientContractManifest Declaring(IReadOnlyList<ClientContractDeclaration> declarations)
+        => Manifest([Package("one.package", Assembly("One") with { Declarations = declarations })]);
+
+    private static ClientContractDeclaration Declaration(string entryPoint)
+        => new(entryPoint, entryPoint + "Entity", Sha, Sha);
 
     private static ClientContractManifest Malformed(string defect) => defect switch
     {
@@ -192,6 +208,21 @@ public sealed class ContractManifestValidatorTests
                 },
             ]),
         "refusal-duplicate-assembly" => Manifest(null, [Refusal("bad.package") with { MissingAssemblies = ["One", "one"] }]),
+
+        // Declarations are counted against what the bytes declare, compared entry by entry in order, and
+        // rendered. Each shape below is well-formed JSON and none of those three is safe on it.
+        "null-declaration-list" => Declaring(null!),
+        "null-declaration-entry" => Declaring([null!]),
+        "blank-entry-point" => Declaring([Declaration("One.Entry") with { EntryPointType = "  " }]),
+        "blank-entity" => Declaring([Declaration("One.Entry") with { EntityTypeName = "  " }]),
+        "lowercase-metadata-hash" => Declaring(
+            [Declaration("One.Entry") with { GeneratedMetadataHash = new string('a', 64) }]),
+        "short-projection-hash" => Declaring(
+            [Declaration("One.Entry") with { ProjectionSchemaHash = new string('A', 63) }]),
+        "declarations-out-of-order" => Declaring([Declaration("One.Zebra"), Declaration("One.Alpha")]),
+        "duplicate-entry-point" => Declaring([Declaration("One.Entry"), Declaration("One.Entry")]),
+        "duplicate-entity" => Declaring(
+            [Declaration("One.Alpha"), Declaration("One.Zebra") with { EntityTypeName = "One.AlphaEntity" }]),
         _ => throw new ArgumentOutOfRangeException(nameof(defect), defect, "Unknown defect."),
     };
 
