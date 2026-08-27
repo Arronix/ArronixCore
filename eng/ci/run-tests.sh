@@ -234,6 +234,7 @@ ratchet_arguments=(
     --required-tests "$sentinel_file"
     --compile-inputs "$compile_input_root"
     --root "$repository_root"
+    --classification-report "$compatibility_output_root/classification-report.json"
 )
 if [[ ${#previous_ledger_arguments[@]} -ne 0 ]]; then
     ratchet_arguments+=("${previous_ledger_arguments[@]}")

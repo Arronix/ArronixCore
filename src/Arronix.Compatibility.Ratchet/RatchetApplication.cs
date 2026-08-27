@@ -8,7 +8,8 @@ public static class RatchetApplication
         + "--results <file-or-directory> [--results <file-or-directory> ...] "
         + "--required-tests <registry.tsv> "
         + "--compile-inputs <directory> "
-        + "[--root <repository-root>] [--previous-ledger <directory>]";
+        + "[--root <repository-root>] [--previous-ledger <directory>] "
+        + "[--classification-report <file>]";
 
     public static int Run(string[] args, TextWriter output, TextWriter error)
     {
@@ -49,6 +50,9 @@ public static class RatchetApplication
                 options.RepositoryRoot,
                 requiredTests,
                 run);
+            var isValid = report.IsValid
+                && sentinelVerifications.All(static value => value.IsValid)
+                && compileInputs.IsValid;
             var counts = report.Counts;
 
             output.WriteLine(
@@ -79,11 +83,21 @@ public static class RatchetApplication
                 error.WriteLine($"error {diagnostic.Code}: {diagnostic.Message}");
             }
 
-            return report.IsValid
-                && sentinelVerifications.All(static value => value.IsValid)
-                && compileInputs.IsValid
-                    ? 0
-                    : 1;
+            if (options.ClassificationReportPath is not null)
+            {
+                if (isValid)
+                {
+                    ClassificationReportWriter.Write(
+                        options.ClassificationReportPath,
+                        ClassificationReportGenerator.Generate(ledger, run));
+                }
+                else
+                {
+                    ClassificationReportWriter.Delete(options.ClassificationReportPath);
+                }
+            }
+
+            return isValid ? 0 : 1;
         }
         catch (Exception exception) when (exception is CompatibilityDocumentException
             or IOException
@@ -110,6 +124,7 @@ public static class RatchetApplication
         string? previous = null;
         string? requiredTests = null;
         string? compileInputs = null;
+        string? classificationReport = null;
         var results = new List<string>();
         for (var index = 1; index < args.Count; index++)
         {
@@ -144,10 +159,13 @@ public static class RatchetApplication
                 case "--compile-inputs" when compileInputs is null:
                     compileInputs = value;
                     break;
+                case "--classification-report" when classificationReport is null:
+                    classificationReport = value;
+                    break;
                 case "--results":
                     results.Add(value);
                     break;
-                case "--ledger" or "--root" or "--previous-ledger" or "--required-tests" or "--compile-inputs":
+                case "--ledger" or "--root" or "--previous-ledger" or "--required-tests" or "--compile-inputs" or "--classification-report":
                     error = $"Option '{option}' can be supplied only once.";
                     return false;
                 default:
@@ -169,7 +187,8 @@ public static class RatchetApplication
             root ?? Directory.GetCurrentDirectory(),
             previous,
             requiredTests,
-            compileInputs);
+            compileInputs,
+            classificationReport);
         return true;
     }
 
@@ -179,5 +198,6 @@ public static class RatchetApplication
         string RepositoryRoot,
         string? PreviousLedgerDirectory,
         string RequiredTestsPath,
-        string CompileInputsDirectory);
+        string CompileInputsDirectory,
+        string? ClassificationReportPath);
 }
