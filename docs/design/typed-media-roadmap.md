@@ -508,7 +508,8 @@ Implement:
   projection-schema hash the server publishes and the browser agrees on;
 - typed deserialization of a Movie graph, and rendering of common plus Movies-owned values including
   artwork, ratings, lifecycle and status, and collections;
-- the serialized fixture G07A later reuses.
+- the serialized fixture, and the generic payload panel G07A later reuses unchanged for a second,
+  independently authored media kind's own fixture — not this one.
 
 Exit gate:
 
@@ -559,25 +560,42 @@ Exit gate:
 
 ### G07A — Prove a package-only external consumer early
 
+**Status:** built and retained, pending independent acceptance. Every numbered exit condition below is met.
+The package, admission and identity legs, and the browser's loading of the external domain assembly, were
+built first and are unchanged; the browser's rendering of the consumer's own serialized item is now built
+too, closing the seam `docs/research/g07/g07a-external-consumer.md` recorded as open. This section is not a
+self-declared close: it records what runs, for review to accept or reject.
+
 **Outcome:** package assets, analyzer packaging, generated accessibility, and admission work without a source
-or project-reference escape hatch.
+or project-reference escape hatch, and the unchanged generic Client vertical G07.2 built for Movies renders a
+second, independently authored media kind's own item and own fields.
 
 Implement a small consumer outside the Arronix solution using only packed SDK, generator, format, and language
 artifacts. It defines a trivial typed media kind and one typed provider, packages them, installs them into an
-unmodified Host, and loads its client-safe typed contract in the unmodified browser Client using the serialized
-G07 fixture. Provider-result ingestion and durable item rendering remain G19/G28 work.
+unmodified Host, and loads its client-safe typed contract in the unmodified browser Client. **The adopted
+reading of "reuse":** rather than substituting the G07 Movie fixture, the external consumer owns a serialized
+payload of its own item — `eng/proofs/fixtures/g07a/shortfilm.json`, written by `eng/proofs/g07a-fixture`
+through the domain assembly's own generated client contract entry point, exactly as `eng/proofs/fixtures/g07/movie.json`
+is written by the Movies contract — and that payload is read through the exact same unchanged generic
+`ContractPayloadLoader` and `ContractPayloadPanel`. Provider-result ingestion and durable item rendering
+remain G19/G28 work.
 
 Exit gate:
 
 - the consumer has no repository project reference, source include, `InternalsVisibleTo`, Host/Client
-  dependency, or manual generated bridge;
+  dependency, or manual generated bridge; **met** — `Arronix.Architecture.Tests.Topology.ExternalConsumerFixtureTests`
+  holds this on the ordinary rail;
 - restore, compile, package, admission, exact type identity, and browser rendering work from a clean package
-  cache, with the browser proof limited to contract loading and fixture projection;
-- normal author-facing diagnostics identify any incomplete declaration;
+  cache, with the browser proof covering contract loading and payload projection of the consumer's own item;
+  **met** — `eng/proofs/g07a-external-consumer.sh --browser` runs both, driving
+  `eng/proofs/g07-browser-proof.mjs --mode g07a`;
+- normal author-facing diagnostics identify any incomplete declaration; **met** — `ARX1004`, found and added
+  while building this consumer;
 - this smoke proof is retained permanently, while G28 later proves a complete independent vertical.
 
 Do not add a temporary external item source, test-only production endpoint, or premature generic catalog
-workflow merely to make this smoke test render provider results.
+workflow merely to make this smoke test render provider results. None was added: the ShortFilm payload is
+served as an ordinary static file beside the client's own, exactly as the Movie fixture is.
 
 ### G07B — Persist one narrow Movies catalog vertical
 

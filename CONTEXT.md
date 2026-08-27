@@ -312,7 +312,9 @@ work does not substitute for closing an earlier dependency.
   remain CLR-visible only where a cross-assembly bridge requires it; they are hidden from completion lists,
   concrete author values implement bridge members explicitly, `CompiledShapes` is generated and hidden from
   ordinary completion lists, and a concrete media type publicly exposes no `Capture`. `ARX1003` reports a missing `partial` modifier at the media
-  declaration. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
+  declaration, and `ARX1004` reports a reference set the platform types cannot be read from — an incomplete
+  contract, or a second one — at the declaration that needed them, and nowhere else. A package-only external
+  project has restored and compiled against `Arronix.Sdk 0.9.0` with no
   repository project reference, and the packed SDK contains only its readme, metapackage marker, and analyzer.
 
 - G07 is split into three numbered sub-gates. G07.1 is complete: a package declares a client facet, the
@@ -336,6 +338,25 @@ work does not substitute for closing an earlier dependency.
   replacement, the `410`/`404`/transport separation, selective store eviction, the unchanged-installation
   early-out, and the `PluginStateChanged`-driven re-read — but the gate names update, removal, stale cache
   and stale tab as exercises in a real browser, and none has run there. The gate stays open until they have.
+- G07A's package, admission, identity and contract-loading legs were built ahead of the gate that carries
+  them, and its browser-rendering leg is now built too. Two extensions authored outside the solution — a
+  short-film media package in a domain plus entry assembly, and a separately built cataloger for it —
+  compile against packed `Arronix.Sdk`, `Arronix.Abstractions` and `arronix.format.video` through an
+  isolated local feed and a per-consumer empty package cache, with no project reference, source include,
+  visibility grant, Host or Client dependency or warm cache. Both reach `Active` in an unmodified
+  `Arronix.Api`; Host publishes the external kind's descriptor including `premiere`, a field only the
+  external item declares; the separately built cataloger pairs against the admitted item type; the external
+  domain assembly's own generated client contract is published and a real browser loads it from a clean
+  store and again from a warm one. A serialized `ShortFilm`, written by `eng/proofs/g07a-fixture` through
+  that domain assembly's own generated entry point, now flows through the exact same unchanged generic
+  `ContractPayloadLoader` and `ContractPayloadPanel` G07.2 built for Movies: the browser fetches it, projects
+  it, and renders `premiere` and `lifecycle` — including a `premiered` date — with no first-party ShortFilm
+  or Northmark knowledge anywhere in Host, Client, Api or the generators. Proving this found and fixed a real
+  defect: `ContractPayloadLoader`'s only constructor is `internal`, and it was registered with the
+  reflection-based `TryAddSingleton<ContractPayloadLoader>()`, which cannot see it — the payload panel had
+  never actually resolved at runtime, in either installation, until the registration became a same-assembly
+  factory. See `docs/research/g07/g07a-external-consumer.md`. G07A is not self-declared closed here; it
+  remains pending independent acceptance.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
@@ -353,6 +374,13 @@ duplicated checklist drifting from current state.
 - The format-capability loading and versioning lifecycle needs a first-class manifest/package design before independently distributed format packages are promised.
 - `ReleasePolicy<T>.Compile` still exposes builder callback choreography to media authors. Format defaults and media policy fragments must compose without making authors drive an internal compiler mechanism.
 - Movies still declares likely-standard workbenches, browse defaults, and title ordering. Audit them against Television, Music, and Books and derive any behaviour which is not a genuine media difference.
+- A media kind cannot currently be as small as its declaration suggests. `MediaType` supplies default
+  `Matching` and `Querying` values which carry no key layer and no query tier, and admission validates that
+  each carries at least one, so a kind with no matching or query differences still declares both. Their
+  presence also makes Host demand the `matching` and `indexing` capabilities the author never asked for.
+  Found by the G07A external consumer, whose `Shorts` kind declares one trivial layer and one trivial tier
+  purely to satisfy this; it belongs with the G17A audit of Movies' likely-standard declarations rather than
+  being patched per kind.
 - `IClosedCataloger` and `IClosedCurator` remain public CLR types because a public closed provider contract
   cannot inherit a less accessible marker. They are `EditorBrowsable(Never)` binding SPI which authors never
   implement directly. Deriving the pairing from the implemented contract still needs one-time type inspection
@@ -379,10 +407,15 @@ duplicated checklist drifting from current state.
   `TrimmerRootAssembly` for `Arronix.Abstractions` remains, inert, because a dynamically loaded contract
   binds to members the trimmer never saw. Restoring trimming needs the framework failure diagnosed first.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
-  `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
-  other part of the API's shipped configuration has been exercised against a running process.
-- The current combined G07.2 and G07.3-core merge rail reports 3,508 passed, 302 skipped, zero failed and
-  zero inconclusive across 14 test projects. Of the skips, 301 are Movies cases and one is an architecture
+  `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added.
+  The API had also only ever been started through `dotnet run --project`, which changes into the project
+  directory before it launches its child process; started as the built assembly directly, with the process's
+  own directory as its current directory, `appsettings.json` is not found there and the server fails the same
+  validation again. `eng/proofs/g07a-external-consumer.sh` now starts it that way — the real server process,
+  not a build wrapper's child — and sets `ASPNETCORE_CONTENTROOT` explicitly. `eng/proofs/g07-client-contracts.sh`
+  still starts it through `dotnet run --project` and has not been changed.
+- The current combined G07.2, G07.3-core and G07A merge rail reports 3,524 passed, 302 skipped, zero failed
+  and zero inconclusive across 14 test projects. Of the skips, 301 are Movies cases and one is an architecture
   case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

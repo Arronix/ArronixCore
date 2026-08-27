@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Northmark.Shorts</RootNamespace>
+    <AssemblyName>Northmark.Shorts.Domain</AssemblyName>
+    <PackageId>Northmark.Shorts.Domain</PackageId>
+    <Version>1.0.0</Version>
+    <!-- Dependants bind by exact CLR identity, so the assembly version is declared and kept stable. -->
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <Description>The short-film domain: the item a Northmark catalog returns and the release lifecycle it closes over. Published so a separately built catalog package can compile against it.</Description>
+  </PropertyGroup>
+
+  <!--
+       Arronix.Sdk supplies the contract and the analyzers. The analyzers are needed here, not only in the
+       entry project: this is the assembly a browser is offered, so it is where the client contract is
+       generated.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Arronix.Sdk" Version="0.9.0" />
+  </ItemGroup>
+</Project>

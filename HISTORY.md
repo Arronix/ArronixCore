@@ -1,5 +1,60 @@
 # Arronix History
 
+## 2026-08-27 — Close G07A's browser vertical, and find the payload panel had never run
+
+G07A's package, admission and identity legs, and the browser's loading of the external domain assembly, were
+built on an earlier base, ahead of G07.2 and the G07.3 lifecycle core, and left one seam open: the exit gate
+names browser rendering of the consumer's own serialized item, and G07.2 had not yet defined a serialized-
+payload path to render one through. This forward-ports that earlier work onto the now-integrated G07.2 +
+G07.3-core base and closes the seam — and closing it found a real defect in code G07.2 had already been
+independently accepted with.
+
+- **A serialized `ShortFilm`, owned by this consumer, not substituted from Movies.** G07.2 settled how an
+  external consumer's contract would be read: the Client "spells no media kind and no installation's own
+  path," which is what lets its one generic payload panel take any admitted contract. `eng/proofs/g07a-fixture`
+  is a small console tool, taken as an ordinary consumer of the packed domain package, that writes a
+  canonical `ShortFilm` — including a festival `Premiere` and a `Lifecycle` with a real `Premiered` date —
+  through that package's own generated `ClientContractEntryPointAttribute.Serialize`. The result is committed
+  as `eng/proofs/fixtures/g07a/shortfilm.json`, held to that writer byte for byte on every proof run exactly
+  as `movie.json` is held to the Movies contract, and served as an ordinary static file with no test endpoint
+  and no alternate route.
+- **The same unchanged panel, a second time.** `eng/proofs/g07-browser-proof.mjs` gained a `--mode g07a`
+  that shares its installation and fetch-and-project mechanics with the existing Movies proof verbatim and
+  substitutes only the field assertions: one `artwork`, one `premiere` and one `lifecycle` field present, the
+  `lifecycle` composite's own `premiered` part rendered — the premiere/date value the gate names — `status`
+  reflecting the stage that date puts the film in, and the `premiere` composite's own `festival`/`edition`
+  parts drawn under their own component ids, names this client has never heard of. 37 of 37 checks passed.
+- **The payload panel had never actually resolved at runtime, in either installation.** The first browser run
+  timed out before any ShortFilm-specific code ran, on the very first navigation. `ContractPayloadLoader`'s
+  only constructor is `internal` — deliberately, since nothing outside `Arronix.Client` builds one directly —
+  but `ArronixClientServiceCollectionExtensions` registered it with the reflection-activated
+  `TryAddSingleton<ContractPayloadLoader>()`, which cannot see an internal constructor and threw
+  `NoConstructorMatch` before the page rendered anything. `ContractPayloadPanel` — the component G07.2 built
+  and independent review accepted — injects the loader the same way, so the accepted G07.2 browser run had
+  exercised discovery, compatibility and load reporting and stopped short of the panel that reads a payload.
+  The fix is one registration: a same-assembly factory that reads `HttpClient` and `MediaContractLoader` off
+  the container and calls the existing internal constructor directly. Neither `ContractPayloadLoader.cs` nor
+  `ContractPayloadPanel.razor` changed. Re-running `eng/proofs/g07-client-contracts.sh --browser` afterward
+  went from a page that could not start to 43 of 43 checks passing.
+- **A proof script that could outlive itself.** The same investigation found `eng/proofs/g07a-external-consumer.sh`
+  starting its server through `dotnet run --project`, whose tracked process is the wrapper rather than the
+  server it launches; a prior run's server had been left running after the script exited and could have been
+  silently observed by a later run instead of its own. The script now refuses loudly if its ports are already
+  listening, starts the built `Arronix.Api.dll` directly so the tracked process is the one real server
+  (surfacing, and fixing with an explicit `ASPNETCORE_CONTENTROOT`, that `dotnet run` had been supplying the
+  content root `appsettings.json` needs by changing directory first), and verifies each port stops answering
+  after it stops the process that used it. `eng/proofs/g07-client-contracts.sh` was not changed and still
+  starts the server the old way.
+- **`ARX1004`**, forward-ported with the rest of the server half: `PlatformSymbols` resolves every platform
+  type from one referenced contract and previously returned nothing — silently turning every generator off —
+  when the reference set was incomplete or named the contract twice. It now reports which, at the media
+  declaration that needed it.
+
+G07A is not self-declared closed here. Every numbered exit condition is met and recorded in
+`docs/research/g07/g07a-external-consumer.md`, in the same posture G07.2 was in before its own independent
+review. The full rail is unchanged at 3,524 passed, 302 skipped, zero failed and zero inconclusive across 14
+test projects.
+
 ## 2026-08-27 — Read one serialized entity through the contract a browser admitted
 
 G07.1 left a page holding contract assemblies whose bytes, CLR identity, build and universal-contract

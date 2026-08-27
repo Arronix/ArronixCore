@@ -95,7 +95,8 @@ registry.AddMediaType<TMediaType>();
 `TMediaType` derives from `MediaType<TItem,TTarget,TRelease,TParser>`, supplies its invariant identity,
 names, formats, minimum availability, and file binding to the base constructor, and overrides only optional
 or repeatable media-specific members. It is declared `partial`; otherwise the packaged generator reports
-`ARX1003` at that declaration. Registration captures one definition instance through the hidden generated
+`ARX1003` at that declaration, and reports `ARX1004` there when the referenced contract is incomplete or
+duplicated, rather than generating nothing silently. Registration captures one definition instance through the hidden generated
 bridge. `TParser` implements the static
 `IReleaseParser<TRelease>.Parse(ReleaseParseContext)` contract, which returns the exact `TRelease` type.
 

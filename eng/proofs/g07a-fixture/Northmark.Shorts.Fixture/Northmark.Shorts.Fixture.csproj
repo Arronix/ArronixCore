@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Northmark.Shorts.Fixture</RootNamespace>
+    <AssemblyName>Northmark.Shorts.Fixture</AssemblyName>
+    <Description>Writes the serialized short film the G07A browser proof reads, through the domain package's own generated client contract entry point.</Description>
+  </PropertyGroup>
+
+  <!--
+       The domain package only, taken as an ordinary consumer would: through its published package, not a
+       project reference. Arronix.Abstractions.Client.ClientContractEntryPointAttribute arrives transitively,
+       through the same Arronix.Sdk -> Arronix.Abstractions dependency the domain package itself declares.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Northmark.Shorts.Domain" Version="1.0.0" />
+  </ItemGroup>
+</Project>
