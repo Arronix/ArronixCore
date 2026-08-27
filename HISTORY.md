@@ -34,8 +34,10 @@ independently accepted with.
   exercised discovery, compatibility and load reporting and stopped short of the panel that reads a payload.
   The fix is one registration: a same-assembly factory that reads `HttpClient` and `MediaContractLoader` off
   the container and calls the existing internal constructor directly. Neither `ContractPayloadLoader.cs` nor
-  `ContractPayloadPanel.razor` changed. Re-running `eng/proofs/g07-client-contracts.sh --browser` afterward
-  went from a page that could not start to 43 of 43 checks passing.
+  `ContractPayloadPanel.razor` changed, and the G07A browser run above is itself the evidence the fix works,
+  since it exercises that exact shared registration, loader and panel end to end. Confirming this against
+  G07.2's own Movies-specific browser exit gate is left to the workstream that owns it and is not reported
+  here.
 - **A proof script that could outlive itself.** The same investigation found `eng/proofs/g07a-external-consumer.sh`
   starting its server through `dotnet run --project`, whose tracked process is the wrapper rather than the
   server it launches; a prior run's server had been left running after the script exited and could have been

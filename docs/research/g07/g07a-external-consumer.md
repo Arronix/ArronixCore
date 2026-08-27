@@ -182,18 +182,21 @@ because it takes `HttpClient` and `MediaContractLoader` and nothing outside `Arr
 directly. DI's reflection-based activator cannot see an internal constructor, so resolving the loader threw
 `NoConstructorMatch`, uncaught, before the page rendered anything a Playwright selector could find.
 
-This is not a G07A-specific defect. `ContractPayloadPanel` — the component G07.2 built and independent
-review accepted — injects the loader the same way, so the payload panel had never actually resolved at
-runtime in *either* installation; the accepted browser run had exercised discovery, compatibility and load
-reporting, and stopped short of the panel that reads a payload. Re-running `eng/proofs/g07-client-contracts.sh
---browser` after the fix went from a page that could not start to 43 of 43 checks passing, including every
-Movie-specific field assertion G07.2's exit gate names.
+This is not a G07A-specific defect. `ContractPayloadPanel` and `AddArronixClient` are shared, unmodified
+Client code — the same registration and the same panel G07.2 built and independent review accepted — so the
+payload panel had never actually resolved at runtime in *either* installation; the accepted G07.2 browser
+run had exercised discovery, compatibility and load reporting, and stopped short of the panel that reads a
+payload.
 
 **The fix** is one registration, not a source change to either the loader or the panel: `AddArronixClient`
 now resolves `ContractPayloadLoader` through a same-assembly factory that reads `HttpClient` and
 `MediaContractLoader` off the container and calls the existing internal constructor directly.
 `ContractPayloadLoader.cs` and `ContractPayloadPanel.razor` are otherwise unchanged — the "unchanged generic
-panel" this record and G07A's exit gate both depend on is still exactly that.
+panel" this record and G07A's exit gate both depend on is still exactly that. §5's 37-of-37 run is itself the
+evidence the fix works: it fetches, deserializes, projects and renders through that exact shared code path.
+Re-running the Movies-specific `eng/proofs/g07-client-contracts.sh --browser` exit gate to confirm it
+independently is left to the G07.2/G07.3 workstream that owns it, not repeated or claimed here — this record
+does not report a result for it.
 
 ## 7. What closing this leg found: a proof script can outlive itself
 
