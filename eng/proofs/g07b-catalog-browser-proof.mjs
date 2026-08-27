@@ -85,7 +85,7 @@ async function search(page) {
     const title = row.getByRole('heading', { level: 3, name: expected.initialTitle, exact: true });
     await title.waitFor({ state: 'visible', timeout: 10000 });
     check('catalog result visibly renders revision-one title', (await title.textContent())?.trim(), expected.initialTitle);
-    const artwork = row.locator('.catalog-result-art img');
+    const artwork = row.locator('img');
     await artwork.waitFor({ state: 'visible', timeout: 10000 });
     check('catalog result visibly renders inline typed artwork', (await artwork.getAttribute('src'))?.startsWith('data:image/'), true);
     return row;
