@@ -52,12 +52,16 @@ internal static class BoundedGraph
 
             for (var index = count - 1; index >= 0; index--)
             {
-                if (nodes[index] is null)
+                // Read once. The list is the contract's own object, so a second read may answer differently,
+                // and what was checked would not be what was walked.
+                var node = nodes[index];
+
+                if (node is null)
                 {
                     return $"{subject} carries a null entry.";
                 }
 
-                pending.Push((nodes[index], depth, false));
+                pending.Push((node, depth, false));
             }
 
             scheduled += count;
