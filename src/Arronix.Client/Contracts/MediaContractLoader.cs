@@ -5,6 +5,7 @@ using System.Net.Http.Json;
 using System.Reflection;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
+using Arronix.Abstractions.Client;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
@@ -633,6 +634,80 @@ public sealed class MediaContractLoader
         catch (Exception resolution)
         {
             return $"its reference to '{ContractAssemblyName}' could not be resolved: {resolution.Message}";
+        }
+
+        return DeclarationDisagreement(assembly, published);
+    }
+
+    /// <summary>
+    /// Describes how the loaded assembly's declarations differ from what was published, or nothing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The third reading of one fact, and the first the runtime can answer. Preflight established what the
+    /// bytes declare; this establishes what the runtime made of them — the entity as a resolved
+    /// <see cref="Type"/> from the assembly that declared it, rather than as the name a blob spelled.
+    /// </para>
+    /// <para>
+    /// This is the first line that runs the payload's own code: reading the attribute constructs it, and the
+    /// declaration's constructor validates what it was given. That is why it happens here and not earlier,
+    /// and why it is contained — a payload that throws while describing itself has failed to describe
+    /// itself, which is a refusal rather than an escape.
+    /// </para>
+    /// </remarks>
+    private static string? DeclarationDisagreement(Assembly assembly, ClientContractAssembly published)
+    {
+        ClientContractEntryPointAttribute[] resolved;
+
+        try
+        {
+            resolved = [.. assembly
+                .GetCustomAttributes<ClientContractEntryPointAttribute>()
+                .OrderBy(entry => entry.GetType().FullName, StringComparer.Ordinal)];
+        }
+        catch (Exception failure)
+        {
+            return $"its client contract declarations could not be read once loaded: {failure.Message}";
+        }
+
+        if (resolved.Length != published.Declarations.Count)
+        {
+            return $"it declares {resolved.Length} client contract(s) once loaded; the host published "
+                + $"{published.Declarations.Count}.";
+        }
+
+        for (var index = 0; index < resolved.Length; index++)
+        {
+            var entry = resolved[index];
+            var expected = published.Declarations[index];
+
+            if (!string.Equals(entry.GetType().FullName, expected.EntryPointType, StringComparison.Ordinal))
+            {
+                return $"it loaded the client contract entry point '{entry.GetType().FullName}' where the "
+                    + $"host published '{expected.EntryPointType}'.";
+            }
+
+            // Object identity of the declaring assembly, not a name. The whole point of resolving the type
+            // rather than comparing spellings is that the answer carries where the value would come from.
+            if (!ReferenceEquals(entry.EntityType.Assembly, assembly))
+            {
+                return $"'{expected.EntryPointType}' resolves its entity type to "
+                    + $"'{entry.EntityType.Assembly.GetName().Name}' rather than to the assembly that "
+                    + "declared it.";
+            }
+
+            if (!string.Equals(entry.EntityType.FullName, expected.EntityTypeName, StringComparison.Ordinal))
+            {
+                return $"'{expected.EntryPointType}' resolves its entity type to "
+                    + $"'{entry.EntityType.FullName}'; the host published '{expected.EntityTypeName}'.";
+            }
+
+            if (!string.Equals(entry.GeneratedMetadataHash, expected.GeneratedMetadataHash, StringComparison.Ordinal)
+                || !string.Equals(entry.ProjectionSchemaHash, expected.ProjectionSchemaHash, StringComparison.Ordinal))
+            {
+                return $"'{expected.EntryPointType}' reports hashes once loaded that are not the ones the "
+                    + "host published.";
+            }
         }
 
         return null;
