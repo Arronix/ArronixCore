@@ -115,6 +115,23 @@ ExternalKind.csproj            -- PackageReference: Arronix.Sdk, the packed Exte
                                      clientContracts [ExternalKind.Domain.dll], capabilities ["media-kind"]
 ```
 
+**The generated Host binding reader stays on the entry assembly's cadence, never the domain assembly's.**
+`Arronix.Generators`' `MediaShapeGenerator` fires only on a partial class whose declared base is exactly
+`MediaType<TItem,TTarget,TRelease,TParser>` — confirmed directly in
+`src/Arronix.Generators/MediaShapeGenerator.cs`, which matches against that closed generic base before it
+emits anything. `ExternalKind` is that class, and it lives in `ExternalKind.csproj`; `ExternalItem` derives
+`MediaItem<...>`, not `MediaType<...>`, so the generator never fires on `ExternalKind.Domain.csproj` regardless
+of what that project references. This is not incidental to the two-project split — it is why the split is
+shaped the way it is: a shared contract assembly is admitted once per installation and released only once
+every dependant has withdrawn (`INTERFACE.md` §7, §8), while the entry assembly is isolated per package and
+torn down with it. `CompiledShapes` and its capture visitor are per-package binding machinery, generated fresh
+for that package's own `PluginLoadContext`; putting them on the domain assembly's shared cadence would pin
+them for the life of every dependant, including Package 2, rather than releasing them when Package 1's own
+entry assembly unloads. Concretely: `ExternalKind.Domain.csproj` takes no `Arronix.Generators` analyzer
+reference at all (§3 packs and restores it without one), and the packed `ExternalKind.Domain.nupkg` restored
+into Package 2 in §3 phase 3 carries no generated binding type for Package 2 to accidentally see — only
+`ExternalItem` itself, which is the one thing a cataloger is supposed to compile against.
+
 **Package 2 — the provider package** (one project, built and versioned independently of Package 1, in a
 sibling location such as `eng/proofs/fixtures/g07a-provider/`):
 
@@ -296,6 +313,7 @@ matrix, to be executed by the retained script plus a small number of hermetic un
 | Contract range | Both `plugin.json` files declare `>=0.9 <0.10` | Declare an incompatible range on either package (e.g. `>=0.1 <0.2`) | `PluginContractMismatch`, that package quarantined before construction |
 | Escape hatch: project reference | none present, in either package | add a `ProjectReference` to any in-repo project, or between the two external packages themselves | build proof must fail closed (script asserts neither `.csproj` contains a `ProjectReference`) |
 | Escape hatch: `InternalsVisibleTo` | none present, none needed, in either package | grant `InternalsVisibleTo` from any first-party assembly to either package | architecture-test-style assertion: grep the solution for a grant naming either fixture; today's five real grants (`Arronix.Host`, three `*.Tests` assemblies, `Arronix.Client.Tests`) are the complete list and none should ever name either fixture |
+| Generated binding cadence | `ExternalKind.Domain.dll` carries no `CompiledShapes` override and `ExternalKind.Domain.csproj` takes no `Arronix.Generators` analyzer reference | Move the partial `ExternalKind : MediaType<...>` declaration into `ExternalKind.Domain.csproj`, or add the analyzer reference there | build proof must fail closed (script asserts the domain project file names no analyzer, and reflects over the published `ExternalKind.Domain.dll` for the absence of a `CompiledShapes`-shaped member); if it instead built cleanly, the generator's own `MediaType<TItem,TTarget,TRelease,TParser>` base-type match (`MediaShapeGenerator.cs`) would have to be re-verified against the moved declaration |
 | Client load | Package 1's client-safe assembly hashes, verifies, and loads under G07.1's two-pass loader | Flip one byte of Package 1's staged assembly (same mutation G07.1 already proves generically) | `ContentHashMismatch`, `CanProject=false`, nothing resident |
 | Browser fixture projection | **Open — see §6 and §8 item 1.** Not yet a single defined positive case until the G07.2 integration decision names what "reuse" means. | n/a until the positive case is defined | — |
 
