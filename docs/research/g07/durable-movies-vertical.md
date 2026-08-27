@@ -2,8 +2,8 @@
 
 **Status:** architecture preparation. No production code changed on this branch; the integration is Codex's.
 This decides the shape of the slice, the rules its lifecycle obeys, and the places where the obvious
-implementation would quietly freeze a decision that belongs to G13–G19. Three questions it deliberately
-does **not** decide are recorded in section 10; where the design forks on one of them, both branches are
+implementation would quietly freeze a decision that belongs to G13–G19. Four questions it deliberately
+does **not** decide are recorded in section 10; where the design forks on one of them, the branches are
 carried rather than one being chosen.
 
 **Branch:** `claude/g07b-durable-audit`
@@ -22,6 +22,11 @@ Section 2 is therefore the most valuable part of this report: seven behaviours t
 are defects with one right answer. The seventh, 2.1, is a question three sources answer differently, and
 it is left as one.
 
+Sections 3 to 6 then state the slice as constraints and contracts rather than as an implementation. Where
+a mechanism would have to be chosen — how identity is allocated, how a media-owned item is stored, which
+data-access stack is used, what survives a merge — the constraints are stated, the candidates are costed,
+and the choice is left to the owner in section 10.
+
 ---
 
 ## 1. The slice
@@ -32,7 +37,7 @@ Durable in G07B, and nothing else:
 |---|---|---|
 | Configured provider definitions | `ProviderDefinition` rows, including orphan retention | operator |
 | Catalog identity | catalog identifier → `MediaItemRef`, plus supersession | host |
-| Catalog records | one media-owned item graph per held reference, plus presence and refresh stamps | cataloger |
+| Catalog records | the media-owned item per held reference, in a representation Q4 decides, plus presence and refresh stamps | cataloger |
 | Library presence and monitoring | `LibraryFacet` at the library-entry level | user |
 
 Explicitly **not** durable here, and not designed here: unit/file links, media file records, group
@@ -78,7 +83,7 @@ Where the rest of the design forks on it — 3.3, 4.1, 4.2, 8, 9 — both branch
 against identity state. Durably, every page render would insert group-level identity rows, from a read.
 
 The rule the store needs is flat: **the read path never allocates**. Identity assignment for an item and for
-every catalog reference it carries happens once, in the write transaction that stores the payload. A
+every catalog reference it carries happens once, in the write transaction that stores the record. A
 reference the store cannot resolve projects with its title and its catalog identifier and no local handle,
 rather than minting one. This needs `CatalogIdentity` split into a reader and a writer (3.1) so that the
 projector cannot allocate even by accident.
@@ -182,48 +187,57 @@ assignment, every identifier the entity carries is bound, and the scope is alway
 `(kind, level)` pair. What changes is that the result now says what it merged, and that only a writer can
 call it.
 
-### 3.2 Catalog records: typed in, typed out, opaque in between
+### 3.2 Catalog records: the mapping requirement, stated without a mechanism
 
-Host cannot name `Movie`; it lives in a collectible plugin assembly Host does not reference. The store
-therefore never sees an item type. The kind's own runtime — already the sanctioned kind-blind bridge, and
-already the thing that projects an item — is the only code that turns bytes into the exact typed graph:
+Host cannot name `Movie`. It lives in a collectible plugin assembly Host does not reference, and the same
+is true of every item type a third party will ever ship. So between the exact typed item a cataloger
+returns and whatever the database holds there is a **mapping**, and something has to own it. What that
+something is, and what the durable representation looks like, is left open here as owner question **Q4**.
+What is *not* open is the set of constraints any answer has to satisfy, because those come from rules
+already in force.
+
+**The requirements.**
+
+1. **Typed in, typed out.** What goes in is the exact `Movie` a cataloger returned; what comes back out is
+   the exact `Movie`, complete enough for `IMediaTypeRuntime.Project` to render and for matching to use.
+   A round trip that loses a property is a defect, not a degradation.
+2. **No field bag.** The durable form may not be keyed by field identifier, and no persistence contract may
+   expose one. This is the rule the ledger records as explicitly rejected — a shared field vocabulary
+   "both reference and neither owns" — and the G07B exit gate repeats it as "no provider-shaped
+   persistence API".
+3. **The store stays media-blind.** `ICatalogStore` below names references, entries and a representation,
+   and no media concept. Whatever performs the mapping sits beside the store, not inside it.
+4. **`IMediaTypeRuntime` does not gain persistence methods.** It is the kind-blind bridge for runtime
+   behaviour — parse, project, read a field — and adding capture/restore would make it the storage
+   contract as well, so that every kind runtime would carry a serializer whether or not the deployment
+   persists anything. The mapping owner is a separate concern from the runtime bridge.
+5. **The representation records what wrote it.** A media package can be upgraded under a database it
+   already wrote. A stored record that cannot be read by the current contract must be refused and marked
+   for re-fetch, never partially read. That requires the record to carry some identity of the contract that
+   wrote it; what that identity *is* belongs to Q4.
+6. **User-owned state is never inside it.** Whatever the representation, `LibraryFacet` is not part of it
+   (3.5, 4.3). That is what makes an unreadable record survivable: the user's row does not depend on it.
+
+**What the roadmap already says, and what it does not.** G18 states "typed ingress and queries; serialized
+storage representations remain internal implementation details". That settles requirement 1 and 3 — the
+seam is typed and the representation is internal — and it does not settle *which* internal representation,
+which is why Q4 exists rather than being read out of that sentence.
+
+**Explicitly not decided here:** whether the representation is a serialized graph, a set of host-owned
+columns derived from the compiled shape, per-kind tables generated at admission, or something else;
+whether the mapping is contributed by the media package, generated at compile time, or built by Host from
+the compiled shape; and whether it shares anything with the wire projection. Section 10 lists what each
+option costs.
+
+**One thing it is worth being explicit about:** the durable representation is *not* inherited from G07.2.
+G07.2 agrees a generated, trimming/AOT-safe serialization metadata and a projection schema between a server
+and a browser, for a payload that lives for milliseconds and is re-fetched if anything about it is wrong. A
+stored record must survive a package upgrade and cannot be re-derived from anything but the catalog. They
+may end up sharing machinery and they may not; that is Q4's to answer, and assuming it would decide Q4 by
+sequencing rather than on the merits.
 
 ```csharp
-public interface IMediaTypeRuntime
-{
-    // ... existing members ...
-
-    /// Writes one of this kind's exact items to the representation the store holds.
-    CatalogPayload Capture(object item);
-
-    /// Reads a payload back as this kind's exact item type.
-    /// Refuses a payload this contract cannot read; it never returns a partial graph.
-    object Restore(CatalogPayload payload);
-}
-
-/// One media-owned item graph as the store holds it: opaque to the host, readable only by the runtime of
-/// the contract that wrote it.
-public readonly record struct CatalogPayload(ContractStamp Contract, ReadOnlyMemory<byte> Body);
-```
-
-This is the roadmap's own instruction for G18 applied one gate early — "typed ingress and queries;
-serialized storage representations remain internal implementation details" — and it is not a field bag: the
-payload is never keyed by field identifier, never queried by field identifier, and never partially written.
-It is written whole and read whole.
-
-`ContractStamp` must not be a new invention. G07.1 already publishes, per client-safe assembly, its
-assembly identity and module version identifier, and G07.2 will agree a generated-metadata hash and a
-projection-schema hash between server and browser. The stamp is those same values. One notion of "which
-contract wrote this", used by the browser and by the store.
-
-The serializer is likewise G07.2's generated, trimming/AOT-safe metadata rather than a second one. The
-difference between the two uses is stated, not blurred: a wire payload lives for milliseconds and a stored
-payload must survive a package upgrade, so a stored payload carries its stamp and a stamp the current
-contract cannot read is a refusal with the item marked for re-fetch — never a silent partial read. **This
-makes G07.2 a hard prerequisite for G07B, not merely an earlier gate.**
-
-```csharp
-/// What the platform holds about one catalog record, beside the media-owned graph.
+/// What the platform holds about one catalog record, beside the media-owned data.
 public sealed record CatalogEntry
 {
     public required MediaItemRef Ref { get; init; }
@@ -234,36 +248,42 @@ public sealed record CatalogEntry
     /// Presence, not release stage. An upstream-deleted item is not a stage below Tba.
     public required CatalogRecordState State { get; init; }
 
-    public required ContractStamp Contract { get; init; }
     public required DateTimeOffset FetchedAt { get; init; }
     public DateTimeOffset? RefreshedAt { get; init; }
+
+    // Requirement 5 above: the identity of the contract that wrote this record. Its type is Q4's.
 }
 
 /// Where the platform keeps the catalog records it has taken in — the counterpart of IMediaStore, which
-/// keeps the half the user owns. It moves entries and payloads and names no media concept at all.
-public interface ICatalogStore
+/// keeps the half the user owns. It moves entries and the media-owned representation, and names no media
+/// concept at all. TRepresentation is whatever Q4 answers.
+public interface ICatalogStore<TRepresentation>
 {
-    ValueTask<StoredRecord?> FindAsync(MediaItemRef reference, CancellationToken cancellationToken = default);
+    ValueTask<StoredRecord<TRepresentation>?> FindAsync(
+        MediaItemRef reference, CancellationToken cancellationToken = default);
 
-    ValueTask<StoredPage> QueryAsync(ItemQuery query, CancellationToken cancellationToken = default);
+    ValueTask<StoredPage<TRepresentation>> QueryAsync(
+        ItemQuery query, CancellationToken cancellationToken = default);
 
     ValueTask WriteAsync(
-        CatalogEntry entry, CatalogPayload payload, CancellationToken cancellationToken = default);
+        CatalogEntry entry, TRepresentation record, CancellationToken cancellationToken = default);
 }
 
-public sealed record StoredRecord(CatalogEntry Entry, CatalogPayload Payload);
-public sealed record StoredPage(IReadOnlyList<StoredRecord> Records, int Page, int PageSize, int TotalCount);
+public sealed record StoredRecord<TRepresentation>(CatalogEntry Entry, TRepresentation Record);
+
+public sealed record StoredPage<TRepresentation>(
+    IReadOnlyList<StoredRecord<TRepresentation>> Records, int Page, int PageSize, int TotalCount);
 ```
 
-The store never holds a media object, so it needs no item type and no runtime: it executes the query
-against the common floor of 3.6 and hands back payloads. Whoever holds the kind's runtime calls `Restore`
-and then `Project`, and the erasure stays inside the bridge that already owns it.
+The store executes the query against the common floor of 3.6 and hands back whatever the representation
+is; the mapping owner turns that into the exact item, and only then does `IMediaTypeRuntime.Project` run.
+Sections 4, 5 and 6 are written against `ICatalogStore` at this level of detail and do not depend on Q4.
 
-One real integration detail follows from that, worth naming now rather than discovering late.
-`HostItemSource` is constructed from a `ValidatedDefinition` alone — `DefinitionEngineCatalog.ItemStore`
-is a `ValidatedDefinition → IMediaItemSource` factory — so it cannot reach the runtime that would restore
-a payload. Either that factory gains the runtime handle, or restoring happens above the seam. It is a
-small change; it is not a free one.
+One real integration detail holds under every answer to Q4, and is worth naming now rather than
+discovering late. `HostItemSource` is constructed from a `ValidatedDefinition` alone —
+`DefinitionEngineCatalog.ItemStore` is a `ValidatedDefinition → IMediaItemSource` factory — so it can reach
+neither the kind's runtime nor a mapping owner. Either that factory gains the handle it needs, or the
+mapping happens above the seam. It is a small change; it is not a free one.
 
 ### 3.3 The fork Q1 creates, in both directions
 
@@ -334,6 +354,11 @@ public sealed record CatalogRefresh(
 
 Five outcomes rather than success and failure, because 2.7 is a real conflation and the whole point of
 `Withdrawn` is that it must never be reachable from a timeout.
+
+The coordinator is also where the mapping of 3.2 is consulted, on both sides: it holds the kind's runtime
+and the store, so it is the one place that has both the exact item and somewhere to put it. That is why
+neither `IMediaTypeRuntime` nor `ICatalogStore` needs to know about the other, and why Q4 can be answered
+later without either contract changing.
 
 `MonitoringScope` already exists and is used as it stands. Its `ItemAndGroup` member needs durable group
 membership, which this slice does not have, so `AddAsync` accepts `None` and `Item` and refuses
@@ -416,7 +441,7 @@ reader exists as a separate contract in 3.1 — it is useful under both, and man
 ### 4.2 Add
 
 One transaction under either branch: allocate for the item and for every catalog reference it carries,
-`WriteAsync` for the entry and payload, `UpsertLibraryAsync` for the user's monitoring scope and added-at,
+`WriteAsync` for the entry and the record, `UpsertLibraryAsync` for the user's monitoring scope and added-at,
 and — if the allocation reported supersessions — `MergeAsync` for each. Under
 allocation-at-materialization the allocation has usually already happened during the search or fetch that
 led here, so the step is a lookup that returns the existing reference; under allocation-at-take-in this is
@@ -426,7 +451,8 @@ G04 already requires of repeated fetches.
 
 ### 4.3 Refresh
 
-Read the entry, fetch by its `CatalogId`, and write **only** the payload, the presence and the stamps.
+Read the entry, fetch by its `CatalogId`, and write **only** the media-owned record, the presence and the
+stamps.
 `LibraryFacet` is not touched by a refresh, on any path. That is the structural form of "factual refresh
 cannot overwrite user-owned monitoring/profile state": the two live in different rows with different
 writers, so it is not a discipline that can be forgotten.
@@ -480,8 +506,8 @@ blanking its credentials; persistence must not create a second path that bypasse
 
 | Intent | One transaction over |
 |---|---|
-| Add | identity assignment · catalog entry + payload · library row · any merge the assignment reported |
-| Refresh | catalog entry + payload + stamps |
+| Add | identity assignment · catalog entry + record · library row · any merge the assignment reported |
+| Refresh | catalog entry + record + stamps |
 | Merge | alias repointing · supersession row · library row move · entry move |
 | Set monitoring | library row |
 | Provider definition add/update/remove | definition row |
@@ -549,9 +575,11 @@ survive, because it currently reads as an authoritative instruction to do the op
   candidate stacks support this; the storage document argues the case at length and its reasoning stands.)
 - Migrations are applied at startup, and a database whose schema is **newer** than the binary refuses to
   start rather than running against it.
-- A media package's payload shape is not a database migration and cannot be, because Host cannot name the
-  type. It is versioned by the contract stamp (3.2): a payload the current contract cannot read marks its
-  entry for re-fetch, and the user's row is untouched because it never lived in the payload.
+- A media package's own shape is not a database migration and cannot be, because Host cannot name the type.
+  It is versioned by whatever contract identity the durable representation carries (3.2, requirement 5):
+  a record the current contract cannot read marks its entry for re-fetch, and the user's row is untouched
+  because it never lived inside that representation (3.2, requirement 6). How that identity is expressed is
+  Q4; that it must exist is not.
 - Plugin-owned tables are out of scope. G07B must not ship the declarative plugin-schema mechanism
   `storage-layer.md` designs, because nothing needs it yet and shipping it would freeze it.
 - No silent in-memory fallback. If the database cannot be opened or migrated, the host fails to start with
@@ -571,7 +599,7 @@ survive, because it currently reads as an authoritative instruction to do the op
 ### 7.3 What Q3 actually changes
 
 Less than it looks, which is why it can be recorded rather than blocking. Sections 3 to 6 name no data
-access at all: `ICatalogStore` moves entries and payloads, `ICatalogIdentityReader` and `IMediaStore` are
+access at all: `ICatalogStore` moves entries and records, `ICatalogIdentityReader` and `IMediaStore` are
 the contracts they already are, and the transaction and concurrency rules in 5 and 6 are stated as units of
 work and unique constraints rather than as any one library's API. What Q3 decides is how those contracts
 are implemented, how migrations are authored, and whether the architecture gate in 9 forbids raw SQL
@@ -610,11 +638,17 @@ vocabulary a browse row has, carrying the catalog identifier and `Held` where a 
 One projector, one field vocabulary, two envelopes. Group references inside a candidate resolve through the
 reader and may be absent, which is 2.2's rule applied unchanged.
 
-**Typed Client browse rides G07.2.** The Client already loads the exact contract assembly (G07.1) and
-already discovers nothing by enumerating it. Typed deserialization and typed rendering of a Movie are
-G07.2's deliverable, and G07B consumes them; it must not grow a second projection path to get a Movie onto
-a page sooner. Combined with 3.2's use of the same generated metadata for the stored payload, **G07.2 is a
-prerequisite, and the roadmap's current next task is already pointed at it.**
+**Typed Client browse is sequenced after G07.2.** The Client already loads the exact contract assembly
+(G07.1) and already discovers nothing by enumerating it. Typed deserialization and typed rendering of a
+Movie are G07.2's deliverable, and the typed Client browse leg of the G07B exit gate consumes them rather
+than growing a second projection path to get a Movie onto a page sooner. That is a sequencing dependency on
+one leg of the gate, and it is the only one.
+
+It is **not** a dependency of the durable slice. The rest of G07B — identity, catalog records, library
+state, add, refresh, restart, API browse — needs nothing from G07.2, and the durable representation is a
+separate G07B decision (3.2, Q4) rather than G07.2's answer applied to storage. Reading it as a
+prerequisite would let a wire format that is re-fetched on any doubt decide the shape of a record that
+cannot be re-derived.
 
 ---
 
@@ -638,7 +672,9 @@ Behavioural cases, each named for the rule it defends:
 | An authority that is backed off, unleasable or throwing yields `NotAnswered` and changes no presence | 2.7 / 4.4 |
 | A cataloger failure climbs the back-off ladder | 2.6 |
 | Refresh writes no library row, proved by a store double that fails the assertion if it does | 4.3 |
-| A payload written under a contract stamp the current package cannot read is refused, not partially read | 3.2 |
+| A `Movie` written and read back is the same `Movie`, property for property, including artwork, ratings, lifecycle and collections | 3.2 req. 1 |
+| No persistence contract exposes a field-identifier-keyed surface | 3.2 req. 2 |
+| A stored record the current contract cannot read is refused and marked for re-fetch, never partially read, and the user's row survives it | 3.2 req. 5–6 |
 | An identity freed by a merge is never reissued after restart | 4.6 |
 | A sort or filter outside the common floor is refused visibly, naming the field | 3.6 |
 | Opening a database that cannot be opened or migrated fails startup; no in-memory store is registered | 7.2 |
@@ -654,7 +690,7 @@ Architecture gates to add beside the existing `CatalogIdentityAuthorityTests`:
 - No persistence-stack type — whichever stack Q3 selects — is reachable from `Arronix.Abstractions`, any
   media or format package, any provider package, or `Arronix.Client`.
 - No public persistence contract names a provider, a vendor, or a media concept. The contracts in section 3
-  are gateable against this today, because they name only references, entries and payloads.
+  are gateable against this today, because they name only references, entries and a representation.
 - The file, link and group-membership operations have no production writer (3.5), so the day one appears
   the gate fails and the schema decision is taken deliberately.
 - The raw-SQL gate is Q3-dependent and is the one place the two candidate stacks give different rules: an
@@ -671,7 +707,7 @@ with `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet`. New skips are not how a du
 
 ## 10. Owner questions
 
-Three, none of them resolved here. Everything else in this report follows from signal that already exists.
+Four, none of them resolved here. Everything else in this report follows from signal that already exists.
 
 **Q1 — At what moment does Host allocate a `MediaItemId`?**
 
@@ -712,6 +748,26 @@ can be applied to them rather than around them. Section 9 notes the one gate tha
 — "no raw SQL" is mechanically enforceable under one answer and not the other. Whichever way this goes,
 `docs/design/storage-layer.md` needs a status header saying which of its conclusions survive.
 
+**Q4 — What is the durable representation of a media-owned item, and who maps to it?**
+
+Host cannot name `Movie`, so something maps between the exact typed item and whatever the database holds
+(3.2). Six requirements constrain any answer and are not in question: typed in and typed out, no field
+bag, a media-blind store, no persistence methods on `IMediaTypeRuntime`, a recorded contract identity, and
+no user-owned state inside the representation. The mechanism is open, and the candidates are not equal:
+
+| Candidate | What it costs | What it risks |
+|---|---|---|
+| Serialized item graph, opaque to Host | one column; nothing per kind; upgrade handled by the contract identity | browse can only order and narrow by what is separately indexed (3.6); a serializer has to exist and be owned |
+| Host-owned columns derived from the compiled shape | queryable without a second index | Host decides which media facts are first-class, which is close to G18's schema question |
+| Per-kind tables generated at admission | fully queryable, per kind | installing a package becomes a DDL event; `storage-layer.md` decision #9 argues this reintroduces the four schemas the platform exists to merge |
+| Mapping contributed by the media package | the owner of the shape owns its persistence | a new authoring obligation, against O-37's rule that ceremony is reduced rather than added |
+| Mapping generated at compile time from the shape | no authoring obligation; no reflection | another generator output to version, and G06's boundary rules apply to it |
+
+The decision is G07B's rather than G18's, because G07B is what writes the first row; but it constrains G18,
+because whatever four media kinds later share starts here. What it must *not* be decided by is sequencing —
+adopting whatever G07.2 produces for the wire because that gate lands first would settle a durable question
+on a transient answer.
+
 Two further things are worth the owner *knowing* without being questions. First, G07B is the first
 milestone that writes an operator's credentials to disk, and the threat model has no at-rest item —
 `SettingSensitivity.Secret` currently governs redaction on the wire and in logs only. Nothing here decides
@@ -728,7 +784,8 @@ it.
 |---|---|
 | A real G05 provider result becomes a valid Movie, survives restart, refreshes provider-owned facts, preserves user-owned state | 4.2, 4.3, 4.6, 9 |
 | Identity collision, redirect, deleted-record and retry match the G04 contract | 4.4, 4.5, which hold under either answer to Q1; retry is read in both its senses — idempotent re-materialization (4.2) and provider back-off (2.6, 4.3). The *allocation moment* those rules hang from is **Q1** |
-| `HostItemSource` no longer returns an empty placeholder for Movies | 2.5, 3.2, 8 |
-| No provider-shaped persistence API, silent in-memory fallback, or temporary per-kind item source | 7.2, 9; the persistence contracts in 3 name a reference, an entry and a payload — never a provider, a vendor or an item type |
+| `HostItemSource` no longer returns an empty placeholder for Movies | 2.5, 8; what it reads back is **Q4**, and the integration detail it forces holds under every answer (3.2) |
+| Typed Client browse | 8; sequenced after G07.2, which owns typed deserialization and rendering. This is the only leg of the gate that waits on G07.2 |
+| No provider-shaped persistence API, silent in-memory fallback, or temporary per-kind item source | 7.2, 9; the contracts in 3 name a reference, an entry and a representation — never a provider, a vendor or an item type. The no-field-bag half is 3.2 requirement 2 and is gateable under every answer to Q4 |
 | No raw SQL | **blocked on Q3.** Mechanically enforceable under an EF Core/LINQ slice; not enforceable as written under the Dapper slice `docs/design/storage-layer.md` specifies (7.1, 9) |
-| Do not design cross-media groups, unit/file links, profiles, operation records or import state | 1, 3.5, 3.6 |
+| Do not design cross-media groups, unit/file links, profiles, operation records or import state | 1, 3.5, 3.6. **Q4 is the near miss:** two of its five candidates decide part of G18's schema, which is why it is named rather than settled in passing |
