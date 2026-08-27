@@ -78,7 +78,9 @@ async function search(page) {
     await page.locator(catalog.query).fill('Proof Movie');
     await page.locator(catalog.id).fill(expected.catalogId);
     await page.locator(catalog.search).click();
-    await page.locator(catalog.results).waitFor({ state: 'visible', timeout: 10000 });
+    const results = page.locator(catalog.results);
+    await results.waitFor({ state: 'visible', timeout: 10000 });
+    check('Search visibly renders the catalog results region', await results.count(), 1);
     const row = page.locator(`${catalog.result}[${catalog.catalogId}="${expected.catalogId}"]`);
     await row.waitFor({ state: 'visible', timeout: 10000 });
     check('catalog result declares proof:42', await row.getAttribute(catalog.catalogId), expected.catalogId);
@@ -145,7 +147,7 @@ try {
         itemRef = suppliedItemRef;
     } else {
         await page.goto(`${address}${catalog.route}`, { waitUntil: 'networkidle' });
-        for (const [name, selector] of Object.entries({ form: catalog.form, scheme: catalog.scheme, query: catalog.query, id: catalog.id, results: catalog.results })) {
+        for (const [name, selector] of Object.entries({ form: catalog.form, scheme: catalog.scheme, query: catalog.query, id: catalog.id })) {
             check(`ordinary catalog UI exposes ${name}`, await page.locator(selector).count(), 1);
         }
         const row = await search(page);

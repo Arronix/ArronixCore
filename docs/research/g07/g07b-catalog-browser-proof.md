@@ -12,10 +12,11 @@ deterministically empty.
 evidence under `artifacts/g07b-browser-proof`; provider build output/intermediates also stay there, so it
 never cleans a source-tree `bin` or `obj`. It starts only a loopback API process it owns, uses the API
 project content root, and performs bounded verified-PID termination with port-release verification.
-`g07b-read-store.py` is read-only and asserts the search distinction: search may mint the one identity and
-allocation, but may not materialize a catalog record, library entry, or monitor row. Later snapshots are
-taken only after their actual phase and compare AddedAt plus user-monitor stability across retry, refresh
-and restart.
+`g07b-read-store.py` is read-only and asserts the search distinction: search may mint the primary Movie
+identity and its referenced typed collection identity (with the corresponding allocation), but may not
+materialize a catalog record, library entry, or monitor row. Later snapshots are taken only after their
+actual phase and compare both identities/allocation, AddedAt, and user-monitor stability across retry,
+refresh and restart.
 
 The integration dependency is intentionally explicit. Provider discovery currently filters `kind` to the
 same plugin that owns the media kind and `ProviderCatalogEntry` does not publish a catalog scheme. An

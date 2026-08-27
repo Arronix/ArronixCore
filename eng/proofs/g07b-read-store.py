@@ -34,7 +34,7 @@ if missing_tables := sorted(required_tables - present_tables):
 provider = rows('select * from provider_definition where Id = ?', arguments.definition)
 settings_rows = rows('select FieldId, Value from provider_definition_setting where DefinitionId = ?', arguments.definition)
 settings = {row['FieldId']: row['Value'] for row in settings_rows}
-identity = rows("select * from catalog_identity where Kind = 'movies' and Scheme = 'proof' and Value = '42'")
+identity = rows("select * from catalog_identity where Kind = 'movies' and Scheme = 'proof' order by Identity")
 allocation = rows("select * from catalog_allocation where Kind = 'movies'")
 records = rows("select * from catalog_record where Kind = 'movies' and CatalogScheme = 'proof' and CatalogValue = '42'")
 library = rows("select * from library_entry where Kind = 'movies'")
@@ -43,10 +43,13 @@ report = {'phase': arguments.phase, 'provider': provider, 'settings': settings_r
 
 if len(provider) != 1 or provider[0]['Family'] != 3 or settings.get('revision') not in {'1', '2'}:
     raise SystemExit('error: proof provider/revision is not durable')
-if len(identity) != 1 or len(allocation) != 1 or allocation[0]['Issued'] != 1:
-    raise SystemExit('error: search must mint exactly one proof identity/allocation')
-if identity[0]['Level'] != 'item' or identity[0]['Identity'] != 1:
-    raise SystemExit('error: proof:42 did not receive the expected movies:item identity 1')
+expected_identities = [
+    {'Kind': 'movies', 'Level': 'movie', 'Scheme': 'proof', 'Value': '42', 'Identity': 1},
+    {'Kind': 'movies', 'Level': 'collection', 'Scheme': 'proof', 'Value': 'collection-7', 'Identity': 2},
+]
+if identity != expected_identities or len(allocation) != 1 or allocation[0]['Issued'] != 2:
+    raise SystemExit('error: search must mint exactly the primary movie and referenced collection identities/allocation')
+primary_identity = identity[0]
 
 if arguments.phase == 'searched':
     if records or library or monitor:
@@ -54,13 +57,13 @@ if arguments.phase == 'searched':
 else:
     if len(records) != 1 or len(library) != 1:
         raise SystemExit('error: expected exactly one durable catalog record and library entry')
-    if library[0]['Level'] != 'item' or library[0]['Identity'] != identity[0]['Identity'] or not library[0]['AddedAt']:
+    if library[0]['Level'] != 'movie' or library[0]['Identity'] != primary_identity['Identity'] or not library[0]['AddedAt']:
         raise SystemExit('error: library entry is not the one durable proof item with an AddedAt value')
     record = records[0]
     expected_revision = 1 if arguments.phase in {'added', 'retried', 'monitored'} else 2
     expected_title = 'Proof Movie Revision One' if expected_revision == 1 else 'Proof Movie Revision Two'
     expected_state = 0 if expected_revision == 1 else 1
-    if (record['Kind'] != 'movies' or record['Level'] != identity[0]['Level'] or record['Identity'] != identity[0]['Identity'] or record['CatalogScheme'] != 'proof' or record['CatalogValue'] != '42' or record['Revision'] != expected_revision or record['Title'] != expected_title or record['CatalogState'] != expected_state):
+    if (record['Kind'] != 'movies' or record['Level'] != 'movie' or record['Identity'] != primary_identity['Identity'] or record['CatalogScheme'] != 'proof' or record['CatalogValue'] != '42' or record['Revision'] != expected_revision or record['Title'] != expected_title or record['CatalogState'] != expected_state):
         raise SystemExit('error: durable record key, identity, revision, title, or catalog state is wrong')
     metadata_hash = record['ContractMetadataHash']
     if not isinstance(metadata_hash, str) or not re.fullmatch(r'[0-9A-Fa-f]{64}', metadata_hash):
@@ -95,6 +98,8 @@ if arguments.phase in {'added', 'retried'} and monitor:
     raise SystemExit('error: add/retry unexpectedly changed the monitor facet')
 if arguments.previous:
     previous = json.loads(Path(arguments.previous).read_text())
+    if identity != previous['identity'] or allocation != previous['allocation']:
+        raise SystemExit('error: a later phase changed search-minted identity/allocation state')
     if arguments.phase == 'retried' and (library != previous['library'] or monitor != previous['monitor'] or records != previous['records']):
         raise SystemExit('error: idempotent API retry changed a durable catalog or user facet')
     if arguments.phase == 'monitored' and (library != previous['library'] or records != previous['records']):
