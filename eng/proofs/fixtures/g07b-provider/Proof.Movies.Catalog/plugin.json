@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "proof.movies.catalog",
+  "name": "G07B Proof Movies Catalog",
+  "version": "1.0.0",
+  "contracts": { "arronix": ">=0.9 <0.10" },
+  "entryAssembly": "Proof.Movies.Catalog.dll",
+  "dependencies": [
+    { "package": "movies", "range": ">=0.1 <0.2" }
+  ],
+  "description": "Proof-only deterministic Movies cataloger, compiled against the published contracts only.",
+  "capabilities": ["metadata"]
+}

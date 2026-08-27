@@ -1,0 +1,6 @@
+<!-- Stop before the repository's central package graph: this proof is an external package consumer. -->
+<Project>
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>
