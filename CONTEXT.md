@@ -332,15 +332,22 @@ work does not substitute for closing an earlier dependency.
   reproducing the mutation table and re-running the full .NET 11 rail. This gate claims nothing about cache
   update, removal and stale-tab behaviour (G07.3), about the external-consumer vertical (G07A), or about
   provider-result ingestion.
-- G07.3 is open. Its hermetic lifecycle core is built — orphaning and its refusal, exact reunion, terminal
-  replacement, the `410`/`404`/transport separation, selective store eviction, the unchanged-installation
-  early-out, and the `PluginStateChanged`-driven re-read — but the gate names update, removal, stale cache
-  and stale tab as exercises in a real browser, and none has run there. The gate stays open until they have.
+- G07.3 is an implementation and proof candidate under independent acceptance review. Update, removal,
+  stale cache and stale tab have been exercised in a real browser: one `BrowserContext` and one origin
+  across three real API restarts, with the tabs opened before each restart never navigated again and driven
+  only through the contracts page's own reload. A held tab becomes terminal on a rebuilt contract of the
+  same CLR identity, fetches no byte at the address it could not use, withdraws the projection it was
+  showing, and sheds the stale bytes; a fresh tab loads the update from the network and reuses the
+  unchanged video bytes from the store; a withdrawn package is reported as held-but-uninstalled while what
+  remains stays compatible, and its bytes are evicted. See
+  `docs/research/g07/client-contract-lifecycle.md`, which also records what the matrix does not
+  distinguish.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
-it. The open G07 sub-gate is G07.3. Later gates cover compatibility evidence,
+it. All three G07 sub-gates now have their exercises run; G07.3 awaits independent acceptance. Later gates
+cover compatibility evidence,
 format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
@@ -366,10 +373,19 @@ duplicated checklist drifting from current state.
   `IPluginPaths.TempFolder` or `IEventPublisher` publication rate, so a package can still exhaust memory,
   disk or the bus; and T-19, `IHostRuntimeInfo` tells a package more about the process than a package has
   been shown to need. Both are WP-T5/WP-T1 work, not gaps in what landed here.
-- The G07 browser half is repeatable but not hermetic. `eng/proofs/g07-browser-proof.mjs` drives it and
-  writes machine-readable evidence, so it is no longer a manual reading of a page, but it needs Playwright's
-  Chromium and runs beside `eng/ci/run-tests.sh` rather than inside it: a browser download does not belong
-  in the clean-repository proof.
+- The G07 browser half is repeatable but not hermetic. `eng/proofs/g07-browser-proof.mjs` and
+  `eng/proofs/g07-lifecycle-proof.mjs` drive it and write machine-readable evidence, so it is no longer a
+  manual reading of a page, but both need Playwright's Chromium and run beside `eng/ci/run-tests.sh` rather
+  than inside it: a browser download does not belong in the clean-repository proof. The lifecycle half owns
+  the API across three restarts at one origin, refuses to start when anything else holds that port, and
+  never signals a listener it did not launch. Its shutdown is bounded effort with visible failure rather
+  than a guarantee: attempts against the exact owned process are bounded and retried, and a process that
+  cannot be signalled at all is reported with its pid and makes the run non-zero.
+- No shipped server path raises `EventKind.PluginStateChanged`. `ContractStateWatcher` subscribes to it and
+  is covered hermetically, but a connected tab has no host event to react to yet, so the browser lifecycle
+  matrix drives the same transaction through the contracts page's own reload.
+- The client contract store is Cache Storage rather than IndexedDB, deliberately, and
+  `contract-store.js` says why.
 - The trimmed client cannot start on .NET 11 preview 7: a trimmed publish fails during
   `WebAssemblyHost.RunAsyncCore` with an `InvalidCastException` from `PersistentServicesRegistry`, before any
   Arronix code runs. The pristine base commit `f943b8a0f` fails trimmed and starts untrimmed under the same
@@ -381,10 +397,10 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current combined G07.2 and G07.3-core merge rail reports 3,508 passed, 302 skipped, zero failed and
-  zero inconclusive across 14 test projects. Of the skips, 301 are Movies cases and one is an architecture
-  case; all are registered in the compatibility ledger. Every later
-  passing-suite claim must report its observed skip count and ratchet result.
+- The current rail reports 3,509 passed, 302 skipped, zero failed and zero inconclusive from 3,811 cases
+  across 14 test projects. Of the skips, 301 are Movies cases and one is an architecture case; all are
+  registered in the compatibility ledger. Every later passing-suite claim must report its observed skip
+  count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The
   regression sources that name `Movie` are locked by the compatibility ledger, so the import is stated once
   in `GlobalUsings.cs` rather than repeated per file; no locked source changed and no ledger transition was

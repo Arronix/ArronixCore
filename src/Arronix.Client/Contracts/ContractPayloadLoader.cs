@@ -25,6 +25,7 @@ internal sealed class ContractPayloadLoader
     /// <param name="http">The connection to the host that served this client.</param>
     /// <param name="contracts">The contracts this page has admitted.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    /// <remarks>Internal: the composition root constructs this by factory, from the same assembly.</remarks>
     internal ContractPayloadLoader(HttpClient http, MediaContractLoader contracts)
     {
         ArgumentNullException.ThrowIfNull(http);

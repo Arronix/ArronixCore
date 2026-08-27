@@ -223,8 +223,10 @@ to look and never decides what is true — every required assembly must still ma
 manifest states, over values already in memory, so an unchanged installation costs one manifest read and no
 bytes. `EventKind.PluginStateChanged` drives that re-read on a connected tab, through the loader's own
 serialized entry point rather than a second manifest reader, and the same trigger sheds the bytes the new
-installation no longer names. Store eviction discards content hashes the verified installation does not
-name, never touches residency, and is refused outright against a manifest that was not proved whole.
+installation no longer names; no shipped host raises that event yet, so an operator's reload is the only
+trigger a running deployment has today. Store eviction discards content hashes the verified installation
+does not name, never touches residency, and is refused outright against a manifest that was not proved
+whole.
 
 One load is one transition: the orphan and owner bookkeeping a pass computes is applied only with the report
 it publishes, so a caller that abandons a load mid-fetch leaves residency and the report describing one
@@ -239,6 +241,12 @@ announcement is reported beside the record and not inside it, because a refusal 
 handed over. Cancellation is the caller's token and nothing else: a request timeout is an ordinary
 `Unreachable` or `Unavailable` outcome that replaces the report it failed to read, and no boundary in this
 path contains an unsound process or drops the task carrying one.
+
+A page renders which observation it is showing, beside whether this browser gave the client a persistent
+store. Because what a view shows only moves forward, that number is what separates a reload that found
+nothing to change from a reload that never ran — including one nobody pressed. The lifecycle in a real
+browser, and the limits of what that proves, are recorded in
+`docs/research/g07/client-contract-lifecycle.md`.
 
 ## 5. Invariants
 

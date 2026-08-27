@@ -531,15 +531,22 @@ panel take an external consumer's contract at G07A.
 
 #### G07.3 — Contract cache lifecycle in the browser
 
-**Status:** in progress. The hermetic lifecycle core is implemented and proved in the test rail: orphaning
-with its refusal and its attribution, exact reunion without a fetch, terminal replacement, the `410`/`404`/
-transport separation, selective store eviction with the unreadable-manifest refusal, the unchanged-
-installation early-out, and the `PluginStateChanged`-driven re-read. Reading an installation, shedding the
-bytes it no longer names and emptying the store are one serialized transaction with no second door, held
-there by an architecture rule; each transaction is numbered under its lease and seals its report, its
-post-sweep keys and every failure it contained as one value, and what a view shows moves only forward. None
-of that is browser evidence. The exit gate below is unchanged and entirely outstanding: update, removal,
-stale cache and stale tab have not been exercised in a real browser, so this gate is open.
+**Status:** candidate under independent acceptance review. The hermetic lifecycle core is implemented and
+proved in the test rail: orphaning with its refusal and its attribution, exact reunion without a fetch,
+terminal replacement, the `410`/`404`/transport separation, selective store eviction with the
+unreadable-manifest refusal, the unchanged-installation early-out, and the `PluginStateChanged`-driven
+re-read. Reading an installation, shedding the bytes it no longer names and emptying the store are one
+serialized transaction with no second door, held there by an architecture rule; each transaction is numbered
+under its lease and seals its report, its post-sweep keys and every failure it contained as one value, and
+what a view shows moves only forward.
+
+Both exit conditions below have now been exercised in a real browser: one `BrowserContext` and one origin
+across three real API restarts — install, an update of the same CLR identity to different bytes, and removal
+— with the tabs opened before each restart never navigated again and driven only through the contracts
+page's own reload. 64 lifecycle checks beside the 43 the G07.2 half already asserts, with machine-readable
+evidence. `docs/research/g07/client-contract-lifecycle.md` records what was proved and the five things it
+does not claim, including that no shipped host raises `PluginStateChanged` yet, so the event-driven trigger
+remains proved in the rail rather than in a browser. This gate is not self-declared closed.
 
 **Outcome:** installing, updating, and removing a package, and holding a tab open across those changes, all
 behave predictably in the browser and fail visibly rather than projecting partial data.
@@ -1361,11 +1368,13 @@ the Client build and no media kind spelled in its source. The server half, the b
 rail are recorded in `docs/research/g07/client-payload-projection.md`; independent review reproduced the
 mutation evidence and re-ran the full rail at the accepted commit.
 
-The next gate after it is **G07.3**: cache update, removal, eviction, stale cache and stale tab in the real
-browser. G07.2 built the withdrawal rules its own correctness needed — an offer re-proved by contract object
-identity before a fetch, after it and before any value is handed back, and a rendered projection invalidated
-once its contract is no longer admitted — and those are a starting point for G07.3 rather than a substitute
-for it.
+**G07.3 is a candidate under independent acceptance review.** Cache update, removal, eviction, stale cache
+and stale tab have been driven in the real browser across three restarts of the real API at one origin, with
+the held tabs never navigated again. G07.2 built the withdrawal rules its own correctness needed — an offer
+re-proved by contract object identity before a fetch, after it and before any value is handed back, and a
+rendered projection invalidated once its contract is no longer admitted — and G07.3 exercised them against
+a host that actually changed. `docs/research/g07/client-contract-lifecycle.md` records the matrix, its
+mutation evidence and its limits.
 
 Do not fold provider-result ingestion, durable catalog state, or the complete external-consumer vertical
 into G07; G07A and G07B own those proofs. The G06 SDK package boundary and completed TMDb/provider ownership

@@ -73,7 +73,12 @@ public static class ArronixClientServiceCollectionExtensions
 
         // Reads one serialized entity through whichever contract this page admitted. Separate from the
         // loader because a payload that will not read says nothing about the installation that was.
-        services.TryAddSingleton<ContractPayloadLoader>();
+        //
+        // By factory: its constructor is internal, and the container reads public ones only, so registering
+        // the type finds no constructor and the page that injects it cannot render.
+        services.TryAddSingleton(provider => new ContractPayloadLoader(
+            provider.GetRequiredService<HttpClient>(),
+            provider.GetRequiredService<MediaContractLoader>()));
 
         return services;
     }

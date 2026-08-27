@@ -30,9 +30,12 @@
 </p>
 
 <div class="page-actions">
-    <button class="button" type="button" disabled="@_busy" @onclick="ReloadAsync">Reload contracts</button>
-    <button class="button button-quiet" type="button" disabled="@_busy" @onclick="DiscardStoredBytesAsync">Discard stored bytes</button>
+    <button class="button" type="button" id="reload-contracts" disabled="@_busy" @onclick="ReloadAsync">Reload contracts</button>
+    <button class="button button-quiet" type="button" id="discard-stored-bytes" disabled="@_busy" @onclick="DiscardStoredBytesAsync">Discard stored bytes</button>
     <span class="chip chip-quiet" id="contract-store-mode">@StoreMode(snapshot)</span>
+    @* Which observation is on screen. It only moves forward, so a reload that changed nothing is still
+       visibly a reload. *@
+    <span class="chip chip-quiet">observation <span id="contract-observation">@snapshot.Sequence</span></span>
 </div>
 
 @if (snapshot.Report is { } report)

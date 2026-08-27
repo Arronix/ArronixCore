@@ -1,5 +1,71 @@
 # Arronix History
 
+## 2026-08-27 — Drive update, removal and a held tab through a real browser
+
+G07.3's hermetic core was built and proved in the rail; its exit gate names update, removal, stale cache and
+stale tab as exercises in a real browser, and none had run there. They have now, and this is an
+implementation and proof candidate under independent acceptance review rather than a closed gate.
+
+- **One context, one origin, three restarts.** The API is restarted over three installations composed on
+  disk — video plus movies, video plus a rebuilt movies, video alone — while one `BrowserContext` and its
+  tabs stay open. The tabs opened before a restart are never navigated again; they change only through the
+  contracts page's own reload, which is the same serialized `ContractView` transaction the extension-state
+  watcher calls. Reloading the document is the escape hatch this gate exists to say is the only cure, so
+  using it would prove nothing, and the matrix asserts each tab navigated exactly once.
+- **The update is a rebuild, not an edit.** The shared contract assembly is rebuilt alone with determinism
+  off: identical CLR identity, identical projection schema, identical length, different module version
+  identifier and different bytes. The deterministic rebuild afterwards must reproduce the first build
+  exactly, and the two payloads are compared over the union of their file names and then over content, so a
+  file added or removed cannot pass as "only the shared contract changed".
+- **A held tab refuses a build it cannot use, and does not fetch it.** The refusal is `NameAlreadyResident`
+  in preflight, so the page never asks for the new content address — asserted as an absence of requests, not
+  inferred. It goes terminal, withdraws the projection it was already showing, loses the control to project
+  at all, and still sheds the stale bytes while keeping the live ones. A fresh tab in the same browser then
+  loads the update from the network *because* those bytes were evicted, and reuses the unchanged video bytes
+  from the store.
+- **A withdrawn package is reported, not silently kept.** The held tab stays compatible over what remains
+  installed, reports Movies under "held here, no longer installed" attributed to a package this host no
+  longer offers, serves nothing through it, and ends holding the live video hash alone. A fresh tab holds no
+  orphan of its own.
+- **Errors are attributed or they are defects.** Both channels of every page are captured. Nothing may be
+  written outside a restart or the teardown, and inside one only a browser-issued `net::ERR_` transport
+  failure is tolerated — narrow enough that an application failure cannot match. One mutation run
+  demonstrated exactly that by failing on a WebSocket connection error the list had not yet named; the list
+  names that form now, and still requires a `net::ERR_` cause.
+
+**A defect this found.** The accepted base could not render the contracts page at all:
+`ContractPayloadLoader` has an internal constructor and was registered by type, so the container found no
+constructor and the page threw `NoConstructorMatch` at its first render — taking the whole G07.2 browser
+proof with it, invisibly, because the browser half is not on the rail. The constructor stays internal and
+the composition root, in the same assembly, constructs it by factory. A behavioural case resolves it and
+asserts one singleton, which build-time container validation cannot do because it never calls a factory.
+
+The proof scripts own their lifetimes rather than trusting one. The port must be free before anything is
+built and is never cleared by force — a listener this proof did not start is refused, not killed. The
+server is the assembly launched directly rather than `dotnet run`, whose child is what holds the port.
+Shutdown is bounded at every step, distinguishes an exited-but-unreaped child from a running one, escalates
+only against the exact owned pid, and treats a surviving process as a failure whatever the socket says. A
+spawn failure arrives asynchronously and is observed rather than left to become an uncaught exception that
+walks past cleanup. The handle survives a failed signal, because dropping it is what leaves a detached
+server with nothing to escalate against, and both owners retry a bounded number of times. Every teardown
+step is independently guarded and bounded, and any failure in setup, body, evidence or cleanup makes the run
+non-zero. What that buys is bounded effort and a visible failure naming the pid, not a promise that nothing
+can survive: a process the run may not signal at all keeps running, and the next run refuses to start while
+it holds the port.
+
+Mutation: reunion accepting any build of the same identity fails three lifecycle checks; a sweep that
+evicts nothing fails five; registering the payload loader by type fails the composition case. Recorded
+rather than dressed up: the loader's orphan gate is not distinguishable by this matrix, because `Admitted()`
+is already gated by the report's package list — it is covered hermetically, and what the browser proves
+about removal is the rendered consequence.
+
+Observed: 30 server-half checks, 43 G07.2 browser checks and 64 G07.3 lifecycle checks, all green, with
+machine-readable evidence under `artifacts/g07/evidence`. Full rail: 3,509 passed, 302 registered skips,
+zero failed and zero inconclusive from 3,811 cases across 14 projects.
+`docs/research/g07/client-contract-lifecycle.md` records what was proved, and the five things it does not
+claim — including that no shipped server path raises `EventKind.PluginStateChanged` yet, so the event-driven
+re-read stays proved in the rail rather than in a browser.
+
 ## 2026-08-27 — Read one serialized entity through the contract a browser admitted
 
 G07.1 left a page holding contract assemblies whose bytes, CLR identity, build and universal-contract

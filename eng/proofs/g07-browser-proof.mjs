@@ -14,59 +14,47 @@
 // Needs Playwright's Chromium. This repository's hermetic rail carries no browser toolchain, so this is
 // run beside it rather than inside it, and its output is written to the evidence directory as JSON.
 
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+import {
+    openPlaywright, parse, recorder, report, sink, text, value, watch, within, writeEvidence
+} from './g07-browser-support.mjs';
 
 const options = parse(process.argv.slice(2));
 const address = options.address ?? 'http://127.0.0.1:5223';
 const evidence = options.evidence ?? 'artifacts/g07/evidence';
 const fixturePath = options.fixture ?? 'eng/proofs/fixtures/g07/movie.json';
 
-let chromium;
-
-try {
-    ({ chromium } = await import('playwright'));
-} catch {
-    console.error(
-        "error: playwright is not installed. Install it beside this repository (npm i -D playwright && "
-        + "npx playwright install chromium) and re-run, or drive the identifiers by hand.");
-    process.exit(2);
-}
+const { chromium } = await openPlaywright();
 
 const fixture = readFileSync(fixturePath);
 const fixtureHash = createHash('sha256').update(fixture).digest('hex');
 
-const results = [];
-const check = (description, actual, expected) => {
-    const ok = JSON.stringify(actual) === JSON.stringify(expected);
-    results.push({ description, ok, actual, expected });
-    console.log(`${ok ? 'ok   ' : 'FAIL '} ${description}`);
-    if (!ok) {
-        console.log(`      expected: ${JSON.stringify(expected)}`);
-        console.log(`      actual:   ${JSON.stringify(actual)}`);
-    }
-};
+const { results, check } = recorder();
 
-const browser = await chromium.launch();
-const context = await browser.newContext();
-const page = await context.newPage();
+// Every byte the page fetched, so "loaded over serialized network payloads" is a measurement, plus both
+// error channels of the page.
+const observed = sink();
 
-// Every byte the page fetched, so "loaded over serialized network payloads" is a measurement.
-const requested = [];
-page.on('request', request => requested.push(request.url()));
+let evidencePath = join(evidence, 'browser-half.json');
+let fatal = null;
 
-// Both channels. An unhandled exception reaches `pageerror`; a `console.error` the application wrote
-// itself does not, and "nothing threw in the page" would quietly miss it.
-const consoleErrors = [];
-page.on('pageerror', error => consoleErrors.push(`pageerror: ${error}`));
-page.on('console', message => {
-    if (message.type() === 'error') {
-        consoleErrors.push(`console.error: ${message.text()}`);
-    }
-});
+// Created inside the try below, so a failure between any two of them still unwinds through one cleanup.
+let browser = null;
+let context = null;
+
+// Read through a function, never copied: the sink keeps filling while the page works.
+const requested = () => observed.requested.map(entry => entry.url);
+const consoleErrors = () => observed.errors.map(entry => `${entry.channel}: ${entry.text}`);
 
 try {
+    browser = await chromium.launch();
+    context = await browser.newContext();
+
+    const page = await context.newPage();
+    watch(page, 'payload', observed);
+
     await page.goto(`${address}/contracts`, { waitUntil: 'networkidle' });
     await page.waitForSelector('#contract-compatibility', { timeout: 60_000 });
 
@@ -83,11 +71,11 @@ try {
         true);
     check(
         'the movies contract was fetched over the network',
-        requested.some(url => url.includes('/api/v1/client-contracts/movies/')),
+        requested().some(url => url.includes('/api/v1/client-contracts/movies/')),
         true);
     check(
         'the client build carries no media assembly of its own',
-        requested.some(url => /_framework\/Arronix\.(Media|Format|Plugin)\./.test(url)),
+        requested().some(url => /_framework\/Arronix\.(Media|Format|Plugin)\./.test(url)),
         false);
 
     // --- G07.2: one serialized entity, read through the contract that was admitted ---
@@ -115,7 +103,7 @@ try {
         await text(page, '#projected-entity-type'),
         'Arronix.Media.Movies.Movie');
 
-    const payloadRequest = requested.find(url => url.endsWith('/fixtures/g07/movie.json'));
+    const payloadRequest = requested().find(url => url.endsWith('/fixtures/g07/movie.json'));
     check('the payload arrived as a serialized network payload', Boolean(payloadRequest), true);
 
     const served = await payloadResponse;
@@ -196,7 +184,7 @@ try {
         true);
     check('and no label runs into the value beside it', /[A-Za-z]:[^\s]/.test(ratings), false);
 
-    check('nothing threw in the page', consoleErrors, []);
+    check('nothing threw in the page', consoleErrors(), []);
 
     // --- a payload this host does not serve fails visibly, with nothing projected ---
     await page.fill('#contract-payload', 'fixtures/g07/absent.json');
@@ -211,7 +199,7 @@ try {
     check('and it says why', (await text(page, '#projection-failure')).length > 0, true);
 
     // --- an address off this origin is refused without being fetched ---
-    const before = requested.length;
+    const before = observed.requested.length;
     await page.fill('#contract-payload', 'https://evil.test/movie.json');
     await page.click('#project-contract-payload');
     await page.waitForFunction(
@@ -222,33 +210,43 @@ try {
     check('an address off this origin is refused', await text(page, '#projection-status'), 'AddressUnsafe');
     check(
         'and nothing was fetched for it',
-        requested.slice(before).some(url => url.includes('evil.test')),
+        requested().slice(before).some(url => url.includes('evil.test')),
         false);
+} catch (failure) {
+    console.error(`error: ${failure?.message ?? failure}`);
+    fatal = failure;
 } finally {
-    mkdirSync(evidence, { recursive: true });
-    writeFileSync(
-        join(evidence, 'browser-half.json'),
-        JSON.stringify({ address, fixtureHash, results, requested, consoleErrors }, null, 2));
-    await browser.close();
-}
+    // Each step independently, and all of them whatever the ones before did. The closes are bounded: one
+    // that never settles would otherwise hold the run open with its work already done.
+    const cleanup = [
+        ['close the browser context', () => within(30_000, 'closing the browser context', () => context?.close())],
+        ['close the browser', () => within(30_000, 'closing the browser', () => browser?.close())],
+    ];
 
-const failed = results.filter(entry => !entry.ok);
-console.log(`\n${results.length - failed.length} of ${results.length} browser checks passed.`);
-console.log(`Evidence: ${join(evidence, 'browser-half.json')}`);
-process.exit(failed.length === 0 ? 0 : 1);
-
-async function text(target, selector) {
-    return (await target.locator(selector).textContent()).trim();
-}
-
-async function value(target, selector) {
-    return (await target.locator(selector).inputValue()).trim();
-}
-
-function parse(argv) {
-    const parsed = {};
-    for (let index = 0; index < argv.length; index += 2) {
-        parsed[argv[index].replace(/^--/, '')] = argv[index + 1];
+    for (const [what, step] of cleanup) {
+        try {
+            await step();
+        } catch (failure) {
+            console.error(`error: could not ${what}: ${failure?.message ?? failure}`);
+            fatal ??= failure;
+        }
     }
-    return parsed;
+
+    // Last, so it records the teardown as well as the run.
+    try {
+        evidencePath = writeEvidence(evidence, 'browser-half.json', {
+            address,
+            fixtureHash,
+            results,
+            requested: requested(),
+            consoleErrors: consoleErrors(),
+        });
+    } catch (failure) {
+        console.error(`error: could not write the evidence: ${failure?.message ?? failure}`);
+        fatal ??= failure;
+    }
 }
+
+const status = report(results, evidencePath);
+
+process.exit(fatal === null ? status : 1);
