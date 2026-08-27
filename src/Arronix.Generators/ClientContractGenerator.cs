@@ -25,9 +25,6 @@ namespace Arronix.Generators;
 [Generator(LanguageNames.CSharp)]
 public sealed class ClientContractGenerator : IIncrementalGenerator
 {
-    private const string MediaItemName =
-        "Arronix.Abstractions.Media.MediaItem<TItem, TReleaseTimeline, TReleaseStage>";
-
     private const int CompositeKind = 20;
     private const int ReferenceKind = 12;
 
@@ -131,17 +128,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             return null;
         }
 
-        var isContext = false;
-        for (var current = symbol.BaseType; current is not null; current = current.BaseType)
-        {
-            if (SymbolEqualityComparer.Default.Equals(current, framework.SerializerContext))
-            {
-                isContext = true;
-                break;
-            }
-        }
-
-        if (!isContext)
+        if (CompilationSymbols.ClosedBase(symbol, framework.SerializerContext) is null)
         {
             return null;
         }
@@ -358,24 +345,19 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol
             || symbol.DeclaredAccessibility != Accessibility.Public
             || symbol.IsAbstract
-            || symbol.IsGenericType)
+            || symbol.IsGenericType
+            || MediaShapeModel.Create(context.SemanticModel.Compilation) is not { } shape
+            || shape.ClosedBase(symbol, PlatformSymbol.MediaItem) is null)
         {
             return null;
         }
 
-        var itemBase = symbol.BaseType;
-        while (itemBase is not null && itemBase.OriginalDefinition.ToDisplayString() != MediaItemName)
-        {
-            itemBase = itemBase.BaseType;
-        }
-
-        return itemBase is null
-            ? null
-            : new Entry(
-                symbol,
-                declaration.Identifier.GetLocation(),
-                symbol.ContainingNamespace.IsGlobalNamespace ? null : symbol.ContainingNamespace.ToDisplayString(),
-                Sanitize(symbol.ToDisplayString()) + ".ClientContract.g.cs");
+        return new Entry(
+            shape,
+            symbol,
+            declaration.Identifier.GetLocation(),
+            symbol.ContainingNamespace.IsGlobalNamespace ? null : symbol.ContainingNamespace.ToDisplayString(),
+            Sanitize(symbol.ToDisplayString()) + ".ClientContract.g.cs");
     }
 
     private static string? Emit(Entry entry, SerializationContext serializer, out string? refusal)
@@ -391,6 +373,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         var graph = ClientContractSerializationModel.Render(
             entry.Symbol,
             serializer.Framework,
+            entry.Shape,
             out var derived,
             out refusal);
 
@@ -399,7 +382,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             return null;
         }
 
-        var projection = new Projection();
+        var projection = new Projection(entry.Shape);
         var schema = projection.Describe(entry.Symbol);
 
         var projectionHash = Hash(RenderSchema(entry.Symbol, schema));
@@ -754,13 +737,21 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
     private sealed class Entry
     {
-        internal Entry(INamedTypeSymbol symbol, Location location, string? namespaceName, string hintName)
+        internal Entry(
+            MediaShapeModel shape,
+            INamedTypeSymbol symbol,
+            Location location,
+            string? namespaceName,
+            string hintName)
         {
+            Shape = shape;
             Symbol = symbol;
             Location = location;
             Namespace = namespaceName;
             HintName = hintName;
         }
+
+        internal MediaShapeModel Shape { get; }
 
         internal INamedTypeSymbol Symbol { get; }
 
@@ -897,6 +888,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     /// </summary>
     private sealed class Projection
     {
+        private readonly MediaShapeModel _shape;
         private readonly Dictionary<string, int> _compositeIndex = new(StringComparer.Ordinal);
         private readonly List<KeyValuePair<ITypeSymbol, List<Field>>> _composites = new();
         private readonly Dictionary<string, int> _listIndex = new(StringComparer.Ordinal);
@@ -905,13 +897,15 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         private readonly List<ITypeSymbol> _enums = new();
         private readonly HashSet<string> _scalars = new(StringComparer.Ordinal);
 
+        internal Projection(MediaShapeModel shape) => _shape = shape;
+
         internal IReadOnlyList<Field> Describe(INamedTypeSymbol entity)
         {
             var fields = new List<Field>();
 
             foreach (var property in PublicProperties(entity))
             {
-                if (!IsExcluded(property))
+                if (!_shape.IsExcluded(property))
                 {
                     fields.Add(Describe(property, topLevel: true, new List<ITypeSymbol> { entity }));
                 }
@@ -926,7 +920,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             var listElement = UnwrapList(declared);
             var bare = StripNullable(declared);
             var element = StripNullable(listElement ?? declared);
-            var declaredKind = ValueKind(element, property);
+            var declaredKind = _shape.ValueKind(element, property);
 
             // Host projects a nested entity as a reference to the durable identity it assigned at
             // materialization. A browser projecting a payload holds no such identity, so the entity is
@@ -935,25 +929,26 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
             var access = listElement is not null
                 ? Access.List
-                : Is(bare, "Arronix.Abstractions.Media.ArtworkSet")
+                : _shape.Is(bare, PlatformSymbol.ArtworkSet)
                     ? Access.ArtworkSet
-                    : Is(bare, "Arronix.Abstractions.Media.ExternalIdSet")
+                    : _shape.Is(bare, PlatformSymbol.ExternalIdSet)
                         ? Access.ExternalIdSet
                         : Access.Direct;
 
-            var display = Attribute(property, "DisplayAttribute");
+            var display = _shape.Attribute(property, PlatformSymbol.Display);
 
             var field = new Field(property, element, kind, access)
             {
                 FieldId = Identifier(property.Name),
                 Name = NamedString(display, "Name") ?? Label(property.Name),
                 Description = NamedString(display, "Description"),
-                Unit = ConstructorString(Attribute(property, "UnitAttribute")),
+                Unit = ConstructorString(_shape.Attribute(property, PlatformSymbol.Unit)),
                 Multivalued = access != Access.Direct,
-                Editable = topLevel && Has(property, "EditableAttribute") && !Has(property, "DerivedAttribute"),
+                Editable = topLevel && _shape.Has(property, PlatformSymbol.Editable)
+                    && !_shape.Has(property, PlatformSymbol.Derived),
                 Nullable = IsNullable(declared) || (listElement is not null && IsNullable(listElement)),
-                Semantics = topLevel ? MediaShapeModel.Semantics(property, declaredKind, element) : 0,
-                Prominence = topLevel ? MediaShapeModel.Prominence(property) : 1,
+                Semantics = topLevel ? _shape.Semantics(property, declaredKind, element) : 0,
+                Prominence = topLevel ? _shape.Prominence(property) : 1,
             };
 
             if (kind == 11 && element is INamedTypeSymbol enumeration)
@@ -1013,7 +1008,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
             foreach (var property in PublicProperties(named))
             {
-                if (!IsExcluded(property))
+                if (!_shape.IsExcluded(property))
                 {
                     components.Add(Describe(property, topLevel: false, next));
                 }

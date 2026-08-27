@@ -26,34 +26,17 @@ internal static class ClientContractSerializationModel
         + "|unknownType=JsonElement|outOfOrderMetadata=false|ignoreReadOnlyProperties=false"
         + "|ignoreReadOnlyFields=false|namingPolicy=camelCase";
 
-    private static readonly string[] Sequences =
-    [
-        "System.Collections.Generic.IReadOnlyList<T>",
-        "System.Collections.Generic.IReadOnlyCollection<T>",
-        "System.Collections.Generic.IEnumerable<T>",
-        "System.Collections.Generic.IList<T>",
-        "System.Collections.Generic.ICollection<T>",
-        "System.Collections.Generic.List<T>",
-    ];
-
-    private static readonly string[] Scalars =
-    [
-        "System.String", "System.Boolean", "System.Char", "System.Byte", "System.SByte",
-        "System.Int16", "System.UInt16", "System.Int32", "System.UInt32", "System.Int64", "System.UInt64",
-        "System.Single", "System.Double", "System.Decimal",
-        "System.DateOnly", "System.TimeOnly", "System.DateTime", "System.DateTimeOffset",
-        "System.TimeSpan", "System.Guid", "System.Uri", "System.Version",
-    ];
-
     /// <summary>Renders the serialization graph one entity will be read and written through.</summary>
     /// <param name="root">The entity type.</param>
     /// <param name="framework">The framework serialization types, resolved from the compilation.</param>
+    /// <param name="shape">The CLR shape reading, which resolved the platform and framework types.</param>
     /// <param name="derived">The wire names of members the contract computes rather than reads.</param>
     /// <param name="refusal">Why the graph could not be modeled, when it could not.</param>
     /// <returns>The canonical rendering, or <see langword="null"/> when it was refused.</returns>
     internal static string? Render(
         INamedTypeSymbol root,
         FrameworkSymbols framework,
+        MediaShapeModel shape,
         out IReadOnlyList<string> derived,
         out string? refusal)
     {
@@ -74,12 +57,12 @@ internal static class ClientContractSerializationModel
             // Every type the graph reaches is validated where it is described, not only where a member
             // declares it. A collection's element, a nullable's underlying value and the root itself are
             // all reached without any member naming them directly.
-            if (!Modelable(current.Type, current.Through, framework, ref refusal))
+            if (!Modelable(current.Type, current.Through, framework, shape, ref refusal))
             {
                 return null;
             }
 
-            var reachable = RenderType(rendering, current.Type, framework, ignored, live, ref refusal);
+            var reachable = RenderType(rendering, current.Type, framework, shape, ignored, live, ref refusal);
 
             if (refusal is not null)
             {
@@ -117,13 +100,14 @@ internal static class ClientContractSerializationModel
         StringBuilder rendering,
         ITypeSymbol type,
         FrameworkSymbols framework,
+        MediaShapeModel shape,
         ISet<string> ignoredNames,
         ISet<string> liveNames,
         ref string? refusal)
     {
         var reachable = new List<Reached>();
-        var element = ElementOf(type);
-        var kind = Kind(type, element);
+        var element = ElementOf(type, shape);
+        var kind = Kind(type, element, shape);
 
         rendering.Append("type=").Append(Text(Name(type))).Append("|kind=").Append(kind)
             .Append("|createObject=").Append(Bool(CreatesObject(type, kind, framework)));
@@ -176,7 +160,7 @@ internal static class ClientContractSerializationModel
 
             foreach (var property in DeclaredFirst(named))
             {
-                if (!Modelable(property, framework, ref refusal))
+                if (!Modelable(property, framework, shape, ref refusal))
                 {
                     return reachable;
                 }
@@ -307,7 +291,7 @@ internal static class ClientContractSerializationModel
         return null;
     }
 
-    private static ITypeSymbol? ElementOf(ITypeSymbol type)
+    private static ITypeSymbol? ElementOf(ITypeSymbol type, MediaShapeModel shape)
     {
         if (type is IArrayTypeSymbol array)
         {
@@ -315,37 +299,24 @@ internal static class ClientContractSerializationModel
             return array.ElementType.SpecialType == SpecialType.System_Byte ? null : array.ElementType;
         }
 
-        if (type is not INamedTypeSymbol named || !named.IsGenericType)
+        if (type is not INamedTypeSymbol { IsGenericType: true } named)
         {
             return null;
         }
 
-        var definition = named.OriginalDefinition.ToDisplayString();
-
-        if (definition == "System.Nullable<T>")
-        {
-            return named.TypeArguments[0];
-        }
-
-        return Array.IndexOf(Sequences, definition) >= 0 ? named.TypeArguments[0] : null;
+        return named.OriginalDefinition.SpecialType is SpecialType.System_Nullable_T
+            or SpecialType.System_Collections_Generic_IReadOnlyList_T
+            or SpecialType.System_Collections_Generic_IReadOnlyCollection_T
+            or SpecialType.System_Collections_Generic_IEnumerable_T
+            or SpecialType.System_Collections_Generic_IList_T
+            or SpecialType.System_Collections_Generic_ICollection_T
+            || shape.Is(named, PlatformSymbol.List)
+            ? named.TypeArguments[0]
+            : null;
     }
 
-    private static string Kind(ITypeSymbol type, ITypeSymbol? element)
-    {
-        if (type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte })
-        {
-            return "None";
-        }
-
-        if (type.TypeKind == TypeKind.Enum
-            || Array.IndexOf(Scalars, Name(type)) >= 0
-            || (type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T }))
-        {
-            return "None";
-        }
-
-        return element is not null ? "Enumerable" : "Object";
-    }
+    private static string Kind(ITypeSymbol type, ITypeSymbol? element, MediaShapeModel shape) =>
+        IsScalar(type, shape) ? "None" : element is not null ? "Enumerable" : "Object";
 
     /// <remarks>
     /// From the declaration, not the substitution: a member declared as a type parameter has the nullability
@@ -394,7 +365,6 @@ internal static class ClientContractSerializationModel
                 if (property.IsStatic || property.Parameters.Length != 0
                     || property.DeclaredAccessibility != Accessibility.Public
                     || property.GetMethod?.DeclaredAccessibility != Accessibility.Public
-                    || property.Name == "EqualityContract"
                     || !taken.Add(property.Name))
                 {
                     continue;
@@ -411,7 +381,11 @@ internal static class ClientContractSerializationModel
     /// Determines whether one member's declaration is inside what this model describes.
     /// </summary>
     /// <remarks>Each refusal is a framework feature that changes a payload's meaning and is not modeled.</remarks>
-    private static bool Modelable(IPropertySymbol property, FrameworkSymbols framework, ref string? refusal)
+    private static bool Modelable(
+        IPropertySymbol property,
+        FrameworkSymbols framework,
+        MediaShapeModel shape,
+        ref string? refusal)
     {
         foreach (var attribute in property.GetAttributes())
         {
@@ -423,10 +397,15 @@ internal static class ClientContractSerializationModel
             }
         }
 
-        return Modelable(property.Type, property.Name, framework, ref refusal);
+        return Modelable(property.Type, property.Name, framework, shape, ref refusal);
     }
 
-    private static bool Modelable(ITypeSymbol type, string member, FrameworkSymbols framework, ref string? refusal)
+    private static bool Modelable(
+        ITypeSymbol type,
+        string member,
+        FrameworkSymbols framework,
+        MediaShapeModel shape,
+        ref string? refusal)
     {
         // An allow list, not a deny list. A framework attribute this model has never heard of changes what
         // a payload means in some way, and the safe reading of "never heard of" is "not described".
@@ -444,21 +423,21 @@ internal static class ClientContractSerializationModel
 
         // Before the shape rules below: a dictionary is also an interface, and naming it a dictionary sends
         // an author somewhere useful.
-        if (IsDictionary(type))
+        if (IsDictionary(type, shape))
         {
             refusal = $"'{type.ToDisplayString()}', reached through '{member}', is a dictionary, and "
                 + "dictionary key handling is not modeled";
             return false;
         }
 
-        if (!Describable(type, ref refusal))
+        if (!Describable(type, shape, ref refusal))
         {
             return false;
         }
 
         // A collection the model does not recognize would be described as an object with the collection's
         // own members, which is not what the framework writes.
-        if (ElementOf(type) is null && !IsScalar(type) && IsSequence(type))
+        if (ElementOf(type, shape) is null && !IsScalar(type, shape) && IsSequence(type))
         {
             refusal = $"'{type.ToDisplayString()}', reached through '{member}', is a collection this model "
                 + "does not recognize, so the shape it would be given is not the shape it is written in";
@@ -630,7 +609,7 @@ internal static class ClientContractSerializationModel
     /// Determines whether a shape is one this model has a described wire form for.
     /// </summary>
     /// <remarks>Shapes whose wire form the declaration does not state, so the model would have to guess.</remarks>
-    private static bool Describable(ITypeSymbol type, ref string? refusal)
+    private static bool Describable(ITypeSymbol type, MediaShapeModel shape, ref string? refusal)
     {
         if (type.SpecialType == SpecialType.System_Object)
         {
@@ -658,7 +637,7 @@ internal static class ClientContractSerializationModel
             }
 
             if ((named.TypeKind == TypeKind.Interface || named.IsAbstract)
-                && !IsScalar(named) && ElementOf(named) is null)
+                && !IsScalar(named, shape) && ElementOf(named, shape) is null)
             {
                 refusal = $"'{type.ToDisplayString()}' is "
                     + (named.TypeKind == TypeKind.Interface ? "an interface" : "abstract")
@@ -670,9 +649,23 @@ internal static class ClientContractSerializationModel
         return true;
     }
 
-    private static bool IsScalar(ITypeSymbol type) =>
+    /// <remarks>The shapes the framework writes as one value, so the model walks no members of them.</remarks>
+    private static bool IsScalar(ITypeSymbol type, MediaShapeModel shape) =>
         type.TypeKind == TypeKind.Enum
-        || Array.IndexOf(Scalars, Name(type)) >= 0
+        || type.SpecialType is SpecialType.System_String or SpecialType.System_Boolean
+            or SpecialType.System_Char or SpecialType.System_Byte or SpecialType.System_SByte
+            or SpecialType.System_Int16 or SpecialType.System_UInt16
+            or SpecialType.System_Int32 or SpecialType.System_UInt32
+            or SpecialType.System_Int64 or SpecialType.System_UInt64
+            or SpecialType.System_Single or SpecialType.System_Double or SpecialType.System_Decimal
+            or SpecialType.System_DateTime
+        || shape.Is(type, PlatformSymbol.DateOnly)
+        || shape.Is(type, PlatformSymbol.TimeOnly)
+        || shape.Is(type, PlatformSymbol.DateTimeOffset)
+        || shape.Is(type, PlatformSymbol.TimeSpan)
+        || shape.Is(type, PlatformSymbol.Guid)
+        || shape.Is(type, PlatformSymbol.Uri)
+        || shape.Is(type, PlatformSymbol.Version)
         || type is IArrayTypeSymbol { ElementType.SpecialType: SpecialType.System_Byte }
         || type is INamedTypeSymbol { OriginalDefinition.SpecialType: SpecialType.System_Nullable_T };
 
@@ -699,21 +692,21 @@ internal static class ClientContractSerializationModel
         return false;
     }
 
-    private static bool IsDictionary(ITypeSymbol type)
+    private static bool IsDictionary(ITypeSymbol type, MediaShapeModel shape)
     {
         if (type is not INamedTypeSymbol named)
         {
             return false;
         }
 
-        if (IsDictionaryDefinition(named))
+        if (IsDictionaryDefinition(named, shape))
         {
             return true;
         }
 
         foreach (var contract in named.AllInterfaces)
         {
-            if (IsDictionaryDefinition(contract))
+            if (IsDictionaryDefinition(contract, shape))
             {
                 return true;
             }
@@ -731,11 +724,8 @@ internal static class ClientContractSerializationModel
             ? attributeName.Substring(0, attributeName.Length - "Attribute".Length)
             : attributeName;
 
-    private static bool IsDictionaryDefinition(INamedTypeSymbol type) =>
-        type.IsGenericType
-        && type.OriginalDefinition.ToDisplayString() is
-            "System.Collections.Generic.IDictionary<TKey, TValue>"
-            or "System.Collections.Generic.IReadOnlyDictionary<TKey, TValue>";
+    private static bool IsDictionaryDefinition(INamedTypeSymbol type, MediaShapeModel shape) =>
+        shape.Is(type, PlatformSymbol.Dictionary) || shape.Is(type, PlatformSymbol.ReadOnlyDictionary);
 
     /// <summary>Applies the framework's camel-case policy to a member name.</summary>
     /// <remarks>A leading run of capitals is lowered as a run, so an acronym stays one word.</remarks>

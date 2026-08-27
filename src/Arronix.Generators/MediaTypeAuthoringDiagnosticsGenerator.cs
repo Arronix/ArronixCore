@@ -9,9 +9,6 @@ namespace Arronix.Generators;
 [Generator(LanguageNames.CSharp)]
 public sealed class MediaTypeAuthoringDiagnosticsGenerator : IIncrementalGenerator
 {
-    private const string MediaTypeName =
-        "Arronix.Abstractions.Media.MediaType<TItem, TTarget, TRelease, TParser>";
-
     private static readonly DiagnosticDescriptor MediaTypeMustBePartial = new(
         "ARX1003",
         "Media type declarations must be partial",
@@ -42,21 +39,15 @@ public sealed class MediaTypeAuthoringDiagnosticsGenerator : IIncrementalGenerat
     private static InvalidDeclaration? FindInvalidDeclaration(GeneratorSyntaxContext context)
     {
         var declaration = (ClassDeclarationSyntax)context.Node;
-        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol)
+
+        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol
+            || PlatformSymbols.Resolve(context.SemanticModel.Compilation) is not { } platform
+            || platform.ClosedBase(symbol, PlatformSymbol.MediaType) is null)
         {
             return null;
         }
 
-        var mediaBase = symbol.BaseType;
-        while (mediaBase is not null
-               && mediaBase.OriginalDefinition.ToDisplayString() != MediaTypeName)
-        {
-            mediaBase = mediaBase.BaseType;
-        }
-
-        return mediaBase is null
-            ? null
-            : new InvalidDeclaration(declaration.Identifier.GetLocation(), symbol.Name);
+        return new InvalidDeclaration(declaration.Identifier.GetLocation(), symbol.Name);
     }
 
     private sealed class InvalidDeclaration
