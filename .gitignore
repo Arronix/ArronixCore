@@ -165,3 +165,6 @@ src/.idea/
 
 # Ignore Jetbrains IntelliJ Workspace Directories
 .idea/
+
+# Browser-driver scratch output. The G07 browser proof writes its evidence under artifacts/.
+.playwright-mcp/

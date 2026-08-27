@@ -40,6 +40,11 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
   staged payload is the computed runtime closure rather than a listing of a build directory that MSBuild
   never prunes. A planted stale assembly in a project's real build output is proved unable to enter a staged
   payload through the actual publish, and inverting that staging to a recursive copy makes the proof fail.
+- `eng/proofs/fixtures/g07/movie.json` is the serialized entity the G07 browser proof reads. It is written
+  by the movies contract's own `Serialize` and compared to it byte for byte, so it is generated evidence
+  rather than a hand-maintained document; both its images are inline rasters, so the proof fetches nothing
+  and reaches nowhere. The proof script stages it into the published client's static root as proof-only
+  input: there is no test API endpoint, and neither Host nor Client gains a dependency on movies.
 - `eng/ci/run-tests.sh` is the local and hosted-CI proof rail: locked restore, one Release warnings-as-errors solution build with its binlog retained as compiler-input evidence, a non-empty NUnit result from every discovered test project, exact NUnit-leaf/method/assembly/PDB/source binding, an exact 302-skip ratchet, and current-plus-prior compatibility validation. The eight-column required-test registry is append-only and contains only three durable proof sentinels. Package lock files and the consumed-only central package graph are checked in.
 
 ## Active invariants
@@ -199,6 +204,18 @@ coverage.
   every required assembly is resident. The client keeps bytes in a content-hash-keyed browser store and
   discovers nothing by enumerating a loaded assembly — an architecture rule rejects type, property, field,
   method and member enumeration and `Activator.CreateInstance` anywhere in its source.
+- A page holding a verified installation reads one serialized entity through the contract it admitted. The
+  contract is chosen from what the page admitted, named by declaring assembly and entry point together, and
+  re-proved by contract object identity before the fetch, after it, and before any value is handed back; the
+  address is a path on the serving host and the response is length-bounded. The projection is proved before
+  it is rendered — iteratively, bounded in depth, cycles, total values and total rendered characters, with
+  every list charged before it is iterated — and what a consumer receives is what that proof captured, not
+  the contract objects it was captured from. Every projected field must carry the schema's own descriptor at
+  its own position; `FieldValue` is held to being a real tagged value, with absent distinct from a present
+  empty list in the model and in the document; links are absolute http/https and artwork is that or a strict
+  inline raster whose decoded bytes match the container it claims. A payload failure never rewrites the
+  installation report the loader already decided. The client spells no media kind, no media assembly and no
+  installation's own path, including no default payload address — an architecture rule holds it there.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -264,13 +281,22 @@ work does not substitute for closing an earlier dependency.
   hosted server serves them content-addressed, and a real browser running the ordinary published client
   loads them from a clean store, reuses a warm store without refetching, and refuses a foreign contract
   line, a corrupted byte, a falsified identity, a falsified build and a malformed manifest — in every case
-  before the runtime sees the payload. See `docs/research/g07/client-contract-loading.md`. It does not claim
-  typed deserialization or rendering (G07.2) or cache update, removal and stale-tab behaviour (G07.3).
+  before the runtime sees the payload. See `docs/research/g07/client-contract-loading.md`.
+- G07.2 is an implementation and proof candidate under independent acceptance review; it is not closed. A
+  page holding a verified installation reads one serialized entity through the contract it admitted, proves
+  the projection before rendering it, and draws a typed Movie with artwork, ratings, lifecycle/status and
+  collections, with no media or format assembly in the Client build. Both halves have been run: the server
+  half is 25 checks in `eng/proofs/g07-client-contracts.sh`, and the browser half is
+  `eng/proofs/g07-browser-proof.mjs` against the ordinary published client, whose observed run — including
+  the inline poster decoding at the size it states, and the two defects that run found — is recorded in
+  `docs/research/g07/client-payload-projection.md`. The remaining gate is that review, not an unbuilt part
+  of the outcome. It claims nothing about cache update, removal and stale-tab behaviour (G07.3), about the
+  external-consumer vertical (G07A), or about provider-result ingestion.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
-it. The active G07 gate is again dynamic typed Client loading. Later gates cover compatibility evidence,
+it. The open G07 sub-gate is G07.3, once G07.2's review reports. Later gates cover compatibility evidence,
 format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
 and replacement readiness. Their order and acceptance criteria live only in the roadmap to avoid another
@@ -296,6 +322,10 @@ duplicated checklist drifting from current state.
   `IPluginPaths.TempFolder` or `IEventPublisher` publication rate, so a package can still exhaust memory,
   disk or the bus; and T-19, `IHostRuntimeInfo` tells a package more about the process than a package has
   been shown to need. Both are WP-T5/WP-T1 work, not gaps in what landed here.
+- The G07 browser half is repeatable but not hermetic. `eng/proofs/g07-browser-proof.mjs` drives it and
+  writes machine-readable evidence, so it is no longer a manual reading of a page, but it needs Playwright's
+  Chromium and runs beside `eng/ci/run-tests.sh` rather than inside it: a browser download does not belong
+  in the clean-repository proof.
 - The trimmed client cannot start on .NET 11 preview 7: a trimmed publish fails during
   `WebAssemblyHost.RunAsyncCore` with an `InvalidCastException` from `PersistentServicesRegistry`, before any
   Arronix code runs. The pristine base commit `f943b8a0f` fails trimmed and starts untrimmed under the same
@@ -307,8 +337,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-26) reports 3,141 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,443 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,447 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,749 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

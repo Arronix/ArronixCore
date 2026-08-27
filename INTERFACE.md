@@ -206,7 +206,8 @@ user information; artwork is that or a strict inline raster — `data:image/png`
 or `image/gif`, base64, decoding to bytes whose container signature is the type the address claims. A label
 is not a format, and SVG, text, non-base64 payloads and malformed base64 are refused rather than sanitized.
 Artwork stays typed throughout: role, address, width and height survive projection, the captured graph and
-the rendered image.
+the rendered image. `docs/research/g07/client-payload-projection.md` records what was built and observed;
+this section describes the boundary as implemented, not the state of its review.
 
 ## 5. Invariants
 

@@ -492,7 +492,10 @@ Exit gate:
 
 #### G07.2 — Generated client metadata, typed deserialization, and typed rendering
 
-**Status:** not started.
+**Status:** implemented; open pending independent review. Every numbered exit condition below is met against
+the real hosted server and a real browser, and the observed run is recorded in
+`docs/research/g07/client-payload-projection.md`. The gate is not marked complete here because the review of
+that work has not reported; the remaining gate is that review, not any unbuilt part of the outcome.
 
 **Outcome:** the browser reads an actual typed Movie graph out of the assembly it loaded, and renders its
 common and Movies-owned values, using generated metadata rather than property reflection.
@@ -514,6 +517,13 @@ Exit gate:
 - the browser renders a typed Movie with artwork, ratings, lifecycle/status, and collections, with no static
   Movies or Video dependency in the Client build;
 - generic descriptors remain one-way presentation/wire data rather than an alternative media definition.
+
+Beyond those conditions, this gate settled three rules the outcome turned out to need. A projection is
+contract-produced output, so it is proved before it is rendered — iteratively, bounded in depth, cycles,
+total values and total rendered characters — and what a consumer receives is what that proof captured, not
+the graph it was captured from. A payload failure never rewrites the installation report the loader already
+decided. And the Client spells no media kind and no installation's own path, including no default payload
+address, which is what lets the same unchanged panel take an external consumer's contract at G07A.
 
 #### G07.3 — Contract cache lifecycle in the browser
 
@@ -1332,14 +1342,19 @@ telemetry reaching a sink registered after `AddArronixHost`. The
 threat model's WP-T2 telemetry items are closed with them; T-18 quotas and T-19 host-fact disclosure remain
 open and belong to WP-T5 and WP-T1.
 
-Take **G07.2 only**: generated client metadata, typed deserialization, and typed rendering. The
-client-safe contract package arrives in a real browser with its bytes, CLR identity and build proved
-(G07.1), and the client deliberately discovers nothing by enumerating it. G07.2 gives a contract a
-generated, trimming/AOT-safe way to say what it holds, agrees a generated-metadata hash and a
-projection-schema hash between server and browser, and renders a typed Movie with artwork, ratings,
-lifecycle/status and collections.
+**G07.2 is implemented and awaiting independent review.** A browser holding a proved installation reads one
+serialized entity through the contract it admitted, proves the projection before rendering it, and draws a
+typed Movie with artwork, ratings, lifecycle/status and collections — with no media or format assembly in
+the Client build and no media kind spelled in its source. The server half, the browser half and the full
+rail are recorded in `docs/research/g07/client-payload-projection.md`. Nothing further is queued behind it
+until that review reports.
+
+The next gate after it is **G07.3**: cache update, removal, eviction, stale cache and stale tab in the real
+browser. G07.2 built the withdrawal rules its own correctness needed — an offer re-proved by contract object
+identity before a fetch, after it and before any value is handed back, and a rendered projection invalidated
+once its contract is no longer admitted — and those are a starting point for G07.3 rather than a substitute
+for it.
 
 Do not fold provider-result ingestion, durable catalog state, or the complete external-consumer vertical
-into this gate; G07A and G07B own those proofs. G07.3 owns cache update, removal, stale cache and stale tab.
-The G06 SDK package boundary and completed TMDb/provider ownership rules remain mandatory regression
-evidence.
+into G07; G07A and G07B own those proofs. The G06 SDK package boundary and completed TMDb/provider ownership
+rules remain mandatory regression evidence.

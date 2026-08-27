@@ -1,5 +1,52 @@
 # Arronix History
 
+## 2026-08-27 — Read one serialized entity through the contract a browser admitted
+
+G07.1 left a page holding contract assemblies whose bytes, CLR identity, build and universal-contract
+reference had all been proved before the runtime saw them — and no way to read anything through them. This
+is that read, and it is an implementation and proof candidate under independent acceptance review rather
+than a closed gate.
+
+- **The payload path is generic in both directions.** It takes one admitted contract — named by declaring
+  assembly and entry point together — plus a path on the host that served the client. Only a verified
+  contract deserializes. The Client's source spells no media kind, no media assembly and no installation's
+  own path, including no default payload address, and an architecture rule holds it there; that is what
+  lets the same unchanged panel take an external consumer's contract later.
+- **An offer is a capability, and it is re-proved by contract object identity** before the fetch, after it,
+  and again before any value is handed back, because a withdrawal can land at any of those points. Name
+  equality is not equivalent: a contract with the same name from another installation is another contract.
+  A projection already on screen is invalidated by the same rule.
+- **Reading a contract's list once is necessary and not sufficient.** The report, the renderer and the proof
+  would each read the same objects again, so a list that answers safely while it is checked and returns a
+  `javascript:` URL afterwards would reach the document. The projection proof therefore **captures what it
+  proves as it proves it**, and what a consumer renders is that copy. Descriptor identity is still proved
+  against what the contract returned: a dropped, reordered, duplicated or merely equal-cloned descriptor is
+  refused.
+- **One walk, bounded in every direction a contract-produced graph can be unbounded**: depth, a path-scoped
+  cycle check, one node budget over every descriptor, value, item and choice charged before any list is
+  iterated, and one character budget over the whole rendering — because 4,096 values times 65,536 characters
+  is hundreds of megabytes out of a payload capped at four. A list that throws is a contained refusal.
+- **`FieldValue` is held to being a real tagged value.** The kind matches its descriptor, exactly the
+  permitted slot is populated, cardinality and component positions match the schema, an unknown enumerated
+  value fails rather than displaying as arbitrary text, and absent is distinct from a present empty list —
+  in the document as well as in the model, which the renderer had been throwing away.
+- **A label is not a format.** Links are absolute http or https with no user information; artwork is that or
+  a strict inline raster whose decoded bytes carry the container signature the address claims. Artwork stays
+  a whole image throughout: role, address, width and height survive projection, the captured graph, the
+  serialized proof and the rendered element.
+- **A payload failure never rewrites the installation report.** The installation was admitted correctly
+  whatever a document turned out to be, and downgrading it would lose the one fact still true. Failures are
+  distinct outcomes rather than one "failed", and cancellation belongs to the caller.
+- **A composite's parts are described by its components.** A list and a composite both arrive as items and
+  are not the same thing; the renderer had passed the parent descriptor down, so an enumerated part showed
+  its stored value instead of its declared choice and a counted part lost its unit.
+
+The browser half is now driven rather than read by hand, and running it found two defects nothing else did:
+a Blazor component with no parameters is never handed them again, so the payload panel read what could be
+projected once — before the installation had loaded — and kept that answer; and the panel shipped a default
+payload address. Both are fixed and re-proved. `docs/research/g07/client-payload-projection.md` records what
+was built, what was observed, and what is not claimed.
+
 ## 2026-08-26 — Stop charging for the whole telemetry stream to shape your own events
 
 `ITelemetryEnricher` and `ITelemetryEventFilter` were gated by `Capability.TelemetrySink`, which is the
