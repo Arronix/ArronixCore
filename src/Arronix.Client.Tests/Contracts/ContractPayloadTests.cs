@@ -72,9 +72,9 @@ internal sealed class ContractPayloadTests
         var contract = page.Contracts.Admitted().Single().Contract;
         report.Projection!.EntityType.Should().BeSameAs(contract.EntityType);
         report.Projection.Fields.Select(field => field.Descriptor.FieldId)
-            .Should().Equal(contract.Schema.Select(descriptor => descriptor.FieldId));
+            .Should().Equal(contract.Schema.Admitted.Select(descriptor => descriptor.FieldId));
         report.Projection.Fields
-            .Any(field => contract.Schema.Any(declared => ReferenceEquals(declared, field.Descriptor)))
+            .Any(field => contract.Schema.Admitted.Any(declared => ReferenceEquals(declared, field.Descriptor)))
             .Should().BeFalse("what is rendered is the copy, not the contract's own object");
     }
 

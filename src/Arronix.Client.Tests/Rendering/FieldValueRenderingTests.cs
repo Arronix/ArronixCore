@@ -59,18 +59,65 @@ public sealed class FieldValueRenderingTests
 
     /// <remarks>
     /// Each part is rendered by its own component: the number formats as a decimal, the choice resolves to
-    /// its display name, and the count takes the component's unit. Under the parent descriptor every part
-    /// would be a composite, and a composite with no parts renders as a dash.
+    /// its display name, the count takes the component's unit, and each carries the component's declared
+    /// name, because a tuple of bare values says nothing about which value is which.
     /// </remarks>
     [Test]
-    public void EachCompositePartIsRenderedByItsOwnComponent()
+    public void EachCompositePartIsRenderedByItsOwnComponentAndCarriesItsName()
     {
         var text = FieldValueFormatter.Format(Rating(), Tuple("tmdb", 8.6d, "critic", 37412));
 
         using var _ = new AssertionScope();
 
-        text.Should().Be("tmdb, 8.6, Critic, 37,412 votes");
+        text.Should().Be("Source: tmdb, Value: 8.6, Voice: Critic, Sample size: 37,412 votes");
         text.Should().NotContain("—", "no part is rendered as a composite with nothing in it");
+    }
+
+    /// <remarks>
+    /// The names are the contract's own, read from the components it declared, so this stays as kind-blind
+    /// as the rest of the table: a field the client has never heard of is labeled by what it says it is.
+    /// </remarks>
+    [Test]
+    public void ComponentNamesComeFromTheDescriptorRatherThanFromAnythingThisClientKnows()
+    {
+        var invented = new FieldDescriptor
+        {
+            FieldId = "coordinates",
+            Name = "Coordinates",
+            ValueKind = FieldValueKind.Composite,
+            Components =
+            [
+                new FieldDescriptor { FieldId = "band", Name = "Band", ValueKind = FieldValueKind.Text },
+                new FieldDescriptor { FieldId = "offset", Name = "Offset", ValueKind = FieldValueKind.Integer },
+            ],
+        };
+
+        FieldValueFormatter.Format(
+                invented,
+                FieldValue.OfComposite([FieldValue.OfText("upper"), FieldValue.OfInteger(3)]))
+            .Should().Be("Band: upper, Offset: 3");
+    }
+
+    /// <remarks>An unnamed component is still drawn; the label is what is missing, not the value.</remarks>
+    [Test]
+    public void AComponentWithNoNameIsRenderedWithoutALabel()
+    {
+        var unnamed = new FieldDescriptor
+        {
+            FieldId = "pair",
+            Name = "Pair",
+            ValueKind = FieldValueKind.Composite,
+            Components =
+            [
+                new FieldDescriptor { FieldId = "left", Name = string.Empty, ValueKind = FieldValueKind.Text },
+                new FieldDescriptor { FieldId = "right", Name = "Right", ValueKind = FieldValueKind.Text },
+            ],
+        };
+
+        FieldValueFormatter.Format(
+                unnamed,
+                FieldValue.OfComposite([FieldValue.OfText("a"), FieldValue.OfText("b")]))
+            .Should().Be("a, Right: b");
     }
 
     /// <remarks>
@@ -91,7 +138,8 @@ public sealed class FieldValueRenderingTests
         using var _ = new AssertionScope();
 
         underParent.Should().Be("tmdb, 8.6, critic, 37,412", "this is what reusing the parent produces");
-        FieldValueFormatter.Format(field, tuple).Should().Be("tmdb, 8.6, Critic, 37,412 votes");
+        FieldValueFormatter.Format(field, tuple)
+            .Should().Be("Source: tmdb, Value: 8.6, Voice: Critic, Sample size: 37,412 votes");
     }
 
     [Test]
@@ -103,7 +151,9 @@ public sealed class FieldValueRenderingTests
                 FieldValueKind.Composite,
                 [Tuple("tmdb", 8.6d, "audience", 37412), Tuple("critics", 87d, "critic", 320)]));
 
-        text.Should().Be("tmdb, 8.6, Audience, 37,412 votes, critics, 87, Critic, 320 votes");
+        text.Should().Be(
+            "Source: tmdb, Value: 8.6, Voice: Audience, Sample size: 37,412 votes, "
+            + "Source: critics, Value: 87, Voice: Critic, Sample size: 320 votes");
     }
 
     /// <remarks>

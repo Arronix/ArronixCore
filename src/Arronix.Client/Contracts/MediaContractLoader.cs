@@ -838,7 +838,17 @@ public sealed class MediaContractLoader
         // Renders the whole reachable graph through that exact context, and refuses what it cannot describe.
         var serialization = ClientContractDigest.OfSerialization(context, root);
 
-        var projection = ClientContractDigest.OfProjection(entityType, schema);
+        // The schema whole, in one bounded read, before anything hashes it. Reading the root list once
+        // leaves every field's components and choices as lists the contract still owns, so what was hashed
+        // here and what a payload is later rendered against would be two separate reads of them.
+        if (ClientContractSchema.Freeze(schema, out var admitted) is { } undescribable)
+        {
+            return $"'{expected.EntryPointType}' declares a projection schema this client cannot describe: "
+                + undescribable.Message;
+        }
+
+        // Over the frozen copy, so the published hash covers exactly what will be rendered.
+        var projection = ClientContractDigest.OfProjection(entityType, admitted!.Frozen);
 
         if (!string.Equals(serialization, declaration.GeneratedMetadataHash, StringComparison.Ordinal)
             || !string.Equals(projection, declaration.ProjectionSchemaHash, StringComparison.Ordinal))
@@ -854,7 +864,7 @@ public sealed class MediaContractLoader
                 + $"published {expected.GeneratedMetadataHash} and {expected.ProjectionSchemaHash}.";
         }
 
-        contract = new VerifiedClientContract(declaration, entityType, context, root, schema);
+        contract = new VerifiedClientContract(declaration, entityType, context, root, admitted);
         return null;
     }
 

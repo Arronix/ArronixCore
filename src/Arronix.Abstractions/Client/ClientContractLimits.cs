@@ -35,10 +35,11 @@ public static class ClientContractLimits
     /// <remarks>A payload is one item, not a catalog; a response past this is refused rather than buffered.</remarks>
     public const int MaxPayloadBytes = 4_194_304;
 
-    /// <summary>The most text one projection may render, across every value in it.</summary>
+    /// <summary>The most text one rendering may carry: a contract's schema plus one projection's values.</summary>
     /// <remarks>
     /// Each value is bounded on its own; without a total, a graph of them multiplies out well past what a
-    /// browser should hold from a payload that is itself capped.
+    /// browser should hold from a payload that is itself capped. One total, not one per walk: a schema is
+    /// read once when its contract is admitted and rendered again by every projection of it.
     /// </remarks>
     public const int MaxProjectionCharacters = 1_048_576;
 

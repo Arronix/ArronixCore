@@ -91,7 +91,7 @@ internal sealed class ContractDeclarationProofTests
         contract.EntityType.FullName.Should().Be("Fixture.Client.Entity");
         contract.EntityType.Assembly.Should().BeSameAs(loader.Find(name));
         contract.EntryPointType.FullName.Should().Be("Fixture.Client.Entry");
-        contract.Schema.Should().BeEmpty("an empty schema is a schema");
+        contract.Schema.Admitted.Should().BeEmpty("an empty schema is a schema");
 
         // The captured values, not a second reading: the entity metadata is the context's own answer.
         contract.SerializationContext.GetTypeInfo(contract.EntityType).Should().BeSameAs(contract.EntityTypeInfo);
@@ -104,6 +104,38 @@ internal sealed class ContractDeclarationProofTests
         reused.SerializationContext.Should().BeSameAs(contract.SerializationContext);
         reused.EntityTypeInfo.Should().BeSameAs(contract.EntityTypeInfo);
         reused.Schema.Should().BeSameAs(contract.Schema);
+    }
+
+    /// <summary>
+    /// A schema that answers differently every time it is read is admitted from its first answer, and the
+    /// hash covers that answer.
+    /// </summary>
+    /// <remarks>
+    /// The decisive shape for the rule that the whole schema is frozen at admission. This contract's
+    /// declared hash was computed from the first read of its schema; if admission hashed the live list
+    /// after reading it once to capture it, it would hash the second answer and refuse a contract that is
+    /// exactly what it says it is. What is captured, what is hashed and what is rendered are one read.
+    /// </remarks>
+    [Test]
+    public async Task ASchemaThatAnswersDifferentlyEachTimeIsAdmittedFromItsFirstAnswer()
+    {
+        const string name = "Fixture.Client.Stepping";
+        var loader = Loader(name, Misbehaviour.SteppingSchema, out _);
+
+        var report = await loader.LoadAsync();
+
+        using var assertions = new AssertionScope();
+
+        report.Packages.Single().Assemblies.Single().Outcome.Should().Be(
+            ContractLoadOutcome.Loaded,
+            report.Packages.Single().Assemblies.Single().Failure ?? "the first answer is a coherent schema");
+
+        var schema = loader.ContractsOf(name).Single().Schema;
+        schema.Frozen.Should().ContainSingle().Which.Components.Single().FieldId.Should().Be("region");
+
+        // And it stays that, however often anything reads it.
+        schema.Frozen[0].Components.Single().FieldId.Should().Be("region");
+        schema.Admitted[0].Components.Should().NotBeSameAs(schema.Frozen[0].Components);
     }
 
     /// <summary>
@@ -132,7 +164,7 @@ internal sealed class ContractDeclarationProofTests
 
         var contract = loader.ContractsOf(name).Should().ContainSingle().Which;
         contract.EntityType.FullName.Should().Be("Arronix.Media.Movies.Movie");
-        contract.Schema.Should().NotBeEmpty();
+        contract.Schema.Admitted.Should().NotBeEmpty();
         contract.SerializationContext.GetTypeInfo(contract.EntityType).Should().BeSameAs(contract.EntityTypeInfo);
     }
 

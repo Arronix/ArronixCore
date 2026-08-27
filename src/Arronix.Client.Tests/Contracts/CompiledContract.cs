@@ -63,6 +63,11 @@ internal enum Misbehaviour
     /// </summary>
     AggregateSchema,
 
+    /// <summary>
+    /// Its schema is coherent and answers with a different shape every time it is read.
+    /// </summary>
+    SteppingSchema,
+
     /// <summary>It reads a payload into its own entity and projects it, which is the control.</summary>
     PayloadReadable,
 
@@ -177,7 +182,7 @@ internal static class CompiledContract
     private static bool Hashable(Misbehaviour misbehaviour)
         => misbehaviour is Misbehaviour.None or Misbehaviour.DigestMismatch
             or Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema or Misbehaviour.WideSchema
-            or Misbehaviour.AggregateSchema or Misbehaviour.PayloadReadable
+            or Misbehaviour.AggregateSchema or Misbehaviour.SteppingSchema or Misbehaviour.PayloadReadable
             or Misbehaviour.PayloadForeignType or Misbehaviour.PayloadNullEntity
             or Misbehaviour.PayloadThrowingProject or Misbehaviour.PayloadCancelingProject
             or Misbehaviour.PayloadForeignProjectedType;
@@ -291,6 +296,7 @@ internal static class CompiledContract
             Misbehaviour.CyclicSchema => "Schemas.Cyclic;",
             Misbehaviour.WideSchema => "Schemas.Wide;",
             Misbehaviour.AggregateSchema => "Schemas.Aggregate;",
+            Misbehaviour.SteppingSchema => "Schemas.Stepping;",
             _ => "[];",
         };
 
@@ -415,6 +421,9 @@ internal static class CompiledContract
                 /// <summary>A list that claims more entries than could be held and produces none.</summary>
                 internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Wide { get; } = new Vast();
 
+                /// <summary>A coherent schema that answers with a different shape every time it is read.</summary>
+                internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Stepping { get; } = new Stepper();
+
                 /// <summary>One root, whose children are exactly the whole budget: together, one too many.</summary>
                 internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Aggregate { get; } =
                     new[] { Field("root", new Budget()) };
@@ -436,6 +445,41 @@ internal static class CompiledContract
                     var field = Field("knot", parts);
                     parts.Self = field;
                     return new[] { field };
+                }
+
+                private static global::Arronix.Abstractions.Shape.FieldDescriptor Leaf(string id) =>
+                    new()
+                    {
+                        FieldId = id,
+                        Name = id,
+                        ValueKind = global::Arronix.Abstractions.Shape.FieldValueKind.Text,
+                    };
+
+                /// <summary>
+                /// One composite the first time it is read, and a composite whose component is named
+                /// something else every time after. Both are describable; they are not the same schema.
+                /// </summary>
+                private sealed class Stepper : System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor>
+                {
+                    private static readonly global::Arronix.Abstractions.Shape.FieldDescriptor First =
+                        Field("certification", new[] { Leaf("region") });
+
+                    private static readonly global::Arronix.Abstractions.Shape.FieldDescriptor Rest =
+                        Field("certification", new[] { Leaf("swapped") });
+
+                    private int _reads;
+
+                    public global::Arronix.Abstractions.Shape.FieldDescriptor this[int index] =>
+                        _reads++ == 0 ? First : Rest;
+
+                    public int Count => 1;
+
+                    public System.Collections.Generic.IEnumerator<global::Arronix.Abstractions.Shape.FieldDescriptor> GetEnumerator()
+                    {
+                        yield return this[0];
+                    }
+
+                    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
                 }
 
                 /// <summary>Reports int.MaxValue entries; indexing one is a failure the walker must avoid.</summary>

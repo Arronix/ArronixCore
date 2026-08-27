@@ -30,17 +30,47 @@ public sealed class ProjectionAuditTests
     private static ProjectionDefect? Audit(IReadOnlyList<FieldDescriptor> schema, params FieldValue[] values)
         => Audit(schema, out _, values);
 
+    /// <summary>
+    /// Admits a schema the way the loader does, then projects against it the way a contract does.
+    /// </summary>
+    /// <remarks>
+    /// The freeze is part of the path under test: a schema this client cannot describe is refused at
+    /// admission rather than at the first payload, and its refusal is the one a caller sees.
+    /// </remarks>
     private static ProjectionDefect? Audit(
         IReadOnlyList<FieldDescriptor> schema,
         out ProjectedEntity? trusted,
         params FieldValue[] values)
-        => ProjectionAudit.Describe(
+    {
+        trusted = null;
+
+        if (ClientContractSchema.Freeze(schema, out var admitted) is { } undescribable)
+        {
+            return undescribable;
+        }
+
+        return ProjectionAudit.Describe(
             Entity,
-            schema,
+            admitted!,
             new ProjectedEntity(
                 Entity,
-                [.. schema.Select((descriptor, index) => new ProjectedField(descriptor, values[index]))]),
+                [.. Enumerable.Range(0, admitted!.Count)
+                    .Select(index => new ProjectedField(admitted.Admitted[index], values[index]))]),
             out trusted);
+    }
+
+    /// <summary>Admits a schema and projects the fields a caller supplies, whatever they are.</summary>
+    private static ProjectionDefect? AuditProjection(
+        IReadOnlyList<FieldDescriptor> schema,
+        Func<ClientContractSchema, ProjectedEntity> project,
+        out ProjectedEntity? trusted)
+    {
+        trusted = null;
+
+        return ClientContractSchema.Freeze(schema, out var admitted) is { } undescribable
+            ? undescribable
+            : ProjectionAudit.Describe(Entity, admitted!, project(admitted!), out trusted);
+    }
 
     [Test]
     public void AProjectionOfTheDeclaredSchemaPasses()
@@ -54,17 +84,18 @@ public sealed class ProjectionAuditTests
     public void AProjectionNamingAnotherEntityTypeIsRefused()
     {
         var schema = new[] { Text() };
-        var projection = new ProjectedEntity(
-            typeof(string),
-            [new ProjectedField(schema[0], FieldValue.OfText("x"))]);
-
-        ProjectionAudit.Describe(Entity, schema, projection, out _)!.Outcome
-            .Should().Be(ContractPayloadOutcome.ProjectedTypeMismatch);
+        AuditProjection(
+                schema,
+                admitted => new ProjectedEntity(
+                    typeof(string),
+                    [new ProjectedField(admitted.Admitted[0], FieldValue.OfText("x"))]),
+                out _)!
+            .Outcome.Should().Be(ContractPayloadOutcome.ProjectedTypeMismatch);
     }
 
     [Test]
     public void ANullProjectionIsAProjectionFailure()
-        => ProjectionAudit.Describe(Entity, [], null, out _)!.Outcome
+        => AuditProjection([], _ => null!, out _)!.Outcome
             .Should().Be(ContractPayloadOutcome.ProjectionFailed);
 
     /// <summary>
@@ -87,31 +118,30 @@ public sealed class ProjectionAuditTests
         clone.Should().Be(first);
         clone.Should().NotBeSameAs(first);
 
+        ContractPayloadOutcome Outcome(Func<ClientContractSchema, ProjectedEntity> project)
+            => AuditProjection(schema, project, out _)!.Outcome;
+
         using var scope = new FluentAssertions.Execution.AssertionScope();
 
-        ProjectionAudit.Describe(Entity, schema, Project(new ProjectedField(first, one)), out var ignored1)!.Outcome
+        Outcome(_ => Project(new ProjectedField(first, one)))
             .Should().Be(ContractPayloadOutcome.SchemaDisagreement, "a field was dropped");
 
-        ProjectionAudit.Describe(
-                Entity,
-                schema,
-                Project(new ProjectedField(second, two), new ProjectedField(first, one)),
-                out var ignored2)!.Outcome
+        Outcome(_ => Project(new ProjectedField(second, two), new ProjectedField(first, one)))
             .Should().Be(ContractPayloadOutcome.SchemaDisagreement, "the fields were reordered");
 
-        ProjectionAudit.Describe(
-                Entity,
-                schema,
-                Project(new ProjectedField(first, one), new ProjectedField(first, one)),
-                out var ignored3)!.Outcome
+        Outcome(_ => Project(new ProjectedField(first, one), new ProjectedField(first, one)))
             .Should().Be(ContractPayloadOutcome.SchemaDisagreement, "a field was duplicated");
 
-        ProjectionAudit.Describe(
-                Entity,
-                schema,
-                Project(new ProjectedField(clone, one), new ProjectedField(second, two)),
-                out var ignored4)!.Outcome
+        Outcome(_ => Project(new ProjectedField(clone, one), new ProjectedField(second, two)))
             .Should().Be(ContractPayloadOutcome.SchemaDisagreement, "an equal clone is not the descriptor");
+
+        // The frozen copy is equal to the admitted descriptor too, and is just as much not it.
+        Outcome(admitted => Project(
+                new ProjectedField(admitted.Frozen[0], one),
+                new ProjectedField(admitted.Admitted[1], two)))
+            .Should().Be(
+                ContractPayloadOutcome.SchemaDisagreement,
+                "the frozen copy is what a page renders, not what a contract projects with");
     }
 
     [Test]

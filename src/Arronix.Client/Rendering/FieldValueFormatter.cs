@@ -89,12 +89,19 @@ public static class FieldValueFormatter
 
             var declared = descriptor.Components;
 
-            return string.Join(", ", Enumerable.Range(0, components.Count).Select(index => Format(
-                index < declared.Count
+            // Labeled by the component's own declared name. A tuple of bare values is unreadable — a rating
+            // is "8.6, 0, 10, Audience, 37,412" without them — and the names are the contract's own, so
+            // this stays as kind-blind as the rest of the table.
+            return string.Join(", ", Enumerable.Range(0, components.Count).Select(index =>
+            {
+                var component = index < declared.Count
                     ? declared[index]
-                    : Anonymous(components[index]?.Kind ?? FieldValueKind.Text),
-                components[index],
-                element: false)));
+                    : Anonymous(components[index]?.Kind ?? FieldValueKind.Text);
+
+                var text = Format(component, components[index], element: false);
+
+                return string.IsNullOrEmpty(component.Name) ? text : $"{component.Name}: {text}";
+            }));
         }
 
         var text = FormatScalar(descriptor, value);

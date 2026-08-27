@@ -12,6 +12,9 @@
 
     Three states, not two: no value at all, no values, and values. The middle one is a fact the contract
     stated and this draws it.
+
+    A composite's parts carry their component's declared name, because a tuple of bare values says nothing
+    about which value is which. The name is the contract's own, so this stays kind-blind.
 *@
 
 @if (Value is null || Value.IsAbsent)
@@ -40,11 +43,21 @@ else if (Value.Kind == FieldValueKind.Composite && Value.Items is { Count: > 0 }
     <span class="value value-composite">
         @for (var index = 0; index < components.Count; index++)
         {
+            var component = ComponentAt(index, components[index]);
             @if (index > 0)
             {
                 <span class="value-separator">, </span>
             }
-            <FieldValueView Descriptor="ComponentAt(index, components[index])" Value="components[index]" Compact="Compact" />
+            <span class="value-component" data-component-id="@component.FieldId">
+                @if (!string.IsNullOrEmpty(component.Name))
+                {
+                    @* The colon is written here rather than left to a stylesheet: a rule that has not been
+                       added yet renders "VoiceAudience", and this file is where the drawing is decided. *@
+                    <span class="value-component-name">@component.Name:</span>
+                    <text> </text>
+                }
+                <FieldValueView Descriptor="component" Value="components[index]" Compact="Compact" />
+            </span>
         }
     </span>
 }

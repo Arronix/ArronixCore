@@ -107,9 +107,11 @@ public static class ClientContractDigest
         var rendering = new StringBuilder();
         rendering.Append("entity=").Append(Text(Name(entityType))).Append('\n');
 
-        // Iterative, and bounded by the same budget the serialization walk spends. A schema is a shape the
-        // contract's own code returns: it may nest without end, contain itself, or answer differently on a
-        // second read, and this is the only walk over it.
+        // Iterative, and bounded by the same budget the serialization walk spends. A caller may hand this a
+        // shape a contract's own code returns, which may nest without end or contain itself, so the walk is
+        // bounded whatever it is given. It is not the only walk over what it is handed, and it is not what
+        // makes a schema safe to keep: a consumer that will render a schema freezes it first and hashes the
+        // copy, so that what was hashed is what is rendered.
         var remaining = ClientContractLimits.MaxNodes;
         var open = new HashSet<FieldDescriptor>(ReferenceEqualityComparer.Instance);
         var pending = new Stack<(FieldDescriptor Field, int Depth, bool Leaving)>();
