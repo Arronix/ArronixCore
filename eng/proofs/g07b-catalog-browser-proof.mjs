@@ -14,6 +14,16 @@ const suppliedItemRef = options['item-ref'];
 const phaseNames = new Set(['search', 'add', 'monitor', 'refresh', 'restart']);
 if (!phaseNames.has(phase)) throw new Error(`Unknown G07B browser phase '${phase}'.`);
 
+const expected = {
+    catalogId: 'proof:42',
+    initialTitle: 'Proof Movie Revision One',
+    refreshedTitle: 'Proof Movie Revision Two',
+    added: 'Added to library.',
+    inLibrary: 'In library.',
+    refreshed: 'Catalog facts refreshed.',
+    notWanted: 'Not wanted',
+    withdrawn: 'Withdrawn',
+};
 const catalog = {
     route: '/kinds/movies/catalog',
     form: '[data-testid="catalog-search-form"]',
@@ -57,26 +67,69 @@ process.once('SIGINT', () => signalExit('SIGINT'));
 process.once('SIGTERM', () => signalExit('SIGTERM'));
 process.once('SIGHUP', () => signalExit('SIGHUP'));
 
+async function status(row, text) {
+    const value = row.locator('[role="status"]').filter({ hasText: text });
+    await value.waitFor({ state: 'visible', timeout: 10000 });
+    check(`catalog row visibly reports ${text}`, (await value.textContent())?.trim(), text);
+}
+
 async function search(page) {
     await page.locator(catalog.form).waitFor({ state: 'visible', timeout: 10000 });
     await page.locator(catalog.scheme).selectOption('proof');
     await page.locator(catalog.query).fill('Proof Movie');
-    await page.locator(catalog.id).fill('proof:42');
+    await page.locator(catalog.id).fill(expected.catalogId);
     await page.locator(catalog.search).click();
     await page.locator(catalog.results).waitFor({ state: 'visible', timeout: 10000 });
-    const result = page.locator(`${catalog.result}[${catalog.catalogId}="proof:42"]`);
-    await result.waitFor({ state: 'visible', timeout: 10000 });
-    check('catalog result declares proof:42', await result.getAttribute(catalog.catalogId), 'proof:42');
-    return result;
+    const row = page.locator(`${catalog.result}[${catalog.catalogId}="${expected.catalogId}"]`);
+    await row.waitFor({ state: 'visible', timeout: 10000 });
+    check('catalog result declares proof:42', await row.getAttribute(catalog.catalogId), expected.catalogId);
+    return row;
 }
 
-async function openItem(page, result) {
-    const action = result.locator(catalog.openItem);
-    await action.waitFor({ state: 'visible', timeout: 10000 });
-    await action.click();
-    const itemRef = await result.getAttribute(catalog.itemRef);
-    check('opened catalog result declares a durable item reference', Boolean(itemRef), true);
-    return itemRef;
+function postTo(path) {
+    return response => {
+        const request = response.request();
+        return request.method() === 'POST' && new URL(response.url()).pathname === path;
+    };
+}
+
+async function completeVisibleAdd(page, row) {
+    const add = row.getByRole('button', { name: 'Add', exact: true });
+    await add.waitFor({ state: 'visible', timeout: 10000 });
+    const response = await Promise.all([
+        page.waitForResponse(postTo('/api/v1/kinds/movies/catalog/items'), { timeout: 10000 }),
+        add.click(),
+    ]).then(([received]) => received);
+    check('first visible Add used the created response path', response.status(), 201);
+    await status(row, expected.added);
+    await row.getByRole('button', { name: 'Open', exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+    await row.getByRole('button', { name: 'Refresh', exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+    itemRef = await row.getAttribute(catalog.itemRef);
+    check('first visible Add produced one complete durable movie reference', /^movie:[1-9][0-9]*$/.test(itemRef ?? ''), true);
+}
+
+async function completeVisibleRefresh(page, row) {
+    check('searched row retains the first visible Add reference', await row.getAttribute(catalog.itemRef), suppliedItemRef);
+    await status(row, expected.inLibrary);
+    const refresh = row.getByRole('button', { name: 'Refresh', exact: true });
+    await refresh.waitFor({ state: 'visible', timeout: 10000 });
+    const response = await Promise.all([
+        page.waitForResponse(response => postTo(`/api/v1/kinds/movies/catalog/items/${encodeURIComponent(suppliedItemRef)}/refresh`)(response), { timeout: 10000 }),
+        refresh.click(),
+    ]).then(([received]) => received);
+    check('visible Refresh returned HTTP 200', response.status(), 200);
+    await status(row, expected.refreshed);
+    await row.getByRole('heading', { level: 3, name: expected.refreshedTitle, exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+}
+
+async function openItemPage(page, reference) {
+    if (!/^movie:[1-9][0-9]*$/.test(reference ?? '')) throw new Error('Item detail phase requires a complete durable movie reference.');
+    await page.goto(`${address}/kinds/movies/items/${encodeURIComponent(reference)}`, { waitUntil: 'networkidle' });
+}
+
+async function assertWithdrawnIfRendered(page) {
+    const withdrawn = page.locator('.state-name').filter({ hasText: expected.withdrawn });
+    if (await withdrawn.count()) check('ordinary item page visibly renders Withdrawn when published', (await withdrawn.first().textContent())?.trim(), expected.withdrawn);
 }
 
 try {
@@ -84,34 +137,31 @@ try {
     context = await browser.newContext();
     const page = await context.newPage();
     watch(page, `g07b-catalog-${phase}`, observed);
-    if (suppliedItemRef && ['monitor', 'refresh', 'restart'].includes(phase)) {
-        await page.goto(`${address}/kinds/movies/items/${encodeURIComponent(suppliedItemRef)}`, { waitUntil: 'networkidle' });
+
+    if (phase === 'monitor' || phase === 'restart') {
+        await openItemPage(page, suppliedItemRef);
+        itemRef = suppliedItemRef;
     } else {
         await page.goto(`${address}${catalog.route}`, { waitUntil: 'networkidle' });
         for (const [name, selector] of Object.entries({ form: catalog.form, scheme: catalog.scheme, query: catalog.query, id: catalog.id, results: catalog.results })) {
             check(`ordinary catalog UI exposes ${name}`, await page.locator(selector).count(), 1);
         }
-        const result = await search(page);
-        if (phase === 'add') {
-        const add = result.locator(catalog.add);
-        await add.waitFor({ state: 'visible', timeout: 10000 });
-        await add.click();
-            itemRef = await result.getAttribute(catalog.itemRef);
-            check('first visible Add produced a durable item reference', Boolean(itemRef), true);
-        }
-        if (phase === 'monitor' || phase === 'refresh' || phase === 'restart') itemRef = await openItem(page, result);
+        const row = await search(page);
+        if (phase === 'add') await completeVisibleAdd(page, row);
+        if (phase === 'refresh') await completeVisibleRefresh(page, row);
     }
+
     if (phase === 'monitor') {
         const wanted = page.getByRole(catalog.wantedRole, { name: catalog.wantedName });
         await wanted.waitFor({ state: 'visible', timeout: 10000 });
         check('default Wanted monitor checkbox is visibly checked', await wanted.isChecked(), true);
         await wanted.uncheck();
-        await page.getByText('Not wanted', { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+        await page.getByText(expected.notWanted, { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
     }
-    if (phase === 'refresh') {
-        const refresh = page.locator(catalog.refresh);
-        await refresh.waitFor({ state: 'visible', timeout: 10000 });
-        await refresh.click();
+    if (phase === 'restart') {
+        await page.getByRole('heading', { level: 1, name: expected.refreshedTitle, exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+        await page.getByText(expected.notWanted, { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+        await assertWithdrawnIfRendered(page);
     }
     check('the page issued no non-loopback browser request', observed.requested.map(entry => new URL(entry.url).hostname).filter(host => host !== '127.0.0.1' && host !== 'localhost'), []);
     check('the page reported no errors', observed.errors.map(entry => `${entry.channel}: ${entry.text}`), []);
@@ -123,7 +173,10 @@ try {
         results.push({ description: 'bounded browser cleanup completed', ok: false, actual: String(error), expected: 'closed' });
     }
     closeWindow(observed);
-    writeEvidence(evidence, `browser-${phase}.json`, { address, phase, catalog, itemRef, results, requests: observed.requested, errors: observed.errors, blocker: 'Generic catalog browse/search/add/monitor/refresh UI is supplied by the concurrent Client slice.', signal });
+    const phaseSucceeded = signal === null && results.every(result => result.ok);
+    const payload = { address, phase, catalog, expected, itemRef, results, requests: observed.requested, errors: observed.errors, signal, phaseSucceeded };
+    if (!phaseSucceeded) payload.blocker = 'Visible generic catalog UI is not yet available or did not satisfy this proof phase.';
+    writeEvidence(evidence, `browser-${phase}.json`, payload);
 }
 
 process.exit(report(results, `${evidence}/browser-${phase}.json`));

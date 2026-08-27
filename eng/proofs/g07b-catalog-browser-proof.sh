@@ -176,16 +176,29 @@ for_kind, all_catalogers, output = map(__import__('pathlib').Path, sys.argv[1:])
 expected = {'provider', 'family', 'descriptor', 'pairedMediaKind', 'catalogScheme'}
 all_entries = json.loads(all_catalogers.read_text())
 kind_entries = json.loads(for_kind.read_text())
-missing = sorted(expected - set(all_entries[0])) if all_entries else sorted(expected)
+selected = kind_entries[0] if len(kind_entries) == 1 else None
+missing = sorted(expected - set(selected)) if selected else sorted(expected)
+mismatches = {} if selected is None else {
+  field: selected.get(field) for field, expected_value in {
+    'pairedMediaKind': 'movies',
+    'catalogScheme': 'proof',
+  }.items() if selected.get(field) != expected_value
+}
+satisfied = selected is not None and not missing and not mismatches
 report = {
   'expectedProviderFields': sorted(expected),
   'kindFilteredEntries': len(kind_entries),
   'catalogerEntries': len(all_entries),
+  'selectedProviderCatalogEntry': selected,
   'missingFromProviderCatalogEntry': missing,
-  'blocker': 'Provider discovery must select independent catalogers for a paired media kind and disclose CatalogScheme.'
+  'fieldMismatches': mismatches,
+  'dependencySatisfied': satisfied,
+  'outcome': 'dependency satisfied' if satisfied else 'blocked',
 }
+if not satisfied:
+  report['blocker'] = 'Provider discovery must select the proof cataloger for movies and disclose catalogScheme=proof.'
 output.write_text(json.dumps(report, indent=2) + '\n')
-if len(kind_entries) != 1 or missing:
+if not satisfied:
     print('G07B integration dependency recorded: provider discovery cannot yet identify the proof cataloger.', file=sys.stderr)
     raise SystemExit(3)
 PY
@@ -248,15 +261,33 @@ snapshot searched
 run_browser_phase add
 snapshot added searched
 item_ref=$(python3 - "$evidence_root/browser-add.json" <<'PY'
-import json, sys
+import json, re, sys
 value = json.load(open(sys.argv[1])).get('itemRef')
-if not isinstance(value, str) or not value:
-    raise SystemExit('error: first visible Add did not report a durable item reference')
+if not isinstance(value, str) or not re.fullmatch(r'movie:[1-9][0-9]*', value):
+    raise SystemExit('error: first visible Add did not report one complete durable movie reference')
 print(value)
 PY
 )
-curl -fsS -H 'content-type: application/json' -d '{"catalogId":"proof:42"}' \
-    "$address/api/v1/kinds/movies/catalog/items" > "$evidence_root/api-retry-add.json"
+retry_status=$(curl -sS -o "$evidence_root/api-retry-add.json" -w '%{http_code}' \
+    -H 'content-type: application/json' -d '{"catalogId":"proof:42"}' \
+    "$address/api/v1/kinds/movies/catalog/items")
+python3 - "$retry_status" "$item_ref" "$evidence_root/api-retry-add.json" "$evidence_root/api-retry-add-verification.json" <<'PY'
+import json, re, sys
+status, expected_ref, body_path, verification_path = sys.argv[1:]
+if status != '200':
+    raise SystemExit(f'error: idempotent API retry returned HTTP {status}, expected 200')
+body = json.load(open(body_path))
+try:
+    reference = body['item']['ref']
+    actual_ref = f"{reference['level']}:{reference['id']}"
+except (KeyError, TypeError) as error:
+    raise SystemExit(f'error: retry response did not carry the returned item reference: {error}') from error
+if reference.get('kind') != 'movies' or not re.fullmatch(r'movie:[1-9][0-9]*', actual_ref) or actual_ref != expected_ref:
+    raise SystemExit(f'error: retry response returned {actual_ref!r}, not first visible Add reference {expected_ref!r}')
+with open(verification_path, 'w') as output:
+    json.dump({'status': int(status), 'itemRef': actual_ref, 'matchesFirstVisibleAdd': True}, output, indent=2)
+    output.write('\n')
+PY
 snapshot retried added
 
 run_browser_phase monitor "$item_ref"
@@ -292,3 +323,41 @@ if [[ $ready -ne 1 ]]; then
 fi
 run_browser_phase restart "$item_ref"
 snapshot restarted refreshed
+
+# A completed run owns one G07B evidence identity.  Its browser count is derived from the separate visible
+# phase reports; it is never folded into the independently accepted G07.3=137 or G07A=37 identities.
+python3 - "$evidence_root" <<'PY'
+import json, sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+browser_phases = ['search', 'add', 'monitor', 'refresh', 'restart']
+store_phases = ['searched', 'added', 'retried', 'monitored', 'refreshed', 'restarted']
+reports = []
+for phase in browser_phases:
+    report = json.loads((root / f'browser-{phase}.json').read_text())
+    if report.get('phase') != phase or report.get('phaseSucceeded') is not True or 'blocker' in report:
+        raise SystemExit(f'error: browser evidence for {phase} is not a passing G07B phase')
+    if any(entry.get('ok') is not True for entry in report.get('results', [])):
+        raise SystemExit(f'error: browser evidence for {phase} contains a failed check')
+    reports.append(report)
+stores = []
+for phase in store_phases:
+    report = json.loads((root / f'store-{phase}.json').read_text())
+    if report.get('phase') != phase:
+        raise SystemExit(f'error: store evidence for {phase} is absent or mislabeled')
+    stores.append(report)
+retry = json.loads((root / 'api-retry-add-verification.json').read_text())
+if retry.get('status') != 200 or retry.get('matchesFirstVisibleAdd') is not True:
+    raise SystemExit('error: API retry evidence is not the required HTTP 200 matching-reference result')
+summary = {
+    'proofIdentity': 'G07B catalog browser proof',
+    'browserCheckCount': sum(len(report['results']) for report in reports),
+    'browserPhases': browser_phases,
+    'storePhases': store_phases,
+    'apiRetry': retry,
+    'phaseEvidencePassing': True,
+}
+(root / 'g07b-proof-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+print(f"G07B catalog browser proof: {summary['browserCheckCount']} browser checks; all phase/store evidence passing.")
+PY

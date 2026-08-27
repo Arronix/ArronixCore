@@ -21,14 +21,23 @@ The integration dependency is intentionally explicit. Provider discovery current
 same plugin that owns the media kind and `ProviderCatalogEntry` does not publish a catalog scheme. An
 independently contributed cataloger therefore cannot be discovered/configured from the ordinary provider
 surface. The harness captures both provider responses and exits with that dependency instead of hard-coding
-a provider identifier or scheme. The planned projection supplies nullable `pairedMediaKind` and
+a provider identifier or scheme. On the corrected projection it requires exactly one selected entry with
+`pairedMediaKind=movies` and `catalogScheme=proof`, and records `dependency satisfied` rather than retaining
+a blocker. The planned projection supplies nullable `pairedMediaKind` and
 `catalogScheme`; Client offers only active configured schemes. Once that contract is corrected, the same
 harness configures revision 1 and 2 through ordinary POST/PUT routes and drives `/kinds/movies/catalog`
 through the agreed `catalog-*` test ids and `search`, `add`, `refresh`, and `open-item` actions. First add
-is visible; retry idempotence stays separately labelled API evidence, rather than requiring a redundant
-second Add button. The visible native `Wanted` checkbox is unchecked to produce `wanted=false`; that facet
-must survive the provider refresh and server restart. The browser driver does not turn a page-context fetch
-or the contracts diagnostics into substitute catalog evidence.
+is visible and waits for the row's `Added to library.` status plus its Open and Refresh controls before
+recording its full durable reference. Retry idempotence stays separately labelled API evidence: it must be
+HTTP 200 and return exactly that reference, rather than requiring a redundant second Add button. Visible
+refresh returns to the catalog row, waits for `Catalog facts refreshed.` and revision-two title; restart
+checks the ordinary item page's revision-two title and `Not wanted` state. The visible native `Wanted`
+checkbox is unchecked to produce `wanted=false`; that facet must survive the provider refresh and server
+restart. The browser driver does not turn a page-context fetch or the contracts diagnostics into substitute
+catalog evidence.
 
 G07.3's 137 checks and G07A's 37 checks remain separate accepted proof identities. This foundation does not
-close G07B or claim its combined browser acceptance.
+close G07B or claim its combined browser acceptance. A future successful full G07B run emits its own
+`g07b-proof-summary.json`: it derives the exact browser-check count from all visible phase reports and
+requires every browser/store/API-retry evidence file to pass; it never combines that count with G07.3 or
+G07A.
