@@ -256,8 +256,22 @@ work does not substitute for closing an earlier dependency.
   remain CLR-visible only where a cross-assembly bridge requires it; they are hidden from completion lists,
   concrete author values implement bridge members explicitly, `CompiledShapes` is generated and hidden from
   ordinary completion lists, and a concrete media type publicly exposes no `Capture`. `ARX1003` reports a missing `partial` modifier at the media
-  declaration. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
+  declaration, and `ARX1004` reports a reference set the platform types cannot be read from — an
+  incomplete contract, or a second one — at the declaration that needed them, and nowhere else. A package-only external project has restored and compiled against `Arronix.Sdk 0.9.0` with no
   repository project reference, and the packed SDK contains only its readme, metapackage marker, and analyzer.
+
+- G07A's package, admission, identity and contract-loading legs are built and retained, ahead of the gate
+  that carries them, because they depend only on G01–G06. Two extensions authored outside the solution —
+  a short-film media package in a domain plus entry assembly, and a separately built cataloger for it —
+  compile against packed `Arronix.Sdk`, `Arronix.Abstractions` and `arronix.format.video` through an
+  isolated local feed and a per-consumer empty package cache, with no project reference, source include,
+  visibility grant, Host or Client dependency or warm cache. Both reach `Active` in an unmodified
+  `Arronix.Api`; Host publishes the external kind's descriptor including a field only the external item
+  declares; the separately built cataloger pairs against the admitted item type; the external domain
+  assembly's own generated client contract is published and a real browser loads it from a clean store and
+  again from a warm one, matching every published fact. G07A is not closed: rendering the consumer's own
+  serialized item needs a fixture G07.2 has not defined, and no `Movie` payload substitutes for it. See
+  `docs/research/g07/g07a-external-consumer.md`.
 
 - G07 is split into three numbered sub-gates. G07.1 is complete: a package declares a client facet, the
   running installation publishes each offered assembly's exact bytes, identity, module and closure, the
@@ -287,6 +301,12 @@ duplicated checklist drifting from current state.
   cannot inherit a less accessible marker. They are `EditorBrowsable(Never)` binding SPI which authors never
   implement directly. Deriving the pairing from the implemented contract still needs one-time type inspection
   at registration; that is erasure at the sanctioned boundary, not authoring vocabulary.
+- A media kind cannot currently be as small as its declaration suggests. `MediaType` supplies default
+  `Matching` and `Querying` values which carry no key layer and no query tier, and admission validates that
+  each carries at least one, so a kind with no matching or query differences still declares both. Their
+  presence also makes Host demand the `matching` and `indexing` capabilities the author never asked for.
+  Found by the G07A external consumer; it belongs with the G17A audit of Movies' likely-standard
+  declarations rather than being patched per kind.
 - `FileBindingDefinition` currently expresses only `None` and `OnePerItem`; Television must settle the typed multi-unit/file cardinality instead of using a parallel legacy seam.
 - `NormalizationOptions` and `IDiacriticFoldingProvider` remain for legacy implementations; new language-specific comparison/query/naming/sort behaviour belongs in `ILanguageDefinition` plugins.
 - The five platform services are implemented and an ordinary `Arronix.Api` server now activates the
@@ -307,8 +327,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-26) reports 3,141 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,443 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,344 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,646 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

@@ -1,5 +1,62 @@
 # Arronix History
 
+## 2026-08-27 — Build an extension outside the repository, and say so when the contract cannot be read
+
+Every claim about the authoring SDK so far was made by a package this repository builds. G06 came closest
+and stopped at `dotnet build` of one throwaway project; nothing had ever been packed, installed, admitted
+and loaded without touching these projects, and nothing had crossed a package boundary between two
+extensions that never shared a solution.
+
+Two consumers now live under `eng/proofs/fixtures`, each configured by itself — its own
+`Directory.Build.props`, `Directory.Packages.props`, `NuGet.Config` and `global.json`, so no property or
+version of this repository reaches either. `northmark.shorts` owns a short-film item, its release
+lifecycle, its `JsonSerializerContext`, its media declaration and its parser, in a shared domain assembly
+plus an entry assembly. `northmark.shorts.catalog` closes `ICataloger<ShortFilm>` and has only ever seen the
+first package's published `.nupkg`.
+
+`eng/proofs/g07a-external-consumer.sh` packs `Arronix.Abstractions`, `Arronix.Sdk` and
+`arronix.format.video` into a throwaway feed, gives each consumer its own empty package cache, and runs
+the provider's restore *before* the domain package exists so that a warm cache answering instead of the
+feed is a failure rather than a pass. Both packages then reach `Active` in an unmodified `Arronix.Api`:
+Host publishes the external kind's descriptor including `premiere`, a field only the external item
+declares; the separately built cataloger pairs against the admitted item type; and the assembly the
+provider compiled against hashes equal to the one the media package installs. Dropping a copy of that
+assembly into the provider's payload quarantines the provider, naming the private copy and both packages,
+while the media package is untouched.
+
+A real browser loaded the external domain assembly from `/contracts` — outcome `Loaded`, source `Network`,
+every observed length, hash, identity and module identifier equal to the published one, and the generated
+client contract read back out of the runtime matching the hashes the host published — then again on a second
+navigation from its own store, refetching nothing.
+
+- **`ARX1004`.** `PlatformSymbols` returned nothing for a compilation with no Arronix contract and for one
+  with an incomplete or duplicated contract alike, so the second silently turned every generator off: a media
+  declaration lost its compiled shape and surfaced later as a missing abstract member, and a client-safe
+  assembly lost its client contract and surfaced only in a browser. The reading now carries its reason, and
+  the authoring diagnostic reports it at the declaration — a duplicated anchor with every identity named, a
+  contract type declared by another referenced assembly rather than by the contract, or one declared nowhere.
+  It reports only where a declaration derives from a contract's own `MediaType<,,,>` or `MediaItem<,,>`, so
+  a project that merely references Arronix hears nothing.
+- **Its tests build the contract they need.** The defect is a property of a reference set, so each case
+  compiles its own `Arronix.Abstractions` — complete, missing one declaration, or duplicated. The control
+  asserts `ARX1003` still fires, which is reachable only through a resolved reading.
+- **`ExternalConsumerFixtureTests`** holds the declarations the proof script's result depends on — no project
+  reference, no file from outside the consumer, no visibility grant either way, published packages only,
+  runtime assets excluded where the package does not publish them — on the ordinary rail rather than only
+  when somebody runs the script.
+
+Two authoring findings came out of it and are recorded rather than patched: `MediaType`'s default `Matching`
+and `Querying` values carry no key layer and no query tier while admission requires one of each, so a kind
+with no matching or query differences must still declare both; and their presence makes Host demand the
+`matching` and `indexing` capabilities the author never asked for. Both belong with G17A's audit of
+likely-standard declarations.
+
+G07A is **not** closed. Its exit gate asks the browser to project the consumer's own serialized item, and no
+endpoint serves such a payload and no projector reads one, for any package. That is G07.2's to define, along
+with which reading of "the serialized fixture G07A later reuses" applies. No `Movie` payload was substituted,
+and no external item source or test-only endpoint was added to make the page look further along than it is.
+The record is `docs/research/g07/g07a-external-consumer.md`.
+
 ## 2026-08-26 — Stop charging for the whole telemetry stream to shape your own events
 
 `ITelemetryEnricher` and `ITelemetryEventFilter` were gated by `Capability.TelemetrySink`, which is the

@@ -537,6 +537,16 @@ Exit gate:
 
 ### G07A — Prove a package-only external consumer early
 
+**Status:** partly built and retained, not closed. Everything depending only on G01–G06 is done and runs:
+two extensions authored outside the solution, built from packages through an isolated feed and per-consumer
+empty caches, admitted into an unmodified Host in dependency order, with the external kind's generated
+shape, its cross-package provider pairing, its exact shared CLR identity and its own generated client
+contract all proved, and a real browser loading its client-safe assembly from a clean and then a warm
+store. What is not done is the exit gate's browser rendering of the consumer's own serialized item, which
+needs a fixture G07.2 has not defined; no `Movie` payload substitutes for it. See
+`docs/research/g07/g07a-external-consumer.md`, and `eng/proofs/g07a-external-consumer.sh` for the retained
+proof.
+
 **Outcome:** package assets, analyzer packaging, generated accessibility, and admission work without a source
 or project-reference escape hatch.
 
