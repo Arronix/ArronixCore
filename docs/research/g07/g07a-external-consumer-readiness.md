@@ -9,6 +9,32 @@ mutation matrix, the exact fixture contract G07A may and may not depend on, and 
 execution today. Provider ingestion, durable item rendering, persistence, a test-only production endpoint,
 and any G07B or G28 work are explicitly out of scope, per the roadmap's own text for this gate.
 
+**Last verified:** 2026-08-27, against `docs/design/typed-media-roadmap.md`, `CONTEXT.md`,
+`docs/research/g04/provider-pairing-contract.md`, and the local machine's installed SDKs. Any claim below
+that depends on a moving target (a status field, an installed toolchain) names the date it was checked
+rather than being stated as a permanent fact; a claim about this branch's or a sibling worktree's exact
+commit is deliberately avoided, because that is exactly the kind of fact that goes stale the moment another
+session commits.
+
+## 0. Operational note: which `dotnet`
+
+This machine's default `dotnet` on `PATH` resolves to `/opt/homebrew/bin/dotnet`, Homebrew's Cellar install
+at SDK `10.0.400`. `global.json` pins `11.0.100-preview.7.26381.103` with `"rollForward": "disable"`, so that
+default `dotnet` cannot even honour the pin — it reports `Install the [11.0.100-preview.7.26381.103] .NET SDK
+or update [global.json]` and refuses to run, rather than silently building against a different target
+framework. The correct binary is `/usr/local/share/dotnet/dotnet`, confirmed at
+`11.0.100-preview.7.26381.103` on 2026-08-27, and it is the binary `eng/proofs/g07-client-contracts.sh`
+already documents in its own invocation line (`DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash
+eng/proofs/g07-client-contracts.sh`).
+
+Every `dotnet` invocation in §3, §4, and §5 below must use that exact path — directly, or through a
+`DOTNET_COMMAND`/`$DOTNET` variable resolved to it — and never the bare `dotnet` name. This is not a
+preference: since the default resolves to a different major version, a script that shells out to bare
+`dotnet` does not fail loudly, it fails exactly the way `global.json`'s `rollForward: disable` is designed to
+prevent, or — if a future `global.json` edit ever loosened that pin — would silently retarget the build.
+G07A's own retained proof script must not downgrade `net11.0` targets by picking up whichever SDK happens to
+be first on `PATH`.
+
 ## 1. What G06 already proved, and what it deliberately left open
 
 G06 (`docs/research/g06/authoring-sdk-boundary.md`) proved the package-boundary half of the authoring
@@ -86,13 +112,15 @@ already proves the real composition is sufficient.
 
 A retained proof script (`eng/proofs/g07a-external-consumer.sh`, following the header/option conventions of
 `eng/proofs/g07-client-contracts.sh`) needs three phases the existing script does not have, run before the
-existing staging/serving sequence:
+existing staging/serving sequence. Every command below resolves `dotnet` the same way
+`eng/proofs/g07-client-contracts.sh` already does — `dotnet_command=${DOTNET_COMMAND:-dotnet}` — and every
+invocation shown here is written against that variable, never bare `dotnet`, per §0:
 
 1. **Pack the consumer's dependencies from this repository**, into a throwaway local feed:
    ```bash
-   dotnet pack src/Arronix.Sdk/Arronix.Sdk.csproj -c Release -o "$feed_root"
-   dotnet pack src/Arronix.Abstractions/Arronix.Abstractions.csproj -c Release -o "$feed_root"
-   dotnet pack src/Arronix.Format.Video/Arronix.Format.Video.csproj -c Release -o "$feed_root"   # if reused, see §7
+   "$dotnet_command" pack src/Arronix.Sdk/Arronix.Sdk.csproj -c Release -o "$feed_root"
+   "$dotnet_command" pack src/Arronix.Abstractions/Arronix.Abstractions.csproj -c Release -o "$feed_root"
+   "$dotnet_command" pack src/Arronix.Format.Video/Arronix.Format.Video.csproj -c Release -o "$feed_root"   # if reused, see §7
    ```
    `Arronix.Sdk.0.9.0.nupkg`'s only dependency is `Arronix.Abstractions 0.9.0`, and `Arronix.Generators` is
    never packed independently (`IsPackable=false`) — it is embedded as the SDK package's analyzer asset, so
@@ -101,39 +129,45 @@ existing staging/serving sequence:
 2. **Restore and build the consumer against only that feed, with an isolated package cache**, so the proof
    cannot silently succeed by falling back to a locally installed copy or a warm global cache:
    ```bash
-   dotnet restore "$consumer_project" \
+   "$dotnet_command" restore "$consumer_project" \
      --source "$feed_root" --source https://api.nuget.org/v3/index.json \
      --packages "$isolated_nuget_cache"
-   dotnet build "$consumer_project" -c Release --no-restore -warnaserror
+   "$dotnet_command" build "$consumer_project" -c Release --no-restore -warnaserror
    ```
    nuget.org stays reachable only for the .NET SDK's own implicit packages; every `Arronix.*` reference must
    resolve from `$feed_root`. A `NuGet.Config` scoped to the fixture directory (this repository currently
    has none — restore relies on ambient machine configuration) is cleaner than repeated `--source` flags and
-   makes "clean package cache" mean the same thing on every run.
+   makes "clean package cache" mean the same thing on every run. Because the consumer targets `net11.0` (it
+   closes `MediaType<...>` from `Arronix.Sdk`, which itself targets `net11.0`), a restore or build run under
+   the wrong default SDK does not quietly retarget the project — the pinned `global.json` this consumer's own
+   directory should carry, mirroring the repository root's, makes `rollForward: disable` refuse an unpinned
+   `dotnet` outright rather than let it downgrade.
 
 3. **Pack and publish the consumer's own extension**, the same way `eng/proofs/g07-client-contracts.sh`
-   publishes first-party packages — `dotnet publish --configuration Release --no-build --output
+   publishes first-party packages — `"$dotnet_command" publish --configuration Release --no-build --output
    artifacts/g07a/packages/<external-id>` — so the staged payload is the consumer's real publish closure, not
    a hand-copied `bin/` directory.
 
-From there, the script reuses G07.1's pattern verbatim: build/publish the unmodified client, start
-`Arronix.Api` against the combined `packages/` folder, assert over HTTP that the consumer's package reached
-`Active` and offers its client facet, then hand off to a real browser (`--serve`, Playwright or manual) to
-load the client-safe contract and read `#contract-proof`.
+From there, the script reuses G07.1's pattern verbatim, with the same `$dotnet_command` variable and the same
+invocation, `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/proofs/g07a-external-consumer.sh`:
+build/publish the unmodified client, start `Arronix.Api` against the combined `packages/` folder, assert over
+HTTP that the consumer's package reached `Active` and offers its client facet, then hand off to a real
+browser (`--serve`, Playwright or manual) to load the client-safe contract and read `#contract-proof`.
 
 ## 4. Artifact lifecycle
 
 Every artifact this proof produces is disposable and regenerated on each run, matching the existing G07.1
-discipline (`rm -rf "$proof_root"` at the top of the script, nothing written outside `artifacts/`):
+discipline (`rm -rf "$proof_root"` at the top of the script, nothing written outside `artifacts/`). Every
+"produced by" cell below is `"$dotnet_command"` (§0/§3), not bare `dotnet`, on every run:
 
 | Artifact | Produced by | Lives under | Regenerated |
 | --- | --- | --- | --- |
-| Local package feed (`.nupkg` files) | `dotnet pack` of Sdk/Abstractions/(format) | `artifacts/g07a/feed/` | every run |
-| Isolated NuGet cache | `dotnet restore --packages` | `artifacts/g07a/nuget-cache/` | every run |
-| Consumer build output | `dotnet build`/`publish` of the out-of-repo project | consumer's own `bin`/`obj`, or redirected via `--output` | every run; `obj/` must be cleared first, per the G07.1 trimming lesson about stale Blazor/publish state |
-| Staged package payloads | `dotnet publish --no-build --output` per package | `artifacts/g07a/packages/<id>/` | every run |
-| Client publish | `dotnet publish` of unmodified `Arronix.Client` | `artifacts/g07a/client/` | every run, `bin`/`obj` cleared first |
-| Server process + logs | `dotnet run` against `Arronix.Api` | `artifacts/g07a/evidence/server.log` | every run |
+| Local package feed (`.nupkg` files) | `"$dotnet_command" pack` of Sdk/Abstractions/(format) | `artifacts/g07a/feed/` | every run |
+| Isolated NuGet cache | `"$dotnet_command" restore --packages` | `artifacts/g07a/nuget-cache/` | every run |
+| Consumer build output | `"$dotnet_command" build`/`publish` of the out-of-repo project | consumer's own `bin`/`obj`, or redirected via `--output` | every run; `obj/` must be cleared first, per the G07.1 trimming lesson about stale Blazor/publish state |
+| Staged package payloads | `"$dotnet_command" publish --no-build --output` per package | `artifacts/g07a/packages/<id>/` | every run |
+| Client publish | `"$dotnet_command" publish` of unmodified `Arronix.Client` | `artifacts/g07a/client/` | every run, `bin`/`obj` cleared first |
+| Server process + logs | `"$dotnet_command" run` against `Arronix.Api` | `artifacts/g07a/evidence/server.log` | every run |
 | HTTP evidence | `curl` against `/api/v1/client-contracts`, `/api/v1/plugins` | `artifacts/g07a/evidence/*.json` | every run |
 | Browser report | operator/Playwright reading `#contract-proof` | `artifacts/g07a/evidence/browser-*.txt` (recommended, not yet scripted) | every run |
 
@@ -146,8 +180,10 @@ quietly reopen the escape hatches §6 rules out.
 
 G07A's own exit gate is a positive/negative pair at every layer, following the precedent both G06
 (`ARX1003` negative build) and G07.1 (nine-mutation table in `client-contract-loading.md` §4.4) already set.
-A first matrix, to be executed by the retained script plus a small number of hermetic unit cases colocated
-with it:
+Every row that builds, restores, or runs anything does so under `$dotnet_command` resolved to
+`/usr/local/share/dotnet/dotnet` (§0) — a matrix run under the machine's default `dotnet` would not exercise
+`net11.0` at all and would misreport every row below as inapplicable rather than passing or failing. A first
+matrix, to be executed by the retained script plus a small number of hermetic unit cases colocated with it:
 
 | Layer | Positive case | Negative case | Expected refusal / diagnostic |
 | --- | --- | --- | --- |
@@ -212,13 +248,15 @@ convenience into an undocumented decision (`CONTEXT.md`, owner-ledger O-33).
 
 ## 8. Blockers
 
-1. **G07.2 has not started.** Every sibling worktree cut for this phase of work
-   (`claude/g072-metadata-spike`, `claude/g072-integration`, `claude/g072-browser-proof`,
-   `claude/g073-lifecycle-audit`, `claude/g07b-durable-audit`) is at the same commit (`ce643da45`) as this
-   branch — none carries G07.2 or G07.3 work yet. G07A's browser half depends on G07.2's generated client
-   metadata and its serialized Movie fixture (§6). The roadmap states the dependency directly: "G07 is closed
-   only when all three are closed; G07A and G07B remain later gates and none of their work is folded into
-   these." **This blocks only the browser-fixture-projection portion of G07A**, not the package/restore/pack/
+1. **G07.2 and G07.3 are recorded `not started`, as of 2026-08-27.** `docs/design/typed-media-roadmap.md`
+   carries an explicit `**Status:**` line per sub-gate — G07.1 `complete`, G07.2 `not started`, G07.3
+   `not started` — and that field, not a snapshot of any branch's commit history, is this repository's
+   authoritative record of gate progress; re-check it directly rather than trusting a git-log comparison
+   frozen at the moment this report was written, since other work can land on sibling branches at any time
+   without this document being updated. G07A's browser half depends on G07.2's generated client metadata and
+   its serialized Movie fixture (§6). The roadmap states the dependency directly: "G07 is closed only when
+   all three are closed; G07A and G07B remain later gates and none of their work is folded into these."
+   **This blocks only the browser-fixture-projection portion of G07A**, not the package/restore/pack/
    admission/CLR-identity portion, which depends only on already-complete G01–G06.
 2. **No retained external-consumer fixture exists.** Confirmed by absence from `Arronix.sln` and by grep
    across the tree; this is expected (G06's proof was intentionally ephemeral) but means G07A starts from
@@ -247,6 +285,15 @@ convenience into an undocumented decision (`CONTEXT.md`, owner-ledger O-33).
    kind/provider module) from reaching `Active` in the same real-server topology G07.1 already proved for
    Movies — recorded here because it is easy to mistake for still-open after reading only G07.1's own
    residual-gaps list, which predates the fix.
+7. **The machine's default `dotnet` does not match the pinned SDK.** Confirmed 2026-08-27: `PATH` resolves
+   `dotnet` to `/opt/homebrew/bin/dotnet`, Homebrew's `10.0.400`; the repository's `global.json` pins
+   `11.0.100-preview.7.26381.103` at `/usr/local/share/dotnet/dotnet` with `rollForward: disable`. This is not
+   a G07A-specific blocker — it applies to every restore, build, and test in this repository — but it is
+   sharpest here because G07A's proof script is the first one that also restores and builds a project *outside*
+   the repository, where there is no `global.json` inherited by proximity unless the fixture ships its own. §0
+   states the operational rule; the retained script must set `DOTNET_COMMAND`/`$dotnet_command` explicitly and
+   the consumer fixture's own directory should carry a `global.json` pinning the same SDK, rather than relying
+   on whichever `dotnet` a future operator's shell happens to find first.
 
 ## 9. Recommendation for sequencing
 
@@ -258,6 +305,12 @@ Split G07A into two slices when it is implemented:
 - **Slice B (blocked on G07.2):** the browser load of the consumer's client-safe assembly against the
   unmodified `Arronix.Client`, and the fixture-projection check against G07.2's serialized Movie fixture.
 
-Slice A retires the "not retained, compile-only" half of §1's gap list without waiting on work this branch
-cannot see. Slice B is a small addition once G07.2 lands, because it reuses G07.1's loader and G07.2's
-fixture rather than inventing either.
+Slice A retires the "not retained, compile-only" half of §1's gap list without waiting on work whose
+completion this document cannot itself certify — re-check the roadmap's `**Status:**` fields at
+implementation time rather than trusting §8 item 1's 2026-08-27 reading. Slice B is a small addition once
+G07.2 lands, because it reuses G07.1's loader and G07.2's fixture rather than inventing either.
+
+Both slices, and every command either one runs, use `/usr/local/share/dotnet/dotnet` (§0) — never the
+machine-default `dotnet` — and never relax `net11.0` or the pinned prerelease SDK to work around a restore or
+build failure; a failure caused by the wrong SDK being picked up is a script defect to fix, not a target to
+downgrade.
