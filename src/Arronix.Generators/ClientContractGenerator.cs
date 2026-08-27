@@ -15,26 +15,12 @@ namespace Arronix.Generators;
 /// Emits the declared client contract entry point of a media item type.
 /// </summary>
 /// <remarks>
-/// <para>
-/// A browser that has verified and loaded a contract assembly holds no compile-time knowledge of anything
-/// inside it. Enumerating its types and properties would answer that, at the price of making the client
-/// untrimmable and turning property reflection into a second media schema. So the contract says what it
-/// holds, at compile time, here.
-/// </para>
-/// <para>
-/// Three parts, and the split is the design. A serialization context, which is a
-/// <c>[JsonSerializable]</c> declaration the framework's own source generator completes, so nothing here
-/// reimplements dates, numbers, escaping, constructor selection or collection semantics. A one-way
-/// projection of a typed value into declared presentation data. And an assembly attribute whose
-/// <b>constructor arguments</b> carry every fact a decision is made on, so a structured metadata reader
-/// over the received bytes and a host holding the assembly can both read them without anything running.
-/// </para>
-/// <para>
-/// The shape is read through <see cref="MediaShapeModel"/>, the same reading Host's compiled shapes are
-/// generated from. Where the two outputs differ they differ deliberately and visibly: Host projects a
-/// nested entity as a reference to a durable identity it assigned, and a browser holding a payload has no
-/// such identity, so this projects a nested entity as its own values kept together.
-/// </para>
+/// Emits three things: a one-way projection of a typed value into declared presentation data, an assembly
+/// attribute whose constructor arguments carry every fact a consumer decides on, and the hashes over both.
+/// Serialization itself is the framework's own generator, from a declared <c>[JsonSerializable]</c>
+/// context. The shape is read through <see cref="MediaShapeModel"/>, which Host's compiled shapes also use;
+/// where the two outputs differ they differ deliberately, and the differences are recorded in
+/// <c>docs/research/g07/client-contract-declaration.md</c>.
 /// </remarks>
 [Generator(LanguageNames.CSharp)]
 public sealed class ClientContractGenerator : IIncrementalGenerator
@@ -44,6 +30,15 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
     private const int CompositeKind = 20;
     private const int ReferenceKind = 12;
+
+    private static readonly DiagnosticDescriptor ShapeNotDescribable = new(
+        "ARX1011",
+        "A client contract shape cannot be described",
+        "'{0}' cannot be published to a client: {1}",
+        "Arronix.Authoring",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "The declared entry point is generated from the item type's own shape and from the serialization metadata the framework will produce for it. A shape the generator cannot model is reported rather than described wrongly, because a hash that does not describe the real wire is worse than no hash.");
 
     private static readonly DiagnosticDescriptor SerializationContextMissing = new(
         "ARX1010",
@@ -75,7 +70,19 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(entries.Combine(contexts), static (production, pair) =>
         {
             var (entry, declared) = pair;
-            var serializer = Match(entry.Symbol, declared);
+            var serializer = Match(entry.Symbol, declared, out var ambiguous);
+
+            if (ambiguous)
+            {
+                production.ReportDiagnostic(Diagnostic.Create(
+                    ShapeNotDescribable,
+                    entry.Location,
+                    entry.Symbol.ToDisplayString(),
+                    "more than one serialization context declares metadata for it, and they can declare "
+                    + "different options"));
+
+                return;
+            }
 
             if (serializer is null)
             {
@@ -88,7 +95,20 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 return;
             }
 
-            production.AddSource(entry.HintName, SourceText.From(Emit(entry, serializer), Encoding.UTF8));
+            var emitted = Emit(entry, serializer, out var refusal);
+
+            if (emitted is null)
+            {
+                production.ReportDiagnostic(Diagnostic.Create(
+                    ShapeNotDescribable,
+                    entry.Location,
+                    entry.Symbol.ToDisplayString(),
+                    refusal));
+
+                return;
+            }
+
+            production.AddSource(entry.HintName, SourceText.From(emitted, Encoding.UTF8));
         });
     }
 
@@ -96,11 +116,17 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     /// Finds the serialization context a compilation declares for one entity, by what it declares rather
     /// than by what it is called.
     /// </summary>
+    /// <remarks>
+    /// Every framework type is resolved from the compilation and compared by symbol identity. A name
+    /// comparison answers the same for a type somebody declared with the same name, and this generator
+    /// decides what a browser is handed.
+    /// </remarks>
     private static SerializationContext? FindSerializationContext(GeneratorSyntaxContext context)
     {
         var declaration = (ClassDeclarationSyntax)context.Node;
 
-        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol)
+        if (context.SemanticModel.GetDeclaredSymbol(declaration) is not INamedTypeSymbol symbol
+            || FrameworkSymbols.Resolve(context.SemanticModel.Compilation) is not { } framework)
         {
             return null;
         }
@@ -108,7 +134,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         var isContext = false;
         for (var current = symbol.BaseType; current is not null; current = current.BaseType)
         {
-            if (Is(current, "System.Text.Json.Serialization.JsonSerializerContext"))
+            if (SymbolEqualityComparer.Default.Equals(current, framework.SerializerContext))
             {
                 isContext = true;
                 break;
@@ -120,39 +146,209 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             return null;
         }
 
-        var serialized = new List<string>();
+        var serialized = new List<INamedTypeSymbol>();
+        AttributeData? options = null;
+        string? unsupported = null;
 
         foreach (var attribute in symbol.GetAttributes())
         {
-            if (attribute.AttributeClass?.Name == "JsonSerializableAttribute"
+            if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, framework.Serializable)
                 && attribute.ConstructorArguments.Length > 0
                 && attribute.ConstructorArguments[0].Value is INamedTypeSymbol serializedType)
             {
-                serialized.Add(TypeName(serializedType));
+                serialized.Add(serializedType);
+                unsupported ??= UnsupportedTarget(attribute, serializedType);
+            }
+            else if (SymbolEqualityComparer.Default.Equals(attribute.AttributeClass, framework.GenerationOptions))
+            {
+                options = attribute;
             }
         }
 
-        return serialized.Count == 0 ? null : new SerializationContext(symbol, serialized);
+        return serialized.Count == 0
+            ? null
+            : new SerializationContext(symbol, serialized, framework, unsupported ?? Unsupported(options));
     }
 
+    /// <summary>
+    /// Names the first declared target option this model does not describe.
+    /// </summary>
+    /// <remarks>
+    /// <c>GenerationMode</c> must be metadata and nothing else: a reader needs the metadata, and the write
+    /// fast path is a generated delegate whose behavior no rendering describes. <c>TypeInfoPropertyName</c>
+    /// renames the generated property, which this contract never reads. Admitted deliberately.
+    /// </remarks>
+    private static string? UnsupportedTarget(AttributeData target, INamedTypeSymbol serialized)
+    {
+        var declared = false;
+
+        foreach (var argument in target.NamedArguments)
+        {
+            switch (argument.Key)
+            {
+                case "GenerationMode":
+                    if (UnsupportedGenerationMode(argument.Value) is { } mode)
+                    {
+                        return $"its serialization context declares {mode} for "
+                            + $"'{serialized.ToDisplayString()}'";
+                    }
+
+                    declared = true;
+                    break;
+
+                case "TypeInfoPropertyName":
+                    break;
+
+                default:
+                    return $"its serialization context declares '{argument.Key}' on the target for "
+                        + $"'{serialized.ToDisplayString()}', which this model does not describe";
+            }
+        }
+
+        return declared
+            ? null
+            : $"its serialization context does not declare GenerationMode.Metadata for "
+                + $"'{serialized.ToDisplayString()}', so the framework also generates a write fast path";
+    }
+
+    /// <summary>Names a generation mode that is not metadata alone.</summary>
+    /// <remarks>
+    /// Read as flags: a combined value has no named field, so comparing against one lets it through
+    /// unexamined. Zero inherits the options-level default, which also generates the write fast path.
+    /// </remarks>
+    private static string? UnsupportedGenerationMode(TypedConstant argument)
+    {
+        if (argument.Type is not INamedTypeSymbol { TypeKind: TypeKind.Enum } enumeration
+            || argument.Value is not int declared)
+        {
+            return "a generation mode this model cannot read";
+        }
+
+        if (Constant(enumeration, "Metadata") is not { } metadata
+            || Constant(enumeration, "Serialization") is not { } serialization)
+        {
+            return "a generation mode whose flags this model cannot find";
+        }
+
+        return (declared & metadata) != 0 && (declared & serialization) == 0
+            ? null
+            : "GenerationMode " + declared.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", which is not metadata alone";
+    }
+
+    private static int? Constant(INamedTypeSymbol enumeration, string name)
+    {
+        foreach (var member in enumeration.GetMembers(name).OfType<IFieldSymbol>())
+        {
+            if (member.HasConstantValue && member.ConstantValue is int value)
+            {
+                return value;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Names the first declared serialization option this model does not describe.
+    /// </summary>
+    /// <remarks>
+    /// One exact set is modeled — strict defaults and the camel-case naming policy — and everything else is
+    /// refused. Reading two options and ignoring the rest is the failure that matters here: a declaration
+    /// that also set, say, a number-handling mode would still be published, under a hash that describes a
+    /// wire it does not have.
+    /// </remarks>
+    private static string? Unsupported(AttributeData? options)
+    {
+        if (options is null)
+        {
+            return "its serialization context declares no [JsonSourceGenerationOptions]";
+        }
+
+        if (options.ConstructorArguments.Length > 1)
+        {
+            return "its serialization context declares options this model does not read";
+        }
+
+        if (options.ConstructorArguments.Length == 1
+            && EnumArgument(options.ConstructorArguments[0]) != "Strict")
+        {
+            return "its serialization context does not declare JsonSerializerDefaults.Strict";
+        }
+
+        var strict = options.ConstructorArguments.Length == 1;
+        var camelCase = false;
+
+        foreach (var argument in options.NamedArguments)
+        {
+            switch (argument.Key)
+            {
+                case "Defaults":
+                    if (EnumArgument(argument.Value) != "Strict")
+                    {
+                        return "its serialization context does not declare JsonSerializerDefaults.Strict";
+                    }
+
+                    strict = true;
+                    break;
+
+                case "PropertyNamingPolicy":
+                    if (EnumArgument(argument.Value) != "CamelCase")
+                    {
+                        return "its serialization context does not declare the camel-case naming policy";
+                    }
+
+                    camelCase = true;
+                    break;
+
+                default:
+                    return $"its serialization context declares '{argument.Key}', which this model does "
+                        + "not describe";
+            }
+        }
+
+        if (!strict)
+        {
+            return "its serialization context does not declare JsonSerializerDefaults.Strict";
+        }
+
+        return camelCase ? null : "its serialization context does not declare the camel-case naming policy";
+    }
+
+    /// <summary>Finds the one context that declares metadata for an entity.</summary>
+    /// <remarks>
+    /// Two contexts claiming one entity is refused rather than resolved. They can declare different
+    /// options, so picking either would publish a hash describing a wire the other one writes.
+    /// </remarks>
     private static SerializationContext? Match(
         INamedTypeSymbol entity,
-        System.Collections.Immutable.ImmutableArray<SerializationContext> declared)
+        System.Collections.Immutable.ImmutableArray<SerializationContext> declared,
+        out bool ambiguous)
     {
-        var wanted = TypeName(entity);
+        SerializationContext? found = null;
+        ambiguous = false;
 
         foreach (var candidate in declared)
         {
             foreach (var serialized in candidate.Serialized)
             {
-                if (string.Equals(serialized, wanted, StringComparison.Ordinal))
+                if (!SymbolEqualityComparer.Default.Equals(serialized, entity))
                 {
-                    return candidate;
+                    continue;
                 }
+
+                if (found is not null && !SymbolEqualityComparer.Default.Equals(found.Symbol, candidate.Symbol))
+                {
+                    ambiguous = true;
+                    return null;
+                }
+
+                found = candidate;
+                break;
             }
         }
 
-        return null;
+        return found;
     }
 
     private static Entry? FindEntry(GeneratorSyntaxContext context)
@@ -182,13 +378,32 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 Sanitize(symbol.ToDisplayString()) + ".ClientContract.g.cs");
     }
 
-    private static string Emit(Entry entry, SerializationContext serializer)
+    private static string? Emit(Entry entry, SerializationContext serializer, out string? refusal)
     {
+        refusal = null;
+
+        if (serializer.Unsupported is { } unsupported)
+        {
+            refusal = unsupported;
+            return null;
+        }
+
+        var graph = ClientContractSerializationModel.Render(
+            entry.Symbol,
+            serializer.Framework,
+            out var derived,
+            out refusal);
+
+        if (graph is null)
+        {
+            return null;
+        }
+
         var projection = new Projection();
         var schema = projection.Describe(entry.Symbol);
 
         var projectionHash = Hash(RenderSchema(entry.Symbol, schema));
-        var metadataHash = Hash(RenderMemberGraph(entry.Symbol));
+        var metadataHash = Hash(graph);
 
         var contractName = entry.Symbol.Name + "ClientContract";
         var contextName = TypeName(serializer.Symbol);
@@ -216,9 +431,9 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             source.AppendLine();
         }
 
-        EmitContract(source, contractName, contextName, entry.Symbol, schema, projection);
+        EmitContract(source, contractName, contextName, entry.Symbol, schema, projection, derived);
         source.AppendLine();
-        EmitAttribute(source, attributeName, contractName, entry.Symbol);
+        EmitAttribute(source, attributeName, contractName, contextName, entry.Symbol);
 
         return source.ToString();
     }
@@ -229,7 +444,8 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         string contextName,
         INamedTypeSymbol item,
         IReadOnlyList<Field> schema,
-        Projection projection)
+        Projection projection,
+        IReadOnlyList<string> derived)
     {
         source.AppendLine("/// <summary>The generated client contract of one media item type.</summary>");
         source.AppendLine("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
@@ -239,6 +455,21 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.Append("internal static class ").AppendLine(contractName);
         source.AppendLine("{");
 
+        // Asked for by type rather than reached through a property the framework's generator happens to
+        // name after it. That name is a convention, and a convention is a thing that can change.
+        source.Append("    internal static readonly global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<")
+            .Append(TypeName(item)).AppendLine("> Root = ResolveRoot();");
+        source.AppendLine();
+        source.Append("    private static global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<")
+            .Append(TypeName(item)).AppendLine("> ResolveRoot()");
+        source.Append("        => ").Append(contextName).Append(".Default.GetTypeInfo(typeof(").Append(TypeName(item))
+            .AppendLine("))");
+        source.Append("            as global::System.Text.Json.Serialization.Metadata.JsonTypeInfo<")
+            .Append(TypeName(item)).AppendLine(">");
+        source.AppendLine("            ?? throw new global::System.InvalidOperationException(");
+        source.Append("                \"'").Append(contextName).Append("' holds no metadata for '")
+            .Append(item.ToDisplayString()).AppendLine("'.\");");
+        source.AppendLine();
         source.AppendLine("    private static readonly global::System.Collections.ObjectModel.ReadOnlyCollection<global::Arronix.Abstractions.Shape.FieldDescriptor> Declared =");
         source.AppendLine("        new(new global::Arronix.Abstractions.Shape.FieldDescriptor[]");
         source.AppendLine("        {");
@@ -254,18 +485,67 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.AppendLine("    public static global::System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Schema => Declared;");
         source.AppendLine();
 
+        if (derived.Count > 0)
+        {
+            source.AppendLine("    private static readonly global::System.Collections.ObjectModel.ReadOnlyCollection<string> Derived =");
+            source.AppendLine("        new(new string[]");
+            source.AppendLine("        {");
+
+            foreach (var name in derived)
+            {
+                source.Append("            ").Append(Literal(name)).AppendLine(",");
+            }
+
+            source.AppendLine("        });");
+            source.AppendLine();
+        }
+
         source.AppendLine("    /// <summary>Reads one serialized entity into this assembly's own typed value.</summary>");
         source.Append("    public static ").Append(TypeName(item)).AppendLine(" Read(global::System.ReadOnlySpan<byte> utf8Json)");
-        source.Append("        => global::System.Text.Json.JsonSerializer.Deserialize(utf8Json, ")
-            .Append(contextName).Append(".Default.").Append(item.Name).AppendLine(")");
+        source.AppendLine("    {");
+
+        if (derived.Count > 0)
+        {
+            source.AppendLine("        RefuseDerivedMembers(utf8Json);");
+        }
+
+        source.AppendLine("        return global::System.Text.Json.JsonSerializer.Deserialize(utf8Json, Root)");
         source.Append("            ?? throw new global::System.Text.Json.JsonException(\"The payload is a null ")
             .Append(item.Name).AppendLine(".\");");
+        source.AppendLine("    }");
         source.AppendLine();
+
+        if (derived.Count > 0)
+        {
+            // A computed member is mapped rather than unknown, so the framework's unmapped-member rule
+            // silently drops one a payload supplies. A sender that wrote it would believe it had been read.
+            source.AppendLine("    private static void RefuseDerivedMembers(global::System.ReadOnlySpan<byte> utf8Json)");
+            source.AppendLine("    {");
+            source.AppendLine("        var reader = new global::System.Text.Json.Utf8JsonReader(utf8Json);");
+            source.AppendLine();
+            source.AppendLine("        while (reader.Read())");
+            source.AppendLine("        {");
+            source.AppendLine("            if (reader.TokenType != global::System.Text.Json.JsonTokenType.PropertyName)");
+            source.AppendLine("            {");
+            source.AppendLine("                continue;");
+            source.AppendLine("            }");
+            source.AppendLine();
+            source.AppendLine("            for (var index = 0; index < Derived.Count; index++)");
+            source.AppendLine("            {");
+            source.AppendLine("                if (reader.ValueTextEquals(Derived[index]))");
+            source.AppendLine("                {");
+            source.AppendLine("                    throw new global::System.Text.Json.JsonException(");
+            source.AppendLine("                        \"'\" + Derived[index] + \"' is computed by this contract and cannot be supplied by a payload.\");");
+            source.AppendLine("                }");
+            source.AppendLine("            }");
+            source.AppendLine("        }");
+            source.AppendLine("    }");
+            source.AppendLine();
+        }
 
         source.AppendLine("    /// <summary>Serializes one typed entity in exactly the shape the reader accepts.</summary>");
         source.Append("    public static byte[] Write(").Append(TypeName(item)).AppendLine(" value)");
-        source.Append("        => global::System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(value, ")
-            .Append(contextName).Append(".Default.").Append(item.Name).AppendLine(");");
+        source.AppendLine("        => global::System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(value, Root);");
         source.AppendLine();
 
         source.AppendLine("    /// <summary>Projects one typed entity into one-way presentation data.</summary>");
@@ -290,7 +570,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
         source.AppendLine();
         source.Append("        return new global::Arronix.Abstractions.Client.ProjectedEntity(typeof(")
-            .Append(TypeName(item)).AppendLine(").FullName!, fields);");
+            .Append(TypeName(item)).AppendLine("), fields);");
         source.AppendLine("    }");
 
         projection.EmitHelpers(source);
@@ -302,6 +582,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         StringBuilder source,
         string attributeName,
         string contractName,
+        string contextName,
         INamedTypeSymbol item)
     {
         source.AppendLine("/// <summary>This assembly's declared client contract entry point.</summary>");
@@ -318,6 +599,12 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.AppendLine("        : base(entityType, generatedMetadataHash, projectionSchemaHash)");
         source.AppendLine("    {");
         source.AppendLine("    }");
+        source.AppendLine();
+        source.Append("    public override global::System.Text.Json.Serialization.JsonSerializerContext SerializationContext => ")
+            .Append(contextName).AppendLine(".Default;");
+        source.AppendLine();
+        source.Append("    public override global::System.Text.Json.Serialization.Metadata.JsonTypeInfo EntityTypeInfo => ")
+            .Append(contractName).AppendLine(".Root;");
         source.AppendLine();
         source.Append("    public override global::System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Schema => ")
             .Append(contractName).AppendLine(".Schema;");
@@ -364,6 +651,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.Append(indent).Append("    Prominence = (global::Arronix.Abstractions.Shape.Prominence)")
             .Append(Number(field.Prominence)).AppendLine(",");
         source.Append(indent).Append("    Multivalued = ").Append(Bool(field.Multivalued)).AppendLine(",");
+        source.Append(indent).Append("    Editable = ").Append(Bool(field.Editable)).AppendLine(",");
         source.Append(indent).Append("    Unit = ").Append(LiteralOrNull(field.Unit)).AppendLine(",");
 
         if (field.Choices.Count == 0)
@@ -404,10 +692,16 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.Append(indent).AppendLine("},");
     }
 
+    /// <remarks>
+    /// The same rendering <c>ClientContractDigest.RenderProjection</c> produces from a live schema, so the
+    /// literal emitted here can be checked against an independent recomputation.
+    /// </remarks>
     private static string RenderSchema(INamedTypeSymbol item, IReadOnlyList<Field> schema)
     {
         var rendering = new StringBuilder();
-        rendering.Append("entity=").Append(item.ToDisplayString()).Append('\n');
+        rendering.Append("entity=")
+            .Append(ClientContractSerializationModel.Text(ClientContractSerializationModel.Name(item)))
+            .Append('\n');
 
         foreach (var field in schema)
         {
@@ -420,86 +714,27 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     private static void RenderField(StringBuilder rendering, Field field, int depth)
     {
         rendering.Append(' ', depth * 2)
-            .Append("field=").Append(field.FieldId)
-            .Append('|').Append(field.Name)
+            .Append("field=").Append(ClientContractSerializationModel.Text(field.FieldId))
+            .Append('|').Append(ClientContractSerializationModel.Text(field.Name))
+            .Append('|').Append(ClientContractSerializationModel.Text(field.Description))
             .Append('|').Append(Number(field.Kind))
             .Append('|').Append(Number(field.Semantics))
             .Append('|').Append(Number(field.Prominence))
             .Append('|').Append(field.Multivalued ? "many" : "one")
-            .Append('|').Append(field.Nullable ? "optional" : "required")
-            .Append('|').Append(field.Unit ?? string.Empty)
+            .Append('|').Append(field.Editable ? "editable" : "read-only")
+            .Append('|').Append(ClientContractSerializationModel.Text(field.Unit))
             .Append('\n');
 
         foreach (var choice in field.Choices)
         {
             rendering.Append(' ', (depth + 1) * 2)
-                .Append("choice=").Append(choice.Key).Append('|').Append(choice.Value).Append('\n');
+                .Append("choice=").Append(ClientContractSerializationModel.Text(choice.Key))
+                .Append('|').Append(ClientContractSerializationModel.Text(choice.Value)).Append('\n');
         }
 
         foreach (var component in field.Components)
         {
             RenderField(rendering, component, depth + 1);
-        }
-    }
-
-    /// <summary>
-    /// Renders the CLR member graph the serialization metadata is generated over.
-    /// </summary>
-    /// <remarks>
-    /// Every member the framework's generator will describe, transitively, in declaration order. It moves
-    /// whenever the shape a payload must have moves, including when the assembly version does not.
-    /// </remarks>
-    private static string RenderMemberGraph(INamedTypeSymbol entity)
-    {
-        var rendering = new StringBuilder();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        RenderType(rendering, entity, seen);
-        return rendering.ToString();
-    }
-
-    private static void RenderType(StringBuilder rendering, ITypeSymbol type, HashSet<string> seen)
-    {
-        if (type is not INamedTypeSymbol named || !seen.Add(TypeName(named)))
-        {
-            return;
-        }
-
-        rendering.Append("type=").Append(named.ToDisplayString()).Append('\n');
-        var nested = new List<ITypeSymbol>();
-
-        foreach (var property in PublicProperties(named))
-        {
-            if (IsExcluded(property))
-            {
-                continue;
-            }
-
-            rendering.Append("  member=").Append(Identifier(property.Name))
-                .Append('|').Append(property.Type.ToDisplayString())
-                .Append('|').Append(property.SetMethod is { DeclaredAccessibility: Accessibility.Public } ? "settable" : "derived")
-                .Append('\n');
-
-            var element = StripNullable(UnwrapList(property.Type) ?? property.Type);
-
-            if (element.TypeKind == TypeKind.Enum)
-            {
-                foreach (var member in ((INamedTypeSymbol)element).GetMembers().OfType<IFieldSymbol>())
-                {
-                    if (member.HasConstantValue)
-                    {
-                        rendering.Append("    value=").Append(Identifier(member.Name)).Append('\n');
-                    }
-                }
-            }
-            else if (element.SpecialType == SpecialType.None && element is INamedTypeSymbol)
-            {
-                nested.Add(element);
-            }
-        }
-
-        foreach (var candidate in nested)
-        {
-            RenderType(rendering, candidate, seen);
         }
     }
 
@@ -539,15 +774,63 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     /// <summary>One declared serialization context and the types it declares metadata for.</summary>
     internal sealed class SerializationContext
     {
-        internal SerializationContext(INamedTypeSymbol symbol, IReadOnlyList<string> serialized)
+        internal SerializationContext(
+            INamedTypeSymbol symbol,
+            IReadOnlyList<INamedTypeSymbol> serialized,
+            FrameworkSymbols framework,
+            string? unsupported)
         {
             Symbol = symbol;
             Serialized = serialized;
+            Framework = framework;
+            Unsupported = unsupported;
         }
 
         internal INamedTypeSymbol Symbol { get; }
 
-        internal IReadOnlyList<string> Serialized { get; }
+        internal IReadOnlyList<INamedTypeSymbol> Serialized { get; }
+
+        internal FrameworkSymbols Framework { get; }
+
+        /// <summary>Gets why this context's declared options are not modeled, or <see langword="null"/>.</summary>
+        internal string? Unsupported { get; }
+    }
+
+    /// <summary>Reads the member name of an enumeration-valued attribute argument.</summary>
+    private static string? EnumArgument(TypedConstant? argument)
+    {
+        if (argument is not { Type: INamedTypeSymbol { TypeKind: TypeKind.Enum } enumeration } value)
+        {
+            return null;
+        }
+
+        foreach (var member in enumeration.GetMembers().OfType<IFieldSymbol>())
+        {
+            if (member.HasConstantValue && Equals(member.ConstantValue, value.Value))
+            {
+                return member.Name;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NamedEnumArgument(AttributeData? attribute, string name)
+    {
+        if (attribute is null)
+        {
+            return null;
+        }
+
+        foreach (var argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name)
+            {
+                return EnumArgument(argument.Value);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>One projected field, as a descriptor and as a value expression.</summary>
@@ -582,6 +865,8 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         internal int Prominence { get; set; } = 2;
 
         internal bool Multivalued { get; set; }
+
+        internal bool Editable { get; set; }
 
         internal bool Nullable { get; set; }
 
@@ -665,6 +950,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 Description = NamedString(display, "Description"),
                 Unit = ConstructorString(Attribute(property, "UnitAttribute")),
                 Multivalued = access != Access.Direct,
+                Editable = topLevel && Has(property, "EditableAttribute") && !Has(property, "DerivedAttribute"),
                 Nullable = IsNullable(declared) || (listElement is not null && IsNullable(listElement)),
                 Semantics = topLevel ? MediaShapeModel.Semantics(property, declaredKind, element) : 0,
                 Prominence = topLevel ? MediaShapeModel.Prominence(property) : 1,
@@ -835,7 +1121,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 ("CountValue", "long?", "Count", "OfCount(value.Value)"),
                 ("EnumeratedValue", "string?", "Enumerated", "OfEnumerated(value)"),
                 ("LinkValue", "global::System.Uri?", "Link", "OfLink(value)"),
-                ("ArtworkValue", "global::System.Uri?", "Artwork", "OfArtwork(value)"),
+                ("ArtworkValue", "global::Arronix.Abstractions.Media.ArtworkImage?", "Artwork", "OfArtwork(value)"),
                 ("LanguageValue", "global::Arronix.Abstractions.DTOs.Language?", "Language", "OfLanguage(value)"),
                 ("ExternalValue", "global::Arronix.Abstractions.Shape.ExternalId?", "ExternalIdentifier", "OfExternalIdentifier(value.Value)"),
             };
@@ -871,7 +1157,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 source.AppendLine("        var items = new global::Arronix.Abstractions.Shape.FieldValue[value.Images.Count];");
                 source.AppendLine("        for (var index = 0; index < items.Length; index++)");
                 source.AppendLine("        {");
-                source.AppendLine("            items[index] = ArtworkValue(value.Images[index].Address);");
+                source.AppendLine("            items[index] = ArtworkValue(value.Images[index]);");
                 source.AppendLine("        }");
                 source.AppendLine();
                 source.AppendLine("        return global::Arronix.Abstractions.Shape.FieldValue.OfItems(global::Arronix.Abstractions.Shape.FieldValueKind.Artwork, items);");

@@ -177,6 +177,10 @@ internal static class CompiledDeclaration
                 // Never called. The declaration under test is metadata; the behaviour behind it is a
                 // separate question this fixture deliberately does not answer.
                 source.AppendLine("""
+                      public override System.Text.Json.Serialization.JsonSerializerContext SerializationContext
+                          => throw new System.NotSupportedException();
+                      public override System.Text.Json.Serialization.Metadata.JsonTypeInfo EntityTypeInfo
+                          => throw new System.NotSupportedException();
                       public override System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Schema
                           => throw new System.NotSupportedException();
                       public override object Deserialize(System.ReadOnlySpan<byte> utf8Json)

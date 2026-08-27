@@ -202,7 +202,7 @@ public sealed class MovieClientContractTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(projection.EntityTypeName, Is.EqualTo(Declaration.EntityType.FullName));
+            Assert.That(projection.EntityType, Is.SameAs(Declaration.EntityType));
             Assert.That(projection.Fields.Select(field => field.Descriptor.FieldId),
                 Is.EqualTo(schema.Select(descriptor => descriptor.FieldId)));
         });
@@ -218,10 +218,29 @@ public sealed class MovieClientContractTests
 
         Assert.Multiple(() =>
         {
+            // The whole image, not just its address: a consumer with two images needs the role to know
+            // which is which, and the measurements to choose one without fetching it.
             var artwork = Value("artwork");
+            var images = artwork.Items!;
             Assert.That(artwork.Kind, Is.EqualTo(FieldValueKind.Artwork));
-            Assert.That(artwork.Items!.Select(item => item.Link!.ToString()),
-                Is.EqualTo(new[] { "https://example.test/poster.jpg", "https://example.test/fanart.jpg" }));
+            Assert.That(images.Select(item => item.Image!.Role), Is.EqualTo(new[] { "poster", "fanart" }));
+
+            var poster = images[0].Image!;
+            Assert.That(poster.Address, Is.EqualTo(new Uri("https://example.test/poster.jpg")));
+            Assert.That(poster.Width, Is.EqualTo(1000));
+            Assert.That(poster.Height, Is.EqualTo(1500));
+            Assert.That(images[0].Link, Is.Null, "an artwork value carries the image, and only the image");
+            Assert.That(images[0].Address, Is.EqualTo(poster.Address), "and its address is read from it");
+
+            var fanart = images[1].Image!;
+            Assert.That(fanart.Width, Is.EqualTo(1920));
+            Assert.That(fanart.Height, Is.EqualTo(1080));
+
+            var collectionArtwork = Value("collections").Items![0].Items!
+                .Single(component => component.Kind == FieldValueKind.Artwork);
+            Assert.That(collectionArtwork.Items, Is.Not.Null);
+            Assert.That(collectionArtwork.Items![0].Image!.Role, Is.EqualTo("poster"),
+                "a nested entity's artwork keeps its role too");
 
             var status = Value("status");
             Assert.That(status.Kind, Is.EqualTo(FieldValueKind.Enumerated));

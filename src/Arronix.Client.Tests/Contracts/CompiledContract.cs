@@ -113,6 +113,12 @@ internal static class CompiledContract
                     {{constructorBody}}
                 }
 
+                public override System.Text.Json.Serialization.JsonSerializerContext SerializationContext =>
+                    throw new System.NotSupportedException();
+
+                public override System.Text.Json.Serialization.Metadata.JsonTypeInfo EntityTypeInfo =>
+                    throw new System.NotSupportedException();
+
                 public override System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Schema =>
                     {{schema}}
 

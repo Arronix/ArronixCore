@@ -1,4 +1,6 @@
+using System.Text.Json.Serialization;
 using Arronix.Abstractions.DTOs;
+using Arronix.Abstractions.Media;
 
 namespace Arronix.Abstractions.Shape;
 
@@ -84,6 +86,28 @@ public sealed record FieldValue
     /// Gets the address payload, used by the link and artwork shapes.
     /// </summary>
     public Uri? Link { get; init; }
+
+    /// <summary>
+    /// Gets the image payload, populated for the artwork shape.
+    /// </summary>
+    /// <remarks>
+    /// The whole image, not just its address. An image's role is what tells a consumer which of several
+    /// images this one is, and its measurements are what let one be chosen without fetching it; an address
+    /// alone throws both away.
+    /// </remarks>
+    public ArtworkImage? Image { get; init; }
+
+    /// <summary>
+    /// Gets the address this value points at, whichever slot carries it.
+    /// </summary>
+    /// <remarks>
+    /// A link carries an address; artwork carries a whole image, and its address is one of the image's
+    /// facts. Exactly one slot is populated per value, so this reads whichever one is — and it is not
+    /// written, because a payload that stated it beside the slot it came from would have two ways to say
+    /// one thing.
+    /// </remarks>
+    [JsonIgnore]
+    public Uri? Address => Image?.Address ?? Link;
 
     /// <summary>
     /// Gets the quality payload. Reuses the stable quality tier.
@@ -205,9 +229,23 @@ public sealed record FieldValue
     public static FieldValue OfQuality(QualityTier quality)
         => new() { Kind = FieldValueKind.Quality, Quality = quality };
 
-    /// <summary>Creates an artwork value.</summary>
+    /// <summary>Creates an artwork value from a whole image.</summary>
+    /// <param name="image">The image, with its role and any measurements it states.</param>
+    /// <returns>The value.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="image"/> is <see langword="null"/>.</exception>
+    public static FieldValue OfArtwork(ArtworkImage image)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+        return new FieldValue { Kind = FieldValueKind.Artwork, Image = image };
+    }
+
+    /// <summary>Creates an artwork value from an address alone.</summary>
     /// <param name="link">The address of the image.</param>
     /// <returns>The value.</returns>
+    /// <remarks>
+    /// Retained for producers that hold nothing but an address. Anything holding an
+    /// <see cref="ArtworkImage"/> uses the overload that keeps its role and measurements.
+    /// </remarks>
     public static FieldValue OfArtwork(Uri link) => new() { Kind = FieldValueKind.Artwork, Link = link };
 
     /// <summary>Creates a count value.</summary>

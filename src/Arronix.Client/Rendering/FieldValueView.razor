@@ -28,14 +28,14 @@ else
     @switch (Presentation)
     {
         case ValuePresentation.Image:
-            @if (Value.Link is { } image)
+            @if (Value.Address is { } image)
             {
-                <img class="value value-image" src="@image" alt="@Descriptor.Name" loading="lazy" />
+                <img class="value value-image" src="@image" alt="@(Value.Image?.Role ?? Descriptor.Name)" loading="lazy" />
             }
             break;
 
         case ValuePresentation.Address:
-            @if (Value.Link is { } address)
+            @if (Value.Address is { } address)
             {
                 <a class="value value-address" href="@address" target="_blank" rel="noopener noreferrer">@Text</a>
             }
