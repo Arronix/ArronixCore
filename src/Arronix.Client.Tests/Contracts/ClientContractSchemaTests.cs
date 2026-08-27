@@ -58,9 +58,10 @@ public sealed class ClientContractSchemaTests
     }
 
     /// <remarks>
-    /// The hole the root list alone leaves. A field's components are a second contract-owned list, and a
-    /// composite that grows a component after its hash was published would be rendered under a shape the
-    /// published hash never covered.
+    /// The hole the root list alone leaves: a field's components are a second contract-owned list. That the
+    /// published hash is taken over the copy rather than over that list is not something this case can show
+    /// — hashing one stable array twice says nothing — and it is proved end to end by
+    /// <c>ContractDeclarationProofTests.ASchemaWhoseNestedListsAnswerDifferentlyIsAdmittedFromTheirFirstAnswer</c>.
     /// </remarks>
     [Test]
     public void NestedComponentsThatChangeAfterAdmissionChangeNothing()
@@ -86,11 +87,6 @@ public sealed class ClientContractSchemaTests
         frozen.Components.Single().FieldId.Should().Be("region");
         frozen.Components.Single().FieldId.Should().Be("region");
         stepping.Reads.Should().Be(1);
-
-        // And the hash is taken over the copy, so it describes what will be rendered rather than what the
-        // list happened to answer while it was being hashed.
-        ClientContractDigest.OfProjection(Entity, schema.Frozen)
-            .Should().Be(ClientContractDigest.OfProjection(Entity, schema.Frozen));
     }
 
     /// <remarks>
