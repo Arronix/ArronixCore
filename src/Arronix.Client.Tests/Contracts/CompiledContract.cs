@@ -19,7 +19,10 @@ internal enum Misbehaviour
     /// <summary>Its schema getter throws.</summary>
     ThrowingSchema,
 
-    /// <summary>Its schema is empty, so there is nothing to project.</summary>
+    /// <summary>Its schema is null, which is not a schema.</summary>
+    NullSchema,
+
+    /// <summary>Its schema is empty, which is a schema. Valid, and here to prove it stays valid.</summary>
     EmptySchema,
 }
 
@@ -84,6 +87,7 @@ internal static class CompiledContract
         {
             Misbehaviour.ThrowingSchema =>
                 "throw new System.InvalidOperationException(\"the schema refuses to be read\");",
+            Misbehaviour.NullSchema => "null!;",
             Misbehaviour.EmptySchema => "[];",
             _ => """
                 [

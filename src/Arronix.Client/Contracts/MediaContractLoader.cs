@@ -123,8 +123,8 @@ public sealed class MediaContractLoader
     /// <param name="assemblyName">The simple assembly name.</param>
     /// <returns>The declarations, or empty when this page holds no complete verified installation.</returns>
     /// <remarks>
-    /// The instances the post-load proof accepted, never a second resolution. Gated like
-    /// <see cref="Find"/>: one contract out of a failed installation is a partial projection.
+    /// The instances the post-load proof accepted, never a second resolution, and gated like
+    /// <see cref="Find"/>.
     /// </remarks>
     public IReadOnlyList<ClientContractEntryPointAttribute> ContractsOf(string assemblyName)
     {
@@ -668,10 +668,7 @@ public sealed class MediaContractLoader
     /// Describes how the loaded assembly's declarations differ from what was published, or nothing, and
     /// yields the resolved declarations when they agree.
     /// </summary>
-    /// <remarks>
-    /// Runs the payload's own code, so it is contained: a declaration that throws while describing itself
-    /// is refused rather than allowed to escape after an irreversible load.
-    /// </remarks>
+    /// <remarks>Runs the payload's own code, so it is contained rather than allowed to escape.</remarks>
     private static string? DeclarationDisagreement(
         Assembly assembly,
         ClientContractAssembly published,
@@ -755,10 +752,10 @@ public sealed class MediaContractLoader
                     + "host published.";
             }
 
-            // Read here so a throwing or empty schema is refused with everything else, not at first render.
-            if (entry.Schema is not { Count: > 0 })
+            // Read here so a throwing schema is refused with the rest. Empty is a schema; null is not one.
+            if (entry.Schema is null)
             {
-                return $"'{expected.EntryPointType}' publishes no projection schema once loaded.";
+                return $"'{expected.EntryPointType}' answers null for its projection schema once loaded.";
             }
         }
 

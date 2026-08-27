@@ -32,10 +32,10 @@ namespace Arronix.Client.Tests.Contracts;
 [TestFixture]
 internal sealed class ContractDeclarationProofTests
 {
-    /// <summary>A declaration whose own code throws is refused, and the exception does not escape.</summary>
+    /// <summary>A declaration whose own code throws or answers null is refused, without escaping.</summary>
     [TestCase(Misbehaviour.ThrowingConstructor, "could not be read once loaded")]
     [TestCase(Misbehaviour.ThrowingSchema, "could not be read once loaded")]
-    [TestCase(Misbehaviour.EmptySchema, "no projection schema")]
+    [TestCase(Misbehaviour.NullSchema, "answers null for its projection schema")]
     public async Task ADeclarationThatMisbehavesAfterLoadingIsTerminal(Misbehaviour misbehaviour, string expected)
     {
         var name = "Fixture.Client." + misbehaviour;
@@ -86,15 +86,42 @@ internal sealed class ContractDeclarationProofTests
             "reuse hands back what was verified rather than resolving the payload again");
     }
 
+    /// <summary>
+    /// An empty schema is a schema. The loader invents no non-empty invariant of its own.
+    /// </summary>
+    /// <remarks>
+    /// A contract may declare an entity with nothing to show, and refusing it would be this client deciding
+    /// what a media kind must contain — which is the generated schema's answer, not the loader's.
+    /// </remarks>
+    [Test]
+    public async Task AnEmptySchemaIsAValidDeclaration()
+    {
+        const string name = "Fixture.Client.EmptySchema";
+        var loader = Loader(name, Misbehaviour.EmptySchema, out _);
+
+        var report = await loader.LoadAsync();
+
+        using var assertions = new AssertionScope();
+
+        report.Packages.Single().Assemblies.Single().Outcome.Should().Be(ContractLoadOutcome.Loaded);
+        report.CanProject.Should().BeTrue();
+        loader.ContractsOf(name).Single().Schema.Should().BeEmpty();
+    }
+
     /// <summary>Nothing is exposed for an assembly this page did not verify.</summary>
     [Test]
     public async Task NothingIsExposedForAnInstallationThatCannotProject()
     {
-        var report = await LoadAsync("Fixture.Client.Withheld", Misbehaviour.EmptySchema);
+        const string name = "Fixture.Client.Withheld";
+        var loader = Loader(name, Misbehaviour.ThrowingSchema, out _);
+
+        var report = await loader.LoadAsync();
 
         using var assertions = new AssertionScope();
         report.CanProject.Should().BeFalse();
-        Loaded("Fixture.Client.Withheld").Should().BeTrue("the refusal happened after the load, not before");
+        loader.ContractsOf(name).Should().BeEmpty();
+        loader.Find(name).Should().BeNull();
+        Loaded(name).Should().BeTrue("the refusal happened after the load, not before");
     }
 
     private static bool Loaded(string simpleName)
