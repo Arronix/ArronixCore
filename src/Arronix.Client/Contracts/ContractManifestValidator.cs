@@ -316,12 +316,7 @@ internal static class ContractManifestValidator
         return null;
     }
 
-    /// <summary>Proves one assembly's declarations, before anything is counted, compared or rendered.</summary>
-    /// <remarks>
-    /// Untrusted like the rest of the document, and acted on the same way: the list is counted against what
-    /// the bytes declare, compared entry by entry in order, and shown to an operator. Zero declarations is
-    /// valid — a shared assembly owning no item declares none.
-    /// </remarks>
+    /// <summary>Proves one assembly's declarations. Zero of them is valid.</summary>
     private static string? Describe(ClientContractPackage package, ClientContractAssembly assembly)
     {
         if (assembly.Declarations is null)
@@ -354,10 +349,8 @@ internal static class ContractManifestValidator
                     + "64 upper-case hexadecimal characters.";
             }
 
-            // Ordered, because the order is compared. Two lists holding one set of declarations differently
-            // describe two documents, and a client that sorted this itself would be repairing the answer it
-            // is checking. Non-decreasing here and unique below, which together are strictly sorted while
-            // letting a repeated entry be reported as the duplicate it is.
+            // Non-decreasing here, unique below: together strictly sorted, and a repeat is still named as a
+            // duplicate rather than as disorder.
             if (previous is not null && string.CompareOrdinal(previous, declaration.EntryPointType) > 0)
             {
                 return $"package '{package.Id}' lists the declarations of '{assembly.FileName}' out of order.";
@@ -418,11 +411,10 @@ internal static class ContractManifestValidator
     private static bool IsSha256(string? hash)
         => hash is { Length: 64 } && hash.All(Uri.IsHexDigit);
 
-    /// <summary>Whether text is a declared hash: 64 upper-case hexadecimal characters, exactly.</summary>
+    /// <summary>Whether text is a declared hash: exactly 64 upper-case hexadecimal characters.</summary>
     /// <remarks>
-    /// Stricter than <see cref="IsSha256"/>, and deliberately not the same rule. A content hash is compared
-    /// case-insensitively, so either spelling of one is the same value; a declared hash is compared
-    /// ordinally against the literal in the payload's own metadata, where the other spelling is a mismatch.
+    /// Stricter than <see cref="IsSha256"/> on purpose: a declared hash is compared ordinally against the
+    /// literal in the payload's own metadata, where the other case is a mismatch.
     /// </remarks>
     private static bool IsDeclaredHash(string? hash)
         => hash is { Length: 64 }

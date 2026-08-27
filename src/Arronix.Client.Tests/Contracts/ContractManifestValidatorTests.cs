@@ -64,6 +64,7 @@ public sealed class ContractManifestValidatorTests
     [TestCase("blank-entity", "no entry point or no entity type")]
     [TestCase("lowercase-metadata-hash", "64 upper-case hexadecimal")]
     [TestCase("short-projection-hash", "64 upper-case hexadecimal")]
+    [TestCase("non-hex-metadata-hash", "64 upper-case hexadecimal")]
     [TestCase("declarations-out-of-order", "out of order")]
     [TestCase("duplicate-entry-point", "more than once")]
     [TestCase("duplicate-entity", "no way to choose")]
@@ -209,8 +210,6 @@ public sealed class ContractManifestValidatorTests
             ]),
         "refusal-duplicate-assembly" => Manifest(null, [Refusal("bad.package") with { MissingAssemblies = ["One", "one"] }]),
 
-        // Declarations are counted against what the bytes declare, compared entry by entry in order, and
-        // rendered. Each shape below is well-formed JSON and none of those three is safe on it.
         "null-declaration-list" => Declaring(null!),
         "null-declaration-entry" => Declaring([null!]),
         "blank-entry-point" => Declaring([Declaration("One.Entry") with { EntryPointType = "  " }]),
@@ -219,6 +218,10 @@ public sealed class ContractManifestValidatorTests
             [Declaration("One.Entry") with { GeneratedMetadataHash = new string('a', 64) }]),
         "short-projection-hash" => Declaring(
             [Declaration("One.Entry") with { ProjectionSchemaHash = new string('A', 63) }]),
+
+        // Right length, right case, and one character that is not hexadecimal.
+        "non-hex-metadata-hash" => Declaring(
+            [Declaration("One.Entry") with { GeneratedMetadataHash = "G" + new string('A', 63) }]),
         "declarations-out-of-order" => Declaring([Declaration("One.Zebra"), Declaration("One.Alpha")]),
         "duplicate-entry-point" => Declaring([Declaration("One.Entry"), Declaration("One.Entry")]),
         "duplicate-entity" => Declaring(
