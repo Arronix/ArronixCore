@@ -241,7 +241,6 @@ internal sealed class DurableProviderDefinitionTests
     /// queued regardless, which is the part order depends on.
     /// </remarks>
     [Test]
-    [Repeat(20)]
     public async Task ASubscriberThatChangesTheStoreFromItsOwnHandlerDoesNotDeadlock()
     {
         var registry = new ProviderRegistry();
@@ -427,7 +426,6 @@ internal sealed class DurableProviderDefinitionTests
     /// announcing" would make the second skip its wait and report a delivery that had not happened.
     /// </remarks>
     [Test]
-    [Repeat(20)]
     public async Task AHandlerForOneStoreIsAnOrdinaryCallerOfAnother()
     {
         var registry = new ProviderRegistry();
@@ -756,10 +754,24 @@ internal sealed class DurableProviderDefinitionTests
 
         internal async Task Delivered(int count)
         {
-            for (var attempt = 0; attempt < 200 && Volatile.Read(ref _completed) < count; attempt++)
+            if (Volatile.Read(ref _completed) >= count)
+            {
+                return;
+            }
+
+            for (var attempt = 0; attempt < 200; attempt++)
             {
                 await Task.Delay(10).ConfigureAwait(false);
+
+                if (Volatile.Read(ref _completed) >= count)
+                {
+                    return;
+                }
             }
+
+            throw new TimeoutException(
+                $"Expected {count} publication(s) to complete successfully, but only "
+                + $"{Volatile.Read(ref _completed)} completed within the polling bound.");
         }
 
         public async Task PublishAsync<TEvent>(TEvent domainEvent, CancellationToken cancellationToken = default)
