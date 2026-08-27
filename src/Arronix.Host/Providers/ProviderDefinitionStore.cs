@@ -428,11 +428,13 @@ public sealed class ProviderDefinitionStore : IDisposable
     }
 
     /// <summary>
-    /// Names the values a definition cannot work without and this store was not allowed to keep.
+    /// Names the values a definition cannot work without.
     /// </summary>
     /// <remarks>
     /// Required fields only. A provider that declares an optional credential works without it, so its
-    /// absence after a restart is the ordinary state of an optional setting rather than a fault.
+    /// absence after a restart is the ordinary state of an optional setting rather than a fault. Most
+    /// required values survive because the store may read them back; credentials and secrets normally do
+    /// not, but a caller can also leave a required readable value out. Neither is routable.
     /// </remarks>
     private IReadOnlyList<string> Missing(ProviderDefinition definition)
     {
@@ -445,7 +447,6 @@ public sealed class ProviderDefinitionStore : IDisposable
         [
             .. registered.Descriptor.Settings
                 .Where(static field => field.Required)
-                .Where(static field => field.Sensitivity is SettingSensitivity.Credential or SettingSensitivity.Secret)
                 .Where(field => string.IsNullOrEmpty(definition.Settings.GetValueOrDefault(field.FieldId)))
                 .Select(static field => field.FieldId)
                 .Order(StringComparer.Ordinal),
@@ -489,7 +490,7 @@ public sealed class ProviderDefinitionStore : IDisposable
     /// <summary>Answers one definition with the presence its implementation has right now.</summary>
     private ProviderDefinition Present(ProviderDefinition definition)
     {
-        if (_providers.TryGet(definition.Provider, out _))
+        if (_providers.TryGet(definition.Provider, out var registered) && registered is not null)
         {
             var missing = Missing(definition);
 
@@ -501,13 +502,24 @@ public sealed class ProviderDefinitionStore : IDisposable
             // Not Active: an Active definition is one the platform will route work to, and routing this one
             // would call a provider with settings already known to be incomplete. Said here rather than
             // discovered through a call that fails for a reason the operator cannot see.
+            var nonPersistent = registered.Descriptor.Settings
+                .Where(field => missing.Contains(field.FieldId, StringComparer.Ordinal))
+                .Where(static field => field.Sensitivity is SettingSensitivity.Credential or SettingSensitivity.Secret)
+                .Select(static field => field.FieldId)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+
+            var explanation = nonPersistent.Length == 0
+                ? "The provider declares those values required, so this definition cannot be routed until they are entered."
+                : "A value the provider declares as a credential or a secret is never read back, so "
+                    + "it is not written down and does not survive a restart.";
+
             return definition with
             {
                 State = DefinitionState.Incomplete,
                 Message = new ProviderMessage(
                     $"This definition needs {string.Join(", ", missing)} entered again before it can be "
-                    + "used. A value a provider declares as a credential or a secret is never read back, so "
-                    + "it is not written down and does not survive a restart.",
+                    + $"used. {explanation}",
                     ProviderMessageSeverity.Warning),
             };
         }

@@ -602,6 +602,38 @@ internal sealed class DurableProviderDefinitionTests
         });
     }
 
+    /// <summary>
+    /// A readable field may survive a restart, but a definition that never supplied a required one is still
+    /// incomplete before and after it. Requiredness is the provider's contract, not a secret-storage rule.
+    /// </summary>
+    [TestCase(SettingSensitivity.Public, "baseUrl")]
+    [TestCase(SettingSensitivity.UserName, "operator")]
+    public async Task ARequiredReadableSettingMissingInitiallyOrAfterARestartIsIncomplete(
+        SettingSensitivity sensitivity,
+        string fieldId)
+    {
+        var registry = new ProviderRegistry();
+        var id = RegisterRequiredReadable(registry, sensitivity, fieldId);
+        using var first = Store(registry);
+
+        var added = await first.AddAsync(Definition(id));
+
+        _store.Reopen();
+        using var restarted = Store(registry);
+        var read = restarted.Require(added.Id);
+
+        Assert.Multiple(() =>
+        {
+            added.State.Should().Be(DefinitionState.Incomplete);
+            added.Message!.Text.Should().Contain(fieldId);
+            first.Query(ProviderFamily.Cataloger, enabledOnly: true).Should().BeEmpty();
+
+            read.State.Should().Be(DefinitionState.Incomplete);
+            read.Message!.Text.Should().Contain(fieldId);
+            restarted.Query(ProviderFamily.Cataloger, enabledOnly: true).Should().BeEmpty();
+        });
+    }
+
     /// <summary>A provider that is not loaded cannot say which of its fields are secret, so none is kept.</summary>
     [Test]
     public async Task NothingIsWrittenForAProviderThatCannotSayWhichFieldsAreSecret()
@@ -655,6 +687,22 @@ internal sealed class DurableProviderDefinitionTests
                     Field("baseUrl", "Base URL", SettingSensitivity.Public),
                     Field("password", "Password", SettingSensitivity.Credential),
                 ],
+            },
+            new StubProvider(),
+            typeof(TypedMedia.Work));
+
+    private static ProviderId RegisterRequiredReadable(
+        ProviderRegistry registry,
+        SettingSensitivity sensitivity,
+        string fieldId)
+        => registry.Register(
+            PluginId.FromString("required.readable"),
+            ProviderFamily.Cataloger,
+            new ProviderDescriptor
+            {
+                LocalId = "catalog",
+                Name = "Catalog",
+                Settings = [Field(fieldId, fieldId, sensitivity, required: true)],
             },
             new StubProvider(),
             typeof(TypedMedia.Work));

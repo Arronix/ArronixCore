@@ -4,6 +4,8 @@ using Arronix.Abstractions.Health;
 using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
+using Arronix.Host.Media.Catalog;
+using Arronix.Host.Storage;
 using FluentAssertions;
 
 namespace Arronix.Host.Tests.Storage;
@@ -43,6 +45,60 @@ internal sealed class MoviesCatalogVerticalTests
             context.CatalogRecords.Should().BeEmpty("a search is a question, not a decision");
             context.LibraryEntries.Should().BeEmpty();
             context.CatalogIdentities.Should().NotBeEmpty("but the identity it would be held under is settled");
+        });
+    }
+
+    /// <summary>
+    /// A page is one answer: a merge cannot land after search assigned its references but before the page
+    /// reports whether those references are held.
+    /// </summary>
+    [Test]
+    public async Task ASearchDoesNotPublishASupersededReferenceWhileAConvergenceWaits()
+    {
+        var beta = new MoviesCatalogHarness.StubCataloger("beta")
+            .Holding("2", MoviesCatalogHarness.Film("Beta", [ExternalId.Of("beta", "2")]));
+        var alpha = new MoviesCatalogHarness.StubCataloger("alpha")
+            .Holding("1", MoviesCatalogHarness.Film("Alpha", [ExternalId.Of("alpha", "1")]));
+
+        using var harness = MoviesCatalogHarness.With(beta, alpha);
+        var betaAdded = await harness.Catalog.AddAsync(MoviesCatalogHarness.Kind, ExternalId.Of("beta", "2"));
+        var alphaAdded = await harness.Catalog.AddAsync(MoviesCatalogHarness.Kind, ExternalId.Of("alpha", "1"));
+        var gate = new BlockingLibraryStore(harness.Store);
+        var catalog = new CatalogLibrary(
+            harness.Kinds,
+            harness.Dispatcher,
+            harness.Records,
+            gate,
+            harness.Identity,
+            TimeProvider.System);
+
+        var search = catalog.SearchAsync(
+            MoviesCatalogHarness.Kind,
+            "alpha",
+            new CatalogQuery("alpha"),
+            page: 1,
+            pageSize: 10);
+
+        await gate.Entered.Task;
+
+        alpha.Holding("1", MoviesCatalogHarness.Film(
+            "Alpha",
+            [ExternalId.Of("alpha", "1"), ExternalId.Of("beta", "2")]));
+
+        var refresh = catalog.RefreshAsync(MoviesCatalogHarness.Kind, alphaAdded!.Value.View.Item.Ref);
+
+        refresh.IsCompleted.Should().BeFalse("search keeps identity convergence out until its page is complete");
+
+        gate.Release();
+        var found = await search;
+        var refreshed = await refresh;
+
+        Assert.Multiple(() =>
+        {
+            found.Items.Should().ContainSingle();
+            found.Items[0].Item.Ref.Should().Be(alphaAdded.Value.View.Item.Ref);
+            found.Items[0].InLibrary.Should().BeTrue("the page reads presence in the same identity state it projects");
+            refreshed!.Item.Ref.Should().Be(betaAdded!.Value.View.Item.Ref, "the later convergence keeps the lower identity");
         });
     }
 
@@ -265,4 +321,76 @@ internal sealed class MoviesCatalogVerticalTests
                 "the file outlived the harness that restarted over it");
         });
     }
+}
+
+/// <summary>
+/// Holds exactly the catalog-page-to-library read boundary, using the ordinary store for every operation.
+/// It is a test-time composition of the storage seam, not a hook in production code.
+/// </summary>
+internal sealed class BlockingLibraryStore(IMediaStore inner) : IMediaStore
+{
+    private readonly IMediaStore _inner = inner ?? throw new ArgumentNullException(nameof(inner));
+    private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    internal void Release() => _release.TrySetResult();
+
+    public ValueTask<LibraryFacet?> FindLibraryAsync(
+        MediaItemRef reference,
+        CancellationToken cancellationToken = default) => _inner.FindLibraryAsync(reference, cancellationToken);
+
+    public ValueTask UpsertLibraryAsync(
+        LibraryFacet facet,
+        CancellationToken cancellationToken = default) => _inner.UpsertLibraryAsync(facet, cancellationToken);
+
+    public async ValueTask<IReadOnlyDictionary<MediaItemRef, LibraryFacet>> FindLibraryManyAsync(
+        IReadOnlyList<MediaItemRef> references,
+        CancellationToken cancellationToken = default)
+    {
+        Entered.TrySetResult();
+        await _release.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+        return await _inner.FindLibraryManyAsync(references, cancellationToken).ConfigureAwait(false);
+    }
+
+    public ValueTask<MediaFileId> UpsertFileAsync(
+        MediaFileRecord file,
+        CancellationToken cancellationToken = default) => _inner.UpsertFileAsync(file, cancellationToken);
+
+    public ValueTask<MediaFileRecord?> FindFileAsync(
+        MediaFileId file,
+        CancellationToken cancellationToken = default) => _inner.FindFileAsync(file, cancellationToken);
+
+    public ValueTask LinkAsync(
+        UnitFileLink link,
+        CancellationToken cancellationToken = default) => _inner.LinkAsync(link, cancellationToken);
+
+    public ValueTask UnlinkAsync(
+        UnitFileLink link,
+        CancellationToken cancellationToken = default) => _inner.UnlinkAsync(link, cancellationToken);
+
+    public ValueTask<IReadOnlyList<UnitFileLink>> LinksForUnitAsync(
+        MediaItemRef unit,
+        CancellationToken cancellationToken = default) => _inner.LinksForUnitAsync(unit, cancellationToken);
+
+    public ValueTask<IReadOnlyList<UnitFileLink>> LinksForFileAsync(
+        MediaFileId file,
+        CancellationToken cancellationToken = default) => _inner.LinksForFileAsync(file, cancellationToken);
+
+    public ValueTask SetGroupMembershipAsync(
+        GroupMembership membership,
+        CancellationToken cancellationToken = default) => _inner.SetGroupMembershipAsync(membership, cancellationToken);
+
+    public ValueTask RemoveGroupMembershipAsync(
+        MediaItemRef group,
+        MediaItemRef member,
+        CancellationToken cancellationToken = default) => _inner.RemoveGroupMembershipAsync(group, member, cancellationToken);
+
+    public ValueTask<IReadOnlyList<GroupMembership>> MembersOfAsync(
+        MediaItemRef group,
+        CancellationToken cancellationToken = default) => _inner.MembersOfAsync(group, cancellationToken);
+
+    public ValueTask<IReadOnlyList<GroupMembership>> GroupsOfAsync(
+        MediaItemRef member,
+        CancellationToken cancellationToken = default) => _inner.GroupsOfAsync(member, cancellationToken);
 }

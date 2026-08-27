@@ -121,49 +121,48 @@ public sealed class CatalogLibrary
 
         var runtime = RuntimeOf(kind);
 
-        IReadOnlyList<MaterializedItem<IMediaItem>> found;
-
         await _admission.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            found = await _catalog.SearchAsync(runtime, scheme, query, cancellationToken).ConfigureAwait(false);
+            var found = await _catalog.SearchAsync(runtime, scheme, query, cancellationToken).ConfigureAwait(false);
+
+            // Wide, because a page number a caller is free to choose must not multiply into a negative offset.
+            var offset = ((long)page - 1) * pageSize;
+
+            if (offset >= found.Count)
+            {
+                return new CatalogItemPage([], page, pageSize, found.Count);
+            }
+
+            var wanted = found.Skip((int)offset).Take(pageSize).ToArray();
+
+            // This read and the projection remain inside the identity-admission gate. A convergence that
+            // landed after identity assignment but before this read would otherwise move the library entry
+            // to the survivor and make a page publish the superseded reference as not held.
+            var held = await _library
+                .FindLibraryManyAsync([.. wanted.Select(static item => item.Reference)], cancellationToken)
+                .ConfigureAwait(false);
+
+            return new CatalogItemPage(
+                [
+                    .. wanted.Select(item => new CatalogItemView
+                    {
+                        // The exact value the catalog returned, projected by the kind's own projector - the
+                        // same one browse uses - so a result carries every fact the item states.
+                        Item = runtime.Project(item.Reference, item.Item, _identity),
+                        CatalogId = item.CatalogId,
+                        InLibrary = held.ContainsKey(item.Reference),
+                    }),
+                ],
+                page,
+                pageSize,
+                found.Count);
         }
         finally
         {
             _admission.Release();
         }
-
-        // Wide, because a page number a caller is free to choose must not multiply into a negative offset.
-        var offset = ((long)page - 1) * pageSize;
-
-        if (offset >= found.Count)
-        {
-            return new CatalogItemPage([], page, pageSize, found.Count);
-        }
-
-        var wanted = found.Skip((int)offset).Take(pageSize).ToArray();
-
-        // One read for the page rather than one per result: whether the user holds an item is the same
-        // question browse asks, and asking it fifty times is how a page becomes fifty round trips.
-        var held = await _library
-            .FindLibraryManyAsync([.. wanted.Select(static item => item.Reference)], cancellationToken)
-            .ConfigureAwait(false);
-
-        return new CatalogItemPage(
-            [
-                .. wanted.Select(item => new CatalogItemView
-                {
-                    // The exact value the catalog returned, projected by the kind's own projector - the
-                    // same one browse uses - so a result carries every fact the item states.
-                    Item = runtime.Project(item.Reference, item.Item, _identity),
-                    CatalogId = item.CatalogId,
-                    InLibrary = held.ContainsKey(item.Reference),
-                }),
-            ],
-            page,
-            pageSize,
-            found.Count);
     }
 
     /// <summary>
