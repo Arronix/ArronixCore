@@ -29,5 +29,11 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
     <PackageReference Include="FluentAssertions" />
+    <!--
+         Declaration fixtures are compiled rather than emitted. Reflection.Emit's persisted writer cannot
+         reference a constructor it defined itself from an assembly-level attribute - the token it records
+         resolves to no MethodDef row - and the shapes under test are attribute applications.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" />
   </ItemGroup>
 </Project>

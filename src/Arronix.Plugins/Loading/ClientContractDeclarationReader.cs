@@ -65,10 +65,11 @@ internal static class ClientContractDeclarationReader
 
         var found = new List<ClientContractDeclaration>();
         var defects = new List<string>();
+        var declared = new Lazy<HashSet<string>>(() => TypeNames(metadata));
 
         foreach (var handle in metadata.GetAssemblyDefinition().GetCustomAttributes())
         {
-            Decode(metadata, handle, contract, found, defects);
+            Decode(metadata, handle, contract, declared, found, defects);
         }
 
         // Ambiguity is a defect, not a preference. A consumer resolves a contract by the type the
@@ -88,6 +89,7 @@ internal static class ClientContractDeclarationReader
         MetadataReader metadata,
         CustomAttributeHandle handle,
         AssemblyIdentity contract,
+        Lazy<HashSet<string>> declared,
         List<ClientContractDeclaration> found,
         List<string> defects)
     {
@@ -113,6 +115,15 @@ internal static class ClientContractDeclarationReader
             }
 
             entryPoint = Name(metadata, declaring);
+
+            if (!IsInstanceConstructor(metadata, constructor))
+            {
+                defects.Add(
+                    $"'{entryPoint}' applies a client contract declaration through something other than its "
+                    + "own instance constructor.");
+                return;
+            }
+
             value = attribute.DecodeValue(DeclarationTypeProvider.Instance);
         }
         catch (Exception failure) when (Unreadable(failure))
@@ -123,14 +134,34 @@ internal static class ClientContractDeclarationReader
 
         var arguments = value.FixedArguments;
 
+        // The signature, read from the decode itself. Without it a constructor taking three strings decodes
+        // cleanly and publishes its first string as an entity type nothing type-checked.
         if (arguments.Length != 3
+            || !string.Equals(arguments[0].Type, "System.Type", StringComparison.Ordinal)
+            || !string.Equals(arguments[1].Type, "System.String", StringComparison.Ordinal)
+            || !string.Equals(arguments[2].Type, "System.String", StringComparison.Ordinal)
             || arguments[0].Value is not string entityType
             || arguments[1].Value is not string generatedMetadataHash
             || arguments[2].Value is not string projectionSchemaHash)
         {
             defects.Add(
-                $"'{entryPoint}' derives the client contract declaration and does not carry the entity type "
-                + "and the two hashes its constructor takes.");
+                $"'{entryPoint}' declares a client contract whose constructor is not "
+                + "(System.Type, string, string).");
+            return;
+        }
+
+        // The entity is this assembly's own type. A name naming somebody else's would be a contract for a
+        // value this assembly cannot construct, and an assembly-qualified one matches no definition here.
+        if (!declared.Value.Contains(entityType))
+        {
+            defects.Add(
+                $"'{entryPoint}' declares the entity type '{entityType}', which this assembly does not define.");
+            return;
+        }
+
+        if (!IsHash(generatedMetadataHash) || !IsHash(projectionSchemaHash))
+        {
+            defects.Add($"'{entryPoint}' declares a hash that is not 64 upper-case hexadecimal characters.");
             return;
         }
 
@@ -139,6 +170,34 @@ internal static class ClientContractDeclarationReader
             entityType,
             generatedMetadataHash,
             projectionSchemaHash));
+    }
+
+    /// <summary>Determines whether a method is the declaring type's own instance constructor.</summary>
+    private static bool IsInstanceConstructor(MetadataReader metadata, MethodDefinition constructor)
+        => !constructor.Attributes.HasFlag(MethodAttributes.Static)
+            && constructor.Attributes.HasFlag(MethodAttributes.RTSpecialName)
+            && metadata.GetString(constructor.Name).Equals(".ctor", StringComparison.Ordinal);
+
+    /// <summary>Determines whether text is a SHA-256 rendered the one way this protocol renders one.</summary>
+    /// <remarks>
+    /// Case included. Two spellings of one hash compare unequal unless every reader folds them, and a rule
+    /// remembered at each of several call sites is one that will be forgotten at one of them.
+    /// </remarks>
+    private static bool IsHash(string value)
+        => value.Length == 64
+            && value.All(static character => character is >= '0' and <= '9' or >= 'A' and <= 'F');
+
+    /// <summary>Names every type this assembly defines, the way a serialized type name spells one.</summary>
+    private static HashSet<string> TypeNames(MetadataReader metadata)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var handle in metadata.TypeDefinitions)
+        {
+            names.Add(Name(metadata, metadata.GetTypeDefinition(handle)));
+        }
+
+        return names;
     }
 
     private static IEnumerable<string> Ambiguous(
@@ -197,9 +256,15 @@ internal static class ClientContractDeclarationReader
 
     private static string Name(MetadataReader metadata, TypeDefinition type)
     {
-        var space = metadata.GetString(type.Namespace);
         var name = metadata.GetString(type.Name);
-        return space.Length == 0 ? name : space + "." + name;
+
+        if (!type.IsNested)
+        {
+            var space = metadata.GetString(type.Namespace);
+            return space.Length == 0 ? name : space + "." + name;
+        }
+
+        return Name(metadata, metadata.GetTypeDefinition(type.GetDeclaringType())) + "+" + name;
     }
 
     /// <summary>Decodes a declaration carrying one type reference and two strings.</summary>

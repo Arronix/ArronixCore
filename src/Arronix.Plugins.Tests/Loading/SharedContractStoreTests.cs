@@ -101,6 +101,36 @@ internal sealed class SharedContractStoreTests
         Admit(publisher).Admitted.Should().ContainSingle();
     }
 
+    /// <remarks>
+    /// The line between admitting an assembly and offering it to a browser. A defective client contract
+    /// declaration is a defect in a description of a client surface; the shared contract itself is
+    /// unaffected, and every dependant binds to it exactly as before. Refusing the package here would cost
+    /// an installation a working media kind over something no dependant can observe — so the contract is
+    /// admitted, and the defect travels with it for whoever decides about facets.
+    /// </remarks>
+    [Test]
+    public void AContractWhoseClientDeclarationIsDefectiveIsStillAdmitted()
+    {
+        var folder = Path.Combine(_root, "declaring");
+        CompiledDeclaration.Write(
+            folder,
+            SharedName,
+            CompiledDeclaration.Base.Platform,
+            new CompiledDeclaration.Declared("Entry", MetadataHash: "not-a-hash"));
+
+        var admission = Store().Admit(Graph(
+            Package("declaring", folder, contracts: [SharedName + ".dll"])));
+
+        using var assertions = new AssertionScope();
+        admission.Refusals.Should().BeEmpty("a client-facet defect is not a reason to refuse a contract");
+
+        var admitted = admission.Admitted.Should().ContainSingle().Which;
+        admitted.Identity.Name.Should().Be(SharedName);
+        admitted.ClientContracts.Declarations.Should().BeEmpty();
+        admitted.ClientContracts.Defects.Should().ContainSingle()
+            .Which.Should().Contain("64 upper-case hexadecimal");
+    }
+
     [Test]
     public void TwoPackagesCannotPublishTheSameContractAssemblyName()
     {
