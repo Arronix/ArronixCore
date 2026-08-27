@@ -210,7 +210,11 @@ coverage.
   address is a path on the serving host and the response is length-bounded. The projection is proved before
   it is rendered — iteratively, bounded in depth, cycles, total values and total rendered characters, with
   every list charged before it is iterated — and what a consumer receives is what that proof captured, not
-  the contract objects it was captured from. Every projected field must carry the schema's own descriptor at
+  the contract objects it was captured from. The schema itself is read once and whole when the contract is
+  admitted, roots, components and choices together, and the published schema hash is taken over that frozen
+  copy, so what was hashed is what is rendered; the identity a projected field must carry is still the
+  contract's own admitted descriptor. One total covers a rendering, which is a schema plus one projection's
+  values, so each projection continues from what freezing its schema spent. Every projected field must carry the schema's own descriptor at
   its own position; `FieldValue` is held to being a real tagged value, with absent distinct from a present
   empty list in the model and in the document; links are absolute http/https and artwork is that or a strict
   inline raster whose decoded bytes match the container it claims. A payload failure never rewrites the
@@ -337,8 +341,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-27) reports 3,448 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,750 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,458 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,760 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

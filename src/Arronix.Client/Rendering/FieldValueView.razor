@@ -51,10 +51,9 @@ else if (Value.Kind == FieldValueKind.Composite && Value.Items is { Count: > 0 }
             <span class="value-component" data-component-id="@component.FieldId">
                 @if (!string.IsNullOrEmpty(component.Name))
                 {
-                    @* The colon is written here rather than left to a stylesheet: a rule that has not been
-                       added yet renders "VoiceAudience", and this file is where the drawing is decided. *@
-                    <span class="value-component-name">@component.Name:</span>
-                    <text> </text>
+                    @* Separator and all, inside the span. A stylesheet rule that has not been added yet
+                       renders "VoiceAudience", and a whitespace-only markup block does not survive. *@
+                    <span class="value-component-name">@(component.Name + ": ")</span>
                 }
                 <FieldValueView Descriptor="component" Value="components[index]" Compact="Compact" />
             </span>

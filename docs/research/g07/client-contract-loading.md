@@ -305,8 +305,14 @@ ratchets pass. Per project:
 
 3. **The browser half is not on the hermetic test rail.** `eng/ci/run-tests.sh` carries no browser
    toolchain, and adding one would put a browser download in the clean-repository proof. The harness stands
-   the real thing up and proves the server half; the browser half is operator-run and its exact output is
-   quoted above. `#contract-proof` exists so any browser driver can read the client's complete report.
+   the real thing up and proves the server half.
+
+   The G07.1 matrix in §4.2 was read by hand from a running page, which is what "operator-run" meant when
+   this was written. It no longer describes how the browser half is driven: G07.2 added
+   `eng/proofs/g07-browser-proof.mjs` and `bash eng/proofs/g07-client-contracts.sh --browser`, which drive
+   the same identifiers and write machine-readable evidence. That driver still runs beside the rail rather
+   than inside it, and still needs Playwright's Chromium, so the gap this note records is unchanged — only
+   the manual reading is. `#contract-proof` remains what a driver reads for the load report.
 
 4. **No provenance.** Content hashes say which bytes; no signature says who vouched for them. Package
    signing remains unbuilt, as recorded for G03.

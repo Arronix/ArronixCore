@@ -16,6 +16,15 @@ than a closed gate.
   and again before any value is handed back, because a withdrawal can land at any of those points. Name
   equality is not equivalent: a contract with the same name from another installation is another contract.
   A projection already on screen is invalidated by the same rule.
+- **A schema is read once and whole, when its contract is admitted.** Reading `declaration.Schema` once
+  captures the root list and nothing else: every field's components and every field's choices are lists the
+  contract still owns. Without freezing them, the graph hashed at admission, the graph a payload is proved
+  against and the graph a page renders are three separate reads of objects that may answer differently each
+  time, and the published schema hash does not necessarily cover what is rendered. The contract's own root
+  objects are kept for one purpose — requiring a projected field to carry the descriptor it was admitted
+  with — and everything else is a deep copy this client owns. One total covers a rendering, which is a
+  schema plus one projection's values, so a projection continues from what freezing its schema spent rather
+  than starting from a second full budget.
 - **Reading a contract's list once is necessary and not sufficient.** The report, the renderer and the proof
   would each read the same objects again, so a list that answers safely while it is checked and returns a
   `javascript:` URL afterwards would reach the document. The projection proof therefore **captures what it

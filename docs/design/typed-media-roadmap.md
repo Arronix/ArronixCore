@@ -492,10 +492,12 @@ Exit gate:
 
 #### G07.2 — Generated client metadata, typed deserialization, and typed rendering
 
-**Status:** implemented; open pending independent review. Every numbered exit condition below is met against
-the real hosted server and a real browser, and the observed run is recorded in
-`docs/research/g07/client-payload-projection.md`. The gate is not marked complete here because the review of
-that work has not reported; the remaining gate is that review, not any unbuilt part of the outcome.
+**Status:** implemented; open pending independent re-review. Every numbered exit condition below is met
+against the real hosted server and a real browser, and the observed runs are recorded in
+`docs/research/g07/client-payload-projection.md`. One review round has reported and its code blocker — a
+schema hashed at admission but re-read from the contract's own lists at every payload — is fixed and
+proved. The gate is not marked complete here because the re-review has not reported; the remaining gate is
+that review, not any unbuilt part of the outcome.
 
 **Outcome:** the browser reads an actual typed Movie graph out of the assembly it loaded, and renders its
 common and Movies-owned values, using generated metadata rather than property reflection.
@@ -518,12 +520,15 @@ Exit gate:
   Movies or Video dependency in the Client build;
 - generic descriptors remain one-way presentation/wire data rather than an alternative media definition.
 
-Beyond those conditions, this gate settled three rules the outcome turned out to need. A projection is
-contract-produced output, so it is proved before it is rendered — iteratively, bounded in depth, cycles,
-total values and total rendered characters — and what a consumer receives is what that proof captured, not
-the graph it was captured from. A payload failure never rewrites the installation report the loader already
-decided. And the Client spells no media kind and no installation's own path, including no default payload
-address, which is what lets the same unchanged panel take an external consumer's contract at G07A.
+Beyond those conditions, this gate settled four rules the outcome turned out to need. A contract's schema
+is read once, whole, when the contract is admitted — roots, components and choices together — and the
+published schema hash is taken over that frozen copy, so what was hashed is what is rendered. A projection
+is contract-produced output, so it is proved before it is rendered — iteratively, bounded in depth, cycles,
+total values and total rendered characters, with one total across the schema and the values beside it — and
+what a consumer receives is what that proof captured, not the graph it was captured from. A payload failure
+never rewrites the installation report the loader already decided. And the Client spells no media kind and
+no installation's own path, including no default payload address, which is what lets the same unchanged
+panel take an external consumer's contract at G07A.
 
 #### G07.3 — Contract cache lifecycle in the browser
 
@@ -1342,7 +1347,7 @@ telemetry reaching a sink registered after `AddArronixHost`. The
 threat model's WP-T2 telemetry items are closed with them; T-18 quotas and T-19 host-fact disclosure remain
 open and belong to WP-T5 and WP-T1.
 
-**G07.2 is implemented and awaiting independent review.** A browser holding a proved installation reads one
+**G07.2 is implemented and awaiting independent re-review.** A browser holding a proved installation reads one
 serialized entity through the contract it admitted, proves the projection before rendering it, and draws a
 typed Movie with artwork, ratings, lifecycle/status and collections — with no media or format assembly in
 the Client build and no media kind spelled in its source. The server half, the browser half and the full

@@ -56,8 +56,15 @@ const page = await context.newPage();
 const requested = [];
 page.on('request', request => requested.push(request.url()));
 
+// Both channels. An unhandled exception reaches `pageerror`; a `console.error` the application wrote
+// itself does not, and "nothing threw in the page" would quietly miss it.
 const consoleErrors = [];
-page.on('pageerror', error => consoleErrors.push(String(error)));
+page.on('pageerror', error => consoleErrors.push(`pageerror: ${error}`));
+page.on('console', message => {
+    if (message.type() === 'error') {
+        consoleErrors.push(`console.error: ${message.text()}`);
+    }
+});
 
 try {
     await page.goto(`${address}/contracts`, { waitUntil: 'networkidle' });
@@ -89,6 +96,13 @@ try {
     check('the client carries no payload address of its own', await value(page, '#contract-payload'), '');
 
     await page.fill('#contract-payload', 'fixtures/g07/movie.json');
+
+    // The response the browser actually handed the contract, captured around the click. Fetching the file
+    // again from Node would hash a second request, which says nothing about what this page read.
+    const payloadResponse = page.waitForResponse(
+        response => response.url().endsWith('/fixtures/g07/movie.json'),
+        { timeout: 60_000 });
+
     await page.click('#project-contract-payload');
     await page.waitForFunction(
         () => document.querySelector('#projection-status')?.textContent?.trim() !== 'NotAttempted',
@@ -104,10 +118,11 @@ try {
     const payloadRequest = requested.find(url => url.endsWith('/fixtures/g07/movie.json'));
     check('the payload arrived as a serialized network payload', Boolean(payloadRequest), true);
 
-    const served = await (await fetch(`${address}/fixtures/g07/movie.json`)).arrayBuffer();
+    const served = await payloadResponse;
+    check('and the host served it', served.status(), 200);
     check(
         'the bytes the browser read are the bytes the contract wrote',
-        createHash('sha256').update(Buffer.from(served)).digest('hex'),
+        createHash('sha256').update(await served.body()).digest('hex'),
         fixtureHash);
 
     const proof = JSON.parse(await page.locator('#projection-proof').textContent());
@@ -138,17 +153,48 @@ try {
 
     // The attributes only say what the document claims. This says the browser decoded the bytes the
     // contract carried, which is the whole point of holding an inline image to its own signature.
-    await poster.evaluate(image => image.complete
-        ? true
-        : new Promise(resolve => { image.onload = resolve; image.onerror = resolve; }));
-    check(
-        'the poster decoded as a real image',
-        await poster.evaluate(image => image.complete && image.naturalWidth > 0),
-        true);
+    //
+    // The image is lazily loaded, so offscreen it stays incomplete indefinitely: it is scrolled to first,
+    // and the wait is bounded so a poster that never decodes fails this proof rather than stalling it.
+    await poster.scrollIntoViewIfNeeded();
+    const decoded = await poster.evaluate(
+        (image, budget) => image.complete && image.naturalWidth > 0
+            ? true
+            : new Promise(resolve => {
+                const settle = () => resolve(image.complete && image.naturalWidth > 0);
+                image.addEventListener('load', settle, { once: true });
+                image.addEventListener('error', () => resolve(false), { once: true });
+                setTimeout(() => resolve(false), budget);
+            }),
+        15_000);
+
+    check('the poster decoded as a real image', decoded, true);
     check(
         'and it decoded at the size it states',
         await poster.evaluate(image => [image.naturalWidth, image.naturalHeight]),
         [8, 12]);
+
+    // A composite is a tuple of values, and its parts say which is which — from the components the
+    // contract declared, so a kind this client has never heard of is labeled by what it says it is.
+    const labels = await page.locator('[data-field-id="ratings"] [data-component-id]').evaluateAll(
+        parts => parts.map(part => part.dataset.componentId));
+    check(
+        'a composite\'s parts are drawn under their own components',
+        ['source', 'value', 'scale', 'voice', 'sampleSize'].filter(id => !labels.includes(id)),
+        []);
+
+    // Nested too: a rating's scale is a composite inside a composite, and its parts are its own.
+    check(
+        'and so are the parts of a composite inside one',
+        ['minimum', 'maximum'].filter(id => !labels.includes(id)),
+        []);
+
+    const ratings = await text(page, '[data-field-id="ratings"]');
+    check(
+        'each part carries its component\'s declared name, separated from its value',
+        ratings.includes('Voice: Audience') && ratings.includes('Source: tmdb'),
+        true);
+    check('and no label runs into the value beside it', /[A-Za-z]:[^\s]/.test(ratings), false);
 
     check('nothing threw in the page', consoleErrors, []);
 

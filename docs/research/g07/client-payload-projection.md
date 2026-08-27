@@ -38,17 +38,33 @@ objects. `AListThatChangesAfterItIsCheckedCannotChangeWhatIsRendered` and
 `ADescriptorListThatChangesAfterItIsCheckedCannotChangeWhatIsRendered` are the witnesses; each uses a list
 that answers differently on its second read, and asserts the entry was read exactly once.
 
-**A descriptor's identity is proved on the input; a descriptor's content is copied.** Every projected field
-must carry the schema's own descriptor object, at its own position — a dropped, reordered, duplicated or
-merely equal-cloned descriptor is refused. That check is made against what the contract returned. What is
-handed back is the copy, because a descriptor's `Components` and `Choices` are lists the contract owns.
+**The schema is frozen when the contract is admitted, not when a payload arrives.** Reading
+`declaration.Schema` once captures the root list and nothing else: every field's `Components` and every
+field's `Choices` are lists the contract still owns. Without freezing them, the graph hashed at admission,
+the graph a payload is proved against and the graph a page renders are three separate reads of objects that
+may answer differently each time — so the published `ProjectionSchemaHash` would not necessarily cover what
+is rendered. The whole graph is therefore read once, in one bounded walk, and two facts are kept apart:
+`ClientContractSchema.Admitted` is the contract's own root descriptor objects, and `Frozen` is a deep copy
+this client owns. The hash is taken over the copy, so what was hashed is what is rendered.
 
-**One budget, three dimensions.** Depth and a path-scoped open set close nesting and cycles. One node budget
-covers every descriptor, value, item and choice across the whole walk, charged before any list is iterated,
-so a list claiming `int.MaxValue` entries costs a refusal rather than an allocation. And one **character**
-budget covers the whole rendering: each string is bounded on its own and the node budget bounds how many
-there are, but 4,096 values × 65,536 characters is hundreds of megabytes out of a payload capped at four,
-so the total is charged too — including addresses, in both shapes artwork takes.
+**A descriptor's identity is proved on the input; a descriptor's content is copied.** Every projected field
+must carry the descriptor its contract was admitted with, at its own position — a dropped, reordered,
+duplicated or merely equal-cloned descriptor is refused, and so is the frozen copy, which is equal in every
+value and is still not that object. What is handed back is the copy.
+
+**One budget, three dimensions, and one total across two walks.** Depth and a path-scoped open set close
+nesting and cycles. One node budget covers every descriptor, value, item and choice, charged before any list
+is iterated, so a list claiming `int.MaxValue` entries costs a refusal rather than an allocation. And one
+**character** budget covers the whole rendering: each string is bounded on its own and the node budget
+bounds how many there are, but 4,096 values × 65,536 characters is hundreds of megabytes out of a payload
+capped at four, so the total is charged too — including addresses, in the `ToString()` form this client
+actually bounds and renders, and in both shapes artwork takes.
+
+Moving the schema read to admission split that walk in two, and the total did not split with it. A rendering
+is one schema plus one projection's values, so the freeze charges the schema where it reads it and every
+projection continues from the remainder. Two independently full budgets would let a contract declare a
+schema at the limit and then render values at the limit again; a contract admitted once and read many times
+gets the same remainder each time.
 
 **Failures are distinct problems.** Unsafe address, unavailable, deserialization, wrong deserialized runtime
 type, projection threw, projected type mismatch, schema disagreement, value invariant, no admitted contract.
@@ -70,6 +86,10 @@ payload labelled `image/png` that decodes to `<svg …>` is a document the brows
 must carry the container signature the address claims. The base64 shape is checked before the decode, and
 both padded forms are accepted — an earlier reading of "padding is at the end" refused every
 two-character-padded payload, which is most of them.
+
+**A composite's parts say which is which.** A tuple rendered as `8.6, 0, 10, Audience, 37,412` is not a
+rating anybody can read. Each part carries its component's declared name, taken from the descriptor the
+contract shipped, so a media kind this client has never heard of is labeled by what it says it is.
 
 **Artwork is a whole image.** Role, address, width and height survive projection, the captured graph, the
 serialized proof and the rendered `<img>`. Reducing it to a URL loses the two facts that let a consumer pick
@@ -125,6 +145,12 @@ declared measurements are the images' own.
 | An offer is named by its assembly and its entry point together | `.AnOfferIsNamedByItsAssemblyAndItsEntryPointTogether` |
 | Dropped, reordered, duplicated and equal-cloned descriptors are each refused | `ProjectionAuditTests.ADroppedReorderedDuplicatedOrClonedDescriptorIsRefused` |
 | A list that changes after it is checked cannot change what is rendered | `.AListThatChangesAfterItIsCheckedCannotChangeWhatIsRendered`, `.ADescriptorListThatChangesAfterItIsCheckedCannotChangeWhatIsRendered` |
+| A root list, nested components and choices that each change after admission change nothing | `ClientContractSchemaTests.ARootListThatChangesAfterAdmissionChangesNothing`, `.NestedComponentsThatChangeAfterAdmissionChangeNothing`, `.ChoicesThatChangeAfterAdmissionChangeNothing` |
+| Neither an equal clone nor the frozen copy substitutes for the admitted descriptor | `.NeitherAnEqualCloneNorTheFrozenCopyCanStandInForTheAdmittedDescriptor` |
+| The trusted projection is detached from every contract-owned schema list | `.TheTrustedProjectionIsDetachedFromEveryContractOwnedSchemaList` |
+| One total covers the schema and the values rendered beside it | `.OneTotalCoversTheSchemaAndTheValuesRenderedBesideIt` |
+| A schema that answers differently each time is admitted, and hashed, from its first answer | `ContractDeclarationProofTests.ASchemaThatAnswersDifferentlyEachTimeIsAdmittedFromItsFirstAnswer` |
+| A composite's parts carry their component's declared name, from the descriptor alone | `FieldValueRenderingTests.EachCompositePartIsRenderedByItsOwnComponentAndCarriesItsName`, `.ComponentNamesComeFromTheDescriptorRatherThanFromAnythingThisClientKnows`, `.AComponentWithNoNameIsRenderedWithoutALabel` |
 | Wrong shape, wrong slot, two slots, absent-with-payload, and impossible cardinality each fail | `.AValueOfTheWrongShapeIsRefused` and five neighbours |
 | Absent and present-empty are both accepted and are not the same value | `.AbsentAndPresentEmptyAreBothAcceptedAndAreNotTheSameValue` |
 | An unknown enumerated value fails rather than displaying as text | `.AnEnumeratedValueOutsideItsDeclaredChoicesIsRefused` |
@@ -163,16 +189,20 @@ packages. Observed:
 | Client build carries a media assembly | no `_framework/Arronix.Media|Format|Plugin` request |
 | Offered contracts | 1: `Arronix.Media.Movies|…MovieClientContractEntryPointAttribute` → `Arronix.Media.Movies.Movie` |
 | Payload address on load | blank — the client carries none of its own |
-| Payload request | `GET /fixtures/g07/movie.json` → 200, a separate serialized network payload |
+| Payload request | `GET /fixtures/g07/movie.json` → 200 `application/json`, 1976 bytes |
+| Bytes the browser read | the captured response body, hashed, equals the checked-in fixture |
 | `#projection-status` / `#projected-entity-type` | `Projected` / `Arronix.Media.Movies.Movie` |
 | `#projection-payload-length` / `#projected-field-count` | 1976 / 24 |
 | artwork, ratings, lifecycle, status, collections | each `data-absent=false`; item counts 2, 2, 6, —, 1 |
 | poster | `data-artwork-role=poster`, `width=8`, `height=12`, inline `data:image/png;base64,…` |
 | poster decoded | `complete=true`, `naturalWidth=8`, `naturalHeight=12` |
+| ratings | `Source: tmdb, Value: 8.6, Scale: Minimum: 0, Maximum: 10, Is valid: Yes, Voice: Audience, Sample size: 37,412, …` |
+| lifecycle | `In cinemas: 16/07/2010, Physical: 07/12/2010, Digital: 23/11/2010, Evaluated on: 27/08/2026, Available on: 23/11/2010, Stage: Released` |
+| composite parts | one `[data-component-id]` per part, nested ones included: `source`, `value`, `scale`, `minimum`, `maximum`, `voice`, `sampleSize` |
 | `fixtures/g07/absent.json` | `Unavailable`, nothing projected, failure names the 404 |
 | `https://evil.test/movie.json` | `AddressUnsafe`, and no request to that host |
 
-**Two defects this run found**, both fixed and both re-proved:
+**Four defects these runs found**, each fixed and each re-proved:
 
 1. A Blazor component with no parameters is never handed them again, so the panel read what could be
    projected once — before the installation had loaded — and kept that answer. In the real browser it said
@@ -180,15 +210,42 @@ packages. Observed:
    nor a reading of the code caught it; only the browser did. The page now passes the loader's report as a
    render trigger, and the panel states its offer count so a driver can see which answer it holds.
 2. The panel shipped a default payload address. Removed, and held out by an architecture rule.
+3. The driver hashed a second request of its own rather than the response this page was handed, and its
+   wait on a lazily loaded image was unbounded — a poster that stayed offscreen would have stalled the proof
+   instead of failing it. It now captures the response around the click, scrolls to the image, bounds the
+   wait, and collects `console.error` as well as `pageerror`, which are different channels.
+4. A component label rendered as `Voice:Audience`: the name span sat next to its value with no literal
+   separator, and the whitespace-only markup block meant to supply one did not survive compilation. The
+   separator is written into the label, where the drawing is decided, and the browser asserts that no label
+   runs into the value beside it.
 
-### 4.4 Full rail
+### 4.4 Mutation evidence
+
+Each guard was inverted with a mutation that compiles, the suite rebuilt, and the guard restored. A mutation
+that fails to build proves nothing — one attempt here did, and was redone until it compiled.
+
+| Mutation | Result |
+| --- | --- |
+| The schema is not frozen: a field keeps the contract's own component and choice lists | 7 cases fail |
+| Identity is checked against the frozen copy rather than the admitted root | 36 fail |
+| The admitted roots are the contract's live list rather than a capture of it | 2 fail |
+| Choices are taken from the contract's own list rather than copied | 1 fails |
+| The hash is taken over the live schema rather than the frozen capture | 1 fails, the end-to-end admission witness |
+| Each payload is given a fresh full budget instead of the schema's remainder | 1 fails |
+| A composite's component labels are dropped | 5 fail |
+
+The fifth row is why the witness exists: the same mutation survived 190 of 190 before it was written, so the
+loader-to-hash connection was not load-bearing until a contract whose schema changes between the freeze and
+any later read was admitted end to end through `MediaContractLoader`.
+
+### 4.5 Full rail
 
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=14 total=3750 enabled=3448 passed=3448 failed=0 skipped=302 inconclusive=0
+projects=14 total=3760 enabled=3458 passed=3458 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
-compileLogs=1 compileProjects=14 compileItems=359 boundSources=15
+compileLogs=1 compileProjects=14 compileItems=360 boundSources=15
 ```
 
 The registered skip count is unchanged at 302 — 301 Movies cases and one architecture case — and both
