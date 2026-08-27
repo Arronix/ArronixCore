@@ -32,6 +32,25 @@ public static class FieldValueFormatter
     /// <returns>The text.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is <see langword="null"/>.</exception>
     public static string Format(FieldDescriptor descriptor, FieldValue? value)
+        => Format(descriptor, value, element: false);
+
+    /// <summary>
+    /// Renders a value for display, saying whether it is one element of its field's list.
+    /// </summary>
+    /// <param name="descriptor">What the field is, which supplies its choices and its unit.</param>
+    /// <param name="value">The value, which may be absent.</param>
+    /// <param name="element">
+    /// <see langword="true"/> when this is one element of a multivalued field rather than the list itself.
+    /// An element carries the field's own shape, so the field is no longer multivalued here.
+    /// </param>
+    /// <returns>The text.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="descriptor"/> is <see langword="null"/>.</exception>
+    /// <remarks>
+    /// A list and a composite both arrive as items and are different things: a list's elements carry the
+    /// field's shape, a composite's parts each carry their own component descriptor. Rendering a part under
+    /// the parent gives it the parent's kind, unit and choices.
+    /// </remarks>
+    public static string Format(FieldDescriptor descriptor, FieldValue? value, bool element)
     {
         ArgumentNullException.ThrowIfNull(descriptor);
 
@@ -40,14 +59,31 @@ public static class FieldValueFormatter
             return AbsentMarker;
         }
 
-        if (value.Items is { Count: > 0 } items)
+        var items = value.Items;
+
+        if (descriptor.Multivalued && !element)
         {
-            return string.Join(", ", items.Select(item => Format(descriptor, item)));
+            return items is { Count: > 0 } elements
+                ? string.Join(", ", Enumerable.Range(0, elements.Count)
+                    .Select(index => Format(descriptor, elements[index], element: true)))
+                : AbsentMarker;
         }
 
-        if (value.Items is { Count: 0 })
+        if (value.Kind == FieldValueKind.Composite)
         {
-            return AbsentMarker;
+            if (items is not { Count: > 0 } components)
+            {
+                return AbsentMarker;
+            }
+
+            var declared = descriptor.Components;
+
+            return string.Join(", ", Enumerable.Range(0, components.Count).Select(index => Format(
+                index < declared.Count
+                    ? declared[index]
+                    : Anonymous(components[index]?.Kind ?? FieldValueKind.Text),
+                components[index],
+                element: false)));
         }
 
         var text = FormatScalar(descriptor, value);
@@ -65,7 +101,10 @@ public static class FieldValueFormatter
     public static string Format(FieldValue? value)
         => Format(Anonymous(value?.Kind ?? FieldValueKind.Text), value);
 
-    private static FieldDescriptor Anonymous(FieldValueKind kind)
+    /// <summary>A descriptor for a value whose field is not to hand.</summary>
+    /// <param name="kind">The shape the value carries.</param>
+    /// <returns>The descriptor.</returns>
+    internal static FieldDescriptor Anonymous(FieldValueKind kind)
         => new() { FieldId = "value", Name = "Value", ValueKind = kind };
 
     private static string FormatScalar(FieldDescriptor descriptor, FieldValue value) => value.Kind switch

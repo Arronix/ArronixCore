@@ -4,22 +4,40 @@
     One of the two halves of the field-shape table: twenty declared value shapes, six drawings.
     Nothing here knows what the field means — only what shape its values take, which is the whole
     difference between a client that renders any media kind and one that renders four.
+
+    A list and a composite both arrive as Items and are not the same thing. A multivalued field's
+    elements each carry the field's own shape; a composite's parts each carry their own component
+    descriptor, and drawing them under the parent's would give every part the parent's kind, unit and
+    choices.
 *@
 
 @if (Value is null || Value.IsAbsent)
 {
     <span class="value value-absent" title="No value">—</span>
 }
-else if (Value.Items is { Count: > 0 } items)
+else if (Descriptor.Multivalued && !Element && Value.Items is { Count: > 0 } elements)
 {
     <span class="value value-list">
-        @foreach (var (item, index) in items.Select((item, index) => (item, index)))
+        @for (var index = 0; index < elements.Count; index++)
         {
             @if (index > 0)
             {
                 <span class="value-separator">, </span>
             }
-            <FieldValueView Descriptor="Descriptor" Value="item" Compact="Compact" />
+            <FieldValueView Descriptor="Descriptor" Value="elements[index]" Compact="Compact" Element="true" />
+        }
+    </span>
+}
+else if (Value.Kind == FieldValueKind.Composite && Value.Items is { Count: > 0 } components)
+{
+    <span class="value value-composite">
+        @for (var index = 0; index < components.Count; index++)
+        {
+            @if (index > 0)
+            {
+                <span class="value-separator">, </span>
+            }
+            <FieldValueView Descriptor="ComponentAt(index, components[index])" Value="components[index]" Compact="Compact" />
         }
     </span>
 }
@@ -30,7 +48,9 @@ else
         case ValuePresentation.Image:
             @if (Value.Address is { } image)
             {
-                <img class="value value-image" src="@image" alt="@(Value.Image?.Role ?? Descriptor.Name)" loading="lazy" />
+                <img class="value value-image" src="@image" alt="@(Value.Image?.Role ?? Descriptor.Name)"
+                     data-artwork-role="@Value.Image?.Role" data-artwork-width="@Value.Image?.Width"
+                     data-artwork-height="@Value.Image?.Height" loading="lazy" />
             }
             break;
 
@@ -82,9 +102,27 @@ else
     [Parameter]
     public bool Compact { get; set; }
 
-    private string Text => FieldValueFormatter.Format(Descriptor, Value);
+    /// <summary>
+    /// Gets or sets a value indicating whether this value is one element of its field's list rather than
+    /// the list itself. An element carries the field's shape, so the field is no longer multivalued here.
+    /// </summary>
+    [Parameter]
+    public bool Element { get; set; }
+
+    private string Text => FieldValueFormatter.Format(Descriptor, Value, Element);
 
     private int Percent => Value?.Real is { } ratio ? (int)Math.Round(Math.Clamp(ratio, 0d, 1d) * 100) : 0;
+
+    /// <summary>The descriptor one composite part is drawn under.</summary>
+    /// <remarks>
+    /// A projection this client proved has one component per part. A projection it did not — a workbench
+    /// cell, a summary line — may not, and drawing a part under the parent is worse than drawing it under
+    /// its own shape with no name.
+    /// </remarks>
+    private FieldDescriptor ComponentAt(int index, FieldValue? part)
+        => index < Descriptor.Components.Count
+            ? Descriptor.Components[index]
+            : FieldValueFormatter.Anonymous(part?.Kind ?? FieldValueKind.Text);
 
     // The table. Twenty rows, no fall-through arm: a value shape added to the contract fails this build
     // until someone decides how it is drawn, which is the property that makes "renders any media kind" a
