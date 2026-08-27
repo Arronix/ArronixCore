@@ -105,6 +105,42 @@ public class ClientTopologyTests
             + "contracts. Generated metadata is how a contract says what it holds.");
     }
 
+    /// <summary>
+    /// Names a media kind, a media assembly, or a path some particular installation happens to serve.
+    /// </summary>
+    /// <remarks>
+    /// The client renders whichever contract a host admitted, so anything it spells about one media kind is
+    /// a kind it renders better than the others. A default payload path is the same mistake wearing a
+    /// different hat: it is one installation's fixture compiled into every deployment, and the panel that
+    /// carried it would stop being the panel an external consumer's contract proves itself through.
+    /// </remarks>
+    private static readonly string[] ForbiddenSpellings =
+    [
+        "Arronix.Media.",
+        "Arronix.Format.",
+        "Arronix.Plugin.",
+        "fixtures/",
+        "movie.json"
+    ];
+
+    [Test]
+    public void ClientSpellsNoMediaKindAndNoInstallationsOwnPath()
+    {
+        var offenders = SourceScanner
+            .Lines(RepositoryLayout.Client, "*.cs", "*.razor")
+            .Where(entry => ForbiddenSpellings.Any(
+                spelling => entry.Text.Contains(spelling, StringComparison.OrdinalIgnoreCase)))
+            .Select(entry => $"{entry.File}:{entry.Line}: {entry.Text.Trim()}")
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.That(
+            offenders,
+            Is.Empty,
+            "The client names a media assembly or a path one installation happens to serve. Both make it "
+            + "a client for that installation rather than for whichever contract a host admitted.");
+    }
+
     [Test]
     public void ClientReferencesNoHostSideNamespaceInItsSource()
     {

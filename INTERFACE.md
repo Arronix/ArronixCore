@@ -43,6 +43,10 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `ILanguageDefinition` owns one language's title comparison, provider-query, file-name spelling, and sort transformations.
 - `StandardMediaAction` names platform operations independently of their string wire identifiers. Host derives their `ActionDescriptor` values from a media type's compiled shape.
 - `ActionRequest` carries typed item references plus descriptor-defined textual parameter values across Client and API.
+- `ClientContractLimits` states how large a graph a client contract may describe: nesting depth, total
+  values, total rendered characters, and the longest text, address, identifier and image measurement one
+  value may carry. One set of bounds for every walk over a contract-produced shape, so two walks cannot
+  drift into disagreeing about what is describable.
 - `ClientContractManifest`, `ClientContractPackage`, `ClientContractAssembly`, and `ClientContractRefusal` state what a browser may load from a running installation and what it may not: the universal contract identity it must already carry, one hash over the whole installation, per package its client-safe assemblies with their exact content hash, CLR identity, module version identifier and length plus its transitive client dependency closure in load order and one hash over it, and per withheld facet the reason, the admitted assemblies it cannot reach, the declared files nothing admitted, and every required package whose withdrawal caused it. Package identifiers are `PluginId`, not text.
 
 ## 4. Public interfaces
@@ -170,6 +174,39 @@ produced against what was published, including that the loaded assembly's contra
 object identity to the client's own compiled contract assembly. An entry that verified and was not loaded is
 reported as verified, never as loaded, and a typed projection is permitted only when every required assembly
 is resident. What a media contract *contains* is not discovered by enumeration.
+
+A page holding a verified installation may then read one serialized entity through it. The contract is
+chosen from what the page admitted, named by its declaring assembly and its entry point together, and
+re-proved by contract object identity before the payload is fetched, after it arrives, and again before any
+value is handed back; a contract the host stops publishing therefore reads nothing, and values already
+rendered from one stop being shown. The address is a path on the host that served the client, and the
+response is bounded to `ClientContractLimits.MaxPayloadBytes` — refused from a declared length past it, or
+at the first byte past it when the response declares none. Only the admitted declaration deserializes, and
+the value it returns must be its own declared `Type` object.
+
+The projection is proved before anything renders it, and what a consumer receives is what that proof
+captured rather than the graph it was captured from: a contract's own list may answer one way while it is
+checked and another way while it is drawn. The walk is iterative and bounded by
+`ClientContractLimits` — depth, a path-scoped cycle check, one node budget over every descriptor, value,
+item and choice, and one character budget over the whole rendering — and a list that throws is a refusal
+rather than an escape. Every projected field carries the schema's own descriptor object, at its own
+position: a dropped, reordered, duplicated or merely equal-cloned descriptor is refused. `FieldValue` is
+held to being a real tagged value — the kind matches its descriptor, exactly the permitted payload slot is
+populated, `IsAbsent` is distinct from a present empty list, multivalued and composite cardinality and
+component positions match the schema, an unknown enumerated value fails rather than displaying as arbitrary
+text, and sizes, counts, proportions, elapsed times, references and semantic identifiers are held to what
+they mean. Failures are distinct outcomes — unsafe address, unavailable, deserialization, wrong deserialized
+runtime type, projection threw, projected type mismatch, schema disagreement, value invariant, no admitted
+contract — and none of them rewrites the installation report, which was decided correctly whatever a
+document turned out to be. Cancellation belongs to the caller: a signaled token propagates, and a
+cancellation nobody asked for is an ordinary contained failure.
+
+Addresses a browser is given are an allowlist. A link value is an absolute `http` or `https` address with no
+user information; artwork is that or a strict inline raster — `data:image/png`, `image/jpeg`, `image/webp`
+or `image/gif`, base64, decoding to bytes whose container signature is the type the address claims. A label
+is not a format, and SVG, text, non-base64 payloads and malformed base64 are refused rather than sanitized.
+Artwork stays typed throughout: role, address, width and height survive projection, the captured graph and
+the rendered image.
 
 ## 5. Invariants
 
@@ -362,9 +399,8 @@ resolves to the client's own compiled copy by object identity. The Client's buil
 project reference, on Abstractions, and roots that assembly for the trimmer because a dynamically loaded
 contract binds to members the trimmer never saw.
 
-Still open: typed deserialization and rendering of a loaded contract through generated metadata (G07.2),
-cache update, removal and stale-tab behaviour (G07.3), signing and package integrity, side-by-side contract
-versions, and any reload that involves shared contracts
+Still open: cache update, removal and stale-tab behaviour (G07.3), signing and package integrity,
+side-by-side contract versions, and any reload that involves shared contracts
 — an admitted store takes a second graph only when neither shares anything, because matching identifiers,
 versions and file names do not prove matching bytes, identities or dependency closures.
 

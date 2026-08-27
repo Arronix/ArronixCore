@@ -84,8 +84,11 @@ try {
         false);
 
     // --- G07.2: one serialized entity, read through the contract that was admitted ---
-    check('the payload address is a path on this host', await value(page, '#contract-payload'), 'fixtures/g07/movie.json');
+    // The client carries no payload address of its own: it renders whichever contract a host admitted, and
+    // a default would be one installation's fixture compiled into every deployment. The proof supplies it.
+    check('the client carries no payload address of its own', await value(page, '#contract-payload'), '');
 
+    await page.fill('#contract-payload', 'fixtures/g07/movie.json');
     await page.click('#project-contract-payload');
     await page.waitForFunction(
         () => document.querySelector('#projection-status')?.textContent?.trim() !== 'NotAttempted',

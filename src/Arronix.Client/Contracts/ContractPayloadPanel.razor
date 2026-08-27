@@ -27,7 +27,7 @@
         <div class="page-actions">
             <label class="field-label" for="contract-payload">Payload</label>
             <input class="input" id="contract-payload" type="text" value="@_address"
-                   @onchange="OnAddressChanged" disabled="@_busy" />
+                   placeholder="a path on this host" @onchange="OnAddressChanged" disabled="@_busy" />
 
             <label class="field-label" for="contract-payload-contract">Contract</label>
             <select class="input" id="contract-payload-contract" @onchange="OnOfferChanged" disabled="@_busy">
@@ -84,9 +84,6 @@
 </section>
 
 @code {
-    /// <summary>The proof input an ordinary published host serves beside the client.</summary>
-    private const string DefaultAddress = "fixtures/g07/movie.json";
-
     /// <summary>
     /// Gets or sets the installation this page last read, which is when what may be projected changes.
     /// </summary>
@@ -102,7 +99,9 @@
     private ContractPayloadOffer? _offer;
     private ContractPayloadOffer? _projectedThrough;
     private ContractPayloadReport? _report;
-    private string _address = DefaultAddress;
+    // Blank, and stays blank. A default would be a path some particular installation happens to serve, and
+    // this panel is the one a browser uses for whichever contract it admitted.
+    private string _address = string.Empty;
     private bool _busy;
 
     private string ProofText => _report is null
