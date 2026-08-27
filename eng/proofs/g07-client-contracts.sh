@@ -1,20 +1,32 @@
 #!/usr/bin/env bash
 
-# G07.1 — publish, cache, and load the exact client-safe contract package.
+# G07 — publish, cache and load the exact client-safe contract package (G07.1), then read one serialized
+# entity through it and render what it projected (G07.2).
 #
 # Stands up the real thing: the real packages, staged by the real publish; the real server, with its real
 # admission pipeline and no test composition anywhere in it; and the real browser client, published for
 # WebAssembly. Nothing here is a fixture host, a synthetic package folder or a test-only route.
 #
 # It proves the server half over HTTP, then leaves the server running for the browser half. The browser
-# half is operator-run because this repository's hermetic test rail carries no browser toolchain: point a
-# browser at the printed address and read the text of '#contract-proof', which holds the client's complete
-# load report verbatim - the same report the page itself renders.
+# half is driven by eng/proofs/g07-browser-proof.mjs, which needs a browser toolchain this repository's
+# hermetic test rail does not carry; --browser runs it when one is installed, and without it the same
+# checks can be read by hand from the identifiers the page exposes.
 #
 #   DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/proofs/g07-client-contracts.sh --serve
+#   DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/proofs/g07-client-contracts.sh --browser
+#
+# What the browser reads, all of it rendered rather than exposed through script interop:
+#   #contract-proof              the complete load report (G07.1)
+#   #contract-payload            the payload address, as a path on this host
+#   #project-contract-payload    fetches it and projects it through the admitted contract
+#   #projection-status           the outcome, by name
+#   #projected-entity-type       the entity type the contract read the payload into
+#   #projection-proof            the whole projection as a proof harness reads it
+#   [data-field-id]              one element per projected field, carrying its rendered value
 #
 # Options:
 #   --serve      leave the server running until interrupted, for the browser half.
+#   --browser    run the browser half against the server this script started, then stop.
 #   --port N     listen on N instead of 5223.
 #
 # Everything this script generates lives under artifacts/g07. It writes nothing into src, and the client it
@@ -29,6 +41,12 @@
 # The installation is a complete one: the contract-only video package and the movies package, which has an
 # entry assembly and activates. Both are expected Active and both publish a client facet. The manifest
 # lists packages by identifier; the load order is each package's own closure.
+#
+# The projection half needs one serialized entity, and it is served as an ordinary static file from the
+# published client tree - proof-only input, staged here rather than published by an API route this product
+# does not have. eng/proofs/fixtures/g07/movie.json is written by the movies contract's own Serialize and
+# held to it by MovieFixtureTests, so what the browser reads is what the contract writes. Neither the Host
+# nor the Client gains a dependency on it: the client asks for a path, and any package's fixture would do.
 
 set -uo pipefail
 
@@ -41,10 +59,12 @@ client_root="$proof_root/client"
 evidence_root="$proof_root/evidence"
 port=5223
 serve=0
+browser=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --serve) serve=1; shift ;;
+        --browser) browser=1; shift ;;
         --port) port="$2"; shift 2 ;;
         *) echo "error: unknown argument '$1'." >&2; exit 2 ;;
     esac
@@ -121,6 +141,21 @@ if ! "$dotnet_command" publish "$repository_root/src/Arronix.Client/Arronix.Clie
     --configuration Release --output "$client_root"; then
     exit 1
 fi
+
+# Proof input, served as an ordinary static file. Copied rather than generated here: the file is written by
+# the contract's own writer and held to it by a test, so a second way of producing it would be a second
+# answer nothing checks.
+echo "== staging the projection fixture =="
+fixture_source="$repository_root/eng/proofs/fixtures/g07/movie.json"
+fixture_served="$client_root/wwwroot/fixtures/g07/movie.json"
+
+if [[ ! -f "$fixture_source" ]]; then
+    echo "error: $fixture_source is missing. Regenerate it with ARRONIX_REGENERATE_G07_FIXTURE=1." >&2
+    exit 1
+fi
+
+mkdir -p "$(dirname "$fixture_served")"
+cp "$fixture_source" "$fixture_served"
 
 echo "== starting the server =="
 export ASPNETCORE_URLS="http://127.0.0.1:$port"
@@ -224,6 +259,15 @@ client_media_assemblies=$(find "$client_root/wwwroot/_framework" \
     \( -name 'Arronix.Media.*' -o -name 'Arronix.Format.*' -o -name 'Arronix.Plugin.*' \) 2>/dev/null | wc -l | tr -d ' ')
 check "the published client carries no media or format assembly" "$client_media_assemblies" "0"
 
+# The browser reads this file, so what it reads has to be the file the drift test guards - byte for byte,
+# through the real static-file path rather than from the copy on disk.
+fixture_hash=$(shasum -a 256 "$fixture_source" | cut -d' ' -f1)
+served_fixture_hash=$(curl -fsS "$address/fixtures/g07/movie.json" | shasum -a 256 | cut -d' ' -f1)
+check "the projection fixture is served as the bytes the contract wrote" \
+    "$served_fixture_hash" "$fixture_hash"
+check "the projection fixture is served as JSON" \
+    "$(header_of "$address/fixtures/g07/movie.json" "content-type:")" "application/json"
+
 {
     echo "address=$address"
     echo "contractIdentity=$contract_identity"
@@ -232,6 +276,7 @@ check "the published client carries no media or format assembly" "$client_media_
     echo "video=$video_file $video_hash $video_identity"
     echo "movies=$movies_file $movies_hash"
     echo "active=$active"
+    echo "fixture=fixtures/g07/movie.json $fixture_hash"
 } > "$evidence_root/server-half.txt"
 
 echo
@@ -244,9 +289,31 @@ if [[ $failures -ne 0 ]]; then
     exit 1
 fi
 
+if [[ $browser -eq 1 ]]; then
+    echo
+    echo "== browser half =="
+
+    if ! command -v node >/dev/null 2>&1; then
+        echo "error: the browser half needs node. Re-run with --serve and drive it yourself." >&2
+        exit 1
+    fi
+
+    if ! node "$script_directory/g07-browser-proof.mjs" \
+        --address "$address" --evidence "$evidence_root" --fixture "$fixture_source"; then
+        echo "error: the browser half failed. See $evidence_root." >&2
+        exit 1
+    fi
+
+    exit 0
+fi
+
 if [[ $serve -eq 1 ]]; then
     echo
-    echo "Browser half: open $address/contracts and read the text of '#contract-proof'."
+    echo "Browser half: run"
+    echo "  node eng/proofs/g07-browser-proof.mjs --address $address --evidence $evidence_root \\"
+    echo "       --fixture $fixture_source"
+    echo "or open $address/contracts and read '#contract-proof', '#projection-status',"
+    echo "'#projected-entity-type' and '#projection-proof' after pressing '#project-contract-payload'."
     echo "Press Ctrl+C to stop the server."
     wait "$server_pid"
 fi
