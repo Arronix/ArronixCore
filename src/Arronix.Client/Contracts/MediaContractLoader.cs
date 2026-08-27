@@ -133,6 +133,43 @@ public sealed class MediaContractLoader
             : [];
     }
 
+    /// <summary>Lists every client contract this page holds, in the order the host published them.</summary>
+    /// <returns>The contracts, or empty when this page holds no complete verified installation.</returns>
+    /// <remarks>
+    /// Gated like <see cref="Find"/> and built from the published order rather than from the order this
+    /// loader happened to fill its own table in.
+    /// </remarks>
+    internal IReadOnlyList<AdmittedContract> Admitted()
+    {
+        if (Report is not { CanProject: true } report)
+        {
+            return [];
+        }
+
+        var admitted = new List<AdmittedContract>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var package in report.Packages)
+        {
+            foreach (var assembly in package.Assemblies)
+            {
+                var name = assembly.Published.AssemblyName;
+
+                if (!seen.Add(name) || !_resident.TryGetValue(name, out var resident))
+                {
+                    continue;
+                }
+
+                foreach (var contract in resident.Contracts)
+                {
+                    admitted.Add(new AdmittedContract(name, contract));
+                }
+            }
+        }
+
+        return admitted;
+    }
+
     /// <summary>
     /// Reads what the host publishes, verifies everything this client would need, and loads it.
     /// </summary>
@@ -909,6 +946,11 @@ public sealed class MediaContractLoader
             refused,
             _store.IsAvailable,
             failure);
+
+    /// <summary>One admitted client contract, and the assembly that declared it.</summary>
+    /// <param name="AssemblyName">The declaring assembly's simple name.</param>
+    /// <param name="Contract">What the admission proof captured.</param>
+    internal sealed record AdmittedContract(string AssemblyName, VerifiedClientContract Contract);
 
     /// <summary>One contract this page has loaded, and the exact description it was verified against.</summary>
     /// <param name="Assembly">The loaded assembly.</param>

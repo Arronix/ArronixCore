@@ -1,0 +1,167 @@
+@using Arronix.Abstractions.Client
+@using Arronix.Client.Contracts
+@using Arronix.Client.Serialization
+@inject ContractPayloadLoader Payloads
+@*
+    One serialized entity, read through an admitted contract and rendered from what it projected.
+
+    Kind-blind on purpose: the offers come from what this page admitted, and every value below is drawn
+    from the descriptor the contract shipped with it. Nothing here names a media kind.
+*@
+
+<section class="panel" id="contract-payload-panel">
+    <header class="panel-head">
+        <h2>Typed payload</h2>
+        <span class="chip" id="projection-status">@(_report?.Outcome ?? ContractPayloadOutcome.NotAttempted)</span>
+        <span class="chip chip-quiet" id="projected-entity-type">@(_report?.EntityTypeName ?? "—")</span>
+    </header>
+
+    @if (_offers.Count == 0)
+    {
+        <p class="panel-detail" id="contract-payload-unavailable">
+            This page holds no admitted client contract, so there is nothing to read a payload through.
+        </p>
+    }
+    else
+    {
+        <div class="page-actions">
+            <label class="field-label" for="contract-payload">Payload</label>
+            <input class="input" id="contract-payload" type="text" value="@_address"
+                   @onchange="OnAddressChanged" disabled="@_busy" />
+
+            <label class="field-label" for="contract-payload-contract">Contract</label>
+            <select class="input" id="contract-payload-contract" @onchange="OnOfferChanged" disabled="@_busy">
+                @foreach (var offer in _offers)
+                {
+                    <option value="@offer.Key" selected="@(offer == _offer)">@offer.EntityTypeName</option>
+                }
+            </select>
+
+            <button class="button" type="button" id="project-contract-payload"
+                    disabled="@_busy" @onclick="ProjectAsync">Fetch and project</button>
+        </div>
+    }
+
+    @if (_report is not null)
+    {
+        @* The same report, verbatim, for a browser driver to read. *@
+        <pre id="projection-proof" hidden>@ProofText</pre>
+
+        <dl class="contract-facts">
+            <dt>Read through</dt>
+            <dd id="projection-entry-point">@(_report.EntryPointType ?? "—")</dd>
+
+            <dt>Payload bytes</dt>
+            <dd id="projection-payload-length">@(_report.PayloadLength?.ToString(CultureInfo.InvariantCulture) ?? "—")</dd>
+
+            <dt>Projected fields</dt>
+            <dd id="projected-field-count">@(_report.Projection?.Fields.Count ?? 0)</dd>
+        </dl>
+
+        @if (_report.Failure is { Length: > 0 } failure)
+        {
+            <p class="panel-detail tone-problem" id="projection-failure">@failure</p>
+        }
+
+        @if (_report.Projection is { } projection)
+        {
+            <ol class="projected-fields" id="projected-fields">
+                @foreach (var field in projection.Fields)
+                {
+                    <li class="projected-field"
+                        data-field-id="@field.Descriptor.FieldId"
+                        data-value-kind="@field.Descriptor.ValueKind"
+                        data-multivalued="@(field.Descriptor.Multivalued ? "true" : "false")"
+                        data-absent="@(field.Value.IsAbsent ? "true" : "false")"
+                        data-item-count="@(field.Value.Items?.Count.ToString(CultureInfo.InvariantCulture) ?? "—")">
+                        <span class="field-name">@field.Descriptor.Name</span>
+                        <FieldValueView Descriptor="field.Descriptor" Value="field.Value" />
+                    </li>
+                }
+            </ol>
+        }
+    }
+</section>
+
+@code {
+    /// <summary>The proof input an ordinary published host serves beside the client.</summary>
+    private const string DefaultAddress = "fixtures/g07/movie.json";
+
+    private IReadOnlyList<ContractPayloadOffer> _offers = [];
+    private ContractPayloadOffer? _offer;
+    private ContractPayloadOffer? _projectedThrough;
+    private ContractPayloadReport? _report;
+    private string _address = DefaultAddress;
+    private int _requests;
+    private bool _busy;
+
+    private string ProofText => _report is null
+        ? string.Empty
+        : System.Text.Json.JsonSerializer.Serialize(ContractPayloadProof.Of(_report), ApiJsonOptions.Default);
+
+    /// <inheritdoc />
+    protected override void OnParametersSet() => Refresh();
+
+    /// <summary>Re-reads what this page may project, keeping the chosen contract when it is still offered.</summary>
+    private void Refresh()
+    {
+        _offers = Payloads.Offers();
+
+        // Values from a contract this page no longer admits stop being shown. Held by the offer they were
+        // projected through, so the test is the contract object rather than its name.
+        _report = Payloads.Revalidate(_report, _projectedThrough);
+        _offer = _offers.FirstOrDefault(offer =>
+            _offer is not null && string.Equals(offer.Key, _offer.Key, StringComparison.Ordinal))
+            ?? _offers.FirstOrDefault();
+    }
+
+    private void OnAddressChanged(ChangeEventArgs args) => _address = args.Value?.ToString() ?? string.Empty;
+
+    private void OnOfferChanged(ChangeEventArgs args)
+    {
+        var chosen = args.Value?.ToString();
+        _offer = _offers.FirstOrDefault(offer =>
+            string.Equals(offer.Key, chosen, StringComparison.Ordinal)) ?? _offer;
+    }
+
+    /// <remarks>
+    /// One read at a time, and the newest wins. The button is disabled while one is in flight and a second
+    /// entry is refused anyway, so a slower earlier answer can never replace a later one.
+    /// </remarks>
+    private async Task ProjectAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        var request = ++_requests;
+
+        try
+        {
+            Refresh();
+
+            var offer = _offer;
+            var address = _address;
+            var report = offer is null
+                ? await Payloads.ProjectAsync(address)
+                : await Payloads.ProjectAsync(offer, address);
+
+            if (request != _requests)
+            {
+                return;
+            }
+
+            _projectedThrough = offer;
+            _report = report;
+        }
+        finally
+        {
+            if (request == _requests)
+            {
+                _busy = false;
+            }
+        }
+    }
+}

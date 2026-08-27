@@ -58,6 +58,10 @@ public static class ArronixClientServiceCollectionExtensions
         services.TryAddSingleton<ContractStore>();
         services.TryAddSingleton<MediaContractLoader>();
 
+        // Reads one serialized entity through whichever contract this page admitted. Separate from the
+        // loader because a payload that will not read says nothing about the installation that was.
+        services.TryAddSingleton<ContractPayloadLoader>();
+
         return services;
     }
 

@@ -62,6 +62,24 @@ internal enum Misbehaviour
     /// Its schema is two lists, each within the node budget and together one over it.
     /// </summary>
     AggregateSchema,
+
+    /// <summary>It reads a payload into its own entity and projects it, which is the control.</summary>
+    PayloadReadable,
+
+    /// <summary>It reads a payload into a type that is not the entity it declared.</summary>
+    PayloadForeignType,
+
+    /// <summary>It reads a payload into nothing.</summary>
+    PayloadNullEntity,
+
+    /// <summary>Its projection throws.</summary>
+    PayloadThrowingProject,
+
+    /// <summary>Its projection cancels something of its own, with nobody having asked it to.</summary>
+    PayloadCancelingProject,
+
+    /// <summary>Its projection names a type that is not the entity it declared.</summary>
+    PayloadForeignProjectedType,
 }
 
 /// <summary>
@@ -159,7 +177,10 @@ internal static class CompiledContract
     private static bool Hashable(Misbehaviour misbehaviour)
         => misbehaviour is Misbehaviour.None or Misbehaviour.DigestMismatch
             or Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema or Misbehaviour.WideSchema
-            or Misbehaviour.AggregateSchema;
+            or Misbehaviour.AggregateSchema or Misbehaviour.PayloadReadable
+            or Misbehaviour.PayloadForeignType or Misbehaviour.PayloadNullEntity
+            or Misbehaviour.PayloadThrowingProject or Misbehaviour.PayloadCancelingProject
+            or Misbehaviour.PayloadForeignProjectedType;
 
     /// <summary>Whether a fixture's schema can be walked at all, and so hashed.</summary>
     private static bool Walkable(Misbehaviour misbehaviour)
@@ -271,6 +292,30 @@ internal static class CompiledContract
             Misbehaviour.WideSchema => "Schemas.Wide;",
             Misbehaviour.AggregateSchema => "Schemas.Aggregate;",
             _ => "[];",
+        };
+
+        // The payload cases read nothing out of the bytes: what is under test is what a declaration hands
+        // back, and the real read is proved against the shipped movies contract and its own fixture.
+        var read = misbehaviour switch
+        {
+            Misbehaviour.PayloadForeignType => "new Other();",
+            Misbehaviour.PayloadNullEntity => "null!;",
+            Misbehaviour.PayloadReadable or Misbehaviour.PayloadThrowingProject
+                or Misbehaviour.PayloadCancelingProject or Misbehaviour.PayloadForeignProjectedType =>
+                "new Entity();",
+            _ => "throw new System.NotSupportedException();",
+        };
+
+        var project = misbehaviour switch
+        {
+            Misbehaviour.PayloadThrowingProject =>
+                "throw new System.InvalidOperationException(\"the projection refuses to run\");",
+            Misbehaviour.PayloadCancelingProject => "throw new System.OperationCanceledException();",
+            Misbehaviour.PayloadForeignProjectedType =>
+                "new global::Arronix.Abstractions.Client.ProjectedEntity(typeof(Other), []);",
+            Misbehaviour.PayloadReadable =>
+                "new global::Arronix.Abstractions.Client.ProjectedEntity(typeof(Entity), []);",
+            _ => "throw new System.NotSupportedException();",
         };
 
         var baseType = misbehaviour == Misbehaviour.IndirectBase
@@ -468,12 +513,12 @@ internal static class CompiledContract
                     {{schema}}
 
                 public override object Deserialize(System.ReadOnlySpan<byte> utf8Json) =>
-                    throw new System.NotSupportedException();
+                    {{read}}
 
                 public override byte[] Serialize(object entity) => throw new System.NotSupportedException();
 
                 public override global::Arronix.Abstractions.Client.ProjectedEntity Project(object entity) =>
-                    throw new System.NotSupportedException();
+                    {{project}}
             }
 
             """.Replace("__MAXNODES__", ClientContractLimits.MaxNodes.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
