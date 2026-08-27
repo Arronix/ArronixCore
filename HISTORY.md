@@ -1,5 +1,14 @@
 # Arronix History
 
+## 2026-08-28 — Hold G07A teardown to the accepted owned-process rule
+
+G07A's external-consumer proof now uses the accepted G07.3 lifecycle discipline for both its primary and
+mutation server: it tracks only processes it starts, bounds TERM and KILL escalation, distinguishes a
+zombie from a running child, retains a failed signal's handle for bounded retry, and rejects a proof port
+that remains occupied. The fixture writer is also permanently checked as a package-only external consumer,
+with its own configuration and pinned SDK. This strengthens only G07A's proof lifecycle; it does not combine
+its 37 checks with G07.3's 137 checks or declare G07A accepted.
+
 ## 2026-08-28 — Port G07A after accepted G07.3
 
 The package-only external-consumer candidate was ported onto accepted G07.3 without changing the lifecycle

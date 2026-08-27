@@ -202,9 +202,10 @@ silently observed that stale server instead of its own. Three corrections, scope
 - **Stopping is verified, not assumed.** `stop_server` now polls the port it used until it stops answering,
   or fails the run loudly rather than reporting a clean stop that left a listener behind.
 
-`eng/proofs/g07-client-contracts.sh` was not changed: it still starts the server through `dotnet run
---project`, and the fix above was not applied there. The two scripts now differ in this one respect; folding
-the same discipline into the Movies proof is unstarted work, not a claim made here.
+The accepted `eng/proofs/g07-client-contracts.sh` already launches the built `Arronix.Api.dll` directly,
+tracks its exact PID, and uses bounded TERM/KILL-owned teardown. G07A now uses the same lifecycle standard
+for its primary and mutation servers. The scripts remain separate proofs: G07A's teardown discipline does
+not combine its 37 checks with G07.3's independently accepted 137 checks.
 
 ## 8. Corrections to the readiness audit
 

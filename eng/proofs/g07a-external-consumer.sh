@@ -112,13 +112,138 @@ mkdir -p "$feed_root" "$media_cache" "$provider_cache" "$fixture_cache" "$packag
 api_dll="$repository_root/src/Arronix.Api/bin/Release/net11.0/Arronix.Api.dll"
 
 server_pid=""
-cleanup() {
-    if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
-        kill "$server_pid" 2>/dev/null
-        wait "$server_pid" 2>/dev/null
-    fi
+server_port=""
+server_started=0
+server_escalation=0
+held_pid=""
+held_port=""
+held_started=0
+held_escalation=0
+
+# A zombie child has exited even though `kill -0` still sees its PID. Treating it as running wastes the
+# shutdown budget, then escalates against a corpse.
+owned_is_running() {
+    local state
+    state=$(ps -o state= -p "$1" 2>/dev/null | tr -d '[:space:]')
+
+    [[ -n "$state" && "$state" != Z* ]]
 }
-trap cleanup EXIT
+
+# Stop exactly the server this proof started. A signal that fails keeps the handle for the caller or EXIT
+# trap to retry; no listener discovered only by its port is ever signalled.
+stop_server() {
+    local listen="$1"
+    local owned="$server_pid"
+    local waited
+
+    if [[ -n "$owned" ]]; then
+        if owned_is_running "$owned"; then
+            if [[ $server_escalation -eq 0 ]]; then
+                if ! kill -TERM "$owned" 2>/dev/null && owned_is_running "$owned"; then
+                    echo "error: could not signal the server this proof started (pid $owned)." >&2
+                    return 1
+                fi
+
+                server_escalation=1
+                waited=0
+                while [[ $waited -lt 30 ]] && owned_is_running "$owned"; do
+                    sleep 0.5
+                    waited=$((waited + 1))
+                done
+            fi
+
+            if owned_is_running "$owned"; then
+                if ! kill -KILL "$owned" 2>/dev/null && owned_is_running "$owned"; then
+                    echo "error: could not kill the server this proof started (pid $owned)." >&2
+                    return 1
+                fi
+
+                server_escalation=2
+                waited=0
+                while [[ $waited -lt 20 ]] && owned_is_running "$owned"; do
+                    sleep 0.5
+                    waited=$((waited + 1))
+                done
+            fi
+        fi
+
+        if owned_is_running "$owned"; then
+            echo "error: the server this proof started (pid $owned) is still running." >&2
+            return 1
+        fi
+
+        # The child is already known to have exited, so reaping cannot block.
+        wait "$owned" 2>/dev/null
+        server_pid=""
+        server_port=""
+        server_escalation=0
+    fi
+
+    if [[ $server_started -eq 0 ]]; then
+        return 0
+    fi
+
+    waited=0
+    while [[ $waited -lt 60 ]] && port_listening "$listen"; do
+        sleep 0.5
+        waited=$((waited + 1))
+    done
+
+    if port_listening "$listen"; then
+        echo "error: port $listen is still listening after this proof's server stopped." >&2
+        return 1
+    fi
+
+    server_started=0
+    return 0
+}
+
+on_exit() {
+    local status=$?
+    local attempt
+    local had_stop_failure=0
+
+    trap - EXIT
+
+    if [[ -n "$server_pid" || $server_started -ne 0 ]]; then
+        for attempt in 1 2 3; do
+            if stop_server "${server_port:-$port}"; then
+                break
+            fi
+
+            had_stop_failure=1
+        done
+    fi
+
+    # Serve mode hands its still-running primary server aside while the mutation owns the active handle.
+    # If mutation cleanup failed, stop that saved exact PID too; a failure remains visible, but no known
+    # process is quietly abandoned merely because only one can be active at a time.
+    if [[ -n "$held_pid" || $held_started -ne 0 ]]; then
+        server_pid=$held_pid
+        server_port=$held_port
+        server_started=$held_started
+        server_escalation=$held_escalation
+        held_pid=""
+        held_port=""
+        held_started=0
+        held_escalation=0
+
+        for attempt in 1 2 3; do
+            if stop_server "${server_port:-$port}"; then
+                break
+            fi
+
+            had_stop_failure=1
+        done
+    fi
+
+    if [[ $had_stop_failure -ne 0 && $status -eq 0 ]]; then
+        status=1
+    fi
+
+    exit "$status"
+}
+trap on_exit EXIT
 
 failures=0
 check() {
@@ -175,12 +300,15 @@ start_server() {
         "$dotnet_command" "$api_dll" \
             > "$log" 2>&1 &
     server_pid=$!
+    server_port=$listen
+    server_started=1
+    server_escalation=0
 
     for _ in $(seq 1 60); do
         if curl -fsS -o /dev/null "http://127.0.0.1:$listen/api" 2>/dev/null; then
             return 0
         fi
-        if ! kill -0 "$server_pid" 2>/dev/null; then
+        if ! owned_is_running "$server_pid"; then
             echo "error: the server process exited before coming up on $listen. See $log." >&2
             return 1
         fi
@@ -191,55 +319,34 @@ start_server() {
     return 1
 }
 
-stop_server() {
-    local listen="${1:-}"
-
-    if [[ -n "$server_pid" ]] && kill -0 "$server_pid" 2>/dev/null; then
-        kill "$server_pid" 2>/dev/null
-        wait "$server_pid" 2>/dev/null
-    fi
-    server_pid=""
-
-    if [[ -z "$listen" ]]; then
-        return 0
-    fi
-
-    # Reaped is a process fact; freed is a port fact, and this proof's whole point is not to trust the
-    # difference away. A lingering listener here is the exact defect that invalidated an earlier run.
-    for _ in $(seq 1 20); do
-        if ! port_listening "$listen"; then
-            return 0
-        fi
-        sleep 0.5
-    done
-
-    echo "error: port $listen is still listening after stopping the server that used it." >&2
-    failures=$((failures + 1))
-}
-
 echo "== building this repository =="
 if ! "$dotnet_command" build "$repository_root/Arronix.sln" --configuration Release -warnaserror; then
     exit 1
 fi
 
-# Read from the consumers' own project files and sources, because the escape hatches this gate rules out
-# are declarations rather than behavior: a project reference, a source include reaching into this tree, or
-# a visibility grant would each make the rest of this script pass while proving nothing.
+# Read from every external consumer's own project files and sources, because the escape hatches this gate
+# rules out are declarations rather than behavior: a project reference, a source include reaching into this
+# tree, or a visibility grant would each make the rest of this script pass while proving nothing.
 echo
 echo "== the consumers' declarations =="
-declaring() { grep -rlE "$1" "$fixture_root" --include='*.csproj' 2>/dev/null | wc -l | tr -d ' '; }
+consumer_roots=(
+    "$fixture_root/g07a-media"
+    "$fixture_root/g07a-provider"
+    "$repository_root/eng/proofs/g07a-fixture"
+)
+declaring() { grep -rlE "$1" "${consumer_roots[@]}" --include='*.csproj' 2>/dev/null | wc -l | tr -d ' '; }
 
-check "both consumers declare no project reference" "$(declaring '<ProjectReference')" "0"
-check "both consumers include no file from outside themselves" \
+check "all consumers declare no project reference" "$(declaring '<ProjectReference')" "0"
+check "all consumers include no file from outside themselves" \
     "$(declaring '<(Compile|None|Content) Include="[^"]*\.\.')" "0"
-check "both consumers name no project in this repository" \
+check "all consumers name no project in this repository" \
     "$(declaring 'Arronix\.(Host|Client|Api|Common|Plugins|Generators)')" "0"
-check "both consumers grant no internals visibility" \
-    "$(grep -rl 'InternalsVisibleTo' "$fixture_root" --include='*.csproj' --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')" "0"
-check "no assembly in this repository grants either consumer internals visibility" \
+check "no consumer grants internals visibility" \
+    "$(grep -rl 'InternalsVisibleTo' "${consumer_roots[@]}" --include='*.csproj' --include='*.cs' 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "no assembly in this repository grants a consumer internals visibility" \
     "$(grep -rl 'InternalsVisibleTo.*Northmark' "$repository_root/src" 2>/dev/null | wc -l | tr -d ' ')" "0"
 check "each consumer pins the same SDK this repository does" \
-    "$(find "$fixture_root" -name global.json | wc -l | tr -d ' ')" "2"
+    "$(find "${consumer_roots[@]}" -name global.json | wc -l | tr -d ' ')" "3"
 
 echo
 echo "== packing this repository's published packages =="
@@ -466,7 +573,9 @@ fi
 } > "$evidence_root/server-half.txt"
 
 if [[ $serve -eq 0 ]]; then
-    stop_server "$port"
+    if ! stop_server "$port"; then
+        exit 1
+    fi
 fi
 
 # One mutation, on a copy of the staged installation: the provider carrying the contract it is supposed to
@@ -479,12 +588,20 @@ rm -rf "$mutation_root"
 cp -R "$package_root" "$mutation_root"
 cp "$package_root/northmark.shorts/Northmark.Shorts.Domain.dll" "$mutation_root/northmark.shorts.catalog/"
 
-mutation_pid=""
 if [[ $serve -eq 1 ]]; then
-    mutation_pid=$server_pid
+    # The primary server remains a deliberate serve-mode process while the mutation owns the global handle.
+    # Save every lifecycle fact, not just the PID, then restore them after mutation cleanup.
+    held_pid=$server_pid
+    held_port=$server_port
+    held_started=$server_started
+    held_escalation=$server_escalation
     server_pid=""
+    server_port=""
+    server_started=0
+    server_escalation=0
 fi
 
+mutation_stopped=1
 if start_server "$mutation_root" "$mutation_port" "$evidence_root/mutation.log"; then
     curl -fsS "http://127.0.0.1:$mutation_port/api/v1/plugins" > "$evidence_root/mutation-plugins.json"
     mutation=$(python3 "$script_directory/g07a-read-installation.py" \
@@ -500,13 +617,35 @@ if start_server "$mutation_root" "$mutation_port" "$evidence_root/mutation.log";
         --refusal "$evidence_root/mutation-plugins.json" northmark.shorts | sed -n 's/^state=//p')
     check "and the package it duplicated is unaffected" "$media_state" "Active"
 
-    stop_server "$mutation_port"
+    if ! stop_server "$mutation_port"; then
+        failures=$((failures + 1))
+        mutation_stopped=0
+    fi
 else
     failures=$((failures + 1))
+    # start_server retains the exact PID even when readiness fails; make the bounded cleanup attempt while
+    # it is still the active handle, before returning a held serve-mode process to that role.
+    if ! stop_server "$mutation_port"; then
+        failures=$((failures + 1))
+        mutation_stopped=0
+    fi
 fi
 
-if [[ -n "$mutation_pid" ]]; then
-    server_pid=$mutation_pid
+if [[ -n "$held_pid" ]]; then
+    if [[ $mutation_stopped -eq 0 ]]; then
+        # Keep the mutation active and the primary saved for `on_exit`, which attempts bounded cleanup of
+        # each exact owned PID. Restoring here would lose the mutation handle.
+        exit 1
+    fi
+
+    server_pid=$held_pid
+    server_port=$held_port
+    server_started=$held_started
+    server_escalation=$held_escalation
+    held_pid=""
+    held_port=""
+    held_started=0
+    held_escalation=0
 fi
 
 echo
@@ -528,5 +667,16 @@ if [[ $serve -eq 1 ]]; then
     echo "'#project-contract-payload' - the same generic panel G07.2 built for Movies, reading this consumer's"
     echo "own contract and rendering its own 'premiere' and 'lifecycle' fields."
     echo "Press Ctrl+C to stop the server."
-    wait "$server_pid"
+    # Intentional serve-mode wait: poll the owned process so Ctrl+C enters the bounded EXIT cleanup rather
+    # than blocking in `wait`. If it exits by itself, reap only after observing that fact and report it.
+    while owned_is_running "$server_pid"; do
+        sleep 1
+    done
+
+    wait "$server_pid" 2>/dev/null
+    server_pid=""
+    server_port=""
+    server_started=0
+    echo "error: the served server exited." >&2
+    exit 1
 fi

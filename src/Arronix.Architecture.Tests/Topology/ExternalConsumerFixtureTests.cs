@@ -6,7 +6,7 @@ using Arronix.Architecture.Tests.Repository;
 namespace Arronix.Architecture.Tests.Topology;
 
 /// <summary>
-/// The two consumers under <c>eng/proofs/fixtures</c> take packages and nothing else.
+/// The external media, provider and fixture-writer consumers take packages and nothing else.
 /// </summary>
 /// <remarks>
 /// <c>eng/proofs/g07a-external-consumer.sh</c> builds and runs them, but only when somebody runs it. The
@@ -18,14 +18,15 @@ public sealed class ExternalConsumerFixtureTests
 {
     private const string FixtureFolder = "eng/proofs/fixtures";
 
-    private static readonly string[] Consumers = ["g07a-media", "g07a-provider"];
+    private static readonly string[] Consumers = ["g07a-media", "g07a-provider", "../g07a-fixture"];
 
-    /// <summary>The three project files the two consumers are built from.</summary>
+    /// <summary>The project files the external consumers are built from.</summary>
     private static readonly string[] Projects =
     [
         "g07a-media/Northmark.Shorts.Domain/Northmark.Shorts.Domain.csproj",
         "g07a-media/Northmark.Shorts/Northmark.Shorts.csproj",
-        "g07a-provider/Northmark.Shorts.Catalog/Northmark.Shorts.Catalog.csproj"
+        "g07a-provider/Northmark.Shorts.Catalog/Northmark.Shorts.Catalog.csproj",
+        "../g07a-fixture/Northmark.Shorts.Fixture/Northmark.Shorts.Fixture.csproj"
     ];
 
     [Test]
@@ -91,6 +92,14 @@ public sealed class ExternalConsumerFixtureTests
         }
     }
 
+    [Test]
+    public void TheFixtureWriterTakesOnlyThePublishedExternalDomainPackage()
+    {
+        var taken = Packages("../g07a-fixture/Northmark.Shorts.Fixture/Northmark.Shorts.Fixture.csproj");
+
+        Assert.That(taken, Is.EquivalentTo(new[] { "Northmark.Shorts.Domain" }));
+    }
+
     /// <remarks>
     /// Compile-only, so the payload carries no copy of an assembly the installation admits once. The
     /// runtime asset the media package does publish is its own domain half, which is why that one is not
@@ -117,8 +126,8 @@ public sealed class ExternalConsumerFixtureTests
     [Test]
     public void NeitherConsumerGrantsOrIsGrantedInternalsVisibility()
     {
-        var granting = Directory
-            .EnumerateFiles(Path(FixtureFolder), "*", SearchOption.AllDirectories)
+        var granting = Consumers
+            .SelectMany(consumer => Directory.EnumerateFiles(Path($"{FixtureFolder}/{consumer}"), "*", SearchOption.AllDirectories))
             .Where(static path => path.EndsWith(".cs", StringComparison.Ordinal)
                 || path.EndsWith(".csproj", StringComparison.Ordinal))
             .Where(static path => File.ReadAllText(path).Contains("InternalsVisibleTo", StringComparison.Ordinal));
@@ -161,6 +170,11 @@ public sealed class ExternalConsumerFixtureTests
             .Where(element => (string?)element.Attribute("Include") == package)
             .Select(static element => (string?)element.Attribute("ExcludeAssets"))
             .SingleOrDefault();
+
+    private static IEnumerable<string> Packages(string project) =>
+        Document(project)
+            .Descendants("PackageReference")
+            .Select(static element => (string?)element.Attribute("Include") ?? string.Empty);
 
     private static XDocument Document(string project) => XDocument.Load(Path($"{FixtureFolder}/{project}"));
 
