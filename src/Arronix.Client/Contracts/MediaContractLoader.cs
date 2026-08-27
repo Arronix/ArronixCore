@@ -343,14 +343,16 @@ public sealed class MediaContractLoader
         if (_resident.TryGetValue(published.AssemblyName, out var resident))
         {
             return Matches(resident.Verified, published)
-                ? Preflight.Reused(published)
+                ? Preflight.Reused(resident.Verified)
                 : Preflight.Failed(
                     ContractLoadOutcome.NameAlreadyResident,
                     ContractByteSource.None,
                     $"'{published.AssemblyName}' is already loaded in this page as "
                     + $"{resident.Verified.Identity} (module {resident.Verified.ModuleVersionId}, content "
-                    + $"{resident.Verified.ContentHash}); the host now publishes {published.Identity} (module "
-                    + $"{published.ModuleVersionId}, content {published.ContentHash}).");
+                    + $"{resident.Verified.ContentHash}, "
+                    + $"{Count(resident.Verified)}); the host now publishes {published.Identity} (module "
+                    + $"{published.ModuleVersionId}, content {published.ContentHash}, "
+                    + $"{Count(published)}).");
         }
 
         if (AssemblyLoadContext.Default.Assemblies.Any(loaded =>
@@ -752,11 +754,35 @@ public sealed class MediaContractLoader
         return null;
     }
 
+    /// <summary>
+    /// Determines whether what this page already holds is what the host is publishing now.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The declarations are part of the answer, and leaving them out was a hole rather than an omission. A
+    /// reused entry skips both declaration checks — the bytes are not fetched, so there is nothing to
+    /// preflight, and the commit does not load it, so the runtime is never asked again. A host could then
+    /// publish different contracts, different entity types or different hashes for bytes this page had
+    /// already verified, and the page would project them under the description it agreed to on a previous
+    /// pass.
+    /// </para>
+    /// <para>
+    /// Ordered, because the published order is the order both sides sorted into: two lists holding the same
+    /// declarations in a different order describe two different documents, and the cheapest way to be sure
+    /// they mean the same thing is to require them to be the same.
+    /// </para>
+    /// </remarks>
     private static bool Matches(ClientContractAssembly resident, ClientContractAssembly published)
         => string.Equals(resident.ContentHash, published.ContentHash, StringComparison.OrdinalIgnoreCase)
             && string.Equals(resident.Identity, published.Identity, StringComparison.OrdinalIgnoreCase)
             && resident.ModuleVersionId == published.ModuleVersionId
-            && resident.Length == published.Length;
+            && resident.Length == published.Length
+            && resident.Declarations.SequenceEqual(published.Declarations);
+
+    private static string Count(ClientContractAssembly assembly)
+        => assembly.Declarations.Count == 1
+            ? "1 declaration"
+            : $"{assembly.Declarations.Count} declarations";
 
     private static string AddressOf(PluginId packageId, ClientContractAssembly published)
         => $"{ManifestPath}/{Uri.EscapeDataString(packageId.Value)}/{Uri.EscapeDataString(published.ContentHash)}/{Uri.EscapeDataString(published.FileName)}";

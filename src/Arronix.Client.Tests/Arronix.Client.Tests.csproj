@@ -56,6 +56,15 @@
              Properties="Configuration=$(Configuration)">
       <Output TaskParameter="TargetOutputs" ItemName="_ClientContractFixture" />
     </MSBuild>
+    <!--
+         And one more that is built against the contract line and that no other case loads. A browser cannot
+         unload an assembly, so a test that needs a page to hold one needs a name no other test has spent:
+         the two above are already the subjects of the rules about what must NOT be resident.
+    -->
+    <MSBuild Projects="..\Arronix.Language.Reference\Arronix.Language.Reference.csproj" Targets="Build"
+             Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework)">
+      <Output TaskParameter="TargetOutputs" ItemName="_ClientContractFixture" />
+    </MSBuild>
     <Copy SourceFiles="@(_ClientContractFixture)" DestinationFolder="$(OutDir)ClientContractFixtures" />
   </Target>
 </Project>

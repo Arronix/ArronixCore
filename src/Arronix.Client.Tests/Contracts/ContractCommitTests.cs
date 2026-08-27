@@ -222,6 +222,90 @@ public sealed class ContractCommitTests
         (await loader.LoadAsync()).Compatibility.Should().Be(ContractCompatibility.Terminal);
     }
 
+    /// <summary>
+    /// Bytes this page already holds cannot be given a new meaning by a later manifest.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A reused entry is the one path that fetches nothing and loads nothing. There are no bytes to
+    /// preflight and no load to prove afterwards, so whatever the reuse gate accepts is accepted by nothing
+    /// else — which is why the declarations have to be part of what "the same one" means. Without that, a
+    /// host could publish different entity types or different hashes for a payload this page verified on an
+    /// earlier pass, and the page would project them.
+    /// </para>
+    /// <para>
+    /// The reference language pack is used because it is built against this contract line, declares no
+    /// client contract, and no other case loads it — a browser cannot unload an assembly, so a page that
+    /// must hold one needs a name no other test has spent. Declaring none is the sharper fixture anyway:
+    /// the restatement here invents a contract for a payload that carries none, which is the disagreement
+    /// a reused entry would otherwise never look at.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task RestatingTheDeclarationOfBytesThisPageHoldsIsTerminal()
+    {
+        const string name = "Arronix.Language.Reference";
+        var path = Path.Combine(AppContext.BaseDirectory, "ClientContractFixtures", name + ".dll");
+        var content = await File.ReadAllBytesAsync(path);
+
+        ContractMetadataReader
+            .TryRead(content, MediaContractLoader.ContractAssemblyName, out var metadata, out var unreadable)
+            .Should().BeTrue(unreadable);
+
+        metadata!.Declarations.Should().BeEmpty("this payload owns no item, so it declares no client contract");
+
+        var truthful = new ClientContractAssembly(
+            name,
+            name + ".dll",
+            metadata.Identity,
+            Convert.ToHexString(SHA256.HashData(content)),
+            metadata.ModuleVersionId,
+            content.Length,
+            metadata.Declarations);
+
+        var published = truthful;
+
+        using var handler = new StubHandler(requestPath =>
+            requestPath.EndsWith("client-contracts", StringComparison.Ordinal)
+                ? Json(Manifest(published))
+                : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(content) });
+
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("https://host.invalid/") };
+        var loader = new MediaContractLoader(http, new ContractStore(new RefusingJsRuntime()));
+
+        (await loader.LoadAsync()).Packages.Single().Assemblies.Single().Outcome.Should().Be(
+            ContractLoadOutcome.Loaded,
+            "nothing else in this process loads this payload, so this pass is the one that does");
+
+        // Byte for byte the payload this page verified. Only the meaning the host publishes for it moved.
+        published = truthful with
+        {
+            Declarations =
+            [
+                new ClientContractDeclaration(
+                    name + ".Invented",
+                    name + ".Entity",
+                    new string('E', 64),
+                    new string('F', 64)),
+            ],
+        };
+
+        var restated = await loader.LoadAsync();
+        var entry = restated.Packages.Single().Assemblies.Single();
+
+        using var assertions = new AssertionScope();
+
+        entry.Outcome.Should().NotBe(
+            ContractLoadOutcome.AlreadyLoaded,
+            "reuse would skip both the preflight and the post-load declaration checks");
+        entry.Outcome.Should().Be(ContractLoadOutcome.NameAlreadyResident);
+        entry.Failure.Should().Contain("declaration");
+
+        restated.Compatibility.Should().Be(ContractCompatibility.Terminal);
+        restated.CanProject.Should().BeFalse();
+        loader.Find(name).Should().BeNull();
+    }
+
     private static HttpResponseMessage Json(ClientContractManifest manifest)
         => new(HttpStatusCode.OK)
         {
