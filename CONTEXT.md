@@ -332,8 +332,9 @@ work does not substitute for closing an earlier dependency.
   item's identity in its own declared scheme, a curator returns references rather than items, and Host alone
   assigns `MediaItemId` when a catalog answers for an item. `IMediaEntity` no longer carries a key, `CatalogIdentity` is host
   state, and `CatalogDispatcher` routes by scheme and materializes. The invariant and its current limits are
-  in `docs/research/g04/media-item-identity.md`: a merge resolves the superseded reference but moves no
-  library rows and nothing persists. The full close rail is
+  in `docs/research/g04/media-item-identity.md`: assignments, redirects and allocation are journaled, and a
+  merge re-keys the catalog record and library entry onto the surviving reference in the same transaction.
+  The full close rail is
   2,603 passed, 302 registered skips, zero failed and zero inconclusive across 11 test projects.
 - G05 is complete. The independently packaged TMDb cataloger returns the installed Movies package's exact
   `Movie`; its curator returns catalog references which `CatalogDispatcher` resolves through that cataloger;
@@ -360,7 +361,7 @@ work does not substitute for closing an earlier dependency.
   page holding a verified installation reads one serialized entity through the contract it admitted, proves
   the projection before rendering it, and draws a typed Movie with artwork, ratings, lifecycle/status and
   collections, with no media or format assembly in the Client build. Both halves have been run: the server
-  half is 25 checks in `eng/proofs/g07-client-contracts.sh`, and the browser half is
+  half is 30 checks in `eng/proofs/g07-client-contracts.sh`, and the browser half is 43 checks in
   `eng/proofs/g07-browser-proof.mjs` against the ordinary published client, whose observed run — including
   the inline poster decoding at the size it states, and the two defects that run found — is recorded in
   `docs/research/g07/client-payload-projection.md`. Independent review accepted the exact pushed commit after
@@ -389,7 +390,7 @@ work does not substitute for closing an earlier dependency.
   `docs/research/g07/g07a-external-consumer.md`. Independent review accepted the exact pushed candidate
   after re-running the full .NET 11 rail, the external-consumer proof and its private-copy mutation, and the
   separate G07.3 browser lifecycle proof.
-- G07B is a candidate, not closed. One narrow Movies catalog vertical is durable end to end: a real
+- G07B is complete. One narrow Movies catalog vertical is durable end to end: a real
   provider result becomes a valid `Movie`, an explicit add writes its record and the user's presence in one
   transaction, a refresh replaces the catalog-owned half and cannot reach the user-owned one, a withdrawn
   record stays addressable and browse says so, and everything survives a restart. `HostItemSource` no longer
@@ -400,14 +401,17 @@ work does not substitute for closing an earlier dependency.
   passed / 0 failed / 302 skipped, with all 3 required tests and compiler-input provenance checks green.
   The generic Client catalog service and `/kinds/{kind}/catalog` workspace now discover only active,
   configured cataloger schemes whose exact admitted pairing matches the selected kind; search, add and
-  refresh update typed local results through complete item references without media/provider branches. The
-  post-merge generic typed Client/browser proof remains deliberately outstanding because it depends on the
-  accepted G07.3/G07A harness; final G07B gate acceptance awaits that combined evidence.
+  refresh update typed local results through complete item references without media/provider branches.
+  Independent review accepted the integrated candidate at
+  `e61fec49766e108d2410b37a1338cfe8cbb3f695`: the full .NET 11 rail reported 3,940 total / 3,638 enabled and
+  passed / 0 failed / 302 skipped, and the retained G07B proof passed its own 46 browser checks plus provider,
+  API-retry and six store-phase assertions. G07B's 46, G07A's 37 and G07.3's 30 + 43 + 64 = 137 remain
+  separate proof identities and are never reported as one total.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
-it. All three G07 sub-gates and G07A are complete; G07B is the next gate. Later gates
+it. All three G07 sub-gates, G07A and G07B are complete; G08 is the current gate. Later gates
 cover compatibility evidence,
 format/language/media interpretation, typed matching and policy, TV/Music/Books pressure tests,
 durable state and acquisition, standard workflows, legacy removal, independent SDK proof, provider coverage,
@@ -423,8 +427,8 @@ duplicated checklist drifting from current state.
   beside its own item therefore carries no bridge, and its catalog add and browse refuse loudly rather than
   answering empty. That is the shipped movies topology — a shared domain assembly plus an isolated
   extension — so G07B proves durability for that shape, not for every otherwise-valid media declaration.
-  Closing it needs either a generator that can see the other's output or a second declared route to the
-  codec, and neither is decided.
+  Supporting a same-assembly item and media declaration needs either a generator that can see the other's
+  output or a second declared route to the codec, and neither is decided.
 - Provider credentials do not survive a restart, by construction rather than by omission: a field declaring
   itself never read back is never written down. Whether the platform should offer protected storage for
   them, and with what key management, is an owner decision this vertical did not take.

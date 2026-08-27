@@ -1,4 +1,4 @@
-# G07B browser-proof foundation
+# G07B catalog browser proof
 
 G07B owns a separate browser-proof identity. It builds a proof-only `ICataloger<Movie>` package against
 packed `Arronix.Abstractions` and `Arronix.Media.Movies`, never against the Movies entry assembly, Host,
@@ -18,19 +18,18 @@ materialize a catalog record, library entry, or monitor row. Later snapshots are
 actual phase and compare both identities/allocation, AddedAt, and user-monitor stability across retry,
 refresh and restart.
 
-The integration dependency is intentionally explicit. Provider discovery currently filters `kind` to the
-same plugin that owns the media kind and `ProviderCatalogEntry` does not publish a catalog scheme. An
-independently contributed cataloger therefore cannot be discovered/configured from the ordinary provider
-surface. The harness captures both provider responses and exits with that dependency instead of hard-coding
-a provider identifier or scheme. On the corrected projection it requires exactly one selected entry with
-`pairedMediaKind=movies` and `catalogScheme=proof`, and records `dependency satisfied` rather than retaining
-a blocker. The planned projection supplies nullable `pairedMediaKind` and
-`catalogScheme`; Client offers only active configured schemes. Once that contract is corrected, the same
-harness configures revision 1 and 2 through ordinary POST/PUT routes and drives `/kinds/movies/catalog`
+The integration dependency is explicit and satisfied. Provider discovery publishes the admitted cataloger's
+nullable singular `pairedMediaKind` and `catalogScheme`; kind filtering compares that semantic pairing rather
+than extension ownership, so an independently contributed cataloger remains discoverable. The harness derives
+the provider and scheme from ordinary discovery, requires exactly one selected entry with
+`pairedMediaKind=movies` and `catalogScheme=proof`, and refuses rather than hard-coding either value. Client
+offers only configured, enabled, active schemes. The harness configures revision 1 and 2 through ordinary
+POST/PUT routes and drives `/kinds/movies/catalog`
 through the agreed `catalog-*` test ids and `search`, `add`, `refresh`, and `open-item` actions. First add
 is visible and waits for the row's `Added to library.` status plus its Open and Refresh controls before
-recording its full durable reference; every search also proves the revision-one title and inline typed
-artwork are visibly rendered. Retry idempotence stays separately labelled API evidence: it must be HTTP 200
+recording its full durable reference; search and add prove the revision-one title, while the refresh phase's
+fresh catalog query proves revision two before the durable refresh. Each query also proves inline typed
+artwork is visibly rendered. Retry idempotence stays separately labelled API evidence: it must be HTTP 200
 and return exactly that reference, rather than requiring a redundant second Add button. Visible refresh
 returns to the catalog row, records `Catalog facts refreshed.` and revision-two title; restart records the
 ordinary item page's revision-two title and `Not wanted` state. CatalogState=Withdrawn remains a mandatory
@@ -38,8 +37,9 @@ store/API assertion, not a claimed UI surface. The visible native `Wanted` check
 `wanted=false`; that facet must survive the provider refresh and server restart. The browser driver does not
 turn a page-context fetch or the contracts diagnostics into substitute catalog evidence.
 
-G07.3's 137 checks and G07A's 37 checks remain separate accepted proof identities. This foundation does not
-close G07B or claim its combined browser acceptance. A future successful full G07B run emits its own
-`g07b-proof-summary.json`: it derives the exact browser-check count from all visible phase reports and
-requires provider-discovery, browser/store, and API-retry evidence to pass; it never combines that count
-with G07.3 or G07A.
+Independent review accepted G07B at `e61fec49766e108d2410b37a1338cfe8cbb3f695`. The full .NET 11 rail
+reported 3,940 total / 3,638 enabled and passed / 0 failed / 302 skipped. The retained
+`g07b-proof-summary.json` reported 46 browser checks and required provider-discovery, browser/store and
+API-retry evidence to pass. The same detached acceptance run reproduced G07A's 37 checks and G07.3's 30
+server + 43 G07.2 browser + 64 lifecycle = 137 checks separately. G07B's 46, G07A's 37 and G07.3's 137 are
+never combined into one proof count.

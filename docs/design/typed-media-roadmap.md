@@ -2,7 +2,7 @@
 
 **Status:** active
 
-**Current gate:** G07B — persist one narrow Movies catalog vertical
+**Current gate:** G08 — make compatibility evidence trustworthy enough to drive the rewrite
 
 **Baseline:** R00 at commit `018e2b0d1` (`Checkpoint typed media SDK and Movies migration`)
 
@@ -598,24 +598,23 @@ workflow merely to make this smoke test render provider results.
 **Outcome:** provider pairing, identity materialization, and typed item queries are proven against real durable
 state before the same assumptions are copied into three more media kinds.
 
-**Status:** candidate, not closed. The durable slice is built and proved in the test rail: catalog identity,
+**Status:** complete. The durable slice is built and proved in the test rail: catalog identity,
 redirects and allocation survive a restart; an explicit add writes the catalog record and the user's presence
 in one transaction and is idempotent by catalog identifier; a refresh replaces only the catalog-owned half;
 a withdrawn record stays addressable and browse says so; `HostItemSource` reads real records through the
 media kind's own projector; and the catalog routes reach `CatalogDispatcher` kind-blind. Identity collision,
 cross-catalog convergence, three-way merge, redirect and retry are proved against the G04 contract, and the
 two limitations that gate recorded — a merge moving nothing, and nothing persisting — are closed. The
-exit-gate line on typed Client browse is deliberately outstanding: the browser proof is merge-dependent on
-the G07.3/G07A harness, and duplicating that harness would weaken it. The standalone durable-core candidate
-was independently accepted at `9b202eda8a472e1a14604e926f36094682718ca9`: the full rail reported 3,895
-total / 3,593 enabled and passed / 0 failed / 302 skipped, with all three required tests and
-compiler-input provenance checks green. Final G07B acceptance remains outstanding until the merged generic
-typed Client/browser proof supplies the combined evidence.
+standalone durable core was independently accepted at `9b202eda8a472e1a14604e926f36094682718ca9`.
 
-The candidate now also carries a generic visible catalog workspace: it discovers exact paired catalogers,
-offers only configured active schemes, and renders/adds/refreshes typed catalog views without media or vendor
-branches. This is implementation and focused-test evidence, not the retained real-browser acceptance proof;
-G07B remains open until that proof runs through the accepted G07.3/G07A harness.
+The integrated candidate adds a generic visible catalog workspace which discovers exact paired catalogers,
+offers only configured active schemes, and renders, adds and refreshes typed catalog views without media or
+vendor branches. Independent review accepted it at `e61fec49766e108d2410b37a1338cfe8cbb3f695`:
+the full rail reported 3,940 total / 3,638 enabled and passed / 0 failed / 302 skipped, and the retained G07B
+proof passed 46 browser checks plus provider-discovery, API-retry and six store-phase assertions. G07B's 46,
+G07A's 37 and G07.3's 137 remain separate proof identities; no combined count is claimed. The durability
+claim remains scoped to the shipped split Movies domain/extension topology rather than every otherwise-valid
+media declaration.
 
 Implement only the narrow EF Core/LINQ slice needed for:
 
@@ -1378,30 +1377,15 @@ replacement.
 
 ## Current next task
 
-The **five platform services** are done. `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`,
-`IHostRuntimeInfo` and `IOperatingSystemInfo` have production implementations that an ordinary
-`Arronix.Api` server composes, and that server activates independently published Movies and Video packages
-installed beside it: `Arronix.Api.Tests` stages both from their own publish, stands the real `Program` up
-over them, and asserts the active set, the kinds, the client manifest and its content addresses, and
-telemetry reaching a sink registered after `AddArronixHost`. The
-threat model's WP-T2 telemetry items are closed with them; T-18 quotas and T-19 host-fact disclosure remain
-open and belong to WP-T5 and WP-T1.
+**G08 is current.** Before more release interpretation is rewritten, the compatibility evidence must be
+made complete enough to reject accidental feature loss. Start by revision-pinning the upstream feature
+inventory, assigning every registered Movies skip an explicit disposition and owner, and separating
+upstream regression, independently generated, field-observed and owner-decided evidence. No same-session
+generated corpus may be presented as independent proof.
 
-**G07.2 is complete.** A browser holding a proved installation reads one
-serialized entity through the contract it admitted, proves the projection before rendering it, and draws a
-typed Movie with artwork, ratings, lifecycle/status and collections — with no media or format assembly in
-the Client build and no media kind spelled in its source. The server half, the browser half and the full
-rail are recorded in `docs/research/g07/client-payload-projection.md`; independent review reproduced the
-mutation evidence and re-ran the full rail at the accepted commit.
-
-**G07.3 is complete.** Cache update, removal, eviction, stale cache
-and stale tab have been driven in the real browser across three restarts of the real API at one origin, with
-the held tabs never navigated again. G07.2 built the withdrawal rules its own correctness needed — an offer
-re-proved by contract object identity before a fetch, after it and before any value is handed back, and a
-rendered projection invalidated once its contract is no longer admitted — and G07.3 exercised them against
-a host that actually changed. `docs/research/g07/client-contract-lifecycle.md` records the matrix, its
-mutation evidence and its limits.
-
-Do not fold provider-result ingestion, durable catalog state, or the complete external-consumer vertical
-into G07; G07A and G07B own those proofs. The G06 SDK package boundary and completed TMDb/provider ownership
-rules remain mandatory regression evidence.
+The dependency chain through G07B is complete. G07.2 and G07.3 prove generated typed projection and its
+browser lifecycle; G07A proves a package-only external media/provider consumer; G07B proves the narrow
+durable Movies catalog vertical and generic typed catalog workspace. At the accepted G07B candidate, the
+full rail passed 3,638 enabled cases with 302 registered skips, while G07B's 46 checks, G07A's 37 checks and
+G07.3's 30 + 43 + 64 = 137 checks remained separate proof identities. The G06 SDK boundary, provider
+ownership rules and all four retained browser proofs remain mandatory regression evidence throughout G08.

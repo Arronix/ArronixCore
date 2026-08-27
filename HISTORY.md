@@ -1,5 +1,20 @@
 # Arronix History
 
+## 2026-08-28 — Close the durable Movies catalog vertical
+
+Independent review accepted G07B at `e61fec49766e108d2410b37a1338cfe8cbb3f695`. The full .NET 11 rail
+passed 3,638 enabled cases across 14 projects with exactly 302 registered skips and no failures or
+inconclusive cases. A fresh detached worktree then reproduced the separate 46-check G07B browser proof:
+search resolved but did not materialize the primary Movie and its referenced collection; visible Add created
+one durable item; an API retry returned the same reference without changing durable state; visible monitoring
+survived a provider refresh; and the refreshed provider-owned facts plus user-owned state survived restart.
+Provider discovery, six read-only store snapshots and proof-owned process teardown also passed.
+
+The same accepted candidate separately reproduced G07A at 37 checks and G07.3 at 30 server checks, 43 G07.2
+browser checks and 64 lifecycle checks. G07B's 46, G07A's 37 and G07.3's 137 are distinct proof identities;
+no combined count is claimed. Before the accepted rerun, the retained G07/G07A browser harness was corrected
+to read the Client's canonical `loaded` and `alreadyLoaded` enum names rather than obsolete CLR ordinals.
+
 ## 2026-08-28 — Project admitted provider pairing into generic catalog discovery
 
 Provider discovery now publishes a singular nullable `PairedMediaKind` and an admitted cataloger's nullable
