@@ -79,7 +79,19 @@ public enum ContractLoadOutcome
     /// Verification passed and the runtime refused the bytes, or produced something other than what was
     /// published. Earlier members may already be resident, so the page is terminal.
     /// </summary>
-    RuntimeRefused = 11
+    RuntimeRefused = 11,
+
+    /// <summary>
+    /// The bytes declare client contracts other than the ones the host published for them, or declare one
+    /// this client cannot read.
+    /// </summary>
+    /// <remarks>
+    /// A separate outcome from <see cref="IdentityMismatch"/> because it is a different disagreement. The
+    /// identity says what the runtime will bind these bytes as; a declaration says what may be read out of
+    /// them once it has, and a host describing a payload's contracts wrongly is exactly the case the
+    /// published hashes exist to catch before anything is projected.
+    /// </remarks>
+    DeclarationMismatch = 12
 }
 
 /// <summary>One client-safe assembly, as published and as verified.</summary>
@@ -92,6 +104,10 @@ public enum ContractLoadOutcome
 /// <param name="ObservedModuleVersionId">The module identifier the bytes declare, read from their metadata.</param>
 /// <param name="ObservedContractReference">
 /// The universal contract reference the bytes declare, read from their metadata.
+/// </param>
+/// <param name="ObservedDeclarations">
+/// The client contracts the bytes declare, read from their metadata. Empty when they declare none, which is
+/// what a shared assembly owning no item looks like.
 /// </param>
 /// <param name="Failure">Why it was refused, when it was.</param>
 /// <remarks>
@@ -107,6 +123,7 @@ public sealed record LoadedContractAssembly(
     string? ObservedIdentity,
     Guid? ObservedModuleVersionId,
     string? ObservedContractReference,
+    IReadOnlyList<ClientContractDeclaration> ObservedDeclarations,
     string? Failure);
 
 /// <summary>One installed package's client facet, as verified.</summary>

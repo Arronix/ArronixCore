@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
+using Arronix.Abstractions.Wire;
 
 namespace Arronix.Client.Contracts;
 
@@ -20,7 +21,21 @@ namespace Arronix.Client.Contracts;
 /// The identity of the single universal-contract reference the bytes declare, or <see langword="null"/>
 /// when they declare none or more than one.
 /// </param>
-internal sealed record ContractMetadata(string Identity, Guid ModuleVersionId, string? ContractReference);
+/// <param name="Declarations">
+/// The client contracts the bytes declare, ordered by entry point type name, read from the same pass over
+/// the same bytes.
+/// </param>
+/// <param name="DeclarationDefect">
+/// Why a declaration the bytes carry could not be read, or <see langword="null"/> when every one was
+/// readable. An unreadable declaration is not an absent one, and a payload that says something this client
+/// cannot parse has not said nothing.
+/// </param>
+internal sealed record ContractMetadata(
+    string Identity,
+    Guid ModuleVersionId,
+    string? ContractReference,
+    IReadOnlyList<ClientContractDeclaration> Declarations,
+    string? DeclarationDefect);
 
 /// <summary>
 /// Reads an assembly's declared identity out of its bytes, before any of it is loaded.
@@ -81,6 +96,10 @@ internal static class ContractMetadataReader
                     StringComparison.OrdinalIgnoreCase))
                 .ToArray();
 
+            // Decoded in the same pass over the same bytes as everything else, for the same reason: a second
+            // read is a second opportunity to describe something other than what will be loaded.
+            ContractDeclarationReader.TryRead(tables, out var declarations, out var declarationDefect);
+
             metadata = new ContractMetadata(
                 Render(
                     tables.GetString(definition.Name),
@@ -102,7 +121,9 @@ internal static class ContractMetadataReader
                         references[0].Culture.IsNil ? string.Empty : tables.GetString(references[0].Culture),
                         tables.GetBlobBytes(references[0].PublicKeyOrToken),
                         references[0].Flags.HasFlag(AssemblyFlags.PublicKey))
-                    : null);
+                    : null,
+                declarations,
+                declarationDefect);
 
             return true;
         }

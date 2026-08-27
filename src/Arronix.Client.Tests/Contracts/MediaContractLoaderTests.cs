@@ -165,6 +165,8 @@ public sealed class MediaContractLoaderTests
     [TestCase("hash", ContractLoadOutcome.ContentHashMismatch)]
     [TestCase("identity", ContractLoadOutcome.IdentityMismatch)]
     [TestCase("module", ContractLoadOutcome.ModuleVersionMismatch)]
+    [TestCase("declared hash", ContractLoadOutcome.DeclarationMismatch)]
+    [TestCase("declaration withheld", ContractLoadOutcome.DeclarationMismatch)]
     public async Task AFalsifiedFactIsRefusedBeforeTheRuntimeSeesTheBytes(string falsify, ContractLoadOutcome expected)
     {
         var published = falsify switch
@@ -173,6 +175,20 @@ public sealed class MediaContractLoaderTests
             "hash" => Truthful() with { ContentHash = new string('0', 64) },
             "identity" => Truthful() with { Identity = "Arronix.Media.Movies, Version=9.9.9.9, Culture=neutral, PublicKeyToken=null" },
             "module" => Truthful() with { ModuleVersionId = Guid.Parse("11111111-2222-3333-4444-555555555555") },
+
+            // The bytes are exactly what they say they are, and the host describes what may be read out of
+            // them wrongly. Nothing about the payload is corrupt; what disagrees is the meaning.
+            "declared hash" => Truthful() with
+            {
+                Declarations =
+                [
+                    _declared.Declarations.Single() with { GeneratedMetadataHash = new string('0', 64) },
+                ],
+            },
+
+            // The other direction. A host that publishes no declaration for a payload that carries one is
+            // offering a browser a contract it was never told about.
+            "declaration withheld" => Truthful() with { Declarations = [] },
             _ => throw new ArgumentOutOfRangeException(nameof(falsify), falsify, "Unknown fact."),
         };
 
@@ -214,7 +230,7 @@ public sealed class MediaContractLoaderTests
             Convert.ToHexString(SHA256.HashData(content)),
             metadata.ModuleVersionId,
             content.Length,
-            []);
+            metadata.Declarations);
 
         var report = await LoadAsync(Serve(Manifest(published), content));
         var assembly = report.Packages.Single().Assemblies.Single();
@@ -253,7 +269,7 @@ public sealed class MediaContractLoaderTests
             new string('0', 64),
             metadata.ModuleVersionId,
             content.Length,
-            []);
+            metadata.Declarations);
 
         // The dependant is the real fixture, described truthfully, so it verifies. Whether it became
         // resident is therefore an unambiguous witness of whether the loader loaded anything at all.
@@ -328,7 +344,7 @@ public sealed class MediaContractLoaderTests
             Convert.ToHexString(SHA256.HashData(_fixture)),
             _declared.ModuleVersionId,
             _fixture.Length,
-            []);
+            _declared.Declarations);
 
     private static PluginId Id(string value) => PluginId.FromString(value);
 

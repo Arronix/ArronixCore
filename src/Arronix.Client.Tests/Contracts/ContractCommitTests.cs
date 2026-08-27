@@ -64,7 +64,7 @@ public sealed class ContractCommitTests
             Convert.ToHexString(SHA256.HashData(content)),
             metadata.ModuleVersionId,
             content.Length,
-            []);
+            metadata.Declarations);
 
         // Part one: the runtime returns something other than the bytes it was handed. Two truthful
         // assemblies are preflighted; the seam answers the first load with an assembly that is real,
@@ -82,7 +82,7 @@ public sealed class ContractCommitTests
             Convert.ToHexString(SHA256.HashData(moviesContent)),
             moviesMetadata.ModuleVersionId,
             moviesContent.Length,
-            []);
+            moviesMetadata.Declarations);
 
         var twoPackages = new ClientContractManifest(
             MediaContractLoader.ClientContractIdentity,

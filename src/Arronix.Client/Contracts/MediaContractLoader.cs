@@ -479,6 +479,23 @@ public sealed class MediaContractLoader
                 observedContractReference: metadata.ContractReference);
         }
 
+        // The last thing the bytes are asked, and the first that is about their contents rather than their
+        // identity. The host read the same blob when it admitted this file and published what it found; this
+        // read it again from what arrived, and a published declaration is something to check against.
+        if (DeclarationDisagreement(metadata, published) is { } declarations)
+        {
+            return Preflight.Failed(
+                ContractLoadOutcome.DeclarationMismatch,
+                source,
+                $"'{published.FileName}' {declarations} Nothing was loaded.",
+                observedLength: content.Length,
+                observedContentHash: observedHash,
+                observedIdentity: metadata.Identity,
+                observedModuleVersionId: metadata.ModuleVersionId,
+                observedContractReference: metadata.ContractReference,
+                observedDeclarations: metadata.Declarations);
+        }
+
         return Preflight.Verified(published, source, content, metadata);
     }
 
@@ -621,6 +638,45 @@ public sealed class MediaContractLoader
         return null;
     }
 
+    /// <summary>
+    /// Describes how the bytes' declarations differ from what was published, or nothing when they do not.
+    /// </summary>
+    /// <remarks>
+    /// Exact, in both directions and in order. A payload declaring a contract the host did not publish is a
+    /// surface a browser was never told about; a payload missing one the host did publish is a host
+    /// describing a build it is not serving. Both are the same failure of agreement, and neither is a case
+    /// where projecting the intersection would be safe.
+    /// </remarks>
+    private static string? DeclarationDisagreement(ContractMetadata metadata, ClientContractAssembly published)
+    {
+        if (metadata.DeclarationDefect is { } defect)
+        {
+            return $"carries a client contract declaration this client could not read: {defect}";
+        }
+
+        var declared = metadata.Declarations;
+        var expected = published.Declarations;
+
+        if (declared.Count != expected.Count)
+        {
+            return $"declares {declared.Count} client contract(s); the host published {expected.Count}.";
+        }
+
+        for (var index = 0; index < declared.Count; index++)
+        {
+            if (declared[index] != expected[index])
+            {
+                return $"declares the client contract '{declared[index].EntryPointType}' as "
+                    + $"({declared[index].EntityTypeName}, {declared[index].GeneratedMetadataHash}, "
+                    + $"{declared[index].ProjectionSchemaHash}); the host published "
+                    + $"'{expected[index].EntryPointType}' as ({expected[index].EntityTypeName}, "
+                    + $"{expected[index].GeneratedMetadataHash}, {expected[index].ProjectionSchemaHash}).";
+            }
+        }
+
+        return null;
+    }
+
     private static bool Matches(ClientContractAssembly resident, ClientContractAssembly published)
         => string.Equals(resident.ContentHash, published.ContentHash, StringComparison.OrdinalIgnoreCase)
             && string.Equals(resident.Identity, published.Identity, StringComparison.OrdinalIgnoreCase)
@@ -665,6 +721,7 @@ public sealed class MediaContractLoader
         string? ObservedIdentity,
         Guid? ObservedModuleVersionId,
         string? ObservedContractReference,
+        IReadOnlyList<ClientContractDeclaration> ObservedDeclarations,
         string? Failure)
     {
         /// <summary>Gets whether this assembly may be handed to the runtime.</summary>
@@ -688,6 +745,7 @@ public sealed class MediaContractLoader
                 metadata.Identity,
                 metadata.ModuleVersionId,
                 metadata.ContractReference,
+                metadata.Declarations,
                 null);
 
         public static Preflight Reused(ClientContractAssembly published)
@@ -700,6 +758,7 @@ public sealed class MediaContractLoader
                 published.Identity,
                 published.ModuleVersionId,
                 ClientContractIdentity,
+                published.Declarations,
                 null);
 
         public static Preflight Failed(
@@ -710,7 +769,8 @@ public sealed class MediaContractLoader
             string? observedContentHash = null,
             string? observedIdentity = null,
             Guid? observedModuleVersionId = null,
-            string? observedContractReference = null)
+            string? observedContractReference = null,
+            IReadOnlyList<ClientContractDeclaration>? observedDeclarations = null)
             => new(
                 outcome,
                 source,
@@ -720,6 +780,7 @@ public sealed class MediaContractLoader
                 observedIdentity,
                 observedModuleVersionId,
                 observedContractReference,
+                observedDeclarations ?? [],
                 failure);
 
         public static LoadedContractAssembly NotAttempted(ClientContractAssembly published)
@@ -732,6 +793,7 @@ public sealed class MediaContractLoader
                 null,
                 null,
                 null,
+                [],
                 null);
 
         public Preflight RuntimeRefused(string failure)
@@ -747,6 +809,7 @@ public sealed class MediaContractLoader
                 ObservedIdentity,
                 ObservedModuleVersionId,
                 ObservedContractReference,
+                ObservedDeclarations,
                 Failure);
     }
 }
