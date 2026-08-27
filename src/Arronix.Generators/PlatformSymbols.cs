@@ -1,3 +1,6 @@
+using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Runtime.CompilerServices;
 using Microsoft.CodeAnalysis;
 
@@ -79,7 +82,7 @@ internal sealed class PlatformSymbols
 
     private const string MediaEntityName = Media + "IMediaEntity";
 
-    private static readonly ConditionalWeakTable<Compilation, Resolution> Resolved = new();
+    private static readonly ConditionalWeakTable<Compilation, PlatformResolution> Resolved = new();
 
     private static readonly (PlatformSymbol Symbol, string MetadataName)[] Abstractions =
     [
@@ -136,14 +139,22 @@ internal sealed class PlatformSymbols
         (PlatformSymbol.ReadOnlyDictionary, "System.Collections.Generic.IReadOnlyDictionary`2"),
     ];
 
+    /// <summary>The bases that make a declaration the diagnostic's business, by metadata name.</summary>
+    /// <remarks>Read from <see cref="Abstractions"/> so a rename cannot leave the two tables disagreeing.</remarks>
+    private static readonly string[] AuthoringBaseNames = AuthoringBaseMetadataNames();
+
     private readonly INamedTypeSymbol?[] _symbols;
 
     private PlatformSymbols(INamedTypeSymbol?[] symbols) => _symbols = symbols;
 
     /// <summary>Resolves the types, or nothing when this compilation has no Arronix contract.</summary>
     /// <remarks>Cached per compilation: the same answer is asked for once per declaration examined.</remarks>
-    internal static PlatformSymbols? Resolve(Compilation compilation) =>
-        Resolved.GetValue(compilation, static key => new Resolution(Create(key))).Symbols;
+    internal static PlatformSymbols? Resolve(Compilation compilation) => Read(compilation).Symbols;
+
+    /// <summary>Resolves the types and, when they do not resolve, why they did not.</summary>
+    /// <remarks>Only the author-facing diagnostic needs the reason; generators just stay silent.</remarks>
+    internal static PlatformResolution Read(Compilation compilation) =>
+        Resolved.GetValue(compilation, static key => Create(key));
 
     internal INamedTypeSymbol Get(PlatformSymbol symbol) => _symbols[(int)symbol]!;
 
@@ -191,15 +202,26 @@ internal sealed class PlatformSymbols
     internal INamedTypeSymbol? ClosedBase(INamedTypeSymbol type, PlatformSymbol symbol) =>
         CompilationSymbols.ClosedBase(type, Get(symbol));
 
-    private static PlatformSymbols? Create(Compilation compilation)
+    private static PlatformResolution Create(Compilation compilation)
     {
-        if (CompilationSymbols.Referenced(compilation, MediaEntityName) is not { } anchor)
+        var anchors = CompilationSymbols.ReferencedCandidates(compilation, MediaEntityName);
+
+        if (anchors.Count == 0)
         {
-            return null;
+            return PlatformResolution.Absent;
         }
 
+        if (anchors.Count > 1)
+        {
+            return PlatformResolution.Incomplete(
+                "this compilation references " + anchors.Count + " assemblies declaring '" + MediaEntityName
+                + "' (" + Identities(anchors) + "), so none of them is the platform contract",
+                AuthoringBases(compilation, anchors));
+        }
+
+        var contract = anchors[0].ContainingAssembly;
         var symbols = new INamedTypeSymbol?[(int)PlatformSymbol.Total];
-        var contract = anchor.ContainingAssembly;
+        string? defect = null;
 
         foreach (var declared in Abstractions)
         {
@@ -207,6 +229,10 @@ internal sealed class PlatformSymbols
                 compilation,
                 declared.MetadataName,
                 contract);
+
+            defect ??= symbols[(int)declared.Symbol] is null
+                ? Missing(compilation, declared.MetadataName, contract)
+                : null;
         }
 
         var core = compilation.GetSpecialType(SpecialType.System_Object).ContainingAssembly;
@@ -218,24 +244,149 @@ internal sealed class PlatformSymbols
             symbols[(int)declared.Symbol] =
                 CompilationSymbols.DeclaredBy(compilation, declared.MetadataName, core)
                 ?? CompilationSymbols.Referenced(compilation, declared.MetadataName);
+
+            defect ??= symbols[(int)declared.Symbol] is null
+                ? "the framework shape '" + declared.MetadataName + "' is not in this reference set"
+                : null;
         }
 
-        foreach (var symbol in symbols)
+        return defect is null
+            ? PlatformResolution.Complete(new PlatformSymbols(symbols))
+            : PlatformResolution.Incomplete(defect, AuthoringBases(compilation, anchors));
+    }
+
+    /// <summary>Says what happened to one contract type this reference set does not supply.</summary>
+    /// <remarks>Declared elsewhere and declared nowhere are different defects with different remedies.</remarks>
+    private static string Missing(Compilation compilation, string metadataName, IAssemblySymbol contract)
+    {
+        var elsewhere = CompilationSymbols.ReferencedCandidates(compilation, metadataName);
+
+        return elsewhere.Count == 0
+            ? "'" + metadataName + "' is not declared by the referenced contract "
+                + contract.Identity.GetDisplayName()
+            : "'" + metadataName + "' is declared by " + Identities(elsewhere)
+                + " rather than by the referenced contract " + contract.Identity.GetDisplayName();
+    }
+
+    /// <summary>The bases a declaration must reach for a failed reading to be its problem.</summary>
+    /// <remarks>
+    /// Taken from every candidate contract, because the ambiguous case has no single one to take them
+    /// from. Each entry is still compared by symbol identity.
+    /// </remarks>
+    private static ImmutableArray<INamedTypeSymbol> AuthoringBases(
+        Compilation compilation,
+        IReadOnlyList<INamedTypeSymbol> anchors)
+    {
+        var bases = ImmutableArray.CreateBuilder<INamedTypeSymbol>();
+
+        foreach (var anchor in anchors)
         {
-            if (symbol is null)
+            foreach (var name in AuthoringBaseNames)
             {
-                return null;
+                if (CompilationSymbols.DeclaredBy(compilation, name, anchor.ContainingAssembly) is { } declared)
+                {
+                    bases.Add(declared);
+                }
             }
         }
 
-        return new PlatformSymbols(symbols);
+        return bases.ToImmutable();
     }
 
-    /// <summary>One compilation's answer, including the answer that it has no Arronix contract.</summary>
-    private sealed class Resolution
+    private static string[] AuthoringBaseMetadataNames()
     {
-        internal Resolution(PlatformSymbols? symbols) => Symbols = symbols;
+        var names = new List<string>();
 
-        internal PlatformSymbols? Symbols { get; }
+        foreach (var declared in Abstractions)
+        {
+            if (declared.Symbol is PlatformSymbol.MediaType or PlatformSymbol.MediaItem)
+            {
+                names.Add(declared.MetadataName);
+            }
+        }
+
+        return names.ToArray();
+    }
+
+    private static string Identities(IReadOnlyList<INamedTypeSymbol> declarations)
+    {
+        var names = new List<string>();
+
+        foreach (var declaration in declarations)
+        {
+            names.Add(declaration.ContainingAssembly.Identity.GetDisplayName());
+        }
+
+        names.Sort(StringComparer.Ordinal);
+
+        return string.Join(" and ", names);
+    }
+}
+
+/// <summary>One compilation's reading of the platform types, and why an incomplete one failed.</summary>
+/// <remarks>
+/// Three answers, not two: no Arronix contract is never an author's problem, an incomplete or duplicated
+/// one always is.
+/// </remarks>
+internal sealed class PlatformResolution
+{
+    private PlatformResolution(
+        PlatformSymbols? symbols,
+        string? defect,
+        ImmutableArray<INamedTypeSymbol> authoringBases)
+    {
+        Symbols = symbols;
+        Defect = defect;
+        AuthoringBases = authoringBases;
+    }
+
+    /// <summary>Gets the answer for a compilation that references no Arronix contract at all.</summary>
+    internal static PlatformResolution Absent { get; } =
+        new(null, null, ImmutableArray<INamedTypeSymbol>.Empty);
+
+    /// <summary>Gets the resolved types, or <see langword="null"/> when they did not all resolve.</summary>
+    internal PlatformSymbols? Symbols { get; }
+
+    /// <summary>
+    /// Gets why the types did not resolve, or <see langword="null"/> when they did, or when there is no
+    /// Arronix contract to resolve them from.
+    /// </summary>
+    internal string? Defect { get; }
+
+    /// <summary>Gets the media bases a declaration must reach for an incomplete reading to concern it.</summary>
+    internal ImmutableArray<INamedTypeSymbol> AuthoringBases { get; }
+
+    /// <summary>Records a complete reading.</summary>
+    /// <param name="symbols">The resolved types.</param>
+    /// <returns>The reading.</returns>
+    internal static PlatformResolution Complete(PlatformSymbols symbols) =>
+        new(symbols, null, ImmutableArray<INamedTypeSymbol>.Empty);
+
+    /// <summary>Records a reading that failed, and why.</summary>
+    /// <param name="defect">The first thing the reference set does not supply.</param>
+    /// <param name="authoringBases">The media bases found in the candidate contracts.</param>
+    /// <returns>The reading.</returns>
+    internal static PlatformResolution Incomplete(
+        string defect,
+        ImmutableArray<INamedTypeSymbol> authoringBases) =>
+        new(null, defect, authoringBases);
+
+    /// <summary>Determines whether a declaration derives from one of the platform's media bases.</summary>
+    /// <param name="type">The declared type.</param>
+    /// <returns><see langword="true"/> when an incomplete reading is this declaration's problem.</returns>
+    internal bool Authors(INamedTypeSymbol type)
+    {
+        for (var current = type.BaseType; current is not null; current = current.BaseType)
+        {
+            foreach (var declared in AuthoringBases)
+            {
+                if (SymbolEqualityComparer.Default.Equals(current.OriginalDefinition, declared))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }
