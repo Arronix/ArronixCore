@@ -84,32 +84,94 @@ public sealed class ArronixApiClient
 
     /// <summary>Reads one item.</summary>
     /// <param name="kind">The media kind.</param>
-    /// <param name="itemId">The item's identifier.</param>
+    /// <param name="reference">The item's complete reference.</param>
     /// <param name="cancellationToken">Abandons the request.</param>
     /// <returns>The item, or <see langword="null"/> when it does not exist.</returns>
     public Task<ItemDetail?> GetItemAsync(
         MediaKindId kind,
-        MediaItemId itemId,
+        MediaItemRef reference,
         CancellationToken cancellationToken = default)
-        => GetOrNullAsync<ItemDetail>(ApiPaths.Item(kind.Value, itemId.Value), cancellationToken);
+        => GetOrNullAsync<ItemDetail>(ApiPaths.Item(kind.Value, reference), cancellationToken);
 
     /// <summary>Reads one page of an item's contents.</summary>
     /// <param name="kind">The media kind.</param>
-    /// <param name="itemId">The containing item's identifier.</param>
+    /// <param name="reference">The containing item's complete reference.</param>
     /// <param name="request">What is being asked for.</param>
     /// <param name="cancellationToken">Abandons the request.</param>
     /// <returns>The page.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="request"/> is <see langword="null"/>.</exception>
     public Task<ItemDetailPage> GetChildrenAsync(
         MediaKindId kind,
-        MediaItemId itemId,
+        MediaItemRef reference,
         ItemBrowseRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         return GetAsync<ItemDetailPage>(
-            ApiPaths.ItemChildren(kind.Value, itemId.Value, request.ToQuery()),
+            ApiPaths.ItemChildren(kind.Value, reference, request.ToQuery()),
             cancellationToken);
+    }
+
+    /// <summary>Searches one configured external catalog.</summary>
+    /// <param name="kind">The media kind whose configured catalog is searched.</param>
+    /// <param name="scheme">The configured catalog scheme to search.</param>
+    /// <param name="text">The text to search for, when any.</param>
+    /// <param name="id">The external identity to resolve, when any.</param>
+    /// <param name="page">The one-based result page.</param>
+    /// <param name="pageSize">The number of results wanted.</param>
+    /// <param name="cancellationToken">Abandons the request.</param>
+    /// <returns>The typed catalog page.</returns>
+    public Task<CatalogItemPage> SearchCatalogAsync(
+        MediaKindId kind,
+        string scheme,
+        string? text,
+        ExternalId? id,
+        int page,
+        int pageSize,
+        CancellationToken cancellationToken = default)
+        => GetAsync<CatalogItemPage>(
+            ApiPaths.CatalogSearch(kind.Value, scheme, text, id, page, pageSize),
+            cancellationToken);
+
+    /// <summary>Adds one catalog identity to the library.</summary>
+    /// <param name="kind">The media kind whose catalog owns the identifier.</param>
+    /// <param name="catalogId">The external catalog identity to add.</param>
+    /// <param name="cancellationToken">Abandons the request.</param>
+    /// <returns>The typed view of the added item.</returns>
+    /// <remarks>
+    /// The server returns 201 for a new materialization and 200 for an idempotent retry. Both bodies are
+    /// the same contract; a Location header is navigation metadata and is never used as identity.
+    /// </remarks>
+    public Task<CatalogItemView> AddCatalogItemAsync(
+        MediaKindId kind,
+        ExternalId catalogId,
+        CancellationToken cancellationToken = default)
+        => PostAsync<CatalogAddRequest, CatalogItemView>(
+            ApiPaths.CatalogItems(kind.Value),
+            new CatalogAddRequest(catalogId.ToString()),
+            cancellationToken);
+
+    /// <summary>Refreshes one added item's catalog-owned facts.</summary>
+    /// <param name="kind">The media kind whose catalog owns the item.</param>
+    /// <param name="reference">The complete reference of the item to refresh.</param>
+    /// <param name="cancellationToken">Abandons the request.</param>
+    /// <returns>The typed view of the refreshed item.</returns>
+    public async Task<CatalogItemView> RefreshCatalogItemAsync(
+        MediaKindId kind,
+        MediaItemRef reference,
+        CancellationToken cancellationToken = default)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            ApiPaths.CatalogItemRefresh(kind.Value, reference),
+            content: null,
+            cancellationToken).ConfigureAwait(false);
+
+        await EnsureSuccessAsync(response).ConfigureAwait(false);
+        return await ReadAsync<CatalogItemView>(response, cancellationToken).ConfigureAwait(false)
+            ?? throw new ApiRequestException(
+                HttpStatusCode.NoContent,
+                $"The server answered '{ApiPaths.CatalogItemRefresh(kind.Value, reference)}' with no content.");
     }
 
     /// <summary>Reads one page of a cross-cutting collection.</summary>
@@ -450,4 +512,7 @@ public sealed class ArronixApiClient
     }
 
     private static string Shorten(string text) => text.Length <= 300 ? text : text[..300] + "…";
+
+    /// <summary>The catalog add wire body, kept private because callers deal in <see cref="ExternalId"/>.</summary>
+    private sealed record CatalogAddRequest(string CatalogId);
 }
