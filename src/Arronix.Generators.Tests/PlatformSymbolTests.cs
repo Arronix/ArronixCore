@@ -41,6 +41,7 @@ internal sealed class PlatformSymbolTests
     private const string MediaSource = """
         using System;
         using System.Collections.Generic;
+        using Arronix.Abstractions.DTOs;
         using Arronix.Abstractions.Identity;
         using Arronix.Abstractions.Media;
         using Arronix.Abstractions.Parsing;
@@ -71,6 +72,27 @@ internal sealed class PlatformSymbolTests
         public record DecisionRow(string Reason);
 
         public sealed record DecoyGroup(string Name);
+
+        public sealed class SampleGroup : IMediaEntity
+        {
+            public ExternalIdSet ExternalIds { get; init; } = ExternalIdSet.Empty;
+
+            public required string Title { get; init; }
+
+            public Language? TitleLanguage { get; init; }
+
+            public string? Overview { get; init; }
+
+            public ArtworkSet Artwork { get; init; } = ArtworkSet.Empty;
+
+            public int Status { get; init; }
+
+            public int Collections { get; init; }
+
+            public int CatalogState { get; init; }
+
+            public int Ordinary { get; init; }
+        }
 
         public sealed class SampleItem : MediaItem<SampleItem, SampleTimeline, SampleStage>
         {
@@ -148,6 +170,11 @@ internal sealed class PlatformSymbolTests
 
             public override global::System.Text.Json.Serialization.Metadata.JsonTypeInfo? GetTypeInfo(Type type) => null;
         }
+        """;
+
+    /// <summary>An item property that pulls the group into the catalog as a related shape.</summary>
+    private const string GroupMember = """
+            public IReadOnlyList<SampleGroup> Sections { get; init; } = [];
         """;
 
     /// <summary>Two annotations of a package's own, spelled exactly like two of the platform's.</summary>
@@ -619,6 +646,40 @@ internal sealed class PlatformSymbolTests
             .Where(static name => name?.StartsWith("Arronix", StringComparison.Ordinal) == true);
 
         Assert.That(referenced, Is.Empty);
+    }
+
+    /// <remarks>
+    /// <c>Status</c>, <c>Collections</c> and <c>CatalogState</c> are conventional defaults for the members
+    /// of the common item shape, and every related shape — a group, a workbench row — is read at top level
+    /// too. Ungated, the names alone made an unrelated group property Secondary or Diagnostic, and Host
+    /// then held a prominence the author never declared for a type that has no such member.
+    /// </remarks>
+    [Test]
+    public void ABareEntitysConventionallyNamedPropertiesTakeTheOrdinaryProminence()
+    {
+        var loaded = Shapes(Compose(MediaSource, GroupMember), companion: null);
+        var group = loaded.Catalog.Get(loaded.Type("Sample.SampleGroup"));
+
+        Assert.Multiple(() =>
+        {
+            foreach (var name in new[] { "Status", "Collections", "CatalogState", "Ordinary" })
+            {
+                Assert.That(Field(group, name).Descriptor.Prominence, Is.EqualTo(Prominence.Detail), name);
+            }
+        });
+    }
+
+    [Test]
+    public void AnItemsConventionallyNamedPropertiesStillTakeTheirDefaults()
+    {
+        var item = Shapes(Compose(MediaSource, GroupMember), companion: null).Catalog.Item;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Field(item, "Status").Descriptor.Prominence, Is.EqualTo(Prominence.Secondary));
+            Assert.That(Field(item, "Collections").Descriptor.Prominence, Is.EqualTo(Prominence.Secondary));
+            Assert.That(Field(item, "CatalogState").Descriptor.Prominence, Is.EqualTo(Prominence.Diagnostic));
+        });
     }
 
     private static string Compose(

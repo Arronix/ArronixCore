@@ -117,6 +117,11 @@ internal sealed class MediaShapeModel
     }
 
     /// <summary>Reads how important a property is, as a <c>Prominence</c> value.</summary>
+    /// <remarks>
+    /// The named defaults belong to the common item shape's own members, so they are read behind the same
+    /// contract <see cref="Semantics"/> reads them behind. Every related shape — a group, a workbench row —
+    /// is described at top level too, and would otherwise take them from the spelling alone.
+    /// </remarks>
     internal int Prominence(IPropertySymbol property)
     {
         var attribute = Attribute(property, PlatformSymbol.Prominence);
@@ -125,8 +130,12 @@ internal sealed class MediaShapeModel
             return value;
         }
 
-        if (property.Name == "Status" || property.Name == "Collections") return 1;
-        if (property.Name == "CatalogState") return 3;
+        if (Implements(property.ContainingType, PlatformSymbol.MediaEntityItem))
+        {
+            if (property.Name == "Status" || property.Name == "Collections") return 1;
+            if (property.Name == "CatalogState") return 3;
+        }
+
         return 2;
     }
 
