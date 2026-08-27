@@ -394,9 +394,11 @@ work does not substitute for closing an earlier dependency.
   record stays addressable and browse says so, and everything survives a restart. `HostItemSource` no longer
   returns an empty placeholder. Identity collision, redirect, three-way merge and add retry are proved
   against the G04 contract, including cross-catalog convergence and ownership handover during a refresh.
-  The browser half of the roadmap's typed Client browse is deliberately not attempted here: it is
-  merge-dependent on the G07.3/G07A proof harness and duplicating that harness would weaken it. Independent
-  acceptance is not claimed.
+  Its standalone durable-core candidate was independently accepted at
+  `9b202eda8a472e1a14604e926f36094682718ca9`: the full rail reported 3,895 total / 3,593 enabled and
+  passed / 0 failed / 302 skipped, with all 3 required tests and compiler-input provenance checks green.
+  The post-merge generic typed Client/browser proof remains deliberately outstanding because it depends on
+  the accepted G07.3/G07A harness; final G07B gate acceptance awaits that combined evidence.
 
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and

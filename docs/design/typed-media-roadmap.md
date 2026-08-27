@@ -606,8 +606,11 @@ media kind's own projector; and the catalog routes reach `CatalogDispatcher` kin
 cross-catalog convergence, three-way merge, redirect and retry are proved against the G04 contract, and the
 two limitations that gate recorded — a merge moving nothing, and nothing persisting — are closed. The
 exit-gate line on typed Client browse is deliberately outstanding: the browser proof is merge-dependent on
-the G07.3/G07A harness, and duplicating that harness would weaken it. Independent acceptance has not been
-sought.
+the G07.3/G07A harness, and duplicating that harness would weaken it. The standalone durable-core candidate
+was independently accepted at `9b202eda8a472e1a14604e926f36094682718ca9`: the full rail reported 3,895
+total / 3,593 enabled and passed / 0 failed / 302 skipped, with all three required tests and
+compiler-input provenance checks green. Final G07B acceptance remains outstanding until the merged generic
+typed Client/browser proof supplies the combined evidence.
 
 Implement only the narrow EF Core/LINQ slice needed for:
 

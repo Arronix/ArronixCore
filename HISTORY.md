@@ -1,5 +1,14 @@
 # Arronix History
 
+## 2026-08-28 — Record standalone G07B durable-core acceptance
+
+Independent review accepted the standalone durable-core candidate at
+`9b202eda8a472e1a14604e926f36094682718ca9`: the full rail reported 3,895 total cases, 3,593 enabled and
+passed, zero failed, and 302 skipped; all three required tests and compiler-input provenance checks passed.
+This does not close G07B after integration: its generic typed Client/browser proof must run through the
+accepted G07.3/G07A harness, and final gate acceptance awaits that combined evidence. G07.3's 137 checks
+and G07A's 37 checks remain separate proof identities.
+
 ## 2026-08-28 — Accept the package-only external consumer
 
 Independent review accepted G07A at `8dd44db15ab1dba1b8f1e1e35c696a65b8f7e732`. The full .NET 11 rail
