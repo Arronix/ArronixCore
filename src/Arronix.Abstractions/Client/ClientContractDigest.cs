@@ -42,20 +42,40 @@ public static class ClientContractDigest
         var rendering = new StringBuilder();
         RenderOptions(rendering, context, context.Options);
 
+        // One budget over everything this walk will touch, spent before anything iterates. Counting distinct
+        // types alone would bound nothing: one type with a million members is one type.
+        var remaining = ClientContractLimits.MaxNodes;
         var seen = new HashSet<Type> { root.Type };
-        var pending = new Queue<JsonTypeInfo>();
-        pending.Enqueue(root);
+        var pending = new Queue<(JsonTypeInfo Type, int Depth)>();
+        pending.Enqueue((root, 1));
 
         while (pending.Count > 0)
         {
-            var current = pending.Dequeue();
+            var (current, depth) = pending.Dequeue();
+
+            if (depth > ClientContractLimits.MaxDepth)
+            {
+                throw new NotSupportedException(
+                    $"This contract's serialization graph nests deeper than {ClientContractLimits.MaxDepth} "
+                    + "levels.");
+            }
+
+            // Counts read once, and charged before Describable, the rendering or Reachable walks them.
+            Spend(ref remaining, 1, "serialization graph");
+            Spend(ref remaining, current.Properties.Count, "serialization graph");
+
+            if (current.Type.IsEnum)
+            {
+                Spend(ref remaining, Enum.GetNames(current.Type).Length, "serialization graph");
+            }
+
             RenderType(rendering, context, current);
 
             foreach (var next in Reachable(current))
             {
                 if (seen.Add(next))
                 {
-                    pending.Enqueue(Metadata(context, next));
+                    pending.Enqueue((Metadata(context, next), depth + 1));
                 }
             }
         }
@@ -83,9 +103,40 @@ public static class ClientContractDigest
         var rendering = new StringBuilder();
         rendering.Append("entity=").Append(Text(Name(entityType))).Append('\n');
 
-        foreach (var field in schema)
+        // Iterative, and bounded by the same budget the serialization walk spends. A schema is a shape the
+        // contract's own code returns: it may nest without end, contain itself, or answer differently on a
+        // second read, and this is the only walk over it.
+        var remaining = ClientContractLimits.MaxNodes;
+        var open = new HashSet<FieldDescriptor>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<(FieldDescriptor Field, int Depth, bool Leaving)>();
+
+        Schedule(pending, schema, 1, ref remaining);
+
+        while (pending.Count > 0)
         {
-            RenderField(rendering, field, 1);
+            var (field, depth, leaving) = pending.Pop();
+
+            if (leaving)
+            {
+                open.Remove(field);
+                continue;
+            }
+
+            if (!open.Add(field))
+            {
+                throw new NotSupportedException("This contract's projection schema contains itself.");
+            }
+
+            if (depth > ClientContractLimits.MaxDepth)
+            {
+                throw new NotSupportedException(
+                    $"This contract's projection schema nests deeper than {ClientContractLimits.MaxDepth} "
+                    + "levels.");
+            }
+
+            RenderField(rendering, field, depth, ref remaining);
+            pending.Push((field, depth, true));
+            Schedule(pending, field.Components, depth + 1, ref remaining);
         }
 
         return rendering.ToString();
@@ -432,7 +483,11 @@ public static class ClientContractDigest
         return rendering.Append('>').ToString();
     }
 
-    private static void RenderField(StringBuilder rendering, FieldDescriptor field, int depth)
+    private static void RenderField(
+        StringBuilder rendering,
+        FieldDescriptor field,
+        int depth,
+        ref int remaining)
     {
         rendering.Append(' ', depth * 2)
             .Append("field=").Append(Text(field.FieldId))
@@ -446,16 +501,58 @@ public static class ClientContractDigest
             .Append('|').Append(Text(field.Unit))
             .Append('\n');
 
-        foreach (var choice in field.Choices)
+        // Choices spend the same budget as fields and components: they are values a contract describes, and
+        // a list of them is as unbounded as any other it returns. Read once, counted once.
+        var choices = field.Choices
+            ?? throw new NotSupportedException("This contract's projection schema carries a null choice list.");
+
+        var choiceCount = choices.Count;
+        Spend(ref remaining, choiceCount, "projection schema");
+
+        for (var index = 0; index < choiceCount; index++)
         {
+            var choice = choices[index];
             rendering.Append(' ', (depth + 1) * 2)
                 .Append("choice=").Append(Text(choice.Value)).Append('|').Append(Text(choice.Name)).Append('\n');
         }
+    }
 
-        foreach (var component in field.Components)
+    /// <summary>Charges a level to the budget and pushes it, reading each entry exactly once.</summary>
+    private static void Schedule(
+        Stack<(FieldDescriptor Field, int Depth, bool Leaving)> pending,
+        IReadOnlyList<FieldDescriptor>? fields,
+        int depth,
+        ref int remaining)
+    {
+        if (fields is null)
         {
-            RenderField(rendering, component, depth + 1);
+            throw new NotSupportedException("This contract's projection schema carries a null field list.");
         }
+
+        var count = fields.Count;
+        Spend(ref remaining, count, "projection schema");
+
+        for (var index = count - 1; index >= 0; index--)
+        {
+            // Read once: a second read of a contract's own list may answer differently, and what was
+            // checked would not be what was walked.
+            var field = fields[index]
+                ?? throw new NotSupportedException("This contract's projection schema carries a null field.");
+
+            pending.Push((field, depth, false));
+        }
+    }
+
+    /// <summary>Spends part of a walk's budget, refusing a shape that asks for more than there is.</summary>
+    private static void Spend(ref int remaining, int cost, string subject)
+    {
+        if (cost < 0 || cost > remaining)
+        {
+            throw new NotSupportedException(
+                $"This contract's {subject} describes more than {ClientContractLimits.MaxNodes} values.");
+        }
+
+        remaining -= cost;
     }
 
     /// <summary>Length-prefixes author-supplied text so no value can be read as the structure around it.</summary>

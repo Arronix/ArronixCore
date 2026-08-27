@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using Arronix.Abstractions.Client;
-using Arronix.Client.Contracts;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -477,7 +476,7 @@ internal static class CompiledContract
                     throw new System.NotSupportedException();
             }
 
-            """.Replace("__MAXNODES__", BoundedGraph.MaxNodes.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            """.Replace("__MAXNODES__", ClientContractLimits.MaxNodes.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
     private static ImmutableArray<MetadataReference> CreateReferences()

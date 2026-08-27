@@ -801,14 +801,6 @@ public sealed class MediaContractLoader
         // Renders the whole reachable graph through that exact context, and refuses what it cannot describe.
         var serialization = ClientContractDigest.OfSerialization(context, root);
 
-        // Immediately before the schema is walked recursively. It is a shape the contract's own code
-        // returned, and a cycle or unbounded nesting would take the process down rather than fail a payload.
-        if (BoundedGraph.Exceeded(schema, static field => field.Components, "its projection schema")
-            is { } unwalkable)
-        {
-            return $"'{expected.EntryPointType}' {unwalkable}";
-        }
-
         var projection = ClientContractDigest.OfProjection(entityType, schema);
 
         if (!string.Equals(serialization, declaration.GeneratedMetadataHash, StringComparison.Ordinal)
