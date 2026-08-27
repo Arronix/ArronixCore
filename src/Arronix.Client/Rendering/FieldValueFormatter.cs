@@ -96,7 +96,7 @@ public static class FieldValueFormatter
         FieldValueKind.FilePath => value.Text ?? AbsentMarker,
         FieldValueKind.Language => value.Language?.Name ?? AbsentMarker,
         FieldValueKind.Quality => value.Quality?.Name ?? AbsentMarker,
-        FieldValueKind.Artwork => value.Link?.ToString() ?? AbsentMarker,
+        FieldValueKind.Artwork => value.Address?.ToString() ?? AbsentMarker,
         FieldValueKind.Count => value.Number?.ToString("N0", CultureInfo.CurrentCulture) ?? AbsentMarker,
     };
 

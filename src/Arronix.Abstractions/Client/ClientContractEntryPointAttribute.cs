@@ -1,5 +1,7 @@
 using System.ComponentModel;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Arronix.Abstractions.Shape;
 
 namespace Arronix.Abstractions.Client;
@@ -97,6 +99,16 @@ public abstract class ClientContractEntryPointAttribute : Attribute
     /// after load.
     /// </remarks>
     public Type EntityType { get; }
+
+    /// <summary>Gets the source-generated serialization metadata this entry point reads through.</summary>
+    /// <remarks>
+    /// The actual context, not a description of one. A consumer that wants to know what the wire shape is
+    /// asks it, rather than trusting a value that was written down beside it.
+    /// </remarks>
+    public abstract JsonSerializerContext SerializationContext { get; }
+
+    /// <summary>Gets the metadata for <see cref="EntityType"/> itself, the root of that graph.</summary>
+    public abstract JsonTypeInfo EntityTypeInfo { get; }
 
     /// <summary>Gets what a projection from this entry point contains, in declaration order.</summary>
     /// <remarks>

@@ -45,6 +45,15 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     private const int CompositeKind = 20;
     private const int ReferenceKind = 12;
 
+    private static readonly DiagnosticDescriptor ShapeNotDescribable = new(
+        "ARX1011",
+        "A client contract shape cannot be described",
+        "'{0}' cannot be published to a client: {1}",
+        "Arronix.Authoring",
+        DiagnosticSeverity.Error,
+        isEnabledByDefault: true,
+        description: "The declared entry point is generated from the item type's own shape and from the serialization metadata the framework will produce for it. A shape the generator cannot model is reported rather than described wrongly, because a hash that does not describe the real wire is worse than no hash.");
+
     private static readonly DiagnosticDescriptor SerializationContextMissing = new(
         "ARX1010",
         "A client-safe item type needs a declared serialization context",
@@ -88,7 +97,20 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 return;
             }
 
-            production.AddSource(entry.HintName, SourceText.From(Emit(entry, serializer), Encoding.UTF8));
+            var emitted = Emit(entry, serializer, out var refusal);
+
+            if (emitted is null)
+            {
+                production.ReportDiagnostic(Diagnostic.Create(
+                    ShapeNotDescribable,
+                    entry.Location,
+                    entry.Symbol.ToDisplayString(),
+                    refusal));
+
+                return;
+            }
+
+            production.AddSource(entry.HintName, SourceText.From(emitted, Encoding.UTF8));
         });
     }
 
@@ -132,7 +154,16 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             }
         }
 
-        return serialized.Count == 0 ? null : new SerializationContext(symbol, serialized);
+        var options = symbol.GetAttributes().FirstOrDefault(
+            attribute => attribute.AttributeClass?.Name == "JsonSourceGenerationOptionsAttribute");
+
+        return serialized.Count == 0
+            ? null
+            : new SerializationContext(
+                symbol,
+                serialized,
+                EnumArgument(options?.ConstructorArguments.FirstOrDefault()) == "Strict",
+                NamedEnumArgument(options, "PropertyNamingPolicy") == "CamelCase");
     }
 
     private static SerializationContext? Match(
@@ -182,13 +213,33 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 Sanitize(symbol.ToDisplayString()) + ".ClientContract.g.cs");
     }
 
-    private static string Emit(Entry entry, SerializationContext serializer)
+    private static string? Emit(Entry entry, SerializationContext serializer, out string? refusal)
     {
+        refusal = null;
+
+        if (!serializer.CamelCase)
+        {
+            refusal = "its serialization context does not declare the camel-case naming policy, and no "
+                + "other policy is modeled";
+            return null;
+        }
+
+        var graph = ClientContractSerializationModel.Render(
+            entry.Symbol,
+            serializer.Strict,
+            out var derived,
+            out refusal);
+
+        if (graph is null)
+        {
+            return null;
+        }
+
         var projection = new Projection();
         var schema = projection.Describe(entry.Symbol);
 
         var projectionHash = Hash(RenderSchema(entry.Symbol, schema));
-        var metadataHash = Hash(RenderMemberGraph(entry.Symbol));
+        var metadataHash = Hash(graph);
 
         var contractName = entry.Symbol.Name + "ClientContract";
         var contextName = TypeName(serializer.Symbol);
@@ -216,9 +267,9 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             source.AppendLine();
         }
 
-        EmitContract(source, contractName, contextName, entry.Symbol, schema, projection);
+        EmitContract(source, contractName, contextName, entry.Symbol, schema, projection, derived);
         source.AppendLine();
-        EmitAttribute(source, attributeName, contractName, entry.Symbol);
+        EmitAttribute(source, attributeName, contractName, contextName, entry.Symbol);
 
         return source.ToString();
     }
@@ -229,7 +280,8 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         string contextName,
         INamedTypeSymbol item,
         IReadOnlyList<Field> schema,
-        Projection projection)
+        Projection projection,
+        IReadOnlyList<string> derived)
     {
         source.AppendLine("/// <summary>The generated client contract of one media item type.</summary>");
         source.AppendLine("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
@@ -254,13 +306,64 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.AppendLine("    public static global::System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Schema => Declared;");
         source.AppendLine();
 
+        if (derived.Count > 0)
+        {
+            source.AppendLine("    private static readonly global::System.Collections.ObjectModel.ReadOnlyCollection<string> Derived =");
+            source.AppendLine("        new(new string[]");
+            source.AppendLine("        {");
+
+            foreach (var name in derived)
+            {
+                source.Append("            ").Append(Literal(name)).AppendLine(",");
+            }
+
+            source.AppendLine("        });");
+            source.AppendLine();
+        }
+
         source.AppendLine("    /// <summary>Reads one serialized entity into this assembly's own typed value.</summary>");
         source.Append("    public static ").Append(TypeName(item)).AppendLine(" Read(global::System.ReadOnlySpan<byte> utf8Json)");
-        source.Append("        => global::System.Text.Json.JsonSerializer.Deserialize(utf8Json, ")
+        source.AppendLine("    {");
+
+        if (derived.Count > 0)
+        {
+            source.AppendLine("        RefuseDerivedMembers(utf8Json);");
+        }
+
+        source.Append("        return global::System.Text.Json.JsonSerializer.Deserialize(utf8Json, ")
             .Append(contextName).Append(".Default.").Append(item.Name).AppendLine(")");
         source.Append("            ?? throw new global::System.Text.Json.JsonException(\"The payload is a null ")
             .Append(item.Name).AppendLine(".\");");
+        source.AppendLine("    }");
         source.AppendLine();
+
+        if (derived.Count > 0)
+        {
+            // A computed member is mapped rather than unknown, so the framework's unmapped-member rule
+            // silently drops one a payload supplies. A sender that wrote it would believe it had been read.
+            source.AppendLine("    private static void RefuseDerivedMembers(global::System.ReadOnlySpan<byte> utf8Json)");
+            source.AppendLine("    {");
+            source.AppendLine("        var reader = new global::System.Text.Json.Utf8JsonReader(utf8Json);");
+            source.AppendLine();
+            source.AppendLine("        while (reader.Read())");
+            source.AppendLine("        {");
+            source.AppendLine("            if (reader.TokenType != global::System.Text.Json.JsonTokenType.PropertyName)");
+            source.AppendLine("            {");
+            source.AppendLine("                continue;");
+            source.AppendLine("            }");
+            source.AppendLine();
+            source.AppendLine("            for (var index = 0; index < Derived.Count; index++)");
+            source.AppendLine("            {");
+            source.AppendLine("                if (reader.ValueTextEquals(Derived[index]))");
+            source.AppendLine("                {");
+            source.AppendLine("                    throw new global::System.Text.Json.JsonException(");
+            source.AppendLine("                        \"'\" + Derived[index] + \"' is computed by this contract and cannot be supplied by a payload.\");");
+            source.AppendLine("                }");
+            source.AppendLine("            }");
+            source.AppendLine("        }");
+            source.AppendLine("    }");
+            source.AppendLine();
+        }
 
         source.AppendLine("    /// <summary>Serializes one typed entity in exactly the shape the reader accepts.</summary>");
         source.Append("    public static byte[] Write(").Append(TypeName(item)).AppendLine(" value)");
@@ -290,7 +393,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
 
         source.AppendLine();
         source.Append("        return new global::Arronix.Abstractions.Client.ProjectedEntity(typeof(")
-            .Append(TypeName(item)).AppendLine(").FullName!, fields);");
+            .Append(TypeName(item)).AppendLine("), fields);");
         source.AppendLine("    }");
 
         projection.EmitHelpers(source);
@@ -302,6 +405,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         StringBuilder source,
         string attributeName,
         string contractName,
+        string contextName,
         INamedTypeSymbol item)
     {
         source.AppendLine("/// <summary>This assembly's declared client contract entry point.</summary>");
@@ -318,6 +422,12 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.AppendLine("        : base(entityType, generatedMetadataHash, projectionSchemaHash)");
         source.AppendLine("    {");
         source.AppendLine("    }");
+        source.AppendLine();
+        source.Append("    public override global::System.Text.Json.Serialization.JsonSerializerContext SerializationContext => ")
+            .Append(contextName).AppendLine(".Default;");
+        source.AppendLine();
+        source.Append("    public override global::System.Text.Json.Serialization.Metadata.JsonTypeInfo EntityTypeInfo => ")
+            .Append(contextName).Append(".Default.").Append(item.Name).AppendLine(";");
         source.AppendLine();
         source.Append("    public override global::System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Schema => ")
             .Append(contractName).AppendLine(".Schema;");
@@ -364,6 +474,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.Append(indent).Append("    Prominence = (global::Arronix.Abstractions.Shape.Prominence)")
             .Append(Number(field.Prominence)).AppendLine(",");
         source.Append(indent).Append("    Multivalued = ").Append(Bool(field.Multivalued)).AppendLine(",");
+        source.Append(indent).Append("    Editable = ").Append(Bool(field.Editable)).AppendLine(",");
         source.Append(indent).Append("    Unit = ").Append(LiteralOrNull(field.Unit)).AppendLine(",");
 
         if (field.Choices.Count == 0)
@@ -404,10 +515,14 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.Append(indent).AppendLine("},");
     }
 
+    /// <remarks>
+    /// The same rendering <c>ClientContractDigest.RenderProjection</c> produces from a live schema, so the
+    /// literal emitted here can be checked against an independent recomputation.
+    /// </remarks>
     private static string RenderSchema(INamedTypeSymbol item, IReadOnlyList<Field> schema)
     {
         var rendering = new StringBuilder();
-        rendering.Append("entity=").Append(item.ToDisplayString()).Append('\n');
+        rendering.Append("entity=").Append(ClientContractSerializationModel.Name(item)).Append('\n');
 
         foreach (var field in schema)
         {
@@ -422,11 +537,12 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         rendering.Append(' ', depth * 2)
             .Append("field=").Append(field.FieldId)
             .Append('|').Append(field.Name)
+            .Append('|').Append(field.Description ?? string.Empty)
             .Append('|').Append(Number(field.Kind))
             .Append('|').Append(Number(field.Semantics))
             .Append('|').Append(Number(field.Prominence))
             .Append('|').Append(field.Multivalued ? "many" : "one")
-            .Append('|').Append(field.Nullable ? "optional" : "required")
+            .Append('|').Append(field.Editable ? "editable" : "read-only")
             .Append('|').Append(field.Unit ?? string.Empty)
             .Append('\n');
 
@@ -439,67 +555,6 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         foreach (var component in field.Components)
         {
             RenderField(rendering, component, depth + 1);
-        }
-    }
-
-    /// <summary>
-    /// Renders the CLR member graph the serialization metadata is generated over.
-    /// </summary>
-    /// <remarks>
-    /// Every member the framework's generator will describe, transitively, in declaration order. It moves
-    /// whenever the shape a payload must have moves, including when the assembly version does not.
-    /// </remarks>
-    private static string RenderMemberGraph(INamedTypeSymbol entity)
-    {
-        var rendering = new StringBuilder();
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        RenderType(rendering, entity, seen);
-        return rendering.ToString();
-    }
-
-    private static void RenderType(StringBuilder rendering, ITypeSymbol type, HashSet<string> seen)
-    {
-        if (type is not INamedTypeSymbol named || !seen.Add(TypeName(named)))
-        {
-            return;
-        }
-
-        rendering.Append("type=").Append(named.ToDisplayString()).Append('\n');
-        var nested = new List<ITypeSymbol>();
-
-        foreach (var property in PublicProperties(named))
-        {
-            if (IsExcluded(property))
-            {
-                continue;
-            }
-
-            rendering.Append("  member=").Append(Identifier(property.Name))
-                .Append('|').Append(property.Type.ToDisplayString())
-                .Append('|').Append(property.SetMethod is { DeclaredAccessibility: Accessibility.Public } ? "settable" : "derived")
-                .Append('\n');
-
-            var element = StripNullable(UnwrapList(property.Type) ?? property.Type);
-
-            if (element.TypeKind == TypeKind.Enum)
-            {
-                foreach (var member in ((INamedTypeSymbol)element).GetMembers().OfType<IFieldSymbol>())
-                {
-                    if (member.HasConstantValue)
-                    {
-                        rendering.Append("    value=").Append(Identifier(member.Name)).Append('\n');
-                    }
-                }
-            }
-            else if (element.SpecialType == SpecialType.None && element is INamedTypeSymbol)
-            {
-                nested.Add(element);
-            }
-        }
-
-        foreach (var candidate in nested)
-        {
-            RenderType(rendering, candidate, seen);
         }
     }
 
@@ -539,15 +594,62 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     /// <summary>One declared serialization context and the types it declares metadata for.</summary>
     internal sealed class SerializationContext
     {
-        internal SerializationContext(INamedTypeSymbol symbol, IReadOnlyList<string> serialized)
+        internal SerializationContext(
+            INamedTypeSymbol symbol,
+            IReadOnlyList<string> serialized,
+            bool strict,
+            bool camelCase)
         {
             Symbol = symbol;
             Serialized = serialized;
+            Strict = strict;
+            CamelCase = camelCase;
         }
 
         internal INamedTypeSymbol Symbol { get; }
 
         internal IReadOnlyList<string> Serialized { get; }
+
+        internal bool Strict { get; }
+
+        internal bool CamelCase { get; }
+    }
+
+    /// <summary>Reads the member name of an enumeration-valued attribute argument.</summary>
+    private static string? EnumArgument(TypedConstant? argument)
+    {
+        if (argument is not { Type: INamedTypeSymbol { TypeKind: TypeKind.Enum } enumeration } value)
+        {
+            return null;
+        }
+
+        foreach (var member in enumeration.GetMembers().OfType<IFieldSymbol>())
+        {
+            if (member.HasConstantValue && Equals(member.ConstantValue, value.Value))
+            {
+                return member.Name;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? NamedEnumArgument(AttributeData? attribute, string name)
+    {
+        if (attribute is null)
+        {
+            return null;
+        }
+
+        foreach (var argument in attribute.NamedArguments)
+        {
+            if (argument.Key == name)
+            {
+                return EnumArgument(argument.Value);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>One projected field, as a descriptor and as a value expression.</summary>
@@ -582,6 +684,8 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         internal int Prominence { get; set; } = 2;
 
         internal bool Multivalued { get; set; }
+
+        internal bool Editable { get; set; }
 
         internal bool Nullable { get; set; }
 
@@ -665,6 +769,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 Description = NamedString(display, "Description"),
                 Unit = ConstructorString(Attribute(property, "UnitAttribute")),
                 Multivalued = access != Access.Direct,
+                Editable = topLevel && Has(property, "EditableAttribute") && !Has(property, "DerivedAttribute"),
                 Nullable = IsNullable(declared) || (listElement is not null && IsNullable(listElement)),
                 Semantics = topLevel ? MediaShapeModel.Semantics(property, declaredKind, element) : 0,
                 Prominence = topLevel ? MediaShapeModel.Prominence(property) : 1,
@@ -835,7 +940,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 ("CountValue", "long?", "Count", "OfCount(value.Value)"),
                 ("EnumeratedValue", "string?", "Enumerated", "OfEnumerated(value)"),
                 ("LinkValue", "global::System.Uri?", "Link", "OfLink(value)"),
-                ("ArtworkValue", "global::System.Uri?", "Artwork", "OfArtwork(value)"),
+                ("ArtworkValue", "global::Arronix.Abstractions.Media.ArtworkImage?", "Artwork", "OfArtwork(value)"),
                 ("LanguageValue", "global::Arronix.Abstractions.DTOs.Language?", "Language", "OfLanguage(value)"),
                 ("ExternalValue", "global::Arronix.Abstractions.Shape.ExternalId?", "ExternalIdentifier", "OfExternalIdentifier(value.Value)"),
             };
@@ -871,7 +976,7 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                 source.AppendLine("        var items = new global::Arronix.Abstractions.Shape.FieldValue[value.Images.Count];");
                 source.AppendLine("        for (var index = 0; index < items.Length; index++)");
                 source.AppendLine("        {");
-                source.AppendLine("            items[index] = ArtworkValue(value.Images[index].Address);");
+                source.AppendLine("            items[index] = ArtworkValue(value.Images[index]);");
                 source.AppendLine("        }");
                 source.AppendLine();
                 source.AppendLine("        return global::Arronix.Abstractions.Shape.FieldValue.OfItems(global::Arronix.Abstractions.Shape.FieldValueKind.Artwork, items);");

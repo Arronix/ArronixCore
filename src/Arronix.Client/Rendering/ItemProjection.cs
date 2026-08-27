@@ -80,13 +80,13 @@ public static class ItemProjection
                 continue;
             }
 
-            if (value.Link is { } link)
+            if (value.Address is { } link)
             {
                 return link;
             }
 
-            var first = value.Items?.FirstOrDefault(candidate => candidate.Link is not null);
-            if (first?.Link is { } firstLink)
+            var first = value.Items?.FirstOrDefault(candidate => candidate.Address is not null);
+            if (first?.Address is { } firstLink)
             {
                 return firstLink;
             }

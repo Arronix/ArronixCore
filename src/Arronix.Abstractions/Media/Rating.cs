@@ -1,4 +1,3 @@
-
 using System.Text.Json.Serialization;
 
 namespace Arronix.Abstractions.Media;
@@ -13,11 +12,11 @@ public readonly record struct RatingScale
     /// <paramref name="maximum"/> is not greater than <paramref name="minimum"/>.
     /// </exception>
     /// <remarks>
-    /// Named as the constructor a deserializer must use, because it is the only one that produces a scale
-    /// at all. A struct always has a parameterless form, and here that form is the degenerate interval
-    /// zero-to-zero, which every rating value then falls outside of. A reader that reached for it would
-    /// turn a valid published rating into a refusal from <see cref="Rating"/>'s own constructor, at
-    /// deserialization time, in a stack that names neither the scale nor the value.
+    /// Named as the constructor a deserializer rebuilds the value with. Without that, a struct with an
+    /// implicit parameterless constructor and no settable member is rebuilt as its default, and a scale of
+    /// zero to zero contains nothing: the rating that carries it then fails its own validation at a point
+    /// that names neither the payload nor this type. The scale is an invariant, so the constructor that
+    /// establishes it is the only way back into one.
     /// </remarks>
     [JsonConstructor]
     public RatingScale(decimal minimum, decimal maximum)
@@ -50,6 +49,8 @@ public readonly record struct RatingScale
     public static RatingScale Percent { get; } = new(0m, 100m);
 
     /// <summary>Gets whether this is a constructed, non-empty interval.</summary>
+    /// <remarks>Not written to the wire: it restates what the bounds already say.</remarks>
+    [JsonIgnore]
     public bool IsValid => Maximum > Minimum;
 
     /// <summary>Determines whether a value belongs to this scale.</summary>
@@ -145,5 +146,13 @@ public sealed record Rating
     public long? SampleSize { get; }
 
     /// <summary>Gets the rating projected onto the unit interval for like-voice comparisons.</summary>
+    /// <remarks>
+    /// Not written to the wire. It is <see cref="Value"/> divided through <see cref="Scale"/>, both of
+    /// which the payload carries, so a written copy is a second source of truth that an untrusted payload
+    /// can make disagree with them. Writing it also evaluates <see cref="RatingScale.Normalize"/>, which
+    /// throws for a scale that does not contain its value — an unreadable rating would then fail while
+    /// being written rather than while being validated.
+    /// </remarks>
+    [JsonIgnore]
     public decimal NormalizedValue => Scale.Normalize(Value);
 }

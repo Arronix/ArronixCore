@@ -1,4 +1,5 @@
 
+using System.Text.Json.Serialization;
 using Arronix.Abstractions.Media;
 
 namespace Arronix.Media.Movies;
@@ -38,9 +39,17 @@ public sealed record MovieReleaseTimeline : IReleaseTimeline<MovieReleaseStage>
     public required DateOnly EvaluatedOn { get; init; }
 
     /// <summary>Gets the earliest home release, or the theatrical release when no home date is known.</summary>
+    /// <remarks>Not written to the wire: it is the earliest of the dates the payload already carries.</remarks>
+    [JsonIgnore]
     public DateOnly? AvailableOn => Earliest(Physical, Digital) ?? InCinemas;
 
     /// <summary>Gets the release stage on <see cref="EvaluatedOn"/>.</summary>
+    /// <remarks>
+    /// Not written to the wire. The milestones and the evaluation date decide it, and a consumer that read
+    /// a stage out of a payload would be reading whichever stage the sender chose rather than the one this
+    /// timeline's own rule produces.
+    /// </remarks>
+    [JsonIgnore]
     public MovieReleaseStage Stage => StageOn(EvaluatedOn);
 
     /// <summary>Determines the release stage on a specified date.</summary>

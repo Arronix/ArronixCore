@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Arronix.Abstractions.DTOs;
 using Arronix.Abstractions.Shape;
 
@@ -76,6 +77,13 @@ public class MediaItem<TItem, TReleaseTimeline, TReleaseStage>
     public required TReleaseTimeline Lifecycle { get; init; }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// Not written to the wire. It is <see cref="Lifecycle"/>'s answer, computed from milestones the
+    /// payload already carries, so serializing it beside them would give an untrusted payload two ways to
+    /// state one thing — and the reader would have to decide which to believe. A consumer reads the status
+    /// off the item it deserialized, which recomputes it.
+    /// </remarks>
+    [JsonIgnore]
     public TReleaseStage Status => Lifecycle.Stage;
 
     /// <inheritdoc />

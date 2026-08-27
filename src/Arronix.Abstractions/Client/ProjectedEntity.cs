@@ -12,7 +12,7 @@ namespace Arronix.Abstractions.Client;
 public sealed record ProjectedField(FieldDescriptor Descriptor, FieldValue Value);
 
 /// <summary>One typed entity, projected out of a loaded contract for presentation.</summary>
-/// <param name="EntityTypeName">The canonical CLR full name of the value this was projected from.</param>
+/// <param name="EntityType">The exact CLR type this was projected from.</param>
 /// <param name="Fields">Its fields, in the order the generated schema declares them.</param>
 /// <remarks>
 /// <para>
@@ -22,9 +22,13 @@ public sealed record ProjectedField(FieldDescriptor Descriptor, FieldValue Value
 /// second media definition.
 /// </para>
 /// <para>
+/// The type itself, not its name. A consumer that wants a name asks the type for one; carrying both would
+/// be one fact spelled twice, and the type is what a caller compares against the entry point it came from.
+/// </para>
+/// <para>
 /// Deliberately not a dictionary keyed by field identifier. The order a contract declares its fields in is
 /// the order it means them to be read, and a consumer reconstructing that order from a prominence rank is
 /// reconstructing a decision the contract already made.
 /// </para>
 /// </remarks>
-public sealed record ProjectedEntity(string EntityTypeName, IReadOnlyList<ProjectedField> Fields);
+public sealed record ProjectedEntity(Type EntityType, IReadOnlyList<ProjectedField> Fields);

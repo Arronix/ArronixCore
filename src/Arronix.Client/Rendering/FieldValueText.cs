@@ -63,7 +63,7 @@ public static class FieldValueText
             FieldValueKind.FilePath => value.Text ?? string.Empty,
             FieldValueKind.Language => value.Language?.Code ?? string.Empty,
             FieldValueKind.Quality => value.Quality?.Name ?? string.Empty,
-            FieldValueKind.Artwork => value.Link?.ToString() ?? string.Empty,
+            FieldValueKind.Artwork => value.Address?.ToString() ?? string.Empty,
             FieldValueKind.Count => Invariant(value.Number),
         };
     }
