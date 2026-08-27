@@ -417,6 +417,8 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         EmitContract(source, contractName, contextName, entry.Symbol, schema, projection, derived);
         source.AppendLine();
         EmitAttribute(source, attributeName, contractName, contextName, entry.Symbol);
+        source.AppendLine();
+        EmitCodec(source, entry.Symbol.Name + "ItemCodec", contractName, entry.Symbol, metadataHash);
 
         return source.ToString();
     }
@@ -616,6 +618,69 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
         source.AppendLine("        }");
         source.AppendLine();
         source.AppendLine("        return typed;");
+        source.AppendLine("    }");
+        source.AppendLine("}");
+    }
+
+    /// <summary>
+    /// Emits the platform-side door onto the same generated serialization the browser reads through.
+    /// </summary>
+    /// <remarks>
+    /// The holder is public, because the assembly declaring the media type must be able to name it and this
+    /// generator cannot know which assembly that is; no package has to friend another. The implementation
+    /// behind it is private, so nothing outside can hold or construct one. It is a separate object from the
+    /// client contract declaration on purpose: that attribute is what a browser binds to, and reusing it
+    /// would make one declaration answer for two boundaries. Both call the same generated reader and writer
+    /// and state the same metadata hash, so the item still has exactly one serialization definition.
+    /// </remarks>
+    private static void EmitCodec(
+        StringBuilder source,
+        string holderName,
+        string contractName,
+        INamedTypeSymbol item,
+        string metadataHash)
+    {
+        source.AppendLine("/// <summary>The generated bridge through which this item is stored and read back.</summary>");
+        source.AppendLine("[global::System.ComponentModel.EditorBrowsable(global::System.ComponentModel.EditorBrowsableState.Never)]");
+
+        // Public, because whichever assembly declares the media type has to be able to name it, and that
+        // assembly is chosen by the author rather than known here. Hidden from ordinary completion lists,
+        // inert, and holding no state a caller can change: it is generated registration SPI, not surface
+        // anybody writes against.
+        source.Append("public static class ").AppendLine(holderName);
+        source.AppendLine("{");
+        source.AppendLine("    /// <summary>Gets the bridge the host holds for this item type.</summary>");
+        source.AppendLine("    public static global::Arronix.Abstractions.Media.ICompiledItemCodec Declared { get; } = new Compiled();");
+        source.AppendLine();
+        source.AppendLine("    private sealed class Compiled : global::Arronix.Abstractions.Media.ICompiledItemCodec");
+        source.AppendLine("    {");
+        source.Append("        public global::System.Type ItemType => typeof(").Append(TypeName(item)).AppendLine(");");
+        source.AppendLine();
+        source.Append("        public string MetadataHash => ").Append(Literal(metadataHash)).AppendLine(";");
+        source.AppendLine();
+        source.AppendLine("        public byte[] Write(global::Arronix.Abstractions.Media.IMediaItem item)");
+        source.Append("            => ").Append(contractName).AppendLine(".Write(Typed(item));");
+        source.AppendLine();
+        source.AppendLine("        public global::Arronix.Abstractions.Media.IMediaItem Read(global::System.ReadOnlySpan<byte> payload)");
+        source.Append("            => ").Append(contractName).AppendLine(".Read(payload);");
+        source.AppendLine();
+        source.Append("        private static ").Append(TypeName(item))
+            .AppendLine(" Typed(global::Arronix.Abstractions.Media.IMediaItem item)");
+        source.AppendLine("        {");
+        source.AppendLine("            if (item is null)");
+        source.AppendLine("            {");
+        source.AppendLine("                throw new global::System.ArgumentNullException(nameof(item));");
+        source.AppendLine("            }");
+        source.AppendLine();
+        source.Append("            if (item is not ").Append(TypeName(item)).AppendLine(" typed)");
+        source.AppendLine("            {");
+        source.AppendLine("                throw new global::System.ArgumentException(");
+        source.Append("                    \"The value is not a '\" + ").Append(Literal(item.ToDisplayString())).AppendLine(" + \"'.\",");
+        source.AppendLine("                    nameof(item));");
+        source.AppendLine("            }");
+        source.AppendLine();
+        source.AppendLine("            return typed;");
+        source.AppendLine("        }");
         source.AppendLine("    }");
         source.AppendLine("}");
     }

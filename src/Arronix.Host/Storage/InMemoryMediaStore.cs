@@ -83,7 +83,7 @@ internal sealed class InMemoryMediaStore(MediaKindRegistry kinds, MediaItemBroke
         ArgumentNullException.ThrowIfNull(facet);
 
         var shape = ShapeOf(facet.Ref);
-        GuardMonitorDimensions(shape, facet);
+        LibraryFacetRules.RequireDeclaredMonitoring(shape, facet);
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -384,37 +384,6 @@ internal sealed class InMemoryMediaStore(MediaKindRegistry kinds, MediaItemBroke
         }
 
         return registered.Shape;
-    }
-
-    private static void GuardMonitorDimensions(ValidatedShape shape, LibraryFacet facet)
-    {
-        if (facet.Monitor.Count == 0)
-        {
-            return;
-        }
-
-        var level = shape.LevelOf(facet.Ref.Level);
-
-        foreach (var (dimensionId, value) in facet.Monitor)
-        {
-            var dimension = level.MonitorDimensions
-                .FirstOrDefault(candidate => string.Equals(candidate.DimensionId, dimensionId, StringComparison.Ordinal));
-
-            if (dimension is null)
-            {
-                throw Refuse(
-                    CoreErrorCode.InvalidConfiguration,
-                    $"Level '{facet.Ref.Level}' of media kind '{shape.Kind}' declares no monitoring axis '{dimensionId}'.");
-            }
-
-            if (dimension.Kind == MonitorDimensionKind.Enumerated
-                && !dimension.Choices.Any(choice => string.Equals(choice.Value, value, StringComparison.Ordinal)))
-            {
-                throw Refuse(
-                    CoreErrorCode.InvalidConfiguration,
-                    $"'{value}' is not one of the choices monitoring axis '{dimensionId}' declares.");
-            }
-        }
     }
 
     private void GuardSelectedVariant(ValidatedShape shape, LibraryFacet facet)

@@ -73,7 +73,7 @@ public static class ArronixHostServiceCollectionExtensions
         services.AddLanguageRegistry();
         services.AddMediaRegistry();
         services.AddDefinitionEngines();
-        services.AddInMemoryStorage();
+        services.AddDurableStorage();
 
         // Dependencies may be registered later in the collection; hosted-service position controls
         // lifecycle order, not constructor resolution order. Start admits jobs before the scheduler loop;

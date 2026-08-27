@@ -5,6 +5,7 @@ using Arronix.Abstractions.Media;
 using Arronix.Abstractions.Providers;
 using Arronix.Abstractions.Shape;
 using Arronix.Host.Media;
+using Arronix.Common.Lifetimes;
 using Arronix.Host.Media.Catalog;
 
 namespace Arronix.Host.Providers;
@@ -106,7 +107,38 @@ public sealed class CatalogDispatcher(
     {
         ArgumentNullException.ThrowIfNull(kind);
         RequireItemType<TItem>(kind);
+
+        var found = await FetchAsync(kind, catalogId, cancellationToken).ConfigureAwait(false);
+        return found is null ? null : Typed<TItem>(found);
+    }
+
+    /// <summary>
+    /// Fetches one item by catalog identity and gives it its durable identity, without naming its type.
+    /// </summary>
+    /// <param name="kind">The media kind's runtime.</param>
+    /// <param name="catalogId">The identifier to resolve. It may be an alias the catalog redirects.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The materialized item, or <see langword="null"/> when no owning catalog holds one.</returns>
+    /// <exception cref="ArgumentNullException"><paramref name="kind"/> is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="catalogId"/> is malformed.</exception>
+    /// <exception cref="ArronixException">
+    /// No installed cataloger owns the scheme, or the item that came back does not state exactly one
+    /// identifier in its cataloger's own scheme.
+    /// </exception>
+    /// <remarks>
+    /// The form a kind-blind caller uses: an HTTP route cannot write the item type, and resolving a generic
+    /// method against one at run time would be the reflection this platform does not do. The item's exact
+    /// type is intact on the value that comes back.
+    /// </remarks>
+    public async Task<MaterializedItem<IMediaItem>?> FetchAsync(
+        IMediaTypeRuntime kind,
+        ExternalId catalogId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
         RequireWellFormed(catalogId, nameof(catalogId));
+
+        var binding = RequireBinding(kind);
 
         foreach (var definition in RequireAuthorities(kind, catalogId.Scheme))
         {
@@ -119,15 +151,31 @@ public sealed class CatalogDispatcher(
             // unloading its code while it is running.
             using var held = leased;
 
-            if (held.Value.Provider is not ICataloger<TItem> cataloger
+            if (binding.Bind(held.Value.Provider) is not { } cataloger
                 || held.Value.CatalogScheme is not { } catalogScheme)
             {
                 continue;
             }
 
-            var item = await cataloger
-                .GetAsync(_tests.Invocation(definition), catalogId, cancellationToken)
-                .ConfigureAwait(false);
+            IMediaItem? item;
+
+            try
+            {
+                item = await cataloger
+                    .GetAsync(_tests.Invocation(definition), catalogId, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception failure) when (Contained(failure, cancellationToken))
+            {
+                // A cataloger is a package's own code and may throw anything of its own. Whatever it threw,
+                // the platform's answer is that the catalog did not answer — which is a different thing from
+                // a malformed request, and must not reach a caller as one.
+                throw new ArronixException(
+                    CoreErrorCode.CatalogerConnectionFailed,
+                    $"The cataloger for '{catalogScheme}' failed while resolving "
+                    + $"'{catalogId.Scheme}:{catalogId.Value}'.",
+                    failure);
+            }
 
             if (item is null)
             {
@@ -166,8 +214,37 @@ public sealed class CatalogDispatcher(
         where TItem : class, IMediaItem
     {
         ArgumentNullException.ThrowIfNull(kind);
-        ArgumentNullException.ThrowIfNull(query);
         RequireItemType<TItem>(kind);
+
+        var found = await SearchAsync(kind, scheme, query, cancellationToken).ConfigureAwait(false);
+        return [.. found.Select(Typed<TItem>)];
+    }
+
+    /// <summary>
+    /// Searches one catalog and gives every result its durable identity, without naming the item type.
+    /// </summary>
+    /// <param name="kind">The media kind's runtime.</param>
+    /// <param name="scheme">The catalog to search.</param>
+    /// <param name="query">The query.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>The results, in the order the catalog returned them.</returns>
+    /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
+    /// <exception cref="ArgumentException"><paramref name="scheme"/> is not in canonical form.</exception>
+    /// <exception cref="ArronixException">
+    /// No installed cataloger owns the scheme, or a result does not state exactly one identifier in it.
+    /// </exception>
+    /// <remarks>
+    /// A hit is given identity and nothing else. Searching a catalog is not adding to a library, so nothing
+    /// here materializes a durable record.
+    /// </remarks>
+    public async Task<IReadOnlyList<MaterializedItem<IMediaItem>>> SearchAsync(
+        IMediaTypeRuntime kind,
+        string scheme,
+        CatalogQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(kind);
+        ArgumentNullException.ThrowIfNull(query);
         RequireCanonicalScheme(scheme, nameof(scheme));
 
         if (query.Id is { } queryId)
@@ -175,7 +252,15 @@ public sealed class CatalogDispatcher(
             RequireWellFormed(queryId, nameof(query));
         }
 
-        var found = new List<MaterializedItem<TItem>>();
+        var binding = RequireBinding(kind);
+        var found = new List<MaterializedItem<IMediaItem>>();
+
+        // One entity, one result. Two configured catalogers for one scheme legitimately answer for the same
+        // records, and the identity the host assigns is what says so — two catalog identifiers that
+        // converged are one item too. The authorities are consulted best priority first, so the first
+        // answer for an entity is the one the operator ranked highest; a later one is dropped rather than
+        // merged, because merging two catalogers' items would produce a record neither of them stated.
+        var claimed = new HashSet<MediaItemRef>();
 
         foreach (var definition in RequireAuthorities(kind, scheme))
         {
@@ -186,20 +271,40 @@ public sealed class CatalogDispatcher(
 
             using var held = leased;
 
-            if (held.Value.Provider is not ICataloger<TItem> cataloger
+            if (binding.Bind(held.Value.Provider) is not { } cataloger
                 || held.Value.CatalogScheme is not { } catalogScheme)
             {
                 continue;
             }
 
-            // Materialized inside the lease and into a host-owned list, so nothing the cataloger returned
-            // is enumerated after its ticket is released.
-            var results = PluginBoundary.Snapshot(
-                await cataloger
-                    .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
-                    .ConfigureAwait(false));
+            IReadOnlyList<IMediaItem> results;
 
-            found.AddRange(results.Select(item => Materialize(kind, catalogScheme, item, catalogId: null)));
+            try
+            {
+                // Materialized inside the lease and into a host-owned list, so nothing the cataloger
+                // returned is enumerated after its ticket is released.
+                results = PluginBoundary.Snapshot(
+                    await cataloger
+                        .SearchAsync(_tests.Invocation(definition), query, cancellationToken)
+                        .ConfigureAwait(false));
+            }
+            catch (Exception failure) when (Contained(failure, cancellationToken))
+            {
+                throw new ArronixException(
+                    CoreErrorCode.CatalogerSearchFailed,
+                    $"The cataloger for '{catalogScheme}' failed while searching it.",
+                    failure);
+            }
+
+            foreach (var item in results)
+            {
+                var materialized = Materialize(kind, catalogScheme, item, catalogId: null);
+
+                if (claimed.Add(materialized.Reference))
+                {
+                    found.Add(materialized);
+                }
+            }
         }
 
         return found;
@@ -258,7 +363,7 @@ public sealed class CatalogDispatcher(
         if (!CatalogIdentity.IsCanonicalScheme(scheme))
         {
             throw new ArgumentException(
-                "A catalog scheme is non-empty, lower-case and contains no white space.",
+                "A catalog scheme is non-empty, lower-case and contains no white space and no ':'.",
                 parameterName);
         }
     }
@@ -290,12 +395,11 @@ public sealed class CatalogDispatcher(
     /// Reads the item's own catalog identity and binds it, the identifier asked for and every other
     /// identifier the item carries to one reference.
     /// </summary>
-    private MaterializedItem<TItem> Materialize<TItem>(
+    private MaterializedItem<IMediaItem> Materialize(
         IMediaTypeRuntime kind,
         string catalogScheme,
-        TItem item,
+        IMediaItem item,
         ExternalId? catalogId)
-        where TItem : class, IMediaItem
     {
         var carried = item.ExternalIds.Values;
 
@@ -315,8 +419,40 @@ public sealed class CatalogDispatcher(
             : [canonical, .. carried];
 
         var reference = _identity.Identify(kind.Kind, ItemLevelOf(kind), converging);
-        return new MaterializedItem<TItem>(reference, canonical, item);
+        return new MaterializedItem<IMediaItem>(reference, canonical, item);
     }
+
+    /// <summary>Restates one materialized item at the exact type its caller named.</summary>
+    private static MaterializedItem<TItem> Typed<TItem>(MaterializedItem<IMediaItem> found)
+        where TItem : class, IMediaItem
+        => new(found.Reference, found.CatalogId, (TItem)found.Item, found.CuratedEntryId);
+
+    /// <summary>
+    /// The runtime's own ability to recognize a cataloger closed over its item type.
+    /// </summary>
+    /// <exception cref="ArronixException">
+    /// The runtime does not supply one, which means it was not built by the host's model factory. Refused
+    /// rather than worked around: constructing the closed contract by name at run time is the reflection
+    /// this boundary exists to avoid.
+    /// </exception>
+    private static ICatalogerBinding RequireBinding(IMediaTypeRuntime kind)
+        => kind as ICatalogerBinding
+            ?? throw new ArronixException(
+                CoreErrorCode.PluginProviderContractInvalid,
+                $"The runtime for media kind '{kind.Kind}' cannot bind a cataloger to its own item type "
+                + $"'{kind.ItemType.FullName}', so no catalog work can be routed to it.");
+
+    /// <summary>
+    /// Whether a failure a cataloger raised is one the platform may turn into its own answer.
+    /// </summary>
+    /// <remarks>
+    /// Everything except the caller's own cancellation and the conditions under which the process is no
+    /// longer sound. A cataloger's own exception type means nothing outside its package, so it becomes the
+    /// platform's statement that the catalog did not answer, with the original kept as the cause.
+    /// </remarks>
+    private static bool Contained(Exception failure, CancellationToken cancellationToken)
+        => !(failure is OperationCanceledException && cancellationToken.IsCancellationRequested)
+            && !ProcessFailure.IsFatal(failure);
 
     /// <summary>The level a kind's items sit at, which is the key space their identifiers occupy.</summary>
     private static MediaLevelId ItemLevelOf(IMediaTypeRuntime kind) => kind.Shape.Levels[0].Id;

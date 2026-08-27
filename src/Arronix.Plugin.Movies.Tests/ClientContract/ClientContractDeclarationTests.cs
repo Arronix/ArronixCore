@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -7,6 +8,7 @@ using System.Reflection.Metadata;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 using Arronix.Abstractions.Client;
+using Arronix.Abstractions.Media;
 
 namespace Arronix.Plugin.Movies.Tests.ClientContract;
 
@@ -152,14 +154,52 @@ public sealed class ClientContractDeclarationTests
             Assert.That(Loaded.GetType().IsPublic, Is.False, "the implementation is hidden");
             Assert.That(Loaded.GetType().FullName, Is.EqualTo(FromBytes.EntryTypeName));
             Assert.That(
-                ContractAssembly.GetExportedTypes().Select(type => type.FullName),
+                ContractAssembly.GetExportedTypes().Select(type => type.FullName).Order(StringComparer.Ordinal),
                 Is.EqualTo(new[]
                 {
                     "Arronix.Media.Movies.Movie",
+                    "Arronix.Media.Movies.MovieItemCodec",
                     "Arronix.Media.Movies.MovieReleaseStage",
                     "Arronix.Media.Movies.MovieReleaseTimeline",
                 }),
-                "the contract assembly's public surface is its domain and nothing else");
+                "the contract assembly's public surface is its domain plus the one generated registration "
+                + "bridge, and nothing else");
+        });
+    }
+
+    /// <summary>
+    /// The one exported type that is not domain is generated registration SPI, and is held to being exactly
+    /// that.
+    /// </summary>
+    /// <remarks>
+    /// It is public because the assembly that declares the media type has to name it, and which assembly
+    /// that is belongs to the author rather than to this package: an external author lays their package out
+    /// as they choose, and no domain assembly may have to friend an implementation assembly to be usable.
+    /// What keeps that from becoming surface is what is asserted here — hidden from ordinary completion,
+    /// inert, and offering one value and no way to change anything.
+    /// </remarks>
+    [Test]
+    public void TheExportedBridgeIsHiddenInertRegistrationSurface()
+    {
+        var holder = ContractAssembly.GetType("Arronix.Media.Movies.MovieItemCodec", throwOnError: true)!;
+        var declared = holder.GetProperty("Declared", BindingFlags.Public | BindingFlags.Static);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(holder.IsAbstract && holder.IsSealed, Is.True, "it is static");
+            Assert.That(
+                holder.GetCustomAttribute<EditorBrowsableAttribute>()?.State,
+                Is.EqualTo(EditorBrowsableState.Never),
+                "and hidden from ordinary completion lists");
+            Assert.That(declared, Is.Not.Null, "it offers the bridge");
+            Assert.That(declared!.PropertyType, Is.EqualTo(typeof(ICompiledItemCodec)));
+            Assert.That(declared.CanWrite, Is.False, "which nothing can replace");
+            Assert.That(
+                holder.GetMembers(BindingFlags.Public | BindingFlags.Static | BindingFlags.Instance
+                    | BindingFlags.DeclaredOnly)
+                    .Select(member => member.Name),
+                Is.EqualTo(new[] { "get_Declared", "Declared" }),
+                "and it offers nothing else at all");
         });
     }
 

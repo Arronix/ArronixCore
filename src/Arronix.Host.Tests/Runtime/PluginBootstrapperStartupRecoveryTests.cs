@@ -153,6 +153,7 @@ internal sealed class PluginBootstrapperStartupRecoveryTests
                 ["Arronix:Host:ExtensionFolder"] = pluginRoot,
                 ["Arronix:Plugins:RootFolder"] = pluginRoot,
                 ["Arronix:Plugins:StateFolder"] = Path.Combine(_home, "state"),
+                ["Arronix:Store:DataSource"] = Path.Combine(_home, "arronix.db"),
                 ["Arronix:Library:RootFolders:0"] = Path.Combine(_home, "library"),
             })
             .Build();

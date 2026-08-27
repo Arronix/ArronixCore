@@ -21,6 +21,8 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Arronix.Format.Video\Arronix.Format.Video.csproj"
                       ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Arronix.Provider.Tmdb\Arronix.Provider.Tmdb.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 
   <!-- Movies and the video format it requires, staged as an operator installs them: published output in a
@@ -35,6 +37,27 @@
       Projects="..\Arronix.Format.Video\Arronix.Format.Video.csproj"
       Targets="Publish"
       Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)InstalledPlugins\arronix.format.video\" />
+  </Target>
+
+  <!--
+       A second installation, with a cataloger beside the same two packages, so the catalog routes have a
+       provider to route to. Kept apart from the first so the activation fixture still describes exactly the
+       two packages it is about.
+  -->
+  <Target Name="StageCatalogPackages" AfterTargets="Build">
+    <RemoveDir Directories="$(OutDir)CatalogPlugins" />
+    <MSBuild
+      Projects="..\Arronix.Plugin.Movies\Arronix.Plugin.Movies.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)CatalogPlugins\movies\" />
+    <MSBuild
+      Projects="..\Arronix.Format.Video\Arronix.Format.Video.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)CatalogPlugins\arronix.format.video\" />
+    <MSBuild
+      Projects="..\Arronix.Provider.Tmdb\Arronix.Provider.Tmdb.csproj"
+      Targets="Publish"
+      Properties="Configuration=$(Configuration);TargetFramework=$(TargetFramework);NoBuild=true;PublishDir=$(MSBuildProjectDirectory)\$(OutDir)CatalogPlugins\tmdb\" />
   </Target>
 
   <ItemGroup>

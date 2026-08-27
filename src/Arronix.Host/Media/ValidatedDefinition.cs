@@ -96,6 +96,16 @@ public sealed class ValidatedDefinition
     public ValidatedShape Shape { get; }
 
     /// <summary>
+    /// Gets the closed typed runtime this definition was derived from, when it came from one.
+    /// </summary>
+    /// <remarks>
+    /// Held rather than looked up again: an engine that has to find its own kind in a registry can be handed
+    /// a different one than the definition it was compiled from. Null for a kind assembled from its pieces
+    /// rather than derived from a typed declaration.
+    /// </remarks>
+    internal IMediaTypeRuntime? Runtime { get; private set; }
+
+    /// <summary>
     /// Checks a derived media type and, when it is sound, produces the resolved form.
     /// </summary>
     /// <param name="type">The derived runtime model.</param>
@@ -119,7 +129,13 @@ public sealed class ValidatedDefinition
     {
         ArgumentNullException.ThrowIfNull(type);
 
-        return TryValidate(type.Kind, type.Shape, type.Intent, type.Model, out validated, out defects);
+        if (!TryValidate(type.Kind, type.Shape, type.Intent, type.Model, out validated, out defects))
+        {
+            return false;
+        }
+
+        validated!.Runtime = type;
+        return true;
     }
 
     /// <summary>

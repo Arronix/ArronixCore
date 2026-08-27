@@ -616,10 +616,12 @@ public sealed class PackageFacetTopologyTests
                 Is.EqualTo(new[]
                 {
                     DomainNamespace + ".Movie",
+                    DomainNamespace + ".MovieItemCodec",
                     DomainNamespace + ".MovieReleaseStage",
                     DomainNamespace + ".MovieReleaseTimeline",
                 }),
-                "the movies domain publishes exactly the item type and the lifecycle it closes over");
+                "the movies domain publishes exactly the item type, the lifecycle it closes over, and the "
+                + "one generated registration bridge the assembly declaring the media type has to name");
 
             Assert.That(
                 RepositoryLayout.AllProjects

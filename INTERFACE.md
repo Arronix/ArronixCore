@@ -27,6 +27,14 @@ The core does not own movie, television, music, book, video, audio, document, co
 - `MediaType<TItem,TTarget,TRelease,TParser>` is the current typed media-definition boundary. Its typed override values declare identity, groups, additional selections, semantic searches, matching, policy, querying, naming, summaries, intent exceptions, workbenches, and derivations without a whole-definition replay builder, action transcript, or capability badge. `TParser : IReleaseParser<TRelease>` is the executable parsing declaration. The outstanding SDK gaps in `CONTEXT.md` prevent treating this shape as frozen or independently validated.
 - `IMediaEntity` supplies the minimum common entity floor. `MediaItem<TReleaseTimeline,TReleaseStage>` is the directly usable common item. `MediaItem<TItem,TReleaseTimeline,TReleaseStage>` preserves an extending item's exact type in collection relationships. `MediaCollection<TItem>` is the common group.
 - `IReleaseTimeline<TReleaseStage>` exposes a media-owned lifecycle's current typed stage without flattening its milestones or availability behaviour.
+- `ICompiledItemCodec` is generated binding SPI: the compile-time bridge through which the host stores a
+  media item and reads it back. Its object-typed members are the sanctioned erasure at Host's heterogeneous
+  runtime boundary; the generated implementation behind them still names the exact item type, and an author
+  neither implements nor calls it. A media contract assembly publishes one `EditorBrowsable(Never)` static
+  holder per item type so the assembly declaring the media type can name it without either assembly
+  friending the other; the implementation behind the holder is private. It is a separate object from
+  `ClientContractEntryPointAttribute`, which is the browser's declaration, and both reach the same generated
+  reader and writer and state the same metadata hash. `CompiledShapeCatalog.ItemCodec` carries it to Host.
 - `CompiledShapeCatalog` is generated compiler/Host binding SPI containing closed getters. It is not part of the semantic authoring vocabulary or a wire schema. The generated `CompiledShapes` override remains public to preserve the published executable-generator proof, but is marked `EditorBrowsable(Never)` and is never author-implemented. Capture is an explicit hidden-interface operation and is absent from concrete media definitions' public surface. Host projects the validated fields into ordinary descriptors for generic consumers.
 - `ReleaseTarget<TItem>` directly represents a one-item request. `Release<TRepresentation>` directly carries the common title, year, edition, and format-owned representation. Media-specific target or release classes exist only for additional coverage or release facts.
 - `IRepresentation` is a format-owned artifact description carried by a release.
@@ -150,6 +158,21 @@ implementation. This executable composition is an incomplete migration boundary 
 Standard action descriptors are always derived for typed media. Execution is resolved separately through
 Host capabilities. Monitoring is currently executable; an unimplemented standard operation returns 501
 and is never reported as accepted.
+
+Three routes reach a catalog, all kind-blind: `GET /api/v1/kinds/{kind}/catalog/search`,
+`POST /api/v1/kinds/{kind}/catalog/items` and `POST /api/v1/kinds/{kind}/catalog/items/{id}/refresh`. A
+search resolves the identity each hit would be held under and materializes nothing; an explicit add writes
+the catalog record and the user's presence in one transaction and answers `201` with a `Location`, or `200`
+when the same catalog identifier was already added; a refresh replaces the catalog-owned half only. They
+publish `CatalogItemView` — the item as its catalog describes it, the identifier that catalog answered
+with, and whether the user holds it — paged as `CatalogItemPage`. Deliberately not `ItemDetail`: nothing has
+been added yet, so monitoring, variant, file and affordance state would be defaults presented as answers.
+Once an item is added the ordinary item routes own it and publish the full detail. A scheme or identifier
+that is not canonical is `400` before anything is dispatched, a scheme no configured cataloger owns is
+`503`, and a catalog that fails or does not answer is `502`; a page or size this server will not serve is
+refused rather than clamped. `CoreErrorCode.CatalogRecordUnreadable` names a stored record whose writing
+contract is absent or reads a different member graph — the record is kept and refused rather than read as
+something else.
 
 A package declares which of its published shared contract assemblies a browser may download, as
 `clientContracts` in its manifest. The list is validated as a subset of `contractAssemblies`, so an entry
@@ -299,18 +322,28 @@ browser, and the limits of what that proves, are recorded in
   floor remains only for kind-blind external-identifier recognition.
 - Durable media item identity is host-owned. A cataloger owns an item's identity in the scheme it declares,
   captured once and enforced as lower-case at activation, and every item it returns states exactly one
-  identifier in that scheme. Host assigns `MediaItemId` when a catalog item is materialized into local
-  library state, and no cataloger or curator contract reaches one. It is host state scoped by media kind and
+  identifier in that scheme. Host assigns `MediaItemId` when a catalog answers for an item — a search
+  resolves the identity a hit would be held under without materializing anything — and no cataloger or
+  curator contract reaches one. Values are issued from one upward, so a reference naming zero or below is
+  malformed rather than absent. It is host state scoped by media kind and
   level — an item's and a group's identifiers are separate key spaces — with the host's lifetime rather than
   a media runtime's, and
   projection takes the reference as an argument rather than deriving one. Repeated fetches, aliases and
   redirects resolve to one reference; identifiers assigned separately and later found to name one item merge
-  onto the lower assignment, and the superseded reference resolves through `CatalogIdentity.Canonical`,
-  which moves no library rows. Catalog work routes by scheme, never by provider identifier or implementation
+  onto the lower assignment, and the superseded reference resolves through `CatalogIdentity.Canonical`. The
+  assignment is journaled, so a restart continues the sequence rather than reissuing numbers the library is
+  keyed by, and the transaction recording a merge re-keys the catalog record and library entry onto the
+  survivor. Catalog work routes by scheme, never by provider identifier or implementation
   type, and a catalog reference carries neither. A reference in a scheme no installed cataloger owns is
   refused with `CatalogSchemeUnowned`; an item stating other than exactly one identifier in its own
   cataloger's scheme is refused with `CatalogIdentityInvalid`. The record is
   `docs/research/g04/media-item-identity.md`.
+- A provider setting that declares itself never read back is never written down. `SettingSensitivity`'s
+  `Credential` and `Secret` both state that, so those values are held for the lifetime of the process given
+  them and no longer; a definition missing one its provider declares required reads back as
+  `DefinitionState.Incomplete`, which is excluded from enabled routing, rather than as Active. Everything
+  else an operator configured — name, priority, enablement, non-sensitive settings, media-kind narrowing and
+  tags — is durable. Whether an implementation is loaded is derived on every read and never stored.
 - A cataloger owns its external identifier namespace and marker spellings. Media parsers consume validated `ExternalIdReading` values and never duplicate vendor marker regular expressions.
 - Every item and group exposes `ExternalIds`, `Title`, `TitleLanguage`, `Overview`, and `Artwork` through `IMediaEntity`; media-specific facts extend that floor as ordinary typed properties. `IMediaEntity` declares no durable key, so an item a cataloger shapes is complete without one.
 - The common item class remains fully visible and strongly typed. Release dates and availability behaviour live in a media-owned lifecycle object; typed release stage, catalog presence, and plural collection membership are common item facts.

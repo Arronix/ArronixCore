@@ -835,6 +835,7 @@ internal sealed class PackagedAdmissionFixtureTests
                 ["Arronix:Host:ExtensionFolder"] = pluginRoot,
                 ["Arronix:Plugins:RootFolder"] = pluginRoot,
                 ["Arronix:Plugins:StateFolder"] = Path.Combine(stateRoot, "state"),
+                ["Arronix:Store:DataSource"] = Path.Combine(stateRoot, "arronix.db"),
                 ["Arronix:Library:RootFolders:0"] = Path.Combine(stateRoot, "library"),
             })
             .Build();

@@ -104,6 +104,52 @@ internal sealed class ClientContractGeneratorTests
         });
     }
 
+    /// <summary>
+    /// The platform-side storage bridge is published beside the browser's declaration, for any author.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here is specific to one media package. The holder is named from the item type, is public so
+    /// that whichever assembly declares the media type can name it without either assembly friending the
+    /// other, and is hidden from ordinary completion lists because it is registration SPI. It is a separate
+    /// object from the entry point attribute — that attribute is what a browser binds to — and it reaches
+    /// the same generated reader and writer, so the item still has one serialization and one hash.
+    /// </remarks>
+    [Test]
+    public void TheStorageBridgeIsPublishedBesideTheBrowserDeclaration()
+    {
+        var generated = Generated(Build());
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                generated,
+                Does.Contain("public static class SampleItemItemCodec"),
+                "the holder is public, because the assembly declaring the media type must name it");
+            Assert.That(
+                generated,
+                Does.Contain("public static global::Arronix.Abstractions.Media.ICompiledItemCodec Declared"));
+            Assert.That(
+                generated,
+                Does.Contain("private sealed class Compiled : global::Arronix.Abstractions.Media.ICompiledItemCodec"),
+                "and the implementation behind it is not");
+            Assert.That(
+                generated,
+                Does.Contain("=> SampleItemClientContract.Write(Typed(item));"),
+                "it writes through the same generated writer the browser declaration uses");
+            Assert.That(
+                generated,
+                Does.Contain("public byte[] Write(global::Arronix.Abstractions.Media.IMediaItem item)"),
+                "and the erasure is no wider than the item contract every item satisfies");
+            Assert.That(
+                generated,
+                Does.Contain("=> SampleItemClientContract.Read(payload);"));
+            Assert.That(
+                generated,
+                Does.Not.Contain("Movie"),
+                "and the generator names no media package");
+        });
+    }
+
     /// <remarks>
     /// The declaration is what a browser reads to find the entry point at all, so its absence is reported
     /// where an author can act on it rather than by publishing nothing.

@@ -120,7 +120,8 @@ public static class MediaTypeModelFactory
                 reading,
                 declaration.Groups.ToDictionary(
                     static draft => draft.GroupType,
-                    static draft => draft.AxisId)));
+                    static draft => draft.AxisId)),
+            compiledShapes.ItemCodec);
     }
 
     /// <summary>
@@ -251,7 +252,10 @@ public static class MediaTypeModelFactory
         PluginIntentSurface intent,
         MediaKindModel model,
         ReleasePolicy<TRelease>? releasePolicy,
-        ItemProjector projector) : IMediaTypeRuntime<TItem, TTarget, TRelease>
+        ItemProjector projector,
+        ICompiledItemCodec? itemCodec) : IMediaTypeRuntime<TItem, TTarget, TRelease>,
+            Providers.ICatalogerBinding,
+            IItemCodecBinding
         where TItem : class, IMediaItem
         where TTarget : class, IReleaseTarget
         where TRelease : class, IRelease
@@ -304,5 +308,28 @@ public static class MediaTypeModelFactory
         /// <inheritdoc />
         public FieldValue Read(object item, string fieldId, CatalogIdentity identity)
             => projector.Read(item, fieldId, identity);
+
+        /// <inheritdoc />
+        public ICompiledItemCodec? ItemCodec { get; } = itemCodec;
+
+        /// <inheritdoc />
+        public Providers.ICatalogerCall? Bind(Abstractions.Providers.IProvider provider)
+            => provider is Abstractions.Providers.ICataloger<TItem> cataloger ? new Bound(cataloger) : null;
+
+        /// <summary>The one place the closed item type is still spelled, on the way out of the generic.</summary>
+        private sealed class Bound(Abstractions.Providers.ICataloger<TItem> cataloger) : Providers.ICatalogerCall
+        {
+            public async Task<IReadOnlyList<IMediaItem>> SearchAsync(
+                Abstractions.Providers.ProviderInvocation invocation,
+                Abstractions.Providers.CatalogQuery query,
+                CancellationToken cancellationToken)
+                => [.. await cataloger.SearchAsync(invocation, query, cancellationToken).ConfigureAwait(false)];
+
+            public async Task<IMediaItem?> GetAsync(
+                Abstractions.Providers.ProviderInvocation invocation,
+                ExternalId id,
+                CancellationToken cancellationToken)
+                => await cataloger.GetAsync(invocation, id, cancellationToken).ConfigureAwait(false);
+        }
     }
 }

@@ -8,20 +8,21 @@ namespace Arronix.Host.Storage;
 /// </summary>
 /// <remarks>
 /// <para>
-/// This milestone has no persistence and no relational schema, but the <em>shape</em> of the seam is fixed
-/// now, because getting it wrong later is expensive and every surveyed application shows a different wrong
-/// answer. The in-memory implementation behind this interface enforces the same invariants a relational one
-/// will, so the replacement is a change of implementation and nothing else moves.
+/// The library facet is durable. What a user decided about an item — that they hold it, and how they
+/// monitor it — is written to the local store and read back after the process that wrote it has gone.
+/// Files, unit-file links and group memberships are not: the relationships they encode are constrained by
+/// later gates, so the implementation a composed host uses refuses a write to one rather than accepting it
+/// into memory and losing it on restart.
 /// </para>
 /// <para>
-/// Held host-side deliberately. No extension implements a store — extensions are stateless projections of
-/// their own catalog in this milestone, which is the cheapest way to learn a store's real shape before
-/// freezing it. Promoting it to the contract assembly would be irreversible under the stability policy and
-/// would be done against zero implementers.
+/// Held host-side deliberately. No extension implements a store — an extension projects its own catalog and
+/// the host keeps what the user decided about it. Promoting this to the contract assembly would be
+/// irreversible under the stability policy and would be done against zero implementers.
 /// </para>
 /// <para>
-/// The store holds library state only. The catalog is projected by the owning extension and merged at
-/// read time, so nothing here duplicates a title, a year or an artwork reference.
+/// The store holds library state only. The catalog half of an item lives beside it under its own seam, so
+/// nothing here duplicates a title, a year or an artwork reference — and a catalog write cannot reach what
+/// the user owns.
 /// </para>
 /// </remarks>
 public interface IMediaStore
@@ -53,9 +54,8 @@ public interface IMediaStore
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>The facets that exist, keyed by item. Items with nothing stored are absent from the result.</returns>
     /// <remarks>
-    /// Present because merging a projected catalog page with library state is the single hottest read in
-    /// the platform, and doing it one item at a time is how a list of fifty becomes fifty round trips against
-    /// the eventual relational store.
+    /// Present because merging a catalog page with library state is the single hottest read in the
+    /// platform, and doing it one item at a time is how a page of fifty becomes fifty round trips.
     /// </remarks>
     ValueTask<IReadOnlyDictionary<MediaItemRef, LibraryFacet>> FindLibraryManyAsync(
         IReadOnlyList<MediaItemRef> references,

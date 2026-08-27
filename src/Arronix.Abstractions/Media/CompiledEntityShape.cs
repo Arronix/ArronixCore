@@ -66,12 +66,21 @@ public sealed class CompiledShapeCatalog
     private readonly IReadOnlyDictionary<Type, CompiledEntityShape> _byType;
 
     /// <summary>Initializes a generated shape catalog.</summary>
-    public CompiledShapeCatalog(CompiledEntityShape item, IReadOnlyList<CompiledEntityShape> related)
+    /// <param name="item">The media type's item shape.</param>
+    /// <param name="related">Its group and workbench-row shapes.</param>
+    /// <param name="itemCodec">
+    /// The generated bridge through which the item is stored and read back, when its build produced one.
+    /// </param>
+    public CompiledShapeCatalog(
+        CompiledEntityShape item,
+        IReadOnlyList<CompiledEntityShape> related,
+        ICompiledItemCodec? itemCodec = null)
     {
         ArgumentNullException.ThrowIfNull(item);
         ArgumentNullException.ThrowIfNull(related);
 
         Item = item;
+        ItemCodec = itemCodec;
         _byType = related
             .Prepend(item)
             .ToDictionary(static shape => shape.EntityType);
@@ -79,6 +88,12 @@ public sealed class CompiledShapeCatalog
 
     /// <summary>Gets the media type's item shape.</summary>
     public CompiledEntityShape Item { get; }
+
+    /// <summary>
+    /// Gets the generated bridge through which the item is stored and read back, or <see langword="null"/>
+    /// when none was generated for it.
+    /// </summary>
+    public ICompiledItemCodec? ItemCodec { get; }
 
     /// <summary>Gets the compiled shape for an item, group, or workbench row.</summary>
     public CompiledEntityShape Get(Type type)
