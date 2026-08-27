@@ -60,18 +60,18 @@ public static class ClientContractDigest
                     + "levels.");
             }
 
-            // Counts read once, and charged before Describable, the rendering or Reachable walks them.
+            // Read once, charged, then handed on: what is spent is exactly what the rendering walks, and
+            // an enum's names are gathered once rather than once to count and again to render.
+            var properties = current.Properties;
+            var names = current.Type.IsEnum ? Enum.GetNames(current.Type) : [];
+
             Spend(ref remaining, 1, "serialization graph");
-            Spend(ref remaining, current.Properties.Count, "serialization graph");
+            Spend(ref remaining, properties.Count, "serialization graph");
+            Spend(ref remaining, names.Length, "serialization graph");
 
-            if (current.Type.IsEnum)
-            {
-                Spend(ref remaining, Enum.GetNames(current.Type).Length, "serialization graph");
-            }
+            RenderType(rendering, context, current, properties, names);
 
-            RenderType(rendering, context, current);
-
-            foreach (var next in Reachable(current))
+            foreach (var next in Reachable(current, properties))
             {
                 if (seen.Add(next))
                 {
@@ -310,7 +310,12 @@ public static class ClientContractDigest
     private static bool IgnoresNullValues(JsonSerializerOptions options) => options.IgnoreNullValues;
 #pragma warning restore SYSLIB0020
 
-    private static void RenderType(StringBuilder rendering, JsonSerializerContext context, JsonTypeInfo type)
+    private static void RenderType(
+        StringBuilder rendering,
+        JsonSerializerContext context,
+        JsonTypeInfo type,
+        IList<JsonPropertyInfo> properties,
+        string[] names)
     {
         Describable(context, type);
 
@@ -324,13 +329,13 @@ public static class ClientContractDigest
 
         if (type.Type.IsEnum)
         {
-            RenderEnum(rendering, type);
+            RenderEnum(rendering, type, names);
         }
 
         rendering.Append('\n');
 
         // Member order is the order a reader positions members in, so it is rendered as it is.
-        foreach (var property in type.Properties)
+        foreach (var property in properties)
         {
             rendering.Append("  member=").Append(Text(property.Name));
 
@@ -400,11 +405,10 @@ public static class ClientContractDigest
     /// is not itself declared. This detects the framework's supported converter modes; what an arbitrary
     /// delegate would do is pinned by the assembly's content, not here.
     /// </remarks>
-    private static void RenderEnum(StringBuilder rendering, JsonTypeInfo type)
+    private static void RenderEnum(StringBuilder rendering, JsonTypeInfo type, string[] names)
     {
         rendering.Append("|underlying=").Append(Text(Name(type.Type.GetEnumUnderlyingType())));
 
-        var names = Enum.GetNames(type.Type);
         Array.Sort(names, StringComparer.Ordinal);
 
         rendering.Append("|named=").Append(names.Length == 0 ? "~" : Text(names[0]))
@@ -426,9 +430,9 @@ public static class ClientContractDigest
         }
     }
 
-    private static IEnumerable<Type> Reachable(JsonTypeInfo type)
+    private static IEnumerable<Type> Reachable(JsonTypeInfo type, IList<JsonPropertyInfo> properties)
     {
-        foreach (var property in type.Properties)
+        foreach (var property in properties)
         {
             if (property.Get is not null || property.Set is not null)
             {

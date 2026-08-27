@@ -65,6 +65,29 @@ public sealed class ClientContractDigestBoundTests
     }
 
     /// <remarks>
+    /// The decisive one for an enum's names being charged. Without them the graph spends exactly the budget
+    /// and renders; with them it is over by their count alone.
+    /// </remarks>
+    [Test]
+    public void AGraphIsRefusedWhenAnEnumsNamesAreWhatTipItOver()
+    {
+        var within = new Sprawl(width: 0, chain: 0, repeat: ClientContractLimits.MaxNodes - 4);
+        var over = new Sprawl(width: 0, chain: 0, repeat: ClientContractLimits.MaxNodes - 4, withEnum: true);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                () => ClientContractDigest.OfSerialization(within, within.Root),
+                Throws.Nothing,
+                "the premise: everything but the names fits exactly");
+
+            Assert.That(
+                () => ClientContractDigest.OfSerialization(over, over.Root),
+                Throws.TypeOf<NotSupportedException>().With.Message.Contains("describes more than"));
+        });
+    }
+
+    /// <remarks>
     /// The decisive one for the schema budget being a total. The field list holds one and the choice list
     /// exactly the budget, so each is individually within it and together they are one over: only a shared
     /// total refuses them. The count is charged before any entry is read, so the list throws if walked.
@@ -144,7 +167,7 @@ public sealed class ClientContractDigestBoundTests
     {
         private readonly Dictionary<Type, JsonTypeInfo> _byType = [];
 
-        internal Sprawl(int width = 1, int chain = 1, int repeat = 0)
+        internal Sprawl(int width = 1, int chain = 1, int repeat = 0, bool withEnum = false)
             : base(new JsonSerializerOptions(JsonSerializerDefaults.Strict)
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -157,6 +180,15 @@ public sealed class ClientContractDigestBoundTests
             for (var index = 0; index < repeat; index++)
             {
                 Member(Root, typeof(Sprawl.Leaf));
+            }
+
+            if (withEnum)
+            {
+                // A real resolver builds it, so the rendering can read what the enum actually writes.
+                var info = new DefaultJsonTypeInfoResolver().GetTypeInfo(typeof(Shade), Options)!;
+                info.OriginatingResolver = this;
+                _byType[typeof(Shade)] = info;
+                Member(Root, typeof(Shade));
             }
 
             // Width first: the root points at that many leaves. Then a chain, each link pointing at the next.
@@ -205,7 +237,11 @@ public sealed class ClientContractDigestBoundTests
 
         private void Member(JsonTypeInfo owner, Type type)
         {
-            Describe(type);
+            if (!_byType.ContainsKey(type))
+            {
+                Describe(type);
+            }
+
             var property = owner.CreateJsonPropertyInfo(type, "m" + owner.Properties.Count);
             property.Get = static _ => null;
             owner.Properties.Add(property);
@@ -242,6 +278,14 @@ public sealed class ClientContractDigestBoundTests
         internal sealed class Anchor;
 
         internal sealed class Leaf;
+
+        /// <summary>Three names, which is what tips the case over.</summary>
+        internal enum Shade
+        {
+            None,
+            Some,
+            All,
+        }
 
         private sealed class Box<T1, T2, T3>;
     }
