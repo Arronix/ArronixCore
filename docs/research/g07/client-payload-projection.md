@@ -224,14 +224,16 @@ packages. Observed:
 ### 4.4 Mutation evidence
 
 Each guard was inverted with a mutation that compiles, the suite rebuilt, and the guard restored. A mutation
-that fails to build proves nothing — one attempt here did, and was redone until it compiled.
+that fails to build proves nothing — one attempt here did, and was redone until it compiled. Every count
+below is distinct failing cases out of `Arronix.Client.Tests`' 194, measured at this branch's tip; the
+figures in the paragraph after the table are historical and name a smaller suite deliberately.
 
 | Mutation | Result |
 | --- | --- |
-| The schema is not frozen: a field keeps the contract's own component and choice lists | 7 cases fail |
-| Identity is checked against the frozen copy rather than the admitted root | 36 fail |
+| The schema is not frozen: a field keeps the contract's own component and choice lists | 9 cases fail |
+| Identity is checked against the frozen copy rather than the admitted root | 38 fail |
 | The admitted roots are the contract's live list rather than a capture of it | 2 fail |
-| Choices are taken from the contract's own list rather than copied | 1 fails |
+| Choices are taken from the contract's own list rather than copied | 2 fail |
 | The admission digest walks the contract's live root list | 2 fail |
 | The admission digest walks the admitted roots, whose own lists are still live | 1 fails |
 | Each payload is given a fresh full budget instead of the schema's remainder | 1 fails |
