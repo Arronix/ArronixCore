@@ -154,7 +154,8 @@ existing `g07` mode verbatim, and replacing only the Movie-specific field assert
 Run against the real server `eng/proofs/g07a-external-consumer.sh --browser` starts:
 
 - the installation is compatible and every required assembly is resident, exactly as for Movies;
-- the `northmark.shorts` client contract, and only it, is fetched over the network;
+- two client contracts are fetched over the network: `northmark.shorts` itself and `arronix.format.video`,
+  the format contract its domain assembly depends on; no other contract is fetched;
 - the payload projects, read into `Northmark.Shorts.ShortFilm` — the exact runtime type, proved by object
   identity, the same rule G07.2 proves for `Arronix.Media.Movies.Movie`;
 - the document carries one `artwork`, one `premiere`, one `lifecycle` and one `status` field, each present;

@@ -346,9 +346,11 @@ work does not substitute for closing an earlier dependency.
   visibility grant, Host or Client dependency or warm cache. Both reach `Active` in an unmodified
   `Arronix.Api`; Host publishes the external kind's descriptor including `premiere`, a field only the
   external item declares; the separately built cataloger pairs against the admitted item type; the external
-  domain assembly's own generated client contract is published and a real browser loads it from a clean
-  store and again from a warm one. A serialized `ShortFilm`, written by `eng/proofs/g07a-fixture` through
-  that domain assembly's own generated entry point, now flows through the exact same unchanged generic
+  domain assembly's own generated client contract is published and a real browser loads it, alongside the
+  `arronix.format.video` contract its domain assembly depends on, from a clean store; the 37-check proof
+  exercises that one load and does not repeat it against a warm store. A serialized `ShortFilm`, written by
+  `eng/proofs/g07a-fixture` through that domain assembly's own generated entry point, now flows through the
+  exact same unchanged generic
   `ContractPayloadLoader` and `ContractPayloadPanel` G07.2 built for Movies: the browser fetches it, projects
   it, and renders `premiere` and `lifecycle` — including a `premiered` date — with no first-party ShortFilm
   or Northmark knowledge anywhere in Host, Client, Api or the generators. Proving this found and fixed a real
