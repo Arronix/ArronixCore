@@ -1,9 +1,11 @@
 using System.Collections.Immutable;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using Arronix.Abstractions.Client;
+using Arronix.Client.Contracts;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 
@@ -56,6 +58,11 @@ internal enum Misbehaviour
 
     /// <summary>Its schema reports more values than anything will hold, and produces none of them.</summary>
     WideSchema,
+
+    /// <summary>
+    /// Its schema is two lists, each within the node budget and together one over it.
+    /// </summary>
+    AggregateSchema,
 }
 
 /// <summary>
@@ -152,12 +159,13 @@ internal static class CompiledContract
     /// </remarks>
     private static bool Hashable(Misbehaviour misbehaviour)
         => misbehaviour is Misbehaviour.None or Misbehaviour.DigestMismatch
-            or Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema or Misbehaviour.WideSchema;
+            or Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema or Misbehaviour.WideSchema
+            or Misbehaviour.AggregateSchema;
 
     /// <summary>Whether a fixture's schema can be walked at all, and so hashed.</summary>
     private static bool Walkable(Misbehaviour misbehaviour)
         => misbehaviour is not (Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema
-            or Misbehaviour.WideSchema);
+            or Misbehaviour.WideSchema or Misbehaviour.AggregateSchema);
 
     /// <summary>Reads a compiled fixture's own hashes off a copy nothing else will ever see.</summary>
     private static (string Serialization, string Projection) Hashes(
@@ -262,6 +270,7 @@ internal static class CompiledContract
             Misbehaviour.DeepSchema => "Schemas.Deep;",
             Misbehaviour.CyclicSchema => "Schemas.Cyclic;",
             Misbehaviour.WideSchema => "Schemas.Wide;",
+            Misbehaviour.AggregateSchema => "Schemas.Aggregate;",
             _ => "[];",
         };
 
@@ -362,6 +371,10 @@ internal static class CompiledContract
                 /// <summary>A list that claims more entries than could be held and produces none.</summary>
                 internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Wide { get; } = new Vast();
 
+                /// <summary>One root, whose children are exactly the whole budget: together, one too many.</summary>
+                internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Aggregate { get; } =
+                    new[] { Field("root", new Budget()) };
+
                 private static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Build()
                 {
                     var current = Field("leaf", []);
@@ -391,6 +404,33 @@ internal static class CompiledContract
 
                     public System.Collections.Generic.IEnumerator<global::Arronix.Abstractions.Shape.FieldDescriptor> GetEnumerator() =>
                         throw new System.InvalidOperationException("the walker enumerated a list it was told not to expect");
+
+                    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+                }
+
+                /// <summary>
+                /// Exactly the node budget, every entry the same harmless leaf. Within any per-list cap.
+                /// </summary>
+                private sealed class Budget : System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor>
+                {
+                    private static readonly global::Arronix.Abstractions.Shape.FieldDescriptor Leaf = new()
+                    {
+                        FieldId = "leaf",
+                        Name = "leaf",
+                        ValueKind = global::Arronix.Abstractions.Shape.FieldValueKind.Text,
+                    };
+
+                    public global::Arronix.Abstractions.Shape.FieldDescriptor this[int index] => Leaf;
+
+                    public int Count => __MAXNODES__;
+
+                    public System.Collections.Generic.IEnumerator<global::Arronix.Abstractions.Shape.FieldDescriptor> GetEnumerator()
+                    {
+                        for (var index = 0; index < Count; index++)
+                        {
+                            yield return Leaf;
+                        }
+                    }
 
                     System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
                 }
@@ -437,7 +477,7 @@ internal static class CompiledContract
                     throw new System.NotSupportedException();
             }
 
-            """;
+            """.Replace("__MAXNODES__", BoundedGraph.MaxNodes.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
     }
 
     private static ImmutableArray<MetadataReference> CreateReferences()

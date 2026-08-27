@@ -54,6 +54,7 @@ internal sealed class ContractDeclarationProofTests
     [TestCase(Misbehaviour.DeepSchema, "nests deeper than")]
     [TestCase(Misbehaviour.CyclicSchema, "contains itself")]
     [TestCase(Misbehaviour.WideSchema, "describes more than")]
+    [TestCase(Misbehaviour.AggregateSchema, "describes more than")]
     public async Task ADeclarationThatDoesNotSurviveTheProofIsTerminal(Misbehaviour misbehaviour, string expected)
     {
         var loader = Loader("Fixture.Client." + misbehaviour, misbehaviour, out var name);
