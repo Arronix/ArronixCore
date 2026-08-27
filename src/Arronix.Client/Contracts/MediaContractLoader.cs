@@ -711,7 +711,7 @@ public sealed class MediaContractLoader
             // The caller abandoned the load; that is not a statement about the contract.
             throw;
         }
-        catch (Exception failure) when (!IsFatal(failure))
+        catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
             return $"its client contract declarations could not be read once loaded: {failure.Message}";
         }
@@ -798,16 +798,17 @@ public sealed class MediaContractLoader
                 + $"'{entityType.FullName}'.";
         }
 
-        // Before anything walks the schema recursively. It is a shape the contract's own code returned, and
-        // a cycle or a few thousand levels of nesting would take the process down rather than fail a payload.
+        // Renders the whole reachable graph through that exact context, and refuses what it cannot describe.
+        var serialization = ClientContractDigest.OfSerialization(context, root);
+
+        // Immediately before the schema is walked recursively. It is a shape the contract's own code
+        // returned, and a cycle or unbounded nesting would take the process down rather than fail a payload.
         if (BoundedGraph.Exceeded(schema, static field => field.Components, "its projection schema")
             is { } unwalkable)
         {
             return $"'{expected.EntryPointType}' {unwalkable}";
         }
 
-        // Renders the whole reachable graph through that exact context, and refuses what it cannot describe.
-        var serialization = ClientContractDigest.OfSerialization(context, root);
         var projection = ClientContractDigest.OfProjection(entityType, schema);
 
         if (!string.Equals(serialization, declaration.GeneratedMetadataHash, StringComparison.Ordinal)
@@ -826,29 +827,6 @@ public sealed class MediaContractLoader
 
         contract = new VerifiedClientContract(declaration, entityType, context, root, schema);
         return null;
-    }
-
-    /// <summary>Whether a failure means the process is no longer sound, and must not be contained.</summary>
-    private static bool IsFatal(Exception failure)
-    {
-        for (var current = failure; current is not null; current = current.InnerException)
-        {
-            if (current is OutOfMemoryException and not InsufficientMemoryException
-                or StackOverflowException
-                or AccessViolationException
-                or System.Runtime.InteropServices.SEHException)
-            {
-                return true;
-            }
-
-            if (current is AggregateException aggregate
-                && aggregate.InnerExceptions.Any(IsFatal))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>

@@ -53,6 +53,9 @@ internal enum Misbehaviour
 
     /// <summary>Its schema contains itself.</summary>
     CyclicSchema,
+
+    /// <summary>Its schema reports more values than anything will hold, and produces none of them.</summary>
+    WideSchema,
 }
 
 /// <summary>
@@ -86,7 +89,7 @@ internal static class CompiledContract
             return new Fixture(first, auxiliary);
         }
 
-        var (serialization, projection) = Hashes(assemblyName, first);
+        var (serialization, projection) = Hashes(assemblyName, first, Walkable(misbehaviour));
 
         return new Fixture(
             misbehaviour == Misbehaviour.DigestMismatch
@@ -142,12 +145,25 @@ internal static class CompiledContract
                         .Select(static diagnostic => diagnostic.ToString())));
     }
 
-    /// <summary>Whether a fixture is coherent enough for its own hashes to be readable.</summary>
+    /// <summary>Whether a fixture is coherent enough for its serialization hash to be readable.</summary>
+    /// <remarks>
+    /// The schema-shape cases are included so their wire hash is the right one: their only defect is then
+    /// the schema, and the guard they fail at is the only guard they could fail at.
+    /// </remarks>
     private static bool Hashable(Misbehaviour misbehaviour)
-        => misbehaviour is Misbehaviour.None or Misbehaviour.DigestMismatch;
+        => misbehaviour is Misbehaviour.None or Misbehaviour.DigestMismatch
+            or Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema or Misbehaviour.WideSchema;
+
+    /// <summary>Whether a fixture's schema can be walked at all, and so hashed.</summary>
+    private static bool Walkable(Misbehaviour misbehaviour)
+        => misbehaviour is not (Misbehaviour.DeepSchema or Misbehaviour.CyclicSchema
+            or Misbehaviour.WideSchema);
 
     /// <summary>Reads a compiled fixture's own hashes off a copy nothing else will ever see.</summary>
-    private static (string Serialization, string Projection) Hashes(string assemblyName, byte[] image)
+    private static (string Serialization, string Projection) Hashes(
+        string assemblyName,
+        byte[] image,
+        bool walkable)
     {
         var context = new AssemblyLoadContext(assemblyName + ".hashes", isCollectible: true);
 
@@ -160,7 +176,9 @@ internal static class CompiledContract
 
             return (
                 ClientContractDigest.OfSerialization(declaration.SerializationContext, declaration.EntityTypeInfo),
-                ClientContractDigest.OfProjection(declaration.EntityType, declaration.Schema));
+                walkable
+                    ? ClientContractDigest.OfProjection(declaration.EntityType, declaration.Schema)
+                    : Placeholder);
         }
         finally
         {
@@ -243,6 +261,7 @@ internal static class CompiledContract
             Misbehaviour.NullSchema => "null!;",
             Misbehaviour.DeepSchema => "Schemas.Deep;",
             Misbehaviour.CyclicSchema => "Schemas.Cyclic;",
+            Misbehaviour.WideSchema => "Schemas.Wide;",
             _ => "[];",
         };
 
@@ -340,6 +359,9 @@ internal static class CompiledContract
                 /// <summary>A field whose components answer with the field itself.</summary>
                 internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Cyclic { get; } = Loop();
 
+                /// <summary>A list that claims more entries than could be held and produces none.</summary>
+                internal static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Wide { get; } = new Vast();
+
                 private static System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor> Build()
                 {
                     var current = Field("leaf", []);
@@ -357,6 +379,20 @@ internal static class CompiledContract
                     var field = Field("knot", parts);
                     parts.Self = field;
                     return new[] { field };
+                }
+
+                /// <summary>Reports int.MaxValue entries; indexing one is a failure the walker must avoid.</summary>
+                private sealed class Vast : System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor>
+                {
+                    public global::Arronix.Abstractions.Shape.FieldDescriptor this[int index] =>
+                        throw new System.InvalidOperationException("the walker asked for an entry it was told not to expect");
+
+                    public int Count => int.MaxValue;
+
+                    public System.Collections.Generic.IEnumerator<global::Arronix.Abstractions.Shape.FieldDescriptor> GetEnumerator() =>
+                        throw new System.InvalidOperationException("the walker enumerated a list it was told not to expect");
+
+                    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
                 }
 
                 private sealed class Knot : System.Collections.Generic.IReadOnlyList<global::Arronix.Abstractions.Shape.FieldDescriptor>

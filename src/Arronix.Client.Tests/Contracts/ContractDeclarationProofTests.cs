@@ -34,10 +34,16 @@ namespace Arronix.Client.Tests.Contracts;
 [TestFixture]
 internal sealed class ContractDeclarationProofTests
 {
-    [TestCase(Misbehaviour.ThrowingConstructor, "could not be read once loaded")]
-    [TestCase(Misbehaviour.ThrowingContext, "could not be read once loaded")]
-    [TestCase(Misbehaviour.ThrowingEntityTypeInfo, "could not be read once loaded")]
-    [TestCase(Misbehaviour.ThrowingSchema, "could not be read once loaded")]
+    /// <remarks>
+    /// The expectation names the guard, not merely a refusal: the four contained cases are told apart by the
+    /// text their own code threw, so each case proves the guard it was written for. An indirect base is
+    /// refused a step earlier, by the preflight reader, which requires a declaration to derive from the
+    /// platform's directly; the loader's own check of that is defence in depth behind it.
+    /// </remarks>
+    [TestCase(Misbehaviour.ThrowingConstructor, "refuses to describe itself")]
+    [TestCase(Misbehaviour.ThrowingContext, "the context refuses to be read")]
+    [TestCase(Misbehaviour.ThrowingEntityTypeInfo, "the entity metadata refuses to be read")]
+    [TestCase(Misbehaviour.ThrowingSchema, "the schema refuses to be read")]
     [TestCase(Misbehaviour.NullSchema, "answers null")]
     [TestCase(Misbehaviour.IncoherentRoot, "its own context does not hold")]
     [TestCase(Misbehaviour.ForeignRoot, "as the entity metadata of")]
@@ -47,6 +53,7 @@ internal sealed class ContractDeclarationProofTests
     [TestCase(Misbehaviour.UnstableEntityTypeInfo, "its own context does not hold")]
     [TestCase(Misbehaviour.DeepSchema, "nests deeper than")]
     [TestCase(Misbehaviour.CyclicSchema, "contains itself")]
+    [TestCase(Misbehaviour.WideSchema, "describes more than")]
     public async Task ADeclarationThatDoesNotSurviveTheProofIsTerminal(Misbehaviour misbehaviour, string expected)
     {
         var loader = Loader("Fixture.Client." + misbehaviour, misbehaviour, out var name);

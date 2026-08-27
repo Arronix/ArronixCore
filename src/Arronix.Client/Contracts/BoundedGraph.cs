@@ -1,18 +1,17 @@
 namespace Arronix.Client.Contracts;
 
-/// <summary>
-/// Walks a graph a contract produced, refusing one too deep or self-referential to describe.
-/// </summary>
+/// <summary>Walks a graph a contract produced, refusing one too deep, too wide, or self-referential.</summary>
 /// <remarks>
-/// Iterative and bounded on purpose. A schema and a projection are both shapes the contract's own code
-/// returns, and both are walked recursively everywhere else; a cycle or a few thousand levels of nesting
-/// would take the process down rather than fail a payload. Reused by the projection lane for the same
-/// reason it exists here.
+/// Iterative and bounded: a schema and a projection are both shapes the contract's own code returns, and
+/// both are walked recursively elsewhere. Reused by the projection lane for the same reason.
 /// </remarks>
 internal static class BoundedGraph
 {
     /// <summary>The deepest nesting a contract may describe. Real shapes nest two or three levels.</summary>
     internal const int MaxDepth = 32;
+
+    /// <summary>The most nodes a contract may describe, across the whole graph.</summary>
+    internal const int MaxNodes = 4096;
 
     /// <summary>
     /// Describes why a graph cannot be walked, or nothing when it can.
@@ -33,19 +32,41 @@ internal static class BoundedGraph
             return $"{subject} is absent rather than empty.";
         }
 
-        // Reference identity, not equality: two equal descriptors are two nodes, and only the same object
-        // reached twice on one path is a cycle.
+        // Reference identity, not equality: two equal nodes are two nodes, and only the same object reached
+        // twice on one path is a cycle.
         var open = new HashSet<T>(ReferenceEqualityComparer.Instance as IEqualityComparer<T>);
         var pending = new Stack<(T Node, int Depth, bool Leaving)>();
+        var scheduled = 0;
 
-        for (var index = roots.Count - 1; index >= 0; index--)
+        // The budget is spent when an entry is scheduled, not when it is reached. A walk that counted what
+        // it had popped would let every one of MaxNodes nodes schedule MaxNodes children before the next pop
+        // noticed, which is millions of pending entries and the exhaustion this bound exists to prevent.
+        string? Schedule(IReadOnlyList<T> nodes, int depth)
         {
-            if (roots[index] is null)
+            var count = nodes.Count;
+
+            if (count < 0 || count > MaxNodes - scheduled)
             {
-                return $"{subject} carries a null entry.";
+                return $"{subject} describes more than {MaxNodes} values.";
             }
 
-            pending.Push((roots[index], 1, false));
+            for (var index = count - 1; index >= 0; index--)
+            {
+                if (nodes[index] is null)
+                {
+                    return $"{subject} carries a null entry.";
+                }
+
+                pending.Push((nodes[index], depth, false));
+            }
+
+            scheduled += count;
+            return null;
+        }
+
+        if (Schedule(roots, 1) is { } wide)
+        {
+            return wide;
         }
 
         while (pending.Count > 0)
@@ -70,19 +91,9 @@ internal static class BoundedGraph
 
             pending.Push((node, depth, true));
 
-            if (children(node) is not { } nested)
+            if (children(node) is { } nested && Schedule(nested, depth + 1) is { } tooWide)
             {
-                continue;
-            }
-
-            for (var index = nested.Count - 1; index >= 0; index--)
-            {
-                if (nested[index] is null)
-                {
-                    return $"{subject} carries a null entry.";
-                }
-
-                pending.Push((nested[index], depth + 1, false));
+                return tooWide;
             }
         }
 
