@@ -135,12 +135,18 @@ public static class ApiPaths
             return false;
         }
 
-        var separator = text.IndexOf(':', StringComparison.Ordinal);
-        if (separator <= 0
-            || separator != text.LastIndexOf(':', StringComparison.Ordinal)
-            || separator == text.Length - 1
-            || !MediaLevelId.TryParse(text[..separator], out var level)
-            || !long.TryParse(text[(separator + 1)..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+        var parts = text.Split(':');
+        var (levelText, idText) = parts.Length switch
+        {
+            2 => (parts[0], parts[1]),
+            3 when string.Equals(parts[0], kind.Value, StringComparison.Ordinal) => (parts[1], parts[2]),
+            _ => (null, null),
+        };
+
+        if (levelText is null
+            || idText is null
+            || !MediaLevelId.TryParse(levelText, out var level)
+            || !long.TryParse(idText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
             || id < 1)
         {
             return false;

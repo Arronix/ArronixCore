@@ -40,9 +40,12 @@ internal sealed class ArronixApiClientTests
 
         parsed.Should().Be(Collection);
         ApiPaths.ItemReference(parsed).Should().Be("collection:42");
+        ApiPaths.TryParseItemReference(Movies, "movies:collection:42", out parsed).Should().BeTrue();
+        parsed.Should().Be(Collection);
         ApiPaths.TryParseItemReference(Movies, "42", out _).Should().BeFalse();
         ApiPaths.TryParseItemReference(Movies, "collection:0", out _).Should().BeFalse();
         ApiPaths.TryParseItemReference(Movies, "collection:42:extra", out _).Should().BeFalse();
+        ApiPaths.TryParseItemReference(Movies, "television:collection:42", out _).Should().BeFalse();
         ApiPaths.TryParseItemReference(Movies, " :42", out _).Should().BeFalse();
         var foreignItem = () => ApiPaths.Item(
             Movies.Value,

@@ -144,6 +144,7 @@ else if (_missing)
                 return;
             }
 
+            _reference = _item.Item.Ref;
             _level = ItemProjection.Level(_descriptor, _item.Item.Ref.Level);
 
             _children = _item.Item.HasChildren
