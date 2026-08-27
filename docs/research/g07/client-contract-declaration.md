@@ -276,17 +276,26 @@ runtime hands back the enumeration value.
 - `ConstructorAttributeProvider` and `JsonPropertyInfo.AttributeProvider` are attribute lookup surfaces for
   other resolvers. They carry no reading or writing behavior, and the constructor they describe is already
   rendered through `AssociatedParameter` and requiredness.
-- `JsonTypeInfo<T>.SerializeHandler` is the generated write fast path. Reading uses the metadata, which both
-  accepted generation modes produce, and the fast path is emitted from the same member model — so the two
-  accepted modes cannot read or write a payload differently.
-  `TheAcceptedGenerationModesReadAndWriteAlike` asserts both directions against a type that has the handler
-  and one that does not.
 - Whitespace, line endings, buffer size and the encoder change the bytes, not the values recovered from
   them.
 
-**The structural limit, stated rather than implied.** The digest renders the *presence* of a delegate —
-`CreateObject`, the fast-path writer, a converter — and never its behavior. Nothing here proves what a
-delegate does. What pins the code behind them is one layer up: G07.1 content-hashes the assembly's exact
+**The write fast path is refused, not classified.** `JsonTypeInfo<T>.SerializeHandler` is a generated
+delegate, and one witness type writing the same bytes is not a proof about an arbitrary one. So the contract
+requires `GenerationMode = JsonSourceGenerationMode.Metadata` and nothing else: measured, that removes the
+handler from **every reachable type**, not only the one named.
+
+```text
+Metadata only:  -       Branch(Object)   -       IReadOnlyList(Enumerable)   -       Leaf(Object)
+Default:        handler Branch(Object)   handler IReadOnlyList(Enumerable)   handler Leaf(Object)
+```
+
+`Default` and `Metadata | Serialization` are now refused along with `Serialization`, and omitting the mode
+is refused too, because the options-level default also generates one. Removing the declaration from the
+movies context fails the build with `ARX1011` naming it, and
+`NoReachableTypeCarriesAWriteFastPath` asserts the live graph over all 34 types.
+
+**The structural limit, stated rather than implied.** For `CreateObject` the digest renders *presence* and
+never behavior: nothing here proves what that factory does. What pins the code behind them is one layer up: G07.1 content-hashes the assembly's exact
 bytes and proves its CLR identity and module before it loads, and this rendering additionally requires that
 every `JsonTypeInfo` was resolved by the contract's own context and that the context and the entity ship in
 one assembly. A different delegate means different bytes, and different bytes mean a different content
@@ -405,7 +414,7 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3567 enabled=3265 passed=3265 failed=0 skipped=302 inconclusive=0
+projects=14 total=3569 enabled=3267 passed=3267 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=14 compileItems=344 boundSources=15
 ```

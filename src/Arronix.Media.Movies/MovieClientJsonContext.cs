@@ -12,13 +12,15 @@ namespace Arronix.Media.Movies;
 /// </para>
 /// <para>
 /// <see cref="JsonSerializerDefaults.Strict"/> because a client contract payload is untrusted input. Every
-/// permissive default it turns off — case-insensitive matching, unmapped members, duplicate properties,
-/// null into a non-nullable member, a missing required constructor argument — is a way for a payload to
-/// mean something the sender did not write.
+/// permissive default it turns off is a way for a payload to mean something the sender did not write.
+/// </para>
+/// <para>
+/// Metadata only: the write fast path is a generated delegate whose behavior no digest describes, so the
+/// contract does without it and writes through the same metadata a reader uses.
 /// </para>
 /// </remarks>
 [JsonSourceGenerationOptions(
     JsonSerializerDefaults.Strict,
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-[JsonSerializable(typeof(Movie))]
+[JsonSerializable(typeof(Movie), GenerationMode = JsonSourceGenerationMode.Metadata)]
 internal sealed partial class MovieClientJsonContext : JsonSerializerContext;

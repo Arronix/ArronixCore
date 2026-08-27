@@ -80,6 +80,8 @@ internal sealed class ClientContractGeneratorTests
     private const string SupportedOptions =
         "JsonSerializerDefaults.Strict, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase";
 
+    private const string SupportedTarget = ", GenerationMode = JsonSourceGenerationMode.Metadata";
+
     private static readonly CSharpParseOptions ParseOptions =
         CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
 
@@ -222,7 +224,7 @@ internal sealed class ClientContractGeneratorTests
     {
         const string Second = """
             [JsonSourceGenerationOptions(JsonSerializerDefaults.Strict, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-            [JsonSerializable(typeof(SampleItem))]
+            [JsonSerializable(typeof(SampleItem), GenerationMode = JsonSourceGenerationMode.Metadata)]
             internal sealed partial class SecondContext : JsonSerializerContext;
             """;
 
@@ -582,28 +584,36 @@ internal sealed class ClientContractGeneratorTests
     }
 
     /// <remarks>
-    /// A serialization-only mode generates the write fast path and no metadata, so a reader has nothing.
-    /// Metadata alone is enough, the default inherits both, and a combined value has no named field at all
-    /// — which is why the flag is read rather than the member name.
+    /// Metadata is what a reader uses; the write fast path beside it is a generated delegate whose behavior
+    /// no rendering describes, so a mode that also produces one is refused. Read as flags, because a
+    /// combined value has no named field to compare against.
     /// </remarks>
-    [Test]
-    public void AGenerationModeWithoutMetadataIsRefused()
+    [TestCase("JsonSourceGenerationMode.Serialization")]
+    [TestCase("JsonSourceGenerationMode.Default")]
+    [TestCase("JsonSourceGenerationMode.Metadata | JsonSourceGenerationMode.Serialization")]
+    public void AGenerationModeThatIsNotMetadataAloneIsRefused(string mode)
     {
-        var refusals = Refusals(Build(target: ", GenerationMode = JsonSourceGenerationMode.Serialization"));
+        var refusals = Refusals(Build(target: ", GenerationMode = " + mode));
 
         Assert.Multiple(() =>
         {
             Assert.That(refusals, Has.Length.EqualTo(1));
-            Assert.That(refusals[0], Does.Contain("no metadata to read with"));
+            Assert.That(refusals[0], Does.Contain("GenerationMode"));
         });
     }
 
-    [TestCase("JsonSourceGenerationMode.Default")]
-    [TestCase("JsonSourceGenerationMode.Metadata")]
-    [TestCase("JsonSourceGenerationMode.Metadata | JsonSourceGenerationMode.Serialization")]
-    public void AGenerationModeCarryingMetadataIsPublished(string mode)
+    [Test]
+    public void OmittingTheGenerationModeIsRefused()
     {
-        Assert.That(Refusals(Build(target: ", GenerationMode = " + mode)), Is.Empty);
+        var refusals = Refusals(Build(target: string.Empty));
+
+        Assert.That(refusals.Single(), Does.Contain("does not declare GenerationMode.Metadata"));
+    }
+
+    [Test]
+    public void MetadataAloneIsPublished()
+    {
+        Assert.That(Refusals(Build(target: ", GenerationMode = JsonSourceGenerationMode.Metadata")), Is.Empty);
     }
 
     /// <remarks>
@@ -613,7 +623,7 @@ internal sealed class ClientContractGeneratorTests
     [Test]
     public void RenamingTheGeneratedPropertyChangesNothing()
     {
-        var renamed = Build(target: ", TypeInfoPropertyName = \"SomethingElse\"");
+        var renamed = Build(target: SupportedTarget + ", TypeInfoPropertyName = \"SomethingElse\"");
 
         Assert.Multiple(() =>
         {
@@ -752,7 +762,7 @@ internal sealed class ClientContractGeneratorTests
         string extra = "",
         string outside = "",
         string entityAttribute = "",
-        string target = "",
+        string? target = null,
         params string[] halves) =>
         new(
             Compose(
@@ -762,7 +772,7 @@ internal sealed class ClientContractGeneratorTests
                 entityAttribute,
                 Context
                     .Replace("{{OPTIONS}}", options, StringComparison.Ordinal)
-                    .Replace("{{TARGET}}", target, StringComparison.Ordinal),
+                    .Replace("{{TARGET}}", target ?? SupportedTarget, StringComparison.Ordinal),
                 ["SampleContext", .. halves]),
             outside);
 

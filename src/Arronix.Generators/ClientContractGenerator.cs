@@ -174,13 +174,14 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
     /// Names the first declared target option this model does not describe.
     /// </summary>
     /// <remarks>
-    /// <c>GenerationMode</c> selects which halves the framework generates. The default inherits both, and
-    /// metadata is what a reader needs, so any value carrying the metadata flag is fine and a
-    /// serialization-only one is not. <c>TypeInfoPropertyName</c> renames the generated property, which this
-    /// contract never reads: the root is asked for by type. Admitted deliberately, not by omission.
+    /// <c>GenerationMode</c> must be metadata and nothing else: a reader needs the metadata, and the write
+    /// fast path is a generated delegate whose behavior no rendering describes. <c>TypeInfoPropertyName</c>
+    /// renames the generated property, which this contract never reads. Admitted deliberately.
     /// </remarks>
     private static string? UnsupportedTarget(AttributeData target, INamedTypeSymbol serialized)
     {
+        var declared = false;
+
         foreach (var argument in target.NamedArguments)
         {
             switch (argument.Key)
@@ -189,9 +190,10 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
                     if (UnsupportedGenerationMode(argument.Value) is { } mode)
                     {
                         return $"its serialization context declares {mode} for "
-                            + $"'{serialized.ToDisplayString()}', which produces no metadata to read with";
+                            + $"'{serialized.ToDisplayString()}'";
                     }
 
+                    declared = true;
                     break;
 
                 case "TypeInfoPropertyName":
@@ -203,13 +205,16 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             }
         }
 
-        return null;
+        return declared
+            ? null
+            : $"its serialization context does not declare GenerationMode.Metadata for "
+                + $"'{serialized.ToDisplayString()}', so the framework also generates a write fast path";
     }
 
-    /// <summary>Names a generation mode that leaves a reader without metadata.</summary>
+    /// <summary>Names a generation mode that is not metadata alone.</summary>
     /// <remarks>
-    /// Read as flags, not as a member name. A combined value has no named field, so a comparison against
-    /// one would let it through unexamined.
+    /// Read as flags: a combined value has no named field, so comparing against one lets it through
+    /// unexamined. Zero inherits the options-level default, which also generates the write fast path.
     /// </remarks>
     private static string? UnsupportedGenerationMode(TypedConstant argument)
     {
@@ -219,15 +224,16 @@ public sealed class ClientContractGenerator : IIncrementalGenerator
             return "a generation mode this model cannot read";
         }
 
-        if (Constant(enumeration, "Metadata") is not { } metadata)
+        if (Constant(enumeration, "Metadata") is not { } metadata
+            || Constant(enumeration, "Serialization") is not { } serialization)
         {
-            return "a generation mode whose metadata flag this model cannot find";
+            return "a generation mode whose flags this model cannot find";
         }
 
-        // Zero inherits the options-level default, which carries metadata.
-        return declared == 0 || (declared & metadata) != 0
+        return (declared & metadata) != 0 && (declared & serialization) == 0
             ? null
-            : "GenerationMode " + declared.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            : "GenerationMode " + declared.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                + ", which is not metadata alone";
     }
 
     private static int? Constant(INamedTypeSymbol enumeration, string name)

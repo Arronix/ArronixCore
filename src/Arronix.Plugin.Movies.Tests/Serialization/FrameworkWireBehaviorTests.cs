@@ -63,33 +63,58 @@ public sealed class FrameworkWireBehaviorTests
     }
 
     /// <remarks>
-    /// Reading uses the metadata, which both accepted modes generate; the mode only decides whether a
-    /// generated write fast path exists beside it, and that path is emitted from the same member model. So
-    /// the two accepted modes cannot read or write a payload differently, which is why the digest does not
-    /// carry the mode. What pins the code behind either path is the assembly's content hash, not the digest.
+    /// The mode is what removes the fast path, and it removes it from every reachable type rather than only
+    /// the one named. That is what lets the contract require metadata alone instead of describing a
+    /// delegate no rendering can describe.
     /// </remarks>
     [Test]
-    public void TheAcceptedGenerationModesReadAndWriteAlike()
+    public void MetadataOnlyRemovesTheWriteFastPathFromEveryReachableType()
     {
-        var withFastPath = WireBehaviorContext.Default.WireLenient!;
-        var metadataOnly = MetadataOnlyContext.Default.WireLenient!;
-        var value = new WireLenient("note") { GrandOne = 1, GrandTwo = 2 };
-
-        var written = JsonSerializer.Serialize(value, withFastPath);
-        var writtenWithout = JsonSerializer.Serialize(value, metadataOnly);
-        var read = JsonSerializer.Deserialize(written, withFastPath)!;
-        var readWithout = JsonSerializer.Deserialize(written, metadataOnly)!;
-
         Assert.Multiple(() =>
         {
-            Assert.That(withFastPath.SerializeHandler, Is.Not.Null, "the premise: one mode has the fast path");
-            Assert.That(metadataOnly.SerializeHandler, Is.Null, "and the other does not");
+            Assert.That(
+                Handlers(WireBehaviorContext.Default, typeof(WireLenient)),
+                Has.Some.EqualTo("WireLenient"),
+                "the premise: the default mode generates one");
 
-            Assert.That(writtenWithout, Is.EqualTo(written));
-            Assert.That(readWithout.Note, Is.EqualTo(read.Note));
-            Assert.That(readWithout.GrandOne, Is.EqualTo(read.GrandOne));
-            Assert.That(readWithout.GrandTwo, Is.EqualTo(read.GrandTwo));
+            Assert.That(Handlers(MetadataOnlyContext.Default, typeof(WireLenient)), Is.Empty);
         });
+    }
+
+    /// <summary>Names every reachable type the context generated a write fast path for.</summary>
+    internal static IReadOnlyList<string> Handlers(JsonSerializerContext context, Type root)
+    {
+        var found = new List<string>();
+        var seen = new HashSet<Type> { root };
+        var pending = new Queue<JsonTypeInfo>();
+        pending.Enqueue(context.GetTypeInfo(root)!);
+
+        while (pending.Count > 0)
+        {
+            var type = pending.Dequeue();
+            var generic = typeof(JsonTypeInfo<>).MakeGenericType(type.Type);
+
+            if (generic.IsInstanceOfType(type)
+                && generic.GetProperty("SerializeHandler")!.GetValue(type) is not null)
+            {
+                found.Add(type.Type.Name);
+            }
+
+            foreach (var property in type.Properties)
+            {
+                if ((property.Get is not null || property.Set is not null) && seen.Add(property.PropertyType))
+                {
+                    pending.Enqueue(context.GetTypeInfo(property.PropertyType)!);
+                }
+            }
+
+            if (type.ElementType is { } element && seen.Add(element))
+            {
+                pending.Enqueue(context.GetTypeInfo(element)!);
+            }
+        }
+
+        return found;
     }
 
     /// <remarks>

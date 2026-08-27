@@ -38,6 +38,21 @@ public sealed class ClientContractDigestTests
             ClientContractDigest.RenderProjection(Declaration.EntityType, Declaration.Schema));
     }
 
+    /// <remarks>
+    /// The contract requires metadata-only generation, so no reachable type carries a write fast path — a
+    /// generated delegate whose behavior no digest describes. Asserted over the live graph rather than
+    /// inferred from the declaration.
+    /// </remarks>
+    [Test]
+    public void NoReachableTypeCarriesAWriteFastPath()
+    {
+        Assert.That(
+            Serialization.FrameworkWireBehaviorTests.Handlers(
+                Declaration.SerializationContext,
+                Declaration.EntityType),
+            Is.Empty);
+    }
+
     [Test]
     public void TheTwoHashesDescribeDifferentThings()
     {
