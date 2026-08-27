@@ -13,19 +13,17 @@ namespace Arronix.Client.Contracts;
 /// under the right name, so nothing here has to be told when an installation changes.
 /// </para>
 /// <para>
-/// The store is an optimization and is treated as one. Every failure — no secure context, a browser with
-/// storage switched off, a quota refusal — degrades to refetching over the network, which is slower and
-/// exactly as correct. An unsound process is the exception: reporting an exhausted heap as an absent entry
-/// would be this boundary lying about which failure it survived. What must never happen is loading bytes
-/// because they were in a store: the loader hashes whatever it gets, from wherever it got it, before the
-/// runtime sees it.
+/// The store is an optimization. Every failure — no secure context, storage switched off, a quota refusal
+/// — degrades to refetching over the network, which is slower and exactly as correct; an unsound process is
+/// the exception. What must never happen is loading bytes because they were in a store: the loader hashes
+/// whatever it gets, from wherever, before the runtime sees it.
 /// </para>
 /// <para>
 /// Bytes cross the interop boundary as base64 text. It costs a third more transfer for an assembly measured
 /// in kilobytes, and it buys a boundary with one representation on both sides that cannot be misread.
 /// </para>
 /// </remarks>
-public sealed class ContractStore : IAsyncDisposable
+internal sealed class ContractStore : IAsyncDisposable
 {
     private const string ModulePath = "./js/contract-store.js";
 

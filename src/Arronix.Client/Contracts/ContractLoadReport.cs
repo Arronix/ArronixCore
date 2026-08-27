@@ -98,8 +98,8 @@ public enum ContractLoadOutcome
     DeclarationMismatch = 12,
 
     /// <summary>
-    /// 410 Gone: the host still publishes this file, under a different content hash. Recoverable by
-    /// re-reading the manifest, and never a statement about what this page holds.
+    /// 410 Gone: the host publishes this file under a different content hash. Recoverable by re-reading the
+    /// manifest, and never a statement about what this page holds.
     /// </summary>
     Superseded = 13,
 
@@ -176,10 +176,9 @@ public enum OrphanedContractOwner
 /// <param name="Owner">What the manifest just read says about that package.</param>
 /// <param name="Refusal">The host's live refusal when withheld; otherwise <see langword="null"/>.</param>
 /// <remarks>
-/// A browser cannot unload, so the assembly stays resident; what changes is that
+/// The assembly stays resident, because a browser cannot unload; what changes is that
 /// <see cref="MediaContractLoader.Find"/> and <see cref="MediaContractLoader.ContractsOf"/> refuse it. It
-/// never makes <see cref="ContractLoadReport.CanProject"/> false: a removal elsewhere is not a fault in
-/// what this page still holds.
+/// never makes <see cref="ContractLoadReport.CanProject"/> false.
 /// </remarks>
 public sealed record OrphanedContract(
     ClientContractAssembly Verified,

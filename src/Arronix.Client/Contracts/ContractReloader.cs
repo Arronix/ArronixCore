@@ -2,67 +2,54 @@ using Arronix.Client.Diagnostics;
 
 namespace Arronix.Client.Contracts;
 
-/// <summary>
-/// Reads the installation and sheds the bytes it no longer names, as one serialized transaction.
-/// </summary>
+/// <summary>Every change to what this page holds of an installation, as one serialized transaction.</summary>
 /// <remarks>
-/// The loader serializes its own reads and nothing else, so a sweep computed from an older read could
-/// finish after a newer one and evict what that one just fetched. Read and sweep are therefore one step,
-/// and every caller uses this one — an operator's button and a tab reacting to an extension changing state
-/// race each other otherwise. Each step is contained separately, an unsound process is contained nowhere,
-/// and cancellation belongs to the caller that asked for it.
+/// The one thing in this client that loads, sweeps or empties the store. A step outside this lease could
+/// have its bytes evicted by a sweep computed from an older read, or pair an installation with a store
+/// another step has since changed, so there is no second path to any of them and an architecture rule holds
+/// it that way. Each transaction is numbered and sealed here, over the keys it left behind.
 /// </remarks>
-public sealed class ContractReloader
+internal sealed class ContractReloader
 {
     private readonly MediaContractLoader _contracts;
     private readonly ContractStoreJanitor _janitor;
+    private readonly ContractStore _store;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private long _sequence;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="ContractReloader"/> class.
     /// </summary>
     /// <param name="contracts">The loader that reads and proves an installation.</param>
     /// <param name="janitor">Where the bytes an installation no longer names are discarded.</param>
+    /// <param name="store">This browser's contract store.</param>
     /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
-    public ContractReloader(MediaContractLoader contracts, ContractStoreJanitor janitor)
+    public ContractReloader(MediaContractLoader contracts, ContractStoreJanitor janitor, ContractStore store)
     {
         ArgumentNullException.ThrowIfNull(contracts);
         ArgumentNullException.ThrowIfNull(janitor);
+        ArgumentNullException.ThrowIfNull(store);
 
         _contracts = contracts;
         _janitor = janitor;
+        _store = store;
     }
 
-    /// <summary>Occurs when a reload has finished, successfully or not, and after it has swept.</summary>
-    /// <remarks>
-    /// Raised while this reload still holds its lease, so no later reload can overtake it. A subscriber
-    /// must therefore not call <see cref="ReloadAsync"/> back.
-    /// </remarks>
-    public event EventHandler? Completed;
-
-    /// <summary>Gets why the last reload failed, or <see langword="null"/> when it did not.</summary>
-    /// <remarks>
-    /// The loader names every outcome it can in its own report, so a value here is a defect in this client
-    /// rather than a fact about the installation, and nothing awaits a reload an event started.
-    /// </remarks>
-    public string? LastFailure { get; private set; }
-
-    /// <summary>
-    /// Reads the installation, discards the stored bytes it does not name, and says so.
-    /// </summary>
+    /// <summary>Reads the installation and discards the stored bytes it does not name.</summary>
     /// <param name="cancellationToken">Abandons the reload.</param>
-    /// <returns>A task that completes when this reload has finished and every subscriber has been told.</returns>
-    public async Task ReloadAsync(CancellationToken cancellationToken = default)
+    /// <returns>This transaction's sealed record.</returns>
+    public async Task<ContractReloadResult> ReloadAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try
         {
-            LastFailure = null;
+            var failures = new List<ContractFailure>();
+            ContractLoadReport? read = null;
 
             try
             {
-                await _contracts.LoadAsync(cancellationToken).ConfigureAwait(false);
+                read = await _contracts.LoadAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -70,33 +57,66 @@ public sealed class ContractReloader
             }
             catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
             {
-                LastFailure = failure.Message;
+                failures.Add(new ContractFailure(ContractFailureStage.Load, failure.Message));
             }
 
             try
             {
-                // Whatever the loader last proved, which it records before it notifies anyone. Bytes only:
-                // residency is untouched.
-                if (_contracts.Report is { } report)
+                // This read's own installation, so no sweep is ever computed from an older one. Bytes only.
+                if (read is { } proved)
                 {
-                    await _janitor.SweepAsync(report).ConfigureAwait(false);
+                    await _janitor.SweepAsync(proved).ConfigureAwait(false);
                 }
             }
             catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
             {
-                LastFailure = failure.Message;
+                failures.Add(new ContractFailure(ContractFailureStage.Sweep, failure.Message));
             }
 
-            // Inside the lease. A reload that announced after releasing would let the next one read, sweep
-            // and record over it, so subscribers would learn of two installations out of order.
-            if (Announcement.ToEachSubscriber(Completed, this) is { } refused)
-            {
-                LastFailure = refused;
-            }
+            // A read that could not produce a report leaves the last one standing.
+            return await SealAsync(read ?? _contracts.Report, failures).ConfigureAwait(false);
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    /// <summary>Discards every stored byte, which is what a clean start means.</summary>
+    /// <param name="cancellationToken">Abandons the discard.</param>
+    /// <returns>This transaction's sealed record.</returns>
+    /// <remarks>
+    /// The bytes, not the assemblies: a browser cannot unload one, so the next load is a clean-store load
+    /// and whatever this page holds stays where it is. Under the same lease as a reload, because emptying
+    /// the store beside one would leave a page describing a moment that never existed.
+    /// </remarks>
+    public async Task<ContractReloadResult> DiscardStoredBytesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        try
+        {
+            await _store.ClearAsync().ConfigureAwait(false);
+            return await SealAsync(_contracts.Report, []).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    /// <summary>Numbers one transaction and closes it over the store it is leaving behind.</summary>
+    /// <remarks>
+    /// Inside the lease, so the keys are this transaction's own. Listing degrades to nothing held rather
+    /// than throwing, which is why this step needs no containment of its own.
+    /// </remarks>
+    private async Task<ContractReloadResult> SealAsync(
+        ContractLoadReport? report,
+        IReadOnlyList<ContractFailure> failures)
+    {
+        var keys = await _store.KeysAsync().ConfigureAwait(false);
+
+        return new ContractReloadResult(Interlocked.Increment(ref _sequence), report, keys, failures);
     }
 }

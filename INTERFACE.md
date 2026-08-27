@@ -190,17 +190,17 @@ name, never touches residency, and is refused outright against a manifest that w
 
 One load is one transition: the orphan and owner bookkeeping a pass computes is applied only with the report
 it publishes, so a caller that abandons a load mid-fetch leaves residency and the report describing one
-installation. A finished load notifies, because the consumer showing a report is often not the one that
-asked for it. Reading and sweeping are one serialized transaction owned by a single reloader every caller
-shares — an operator's reload and an extension-state event cannot overlap, so no older sweep evicts what a
-newer read just fetched — and it announces inside that same lease, telling each subscriber in turn, so one
-refusal costs the others nothing and no later reload overtakes the notification. What a view shows is one
-type over that: it commits report and stored keys as one observation, discards an overtaken refresh whole
-rather than letting an older read land on newer state, and records a failure a refresh nobody awaits has
-nowhere else to return. Cancellation is the
-caller's token and nothing else: a
-request timeout is an ordinary `Unreachable` or `Unavailable` outcome that replaces the report it failed to
-read, and no boundary in this path contains an unsound process.
+installation. Reading an installation, shedding the bytes it no longer names and emptying the store are one
+serialized transaction with no second door — an operator's reload and an extension-state event cannot
+overlap, so no older sweep evicts what a newer read just fetched, and no store is emptied beside a read. A
+transaction is numbered under the lease that runs it and seals its report, the keys the browser holds after
+its sweep, and every failure it contained, in order, as one value handed back to its caller. What a view
+shows is that value, committed by sequence rather than by the order callers happened to resume in, published
+by one reference assignment before the view announces, and read once per render. A subscriber refusing that
+announcement is reported beside the record and not inside it, because a refusal happens after the value was
+handed over. Cancellation is the caller's token and nothing else: a request timeout is an ordinary
+`Unreachable` or `Unavailable` outcome that replaces the report it failed to read, and no boundary in this
+path contains an unsound process or drops the task carrying one.
 
 ## 5. Invariants
 

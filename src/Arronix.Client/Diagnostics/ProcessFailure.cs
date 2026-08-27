@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 
 namespace Arronix.Client.Diagnostics;
 
-/// <summary>Which failures leave the process unsound and must never be contained by a boundary.</summary>
+/// <summary>Which failures leave the process unsound and must never be contained.</summary>
 /// <remarks>
 /// The rule `Arronix.Common.Lifetimes.ProcessFailure` states, restated because the Client references the
 /// universal contract assembly and nothing else.
@@ -14,9 +14,9 @@ internal static class ProcessFailure
     /// <param name="failure">The failure.</param>
     /// <returns><see langword="true"/> when the process is no longer sound.</returns>
     /// <remarks>
-    /// The whole chain is read: an exhausted heap arrives wrapped. <see cref="AccessViolationException"/>
-    /// is named separately because it does not derive from <see cref="SEHException"/>. Cancellation is not
-    /// here — whose token it belongs to is a question only the caller can answer.
+    /// The whole chain is read, because an exhausted heap arrives wrapped.
+    /// <see cref="AccessViolationException"/> does not derive from <see cref="SEHException"/>. Cancellation
+    /// is absent: whose token it is only the caller knows.
     /// </remarks>
     internal static bool IsFatal(Exception failure)
     {

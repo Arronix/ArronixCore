@@ -59,12 +59,12 @@ public static class ArronixClientServiceCollectionExtensions
         services.TryAddSingleton<MediaContractLoader>();
         services.TryAddSingleton<ContractStoreJanitor>();
 
-        // One ordering authority for load and sweep together, shared by the page and the watcher: two
-        // callers with their own gates would still let an older sweep land after a newer read.
+        // One ordering authority for load, sweep and discard together: callers with their own gates would
+        // let an older sweep land after a newer read, or empty the store beside one.
         services.TryAddSingleton<ContractReloader>();
 
-        // What a view shows, refreshed newest-wins: two notifications arrive per reload and their store
-        // reads do not complete in the order they started.
+        // The only lifecycle surface anything else uses, committing newest-wins because callers resume in
+        // whatever order the scheduler chooses.
         services.TryAddSingleton<ContractView>();
 
         // Its value is its subscription, so something has to resolve it. Program does, before the stream

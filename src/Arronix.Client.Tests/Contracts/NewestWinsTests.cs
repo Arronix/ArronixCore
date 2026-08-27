@@ -5,50 +5,49 @@ using FluentAssertions.Execution;
 namespace Arronix.Client.Tests.Contracts;
 
 /// <summary>
-/// Which of several overlapping refreshes is allowed to commit what it read.
+/// Which of several completed transactions is allowed to commit what it produced.
 /// </summary>
 /// <remarks>
-/// The case this exists for is two notifications about one change — a contract load, then the sweep that
-/// follows it — whose store reads complete in either order. The older read landing last is the failure:
-/// it puts back the state the newer one had already corrected.
+/// Transactions are numbered under the lease that runs them; their callers resume in whatever order the
+/// scheduler chooses. An older one landing last is the failure — it puts back the state a newer one had
+/// already corrected.
 /// </remarks>
 [TestFixture]
 internal sealed class NewestWinsTests
 {
-    /// <summary>Every overtaken refresh is rejected and only the newest is accepted.</summary>
+    /// <summary>Every overtaken transaction is rejected and only the newest is accepted.</summary>
     /// <remarks>
-    /// Three deep, because two would let an ordering comparison pass: the request before last is stale for
-    /// exactly the same reason the first one is, and both may still be in flight.
+    /// Three deep, because two would let an ordering slip pass: the one before last is stale for exactly
+    /// the same reason the first is, and both may still be in flight.
     /// </remarks>
     [Test]
-    public void OnlyTheNewestRequestCommits()
+    public void OnlyTheNewestCompletedTransactionCommits()
     {
-        var refreshes = new NewestWins();
-
-        var first = refreshes.Request();
-        refreshes.IsCurrent(first).Should().BeTrue("nothing has overtaken it yet");
-
-        var second = refreshes.Request();
-        var newest = refreshes.Request();
+        var commits = new NewestWins();
 
         using var assertions = new AssertionScope();
 
-        refreshes.IsCurrent(first).Should().BeFalse("it may finish last and must not put back stale state");
-        refreshes.IsCurrent(second).Should().BeFalse("being the one before last is not being the newest");
-        refreshes.IsCurrent(newest).Should().BeTrue();
+        commits.Accepts(3).Should().BeTrue("nothing has committed yet");
+        commits.IsNewest(3).Should().BeTrue();
 
-        // Order of completion is not order of request, so the answer cannot depend on the order asked.
-        refreshes.IsCurrent(newest).Should().BeTrue();
-        refreshes.IsCurrent(second).Should().BeFalse();
-        refreshes.IsCurrent(first).Should().BeFalse();
+        commits.Accepts(1).Should().BeFalse("it finished last and must not put back stale state");
+        commits.Accepts(2).Should().BeFalse("being the one before last is not being the newest");
+        commits.IsNewest(3).Should().BeTrue("a rejected result commits nothing, so it moves nothing");
+
+        commits.Accepts(4).Should().BeTrue();
+        commits.IsNewest(3).Should().BeFalse("a newer result has committed over it");
+        commits.IsNewest(4).Should().BeTrue();
     }
 
-    /// <summary>A refresh nothing overtook commits, so the guard does not simply refuse everything.</summary>
+    /// <summary>The same number twice is the same transaction, and commits once.</summary>
     [Test]
-    public void ASoleRequestCommits()
+    public void OneTransactionCommitsOnce()
     {
-        var refreshes = new NewestWins();
+        var commits = new NewestWins();
 
-        refreshes.IsCurrent(refreshes.Request()).Should().BeTrue();
+        using var assertions = new AssertionScope();
+
+        commits.Accepts(1).Should().BeTrue();
+        commits.Accepts(1).Should().BeFalse("a number that has committed is not newer than itself");
     }
 }

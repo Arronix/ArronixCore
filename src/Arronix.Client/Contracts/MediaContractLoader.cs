@@ -35,7 +35,7 @@ namespace Arronix.Client.Contracts;
 /// resident. Diagnostics stay visible either way.
 /// </para>
 /// </remarks>
-public sealed class MediaContractLoader
+internal sealed class MediaContractLoader
 {
     private const string ManifestPath = "api/v1/client-contracts";
 
@@ -97,13 +97,6 @@ public sealed class MediaContractLoader
     public static string ContractAssemblyName { get; } =
         typeof(IMediaEntity).Assembly.GetName().Name ?? "Arronix.Abstractions";
 
-    /// <summary>Occurs when a load has finished and <see cref="Report"/> is a new one.</summary>
-    /// <remarks>
-    /// Not every load is started by whoever is showing the result, and a consumer holding the previous
-    /// report would go on showing an installation this loader has already stopped serving.
-    /// </remarks>
-    public event EventHandler? ReportChanged;
-
     /// <summary>Gets the result of the last load, or <see langword="null"/> before the first.</summary>
     public ContractLoadReport? Report { get; private set; }
 
@@ -119,8 +112,8 @@ public sealed class MediaContractLoader
     /// design refuses.
     /// </para>
     /// <para>
-    /// Nor for a name the installation this loader last read no longer carries. Handing that out would be
-    /// projecting a contract the host does not admit, which no caller downstream could detect.
+    /// Nor for a name the installation this loader last read no longer carries: that would project a
+    /// contract the host does not admit, which no caller downstream could detect.
     /// </para>
     /// </remarks>
     public Assembly? Find(string assemblyName)
@@ -148,10 +141,7 @@ public sealed class MediaContractLoader
     }
 
     /// <summary>Gets the resident entry this page may serve under a simple name, or <see langword="null"/>.</summary>
-    /// <remarks>
-    /// Two questions, both of which must be yes: did the last pass prove the whole required set, and did it
-    /// still name this assembly.
-    /// </remarks>
+    /// <remarks>Did the last pass prove the whole required set, and did it still name this assembly.</remarks>
     private ResidentContract? Current(string assemblyName)
         => Report?.CanProject == true
             && _resident.TryGetValue(assemblyName, out var resident)
@@ -164,7 +154,11 @@ public sealed class MediaContractLoader
     /// </summary>
     /// <param name="cancellationToken">Abandons the load.</param>
     /// <returns>What was published and what became of it.</returns>
-    public async Task<ContractLoadReport> LoadAsync(CancellationToken cancellationToken = default)
+    /// <remarks>
+    /// Reading is all this does. Telling anyone belongs to the transaction that also sheds the bytes the
+    /// installation no longer names, because a signal raised here would describe a page mid-sweep.
+    /// </remarks>
+    internal async Task<ContractLoadReport> LoadAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
 
@@ -180,9 +174,6 @@ public sealed class MediaContractLoader
             _gate.Release();
         }
 
-        // Outside the gate: a handler reading this loader, or asking it to load again, must not be blocked
-        // by the lease its own notification was raised under.
-        ReportChanged?.Invoke(this, EventArgs.Empty);
         return report;
     }
 
@@ -198,10 +189,8 @@ public sealed class MediaContractLoader
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            // The caller abandoned the load. That is not a statement about the host, and turning it into
-            // one would report an installation as unreachable because a page navigated away. Only the
-            // caller's own token says so: a request timeout arrives as the same type and is an ordinary
-            // outcome, which must replace the last report rather than leave a stale one standing.
+            // The caller abandoned the load, which says nothing about the host. Only its own token says
+            // so: a timeout arrives as the same type and is an ordinary outcome that replaces the report.
             throw;
         }
         catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
@@ -268,22 +257,21 @@ public sealed class MediaContractLoader
         // stated, with each package taken once.
         var required = RequiredAssemblies(manifest);
 
-        // Intended, not applied. Everything below can be abandoned by the caller mid-fetch, and a pass that
-        // never produced a report must leave this page describing the installation it last actually read.
+        // Intended, not applied: a pass abandoned mid-fetch must leave this page describing the
+        // installation it last actually read.
         var orphaning = Orphaning(required);
 
         var report = await ProveAsync(manifest, required, orphaning, cancellationToken).ConfigureAwait(false);
 
-        // One transition. The bookkeeping this pass computed becomes visible with the report LoadAsync is
-        // about to publish, and a canceled pass reaches neither.
+        // One transition: this pass's bookkeeping becomes visible with the report it publishes.
         Adopt(required, orphaning);
         return report;
     }
 
     /// <summary>Verifies the required set, commits what passes, and describes the result.</summary>
     /// <remarks>
-    /// Adds to <see cref="_resident"/> as it loads, because an assembly the runtime has taken is resident
-    /// whether or not this pass finishes, and leaves the orphan and owner bookkeeping to its caller.
+    /// Adds to <see cref="_resident"/> as it loads, because an assembly the runtime took is resident
+    /// whether or not this pass finishes. Orphan and owner bookkeeping is its caller's.
     /// </remarks>
     private async Task<ContractLoadReport> ProveAsync(
         ClientContractManifest manifest,
@@ -486,8 +474,7 @@ public sealed class MediaContractLoader
         }
         catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
         {
-            // A timeout reaches here rather than the branch above, because it is this host failing to
-            // answer rather than this caller withdrawing the question.
+            // A timeout lands here: the host failed to answer, rather than this caller withdrawing.
             return Preflight.Failed(ContractLoadOutcome.Unavailable, source, failure.Message);
         }
 
@@ -604,9 +591,8 @@ public sealed class MediaContractLoader
     /// Reads what the host said about an address it declined to serve, or nothing when it served it.
     /// </summary>
     /// <remarks>
-    /// 410 means the file moved to another address, which the next manifest read resolves; 404 means
-    /// nothing is there under any hash; anything else is a transport failure and is left to the caller's
-    /// catch. Collapsing the three would turn a recoverable race into an opaque refusal.
+    /// 410 means the file moved and the next manifest read resolves it; 404 means nothing is there under
+    /// any hash; anything else is a transport failure left to the caller's catch.
     /// </remarks>
     private static Preflight? Withdrawn(HttpStatusCode status, ClientContractAssembly published)
         => status switch
@@ -697,11 +683,7 @@ public sealed class MediaContractLoader
     }
 
     /// <summary>Makes one completed pass's bookkeeping this page's, in a single step.</summary>
-    /// <remarks>
-    /// Never a removal: nothing leaves <see cref="_resident"/> and a browser unloads nothing. Owner facts
-    /// come from the manifest that produced the report, so an orphan is attributed to the package that last
-    /// admitted it.
-    /// </remarks>
+    /// <remarks>Never a removal: nothing leaves <see cref="_resident"/> and a browser unloads nothing.</remarks>
     private void Adopt(
         List<(ContractOwner Owner, ClientContractAssembly Published)> required,
         HashSet<string> orphaning)
@@ -731,20 +713,12 @@ public sealed class MediaContractLoader
     /// or <see langword="null"/> when the ordinary pass has to run.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// A query. An installation that has not moved gives the commit path nothing to record.
-    /// </para>
-    /// <para>
-    /// <see cref="ClientContractManifest.InstallationHash"/> decides whether to look and never decides what
-    /// is true: an equal hash only permits the question, and the answer is every required assembly still
-    /// being resident under the exact description this manifest states. That is the reuse gate's own
-    /// comparison, over values already in memory, so this path fetches no bytes and accepts nothing the
-    /// ordinary pass would have refused — including a restated declaration, which the hash does not cover.
-    /// </para>
-    /// <para>
-    /// Only a <see cref="ContractCompatibility.Compatible"/> previous result qualifies. A refusal over an
-    /// unchanged installation may have been a transport failure, and fetching again is how it recovers.
-    /// </para>
+    /// <see cref="ClientContractManifest.InstallationHash"/> decides whether to look, never what is true:
+    /// an equal hash only permits the question, and every required assembly must still match the exact
+    /// description this manifest states — the reuse gate's own comparison, over values already in memory,
+    /// so no bytes are fetched and a restated declaration is still refused. Only a
+    /// <see cref="ContractCompatibility.Compatible"/> previous result qualifies, because a refusal over an
+    /// unchanged installation may have been a transport failure.
     /// </remarks>
     private ContractLoadReport? Unchanged(
         ClientContractManifest manifest,
@@ -784,8 +758,8 @@ public sealed class MediaContractLoader
 
     /// <summary>Renders what this page holds and the installation just read does not name.</summary>
     /// <remarks>
-    /// Labeled from that manifest alone. The host keeps no history, so why a package left is not a fact a
-    /// client has; what its identifier means to the host now is.
+    /// Labeled from that manifest alone: the host keeps no history, so why a package left is not a fact a
+    /// client has.
     /// </remarks>
     private IReadOnlyList<OrphanedContract> Orphans(
         ClientContractManifest manifest,

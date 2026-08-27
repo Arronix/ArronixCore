@@ -1,146 +1,184 @@
-using System.Net;
-using System.Net.Http;
-using System.Text;
-using System.Text.Json;
-using Arronix.Abstractions.Wire;
+using System.Linq;
 using Arronix.Client.Contracts;
-using Arronix.Client.Serialization;
 using FluentAssertions;
 using FluentAssertions.Execution;
 
 namespace Arronix.Client.Tests.Contracts;
 
 /// <summary>
-/// What a view of the installed contracts commits, and what it says when it cannot.
+/// What a view of the installed contracts commits, and what it says when a subscriber refuses.
 /// </summary>
 /// <remarks>
-/// Every refresh here is started by a notification and awaited by nobody, which is what makes both
-/// properties matter: an overtaken read must not land on top of the newest state, and a failure must be
-/// somewhere it can be read rather than on a task no one observes.
+/// A transaction is numbered under the lease that ran it, and its caller resumes whenever the scheduler
+/// says. What a view shows must follow the first order and not the second, and what it shows is one value:
+/// the record that transaction sealed, whole or not at all.
 /// </remarks>
 [TestFixture]
 internal sealed class ContractViewTests
 {
     private const string Held = "AAAA000000000000000000000000000000000000000000000000000000000009";
 
-    /// <summary>An overtaken refresh commits neither its state nor its failure, and announces nothing.</summary>
+    /// <summary>An overtaken transaction commits nothing, however late it arrives.</summary>
     /// <remarks>
-    /// The first refresh reads a store that still holds an address, then completes late. Committing it
-    /// would put back what the newer refresh saw evicted, pair those keys with a report from another
-    /// moment, and answer a failure the newest refresh had already replaced.
+    /// Both are completed here rather than raced, because which record wins must not depend on the order
+    /// the scheduler happened to resume their callers in.
     /// </remarks>
     [Test]
-    public async Task AnOvertakenRefreshCommitsNothing()
+    public async Task AnOvertakenTransactionCommitsNothing()
     {
-        var browser = new InMemoryContractStore(Held);
-        var view = View(browser, out var loader);
+        var view = new ContractView(Reloader(new InMemoryContractStore()));
 
         var changes = 0;
         view.Changed += (_, _) => changes++;
-        view.Changed += (_, _) => throw new InvalidOperationException("the newest refresh was refused");
 
-        var release = browser.HoldNextListing(out var listing);
-        var overtaken = view.RefreshAsync();
-        await listing.WaitAsync(TimeSpan.FromSeconds(5));
+        var older = new TaskCompletionSource<ContractReloadResult>();
+        var newer = new TaskCompletionSource<ContractReloadResult>();
 
-        // A newer refresh, over a store and a report the older one will never see.
-        browser.Discard(Held);
-        await loader.LoadAsync();
-        await view.RefreshAsync();
+        var overtaken = view.CommitAsync(older.Task);
+        var newest = view.CommitAsync(newer.Task);
 
-        var newest = view.Report;
-        newest.Should().BeSameAs(loader.Report);
+        newer.SetResult(Sealed(2, Held));
+        await newest;
 
-        // Counted across the release, so only the overtaken refresh's own announcements are in question.
+        var shown = view.Snapshot;
         var announced = changes;
 
-        release.SetResult();
+        older.SetResult(Sealed(1));
         await overtaken;
 
         using var assertions = new AssertionScope();
 
-        view.StoredKeys.Should().BeEmpty("an overtaken read must not put back what the newest one saw gone");
-        view.Report.Should().BeSameAs(newest, "the pair this view shows comes from one refresh, not two");
-        view.LastFailure.Should().Contain(
-            "the newest refresh was refused",
-            "an overtaken refresh must not answer a failure the newest one already stated");
-        changes.Should().Be(announced, "an overtaken refresh has nothing to announce");
+        view.Snapshot.Should().BeSameAs(
+            shown,
+            "an overtaken transaction commits no part of what it sealed: not its keys, not its "
+            + "installation and not its failures");
+
+        shown.Sequence.Should().Be(2);
+        shown.StoredKeys.Should().Equal(Held);
+        changes.Should().Be(announced, "an overtaken transaction has nothing to announce");
     }
 
-    /// <summary>A refusing subscriber is recorded, and does not deny the next one.</summary>
+    /// <summary>
+    /// A subscriber reads the snapshot this signal announces, and every refusal is still reported.
+    /// </summary>
     /// <remarks>
-    /// Nothing awaits a refresh a notification started, so a refusal raised through the whole delegate
-    /// would both deny every later subscriber and fault a task no one observes.
+    /// This is where the boundary is drawn. What a transaction did is committed once and then announced, so
+    /// a subscriber reads the value it was told about. A subscriber refusing that signal happens after it
+    /// was handed the value, so it is reported at the announcement — whole, in order, denying nothing to
+    /// the subscriber after it.
     /// </remarks>
     [Test]
-    public async Task ARefusingSubscriberIsRecordedAndDoesNotDenyTheNext()
+    public async Task ASubscriberSeesTheCommittedSnapshotAndEveryRefusalIsReported()
     {
-        var browser = new InMemoryContractStore(Held);
-        var view = View(browser, out _);
+        var view = new ContractView(Reloader(new InMemoryContractStore()));
 
-        var reached = false;
+        ContractReloadResult? seen = null;
+
         view.Changed += (_, _) => throw new InvalidOperationException("the first subscriber refused");
-        view.Changed += (_, _) => reached = true;
+        view.Changed += (_, _) => seen = view.Snapshot;
+        view.Changed += (_, _) => throw new InvalidOperationException("the third subscriber refused");
 
-        await view.RefreshAsync();
+        await view.CommitAsync(Task.FromResult(Sealed(1, Held)));
 
         using var assertions = new AssertionScope();
 
-        reached.Should().BeTrue("the second subscriber is told whatever the first did");
-        view.LastFailure.Should().Contain(
-            "the first subscriber refused",
-            "a refusal has nowhere to be returned, so it is stated here");
-        view.StoredKeys.Should().Equal(new[] { Held }, "the refusal came after the commit, not instead of it");
+        seen.Should().NotBeNull("the subscriber between two refusals was told whatever the first did");
+        seen.Should().BeSameAs(
+            view.Snapshot,
+            "a subscriber reads the snapshot this signal announced, and nothing publishes a second one");
+        seen!.StoredKeys.Should().Equal(
+            new[] { Held },
+            "the commit came before the announcement, not after it");
+
+        view.Refused.Select(failure => failure.Message).Should().SatisfyRespectively(
+            first => first.Should().Contain("the first subscriber refused"),
+            third => third.Should().Contain(
+                "the third subscriber refused",
+                "keeping the last refusal loses the first exactly as completely as dropping it"));
+
+        view.Refused.Should().OnlyContain(
+            failure => failure.Stage == ContractFailureStage.Changed,
+            "these are refusals of the announcement, not of anything the transaction itself did");
     }
 
-    /// <summary>A reload the view drove is committed and shown.</summary>
+    /// <summary>A refusal cannot land on the snapshot that overtook the transaction it came from.</summary>
+    /// <remarks>
+    /// Telling subscribers is where a newer transaction can commit, because a subscriber is free to start
+    /// one. A refusal recorded after that without asking again would report an older transaction's failure
+    /// over the newer one's.
+    /// </remarks>
     [Test]
-    public async Task AReloadCommitsWhatItProduced()
+    public async Task ARefusalCannotLandOnTheSnapshotThatOvertookIt()
     {
-        var browser = new InMemoryContractStore(Held);
-        var view = View(browser, out var loader);
+        var view = new ContractView(Reloader(new InMemoryContractStore()));
 
-        await view.ReloadAsync();
+        var overtaking = true;
+        var refusals = 0;
 
-        using var assertions = new AssertionScope();
-
-        view.Report.Should().BeSameAs(loader.Report);
-        view.StoredKeys.Should().BeEmpty("this host publishes nothing, so nothing held is still named");
-        view.LastFailure.Should().BeNull();
-        view.LastReloadFailure.Should().BeNull();
-    }
-
-    /// <summary>A view over a host that offers nothing, so a read costs one manifest and no bytes.</summary>
-    private static ContractView View(InMemoryContractStore browser, out MediaContractLoader loader)
-    {
-        var manifest = new ClientContractManifest(
-            MediaContractLoader.ClientContractIdentity,
-            new string('B', 64),
-            [],
-            []);
-
-        var http = new HttpClient(new StubHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        view.Changed += (_, _) =>
         {
-            Content = new StringContent(
-                JsonSerializer.Serialize(manifest, ApiJsonOptions.Default),
-                Encoding.UTF8,
-                "application/json"),
-        }))
-        {
-            BaseAddress = new Uri("https://host.invalid/"),
+            if (!overtaking)
+            {
+                return;
+            }
+
+            // Once, and from inside the announcement: a subscriber committing a newer transaction is the
+            // only way one lands while an older one is still telling the subscribers after this.
+            overtaking = false;
+            view.CommitAsync(Task.FromResult(Sealed(2, Held))).GetAwaiter().GetResult();
         };
 
-        var store = browser.Open();
-        loader = new MediaContractLoader(http, store);
+        view.Changed += (_, _) => throw new InvalidOperationException($"refusal {++refusals}");
 
-        return new ContractView(loader, store, new ContractReloader(loader, new ContractStoreJanitor(store)));
+        await view.CommitAsync(Task.FromResult(Sealed(1)));
+
+        using var assertions = new AssertionScope();
+
+        view.Snapshot.Sequence.Should().Be(2, "the newer transaction committed from inside the older one");
+        view.Refused.Should().ContainSingle()
+            .Which.Message.Should().Be(
+                "refusal 1",
+                "the newer transaction recorded its own refusal, and the one it overtook recorded nothing "
+                + "over it");
     }
 
-    private sealed class StubHandler(Func<string, HttpResponseMessage> answer) : HttpMessageHandler
+    /// <summary>A reload and a discard both commit what they produced, and show it.</summary>
+    [Test]
+    public async Task AReloadAndADiscardEachCommitWhatTheyProduced()
     {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-            => Task.FromResult(answer(request.RequestUri!.AbsolutePath));
+        var browser = new InMemoryContractStore(Held);
+        var view = new ContractView(Reloader(browser));
+
+        await view.ReloadAsync();
+        var reloaded = view.Snapshot;
+
+        await view.DiscardStoredBytesAsync();
+
+        using var assertions = new AssertionScope();
+
+        reloaded.Report.Should().NotBeNull("the host answered, so this reload read an installation");
+        reloaded.StoredKeys.Should().BeEmpty("this host publishes nothing, so nothing held is still named");
+        reloaded.Failures.Should().BeEmpty();
+
+        view.Snapshot.Sequence.Should().Be(2, "the discard is a transaction of its own");
+        view.Snapshot.Report.Should().BeSameAs(
+            reloaded.Report,
+            "discarding bytes reads no installation and does not invent one");
+        browser.Keys.Should().BeEmpty();
+        view.Refused.Should().BeEmpty();
+    }
+
+    private static ContractReloadResult Sealed(long sequence, params string[] keys)
+        => new(sequence, null, keys, []);
+
+    private static ContractReloader Reloader(InMemoryContractStore browser)
+    {
+        var store = browser.Open();
+        var http = ContractHost.OfferingNothing();
+
+        return new ContractReloader(
+            new MediaContractLoader(http, store),
+            new ContractStoreJanitor(store),
+            store);
     }
 }

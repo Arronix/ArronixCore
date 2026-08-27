@@ -213,15 +213,21 @@ coverage.
   hashes the verified installation does not name.
 - One client load is one transition. Orphan and owner bookkeeping is computed before the cancellable fetches
   and applied only with the report it publishes, so an abandoned load leaves residency and the report
-  describing one installation. A completed load notifies, because the consumer showing a report is often not
-  the one that asked for it. Load, sweep and announcement are one serialized transaction owned by a single
-  reloader every caller shares, so an operator's reload and an extension-state event cannot overlap and no
-  older sweep can evict what a newer read just fetched; each step is contained separately and each
-  subscriber is told in turn, inside the same lease. What a view shows is one type: it observes both
-  notifications, commits one observation only when no later refresh has overtaken it, and records a failure
-  a notification-driven refresh has nowhere else to return. Cancellation means the caller's own token — a request timeout is an ordinary outcome that
-  replaces the report it failed to read — and no boundary in the client's contract path contains an
-  exhausted heap or stack, corrupted memory or a structured native failure.
+  describing one installation. Reading an installation, shedding the bytes it no longer names and emptying
+  the store are one serialized transaction with no second door: an architecture rule holds every operation
+  that changes what a page holds — and every store read a page could pair with an installation — to the
+  layer that owns it, naming operations rather than types so typed projection may still read what a loaded
+  contract declares. Each step is contained separately and failures are values kept in occurrence order,
+  not one latest message. A transaction is numbered under the lease that runs it and seals its report, its
+  post-sweep keys and its failures as one value handed back to its caller. What a view shows is that value,
+  committed by sequence so a caller the scheduler resumed late cannot land an older installation on newer
+  state, published by one reference assignment before the view announces, and read once per render. A
+  subscriber refusing that announcement is reported beside the record rather than inside it, because the
+  refusal happens after the value was handed over. Every event handler in this path observes the work it
+  starts rather than discarding its task, because each records the failures it contains and only an unsound
+  process could ride a dropped one. Cancellation means the caller's own token — a request timeout is an
+  ordinary outcome that replaces the report it failed to read — and no boundary in the client's contract
+  path contains an exhausted heap or stack, corrupted memory or a structured native failure.
 - Standard action dispatch is capability-based. Host currently executes `SetMonitoring` against `IMediaStore`; operations needing acquisition scheduling, catalog refresh, filesystem mutation, removal, or exclusion storage return an explicit 501 until those capabilities exist.
 
 ## Completion and continuity discipline
@@ -334,8 +340,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-27) reports 3,219 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,521 total cases across 14 test projects. Of the skips, 301 are Movies cases
+- The current one-command full-solution run (2026-08-27) reports 3,224 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,526 total cases across 14 test projects. Of the skips, 301 are Movies cases
   and one is an architecture case; all are registered in the compatibility ledger. Every later
   passing-suite claim must report its observed skip count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The

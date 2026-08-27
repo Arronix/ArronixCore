@@ -1,5 +1,78 @@
 # Arronix History
 
+## 2026-08-27 — One transaction, one record, one moment
+
+The lifecycle core had one ordering authority for load and sweep, and everything around it was still free to
+disagree with it. Each defect below is a boundary answering one question with another question's answer, or
+with nothing at all.
+
+- **A failure was the latest message, not a fact.** `ContractReloader.LastFailure` was one string: a read
+  that failed was overwritten by a sweep that failed, and both by whichever subscriber happened to refuse
+  last. `Announcement` returned only its final refusal, so three broken consumers were indistinguishable
+  from one, and `ContractView` did the same to a refresh failure. Each contained failure is now a
+  `ContractFailure` value naming the step it happened in, kept whole and in occurrence order. A
+  process-unsound failure still propagates rather than being filed beside them.
+- **A record was still being written while its readers read it.** The reload published its failures,
+  announced, then appended the announcement's refusals — so a consumer refreshing synchronously inside that
+  signal held a value the reloader then replaced, permanently. Records are now sealed before anyone is told.
+  The boundary is stated rather than fudged: what a transaction did is inside the value it hands over; a
+  subscriber refusing the notification that delivered it is reported beside it, because that refusal happens
+  strictly after the subscriber was handed the value. No announcement can carry the record of its own
+  refusals, and pretending otherwise is what produced the race.
+- **What a page showed came from three moments.** `ContractView` published `Report` and `StoredKeys` from
+  one refresh but answered `LastReloadFailure` by reading the reloader live, and the page read each of them
+  off the view separately, several times per render. What a view shows is now one immutable value, assigned
+  once and never re-published, and the page captures that one reference at the top of its render.
+- **"Every caller goes through the reloader" was a convention.** `MediaContractLoader.LoadAsync` was public
+  and the page held the store directly, so a load could fetch and write bytes that a sweep already running
+  against an older installation would then evict, and clearing the store ran beside a reload rather than
+  under it. Reading, sweeping and discarding are now one lease with no second door, and an architecture rule
+  holds every operation that changes what this page holds — and every store read a page could pair with an
+  installation — to the layer that owns it. The rule names operations rather than types, because typed
+  projection will read what a loaded contract declares through the same loader and reading what this page
+  holds is not changing it.
+- **The lifecycle had two signals and two refreshes for one change.** The loader announced its report
+  before the sweep, the reloader announced again after it, and a view refreshing on either could read store
+  keys mid-transaction and pair them with an older record. There is one signal now, and it is the view's
+  own. A transaction is numbered under the lease that runs it, seals its report, its post-sweep keys and its
+  failures as one value, and hands that back to its caller; the view commits by sequence, so a caller the
+  scheduler resumed late cannot land an older installation on newer state. The loader raises nothing and
+  the view subscribes to nothing.
+- **Two notifications were still discarded tasks.** `ContractsPage.OnChanged` dropped
+  `InvokeAsync(StateHasChanged)`, and `ContractStateWatcher.OnReceived` dropped its reload while its own
+  documentation claimed it contained everything but an unsound process — it contained nothing; it dropped
+  the task carrying one. Both are explicit observing `async void` boundaries now: every boundary here
+  records the failures it contains, so the only thing a dropped task could carry away was the class
+  contained nowhere.
+
+Nine cases beyond the ones already standing: two transactions that cannot overlap, ending with the store
+holding what the newest installation names and each sealed over its own keys; a discard that waits for the
+transaction in front and seals the same installation without reading one; every failure of one transaction
+kept in order; an unsound process propagating; an overtaken transaction committing neither its keys, its
+installation nor its failures; a subscriber reading the snapshot this signal announces while three of them
+report two refusals in order; a refusal that cannot land on the transaction that overtook it; a reload and a
+discard each committing what they produced; and a fatal failure from an event-driven reload arriving at the
+boundary's own synchronization context rather than on a task nobody holds. Four source rules stand beside
+them, because this solution has no component-test harness: every lifecycle operation is called only from the
+layer that owns it, no boundary in the contract path discards the task it starts, a page injecting the view
+reads its snapshot exactly once and nothing else off it, and the client still discovers nothing by
+enumerating a loaded assembly.
+
+Mutation: twenty-two, each failing a named test — keeping only the last refusal, reordering them, raising
+the delegate whole, dropping a contained failure, sealing keys before the sweep, numbering every transaction
+alike, running a discard beside a reload, committing an overtaken transaction, recording refusals without
+asking whether one was overtaken, announcing before committing, weakening the ordering guard, dropping the
+loader's orphan computation, restoring either discarded task, reading the view twice in one render, and a
+page reaching each of the seven store and loader doors directly.
+
+Recorded rather than dressed up: the reloader's containment around the read is defence in depth. The loader
+turns every ordinary failure into an outcome in its own report, so nothing in this suite produces a
+`Load`-stage failure, and that branch is stated rather than witnessed. The two page rules are source-shape
+rules for the same reason — there is no component-test harness to render through.
+
+G07.3 is still open: its exit gate names update, removal, stale cache and stale tab as exercises in a real
+browser, and none has run.
+
 ## 2026-08-27 — Stop serving a contract this host has withdrawn
 
 A page that loaded Movies and then had Movies uninstalled reported itself fully compatible on its next

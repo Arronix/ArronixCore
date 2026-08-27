@@ -13,6 +13,7 @@ internal sealed class InMemoryContractStore(params string[] held)
     private readonly List<string> _keys = [.. held];
     private TaskCompletionSource? _hold;
     private TaskCompletionSource? _reached;
+    private Exception? _failListing;
 
     /// <summary>Gets the content hashes still held, in insertion order.</summary>
     public IReadOnlyList<string> Keys => _keys;
@@ -39,15 +40,27 @@ internal sealed class InMemoryContractStore(params string[] held)
         return _hold;
     }
 
+    /// <summary>Makes the next listing raise a failure rather than answer.</summary>
+    /// <param name="failure">What it raises.</param>
+    /// <remarks>The one call in a transaction that every step makes, so it reaches every containment.</remarks>
+    public void FailNextListing(Exception failure) => _failListing = failure;
+
     private object? Invoke(string identifier, object?[]? args) => identifier switch
     {
         "isAvailable" => true,
         "read" => null,
         "write" => Write((string)args![0]!),
         "keys" => _keys.ToArray(),
+        "clear" => Clear(),
         "remove" => _keys.Remove((string)args![0]!),
         _ => throw new NotSupportedException($"This store fixture does not answer '{identifier}'."),
     };
+
+    private bool Clear()
+    {
+        _keys.Clear();
+        return true;
+    }
 
     private bool Write(string contentHash)
     {
@@ -64,6 +77,12 @@ internal sealed class InMemoryContractStore(params string[] held)
         if (identifier == "import")
         {
             return ValueTask.FromResult((TValue)module);
+        }
+
+        if (identifier == "keys" && _failListing is { } raised)
+        {
+            _failListing = null;
+            throw raised;
         }
 
         if (identifier == "keys" && _hold is { } hold)

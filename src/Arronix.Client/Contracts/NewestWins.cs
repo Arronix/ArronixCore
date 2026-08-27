@@ -1,22 +1,38 @@
 namespace Arronix.Client.Contracts;
 
-/// <summary>Lets only the newest of several overlapping refreshes commit what it read.</summary>
+/// <summary>Lets only the newest of several completed transactions commit what it produced.</summary>
 /// <remarks>
-/// An automatic contract reload notifies twice — the load, then the sweep after it — and awaits do not
-/// complete in the order they started, so an older read can land last and put back what a newer one
-/// corrected. Interlocked because a notification arrives on whichever context delivered it.
+/// Transactions are numbered under the lease that runs them, but their callers resume in whatever order the
+/// scheduler chooses, so an older result can arrive last. Numbering by completion is what makes "newest"
+/// mean the newest installation rather than the newest await.
 /// </remarks>
 internal sealed class NewestWins
 {
-    private int _requested;
+    private long _committed;
 
-    /// <summary>Numbers a refresh about to start.</summary>
-    /// <returns>The number to present when it is ready to commit.</returns>
-    public int Request() => Interlocked.Increment(ref _requested);
+    /// <summary>Takes the right to commit a numbered result, if nothing newer already has.</summary>
+    /// <param name="sequence">The transaction's number.</param>
+    /// <returns><see langword="false"/> for a result a newer one has already overtaken.</returns>
+    public bool Accepts(long sequence)
+    {
+        while (true)
+        {
+            var committed = Volatile.Read(ref _committed);
 
-    /// <summary>Determines whether a numbered refresh is still the newest one requested.</summary>
-    /// <param name="request">The number <see cref="Request"/> returned.</param>
-    /// <returns><see langword="false"/> for every request a later one has overtaken.</returns>
-    /// <remarks>Equality, never an ordering: every earlier number is stale, not only the one before.</remarks>
-    public bool IsCurrent(int request) => request == Volatile.Read(ref _requested);
+            if (sequence <= committed)
+            {
+                return false;
+            }
+
+            if (Interlocked.CompareExchange(ref _committed, sequence, committed) == committed)
+            {
+                return true;
+            }
+        }
+    }
+
+    /// <summary>Determines whether a committed result is still the newest one committed.</summary>
+    /// <param name="sequence">The transaction's number.</param>
+    /// <returns><see langword="false"/> once a newer result has committed over it.</returns>
+    public bool IsNewest(long sequence) => sequence == Volatile.Read(ref _committed);
 }

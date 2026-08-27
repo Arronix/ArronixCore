@@ -3,25 +3,16 @@ using System.Linq;
 namespace Arronix.Client.Contracts;
 
 /// <summary>What one sweep of the contract store did.</summary>
-/// <param name="Ran">Whether the report described an installation worth sweeping against.</param>
+/// <param name="Ran">Whether the report described an installation to sweep against.</param>
 /// <param name="Evicted">The content hashes discarded.</param>
-public sealed record ContractStoreSweep(bool Ran, IReadOnlyList<string> Evicted);
+internal sealed record ContractStoreSweep(bool Ran, IReadOnlyList<string> Evicted);
 
-/// <summary>
-/// Discards stored contract bytes the installation a client just verified does not name.
-/// </summary>
+/// <summary>Discards stored contract bytes the verified installation does not name.</summary>
 /// <remarks>
-/// <para>
-/// A content-hash key names its own bytes, so eviction cannot make a load wrong: an address that is gone is
-/// refetched over the network and verified exactly as it would have been from the store. This exists so a
-/// browser stops accumulating every build a host has ever published, not to keep the client correct.
-/// </para>
-/// <para>
-/// It touches the store and nothing else. A browser cannot unload an assembly, and nothing here attempts it
-/// or reports one as removed.
-/// </para>
+/// A content-hash key names its own bytes, so an evicted address is refetched and reverified rather than
+/// lost. Store only: a browser cannot unload an assembly and nothing here attempts it.
 /// </remarks>
-public sealed class ContractStoreJanitor
+internal sealed class ContractStoreJanitor
 {
     private readonly ContractStore _store;
 
@@ -36,18 +27,14 @@ public sealed class ContractStoreJanitor
         _store = store;
     }
 
-    /// <summary>
-    /// Removes every stored content hash the report's installation does not publish.
-    /// </summary>
-    /// <param name="report">The result of a load, which is this client's only description of an installation.</param>
+    /// <summary>Removes every stored content hash the report's installation does not publish.</summary>
+    /// <param name="report">The result of a load, this client's only description of an installation.</param>
     /// <returns>What was discarded, and whether anything was attempted.</returns>
     /// <exception cref="ArgumentNullException"><paramref name="report"/> is <see langword="null"/>.</exception>
     /// <remarks>
-    /// A null <see cref="ContractLoadReport.InstallationHash"/> is a manifest that was never proved whole —
-    /// unreachable, or not a description of an installation — and its empty package list is an absence of
-    /// knowledge rather than a host that publishes nothing. Sweeping against one would empty the store on
-    /// every failed fetch, so it is refused. A host that genuinely offers nothing still states a hash, and
-    /// sweeping to empty is then the correct answer.
+    /// A null <see cref="ContractLoadReport.InstallationHash"/> means the manifest was never proved whole,
+    /// so its empty package list is ignorance rather than an empty installation and the sweep is refused. A
+    /// host that genuinely offers nothing still states a hash, and sweeping to empty is then correct.
     /// </remarks>
     public async Task<ContractStoreSweep> SweepAsync(ContractLoadReport report)
     {

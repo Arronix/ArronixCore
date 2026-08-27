@@ -6,41 +6,41 @@ using System.Text;
 using System.Text.Json;
 using Arronix.Abstractions.Plugins;
 using Arronix.Abstractions.Wire;
-using Arronix.Client.Configuration;
 using Arronix.Client.Contracts;
 using Arronix.Client.Serialization;
-using Arronix.Client.Services;
 using FluentAssertions;
 using FluentAssertions.Execution;
 
 namespace Arronix.Client.Tests.Contracts;
 
 /// <summary>
-/// Reading an installation and shedding what it no longer names, as one transaction.
+/// Every change to what a page holds of an installation, as one serialized transaction.
 /// </summary>
 /// <remarks>
-/// The loader serializes its own reads and nothing else, so a sweep computed from an older read could
-/// finish after a newer one and evict exactly the addresses the newer installation had just fetched. Two
-/// entry paths reach this — an operator pressing reload and a tab reacting to an extension changing
-/// state — and a gate private to either would leave the race between them.
+/// A read outside this lease could have its bytes evicted by a sweep computed from an older one, and an
+/// emptied store beside a read would leave a page describing a moment that never existed. Each transaction
+/// is numbered and sealed over the store it left behind, so what a consumer shows is one moment.
 /// </remarks>
 [TestFixture]
 internal sealed class ContractReloaderTests
 {
+    private const string Stale = "CCCC000000000000000000000000000000000000000000000000000000000003";
+
+    /// <summary>An address no store may be asked about, which is what makes a sweep fail at one.</summary>
+    private const string Unusable = "   ";
+
     private static readonly PluginId First = PluginId.FromString("reload.first");
     private static readonly PluginId Second = PluginId.FromString("reload.second");
 
-    /// <summary>
-    /// An operator's reload and an extension-state event are serialized, so no older sweep lands last.
-    /// </summary>
+    /// <summary>Two transactions cannot overlap, so no older sweep lands last.</summary>
     /// <remarks>
-    /// The first sweep is held at its listing while the second transaction is started. Serialized, the
-    /// second cannot even read until the first has swept, and the store ends holding exactly what the
-    /// newest installation names. Unserialized, the second load writes its bytes while the first sweep is
-    /// still holding the older installation's live set, and resuming it discards them.
+    /// The first sweep is held at its listing while a second transaction is started. Serialized, the second
+    /// cannot even read until the first has finished, and the store ends holding exactly what the newest
+    /// installation names. Unserialized, the second load writes its bytes while the first sweep is still
+    /// holding the older installation's live set, and resuming it discards them.
     /// </remarks>
     [Test]
-    public async Task AnOperatorReloadAndAStateChangeCannotOverlap()
+    public async Task TwoTransactionsCannotOverlap()
     {
         var older = Payload("Fixture.Client.Reload.Older");
         var newer = Payload("Fixture.Client.Reload.Newer");
@@ -52,190 +52,157 @@ internal sealed class ContractReloaderTests
 
         using var http = host.Connect();
         var browser = new InMemoryContractStore();
-        var store = browser.Open();
+        var reloader = Reloader(http, browser);
 
-        var loader = new MediaContractLoader(http, store);
-        var reloader = new ContractReloader(loader, new ContractStoreJanitor(store));
-
-        var options = new ClientOptions { ServerAddress = new Uri("https://host.invalid/") };
-        await using var events = new EventStream(options, new HostConnectivity(http, options));
-        using var watcher = new ContractStateWatcher(reloader, events);
-
-        var completed = 0;
-        var both = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        reloader.Completed += (_, _) =>
-        {
-            if (Interlocked.Increment(ref completed) == 2)
-            {
-                both.TrySetResult();
-            }
-        };
-
-        // Entry path one: the operator's button. Its sweep stalls at the listing.
+        // Its sweep stalls at the listing, with its lease still held.
         var release = browser.HoldNextListing(out var sweeping);
-        var operatorReload = reloader.ReloadAsync();
+        var first = Task.Run(() => reloader.ReloadAsync());
         await sweeping.WaitAsync(TimeSpan.FromSeconds(5));
 
         browser.Keys.Should().Equal(
             new[] { older.Published.ContentHash },
             "the first read fetched over the network and wrote what it verified");
 
-        // Entry path two: the host moves on and says so, while that sweep is still held.
+        // The host moves on, and a second transaction is asked for while that sweep is still held.
         host.Publishes(Manifest("2222222222222222222222222222222222222222222222222222222222222222", Second, newer));
-        events.Publish(new EventEnvelope { Kind = EventKind.PluginStateChanged, At = DateTimeOffset.UnixEpoch });
+        var second = Task.Run(() => reloader.ReloadAsync());
 
         release.SetResult();
 
-        await operatorReload;
-        await both.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var earlier = await first;
+        var latest = await second;
 
         using var assertions = new AssertionScope();
 
         browser.Keys.Should().Equal(
             new[] { newer.Published.ContentHash },
             "the newest installation's bytes must survive a sweep computed from the older one");
-        loader.Report!.InstallationHash.Should().Be(
+
+        earlier.Sequence.Should().Be(1);
+        latest.Sequence.Should().Be(2, "the second transaction could not start until the first finished");
+        latest.Report!.InstallationHash.Should().Be(
             "2222222222222222222222222222222222222222222222222222222222222222");
-        reloader.LastFailure.Should().BeNull();
+        latest.StoredKeys.Should().Equal(
+            new[] { newer.Published.ContentHash },
+            "a transaction is sealed over the store it is leaving behind, read inside its own lease");
+        latest.Failures.Should().BeEmpty();
     }
 
-    /// <summary>
-    /// A reload announces before the next one may read, and one refusing subscriber denies no other.
-    /// </summary>
+    /// <summary>Every failure one transaction contained is kept, whole and in the order it happened.</summary>
     /// <remarks>
-    /// Announcing after releasing the lease would let the next reload read, sweep and record over the one
-    /// still telling its subscribers, so consumers would learn of two installations out of order.
+    /// A single slot answers each step's question with the last step's answer. Order is part of the record:
+    /// which step failed first is how a reader tells a cause from what followed it.
     /// </remarks>
     [Test]
-    public async Task ANextReloadCannotReadUntilThisOneHasFinishedAnnouncing()
+    public async Task EveryFailureOneTransactionContainedIsKeptInTheOrderItHappened()
     {
-        var payload = Payload("Fixture.Client.Reload.Ordered");
         var host = new Installation(
-            Manifest("5555555555555555555555555555555555555555555555555555555555555555", First, payload),
-            payload);
+            Nothing("6666666666666666666666666666666666666666666666666666666666666666"));
 
         using var http = host.Connect();
-        var store = new InMemoryContractStore().Open();
-        var reloader = new ContractReloader(new MediaContractLoader(http, store), new ContractStoreJanitor(store));
 
-        var told = new List<string>();
-        var held = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var announcing = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var readsWhenLastToldRan = -1;
+        // A store that lists an address and then refuses to take it back, so the sweep fails after it has
+        // already discarded the one before it.
+        var browser = new InMemoryContractStore(Stale, Unusable);
 
-        reloader.Completed += (_, _) =>
-        {
-            told.Add("first");
-
-            if (announcing.TrySetResult())
-            {
-                held.Task.GetAwaiter().GetResult();
-            }
-
-            throw new InvalidOperationException("the first subscriber refused");
-        };
-
-        reloader.Completed += (_, _) =>
-        {
-            told.Add("second");
-            readsWhenLastToldRan = readsWhenLastToldRan < 0 ? host.ManifestReads : readsWhenLastToldRan;
-        };
-
-        // Held inside its own announcement, on a pool thread so the block is not this test's.
-        var first = Task.Run(() => reloader.ReloadAsync());
-        await announcing.Task.WaitAsync(TimeSpan.FromSeconds(5));
-
-        var second = Task.Run(() => reloader.ReloadAsync());
-        held.SetResult();
-
-        await first;
-        await second;
+        var sealedRecord = await Reloader(http, browser).ReloadAsync();
 
         using var assertions = new AssertionScope();
 
-        readsWhenLastToldRan.Should().Be(
-            1,
-            "the reload that started while this one was announcing must not have read yet");
-        told.Should().Equal("first", "second", "first", "second");
-        host.ManifestReads.Should().Be(2, "both reloads ran, so the first assertion is not vacuous");
-        reloader.LastFailure.Should().Contain(
-            "the first subscriber refused",
-            "a refusal is stated and does not deny the subscriber after it");
+        sealedRecord.Failures.Should().ContainSingle("the read produced a report and the sweep did not run clean")
+            .Which.Should().Match<ContractFailure>(
+                failure => failure.Stage == ContractFailureStage.Sweep
+                    && failure.Message.Contains("contentHash"));
+
+        sealedRecord.Report.Should().NotBeNull("a step failing does not cancel the ones after it");
+        sealedRecord.StoredKeys.Should().Equal(
+            new[] { Unusable },
+            "the sweep discarded what it could before the address it could not");
+        browser.Keys.Should().Equal(Unusable);
     }
 
-    /// <summary>A subscriber that refuses the signal does not deny it to the next, and is stated.</summary>
+    /// <summary>Discarding the stored bytes shares the lease a reload runs under.</summary>
     /// <remarks>
-    /// Raising the delegate whole stops at the first refusal, so a consumer registered after a broken one
-    /// would never learn what the reload produced — and the fault would land on a task nothing awaits.
+    /// Emptying the store beside a read would let a sweep evict from a store a discard had already emptied,
+    /// or let a transaction seal keys another one is in the middle of removing. Held at its listing, a
+    /// discard cannot begin, and it seals the same installation without reading one.
     /// </remarks>
     [Test]
-    public async Task ARefusingSubscriberDoesNotDenyTheSignalToTheNext()
+    public async Task ADiscardWaitsForTheTransactionInFront()
     {
-        var payload = Payload("Fixture.Client.Reload.Announced");
+        var payload = Payload("Fixture.Client.Reload.Discarded");
+
         var host = new Installation(
-            Manifest("3333333333333333333333333333333333333333333333333333333333333333", First, payload),
+            Manifest("7777777777777777777777777777777777777777777777777777777777777777", First, payload),
             payload);
 
         using var http = host.Connect();
-        var browser = new InMemoryContractStore("DEAD00000000000000000000000000000000000000000000000000000000DEAD");
-        var store = browser.Open();
+        var browser = new InMemoryContractStore();
+        var reloader = Reloader(http, browser);
 
-        var reloader = new ContractReloader(
-            new MediaContractLoader(http, store),
-            new ContractStoreJanitor(store));
+        var release = browser.HoldNextListing(out var sweeping);
+        var reload = Task.Run(() => reloader.ReloadAsync());
+        await sweeping.WaitAsync(TimeSpan.FromSeconds(5));
 
-        string[]? observed = null;
-
-        reloader.Completed += (_, _) => throw new InvalidOperationException("the first subscriber refused");
-        reloader.Completed += (_, _) => observed = [.. browser.Keys];
-
-        await reloader.ReloadAsync();
-
-        using var assertions = new AssertionScope();
-
-        observed.Should().Equal(
-            new[] { payload.Published.ContentHash },
-            "the second subscriber still sees the store the sweep left behind");
-        reloader.LastFailure.Should().Contain(
-            "the first subscriber refused",
-            "a refusal is stated rather than lost on a task nothing awaits");
-    }
-
-    /// <summary>An observer that refuses the load stops neither the sweep nor the signal.</summary>
-    [Test]
-    public async Task AnObserverRefusingTheLoadStopsNeitherTheSweepNorTheSignal()
-    {
-        var payload = Payload("Fixture.Client.Reload.Refused");
-        var host = new Installation(
-            Manifest("4444444444444444444444444444444444444444444444444444444444444444", First, payload),
-            payload);
-
-        using var http = host.Connect();
-        var browser = new InMemoryContractStore("DEAD11111111111111111111111111111111111111111111111111111111DEAD");
-        var store = browser.Open();
-
-        var loader = new MediaContractLoader(http, store);
-        var reloader = new ContractReloader(loader, new ContractStoreJanitor(store));
-
-        var announced = false;
-        reloader.Completed += (_, _) => announced = true;
-        loader.ReportChanged += Refuse;
-
-        await reloader.ReloadAsync();
-
-        using var assertions = new AssertionScope();
+        var discard = Task.Run(() => reloader.DiscardStoredBytesAsync());
 
         browser.Keys.Should().Equal(
             new[] { payload.Published.ContentHash },
-            "an observer's defect is not this page's eviction to lose");
-        announced.Should().BeTrue();
-        reloader.LastFailure.Should().Contain("a consumer refused the report");
+            "the discard cannot empty a store the transaction in front is still sweeping");
 
-        loader.ReportChanged -= Refuse;
+        release.SetResult();
 
-        static void Refuse(object? sender, EventArgs e)
-            => throw new InvalidOperationException("a consumer refused the report");
+        var reloaded = await reload;
+        var discarded = await discard;
+
+        using var assertions = new AssertionScope();
+
+        reloaded.Sequence.Should().Be(1);
+        reloaded.StoredKeys.Should().Equal(
+            new[] { payload.Published.ContentHash },
+            "the reload sealed the store as it left it, before the discard emptied it");
+
+        discarded.Sequence.Should().Be(2);
+        discarded.StoredKeys.Should().BeEmpty();
+        discarded.Report.Should().BeSameAs(
+            reloaded.Report,
+            "discarding bytes reads no installation and does not invent one");
+        browser.Keys.Should().BeEmpty();
     }
+
+    /// <summary>A process-unsound failure propagates rather than being filed as a step's defect.</summary>
+    /// <remarks>Containment is for a defect in one step; an exhausted heap is not one.</remarks>
+    [Test]
+    public async Task AnUnsoundProcessPropagates()
+    {
+        var host = new Installation(
+            Nothing("8888888888888888888888888888888888888888888888888888888888888888"));
+
+        using var http = host.Connect();
+        var browser = new InMemoryContractStore(Stale);
+        var reloader = Reloader(http, browser);
+
+        browser.FailNextListing(new OutOfMemoryException("this browser ran out of memory"));
+
+        var reload = () => reloader.ReloadAsync();
+
+        await reload.Should().ThrowAsync<OutOfMemoryException>()
+            .WithMessage("this browser ran out of memory");
+    }
+
+    private static ContractReloader Reloader(HttpClient http, InMemoryContractStore browser)
+    {
+        var store = browser.Open();
+
+        return new ContractReloader(
+            new MediaContractLoader(http, store),
+            new ContractStoreJanitor(store),
+            store);
+    }
+
+    /// <summary>A host that offers nothing, so a read costs one manifest and no bytes.</summary>
+    private static ClientContractManifest Nothing(string installationHash)
+        => new(MediaContractLoader.ClientContractIdentity, installationHash, [], []);
 
     private static ClientContractManifest Manifest(string installationHash, PluginId package, Compiled payload)
         => new(
@@ -278,8 +245,7 @@ internal sealed class ContractReloaderTests
 
         public void Publishes(ClientContractManifest next) => _manifest = next;
 
-        public HttpClient Connect()
-            => new(new StubHandler(Answer)) { BaseAddress = new Uri("https://host.invalid/") };
+        public HttpClient Connect() => ContractHost.Answering(Answer);
 
         private HttpResponseMessage Answer(string path)
         {
@@ -303,13 +269,5 @@ internal sealed class ContractReloaderTests
                 ? new HttpResponseMessage(HttpStatusCode.NotFound)
                 : new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(payload.Image) };
         }
-    }
-
-    private sealed class StubHandler(Func<string, HttpResponseMessage> answer) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-            => Task.FromResult(answer(request.RequestUri!.AbsolutePath));
     }
 }
