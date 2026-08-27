@@ -62,6 +62,14 @@ failure G07.3's exit gate names, except worse than a rendering bug: nothing down
   callers go through it. The announcement is inside the lease: releasing first would let the next reload
   read, sweep and record over the one still telling its subscribers, so consumers would learn of two
   installations out of order. The watcher is a filter again and owns nothing.
+- **What a view shows is one type, and one observation.** The page had been holding the coordination: two
+  subscriptions, a generation guard, a refresh sequence and a task nothing awaited, none of it reachable by
+  a test because the solution has no component-test harness. `ContractView` owns it instead — the page
+  injects it, renders it and subscribes once. A refresh reads store and report as one observation and
+  commits it only if nothing overtook it, so an older read cannot put back addresses a newer one saw
+  evicted, cannot pair its keys with another moment's report, and cannot answer a failure the newest
+  refresh already stated. Its own refresh is observed rather than dropped, so an unsound process is
+  rethrown instead of vanishing, and one rule for telling subscribers is now shared with the reloader.
 - **Cancellation is the caller's token and nothing else.** A request timeout arrives as the same
   `OperationCanceledException` and had been propagating as an abandoned load, leaving the previous report
   standing as this page's description of an installation it had just failed to read. It is now an ordinary
@@ -69,17 +77,19 @@ failure G07.3's exit gate names, except worse than a rendering bug: nothing down
   exhausted heap or stack, corrupted memory or a structured native failure any more, and the watcher — which
   has no caller to return anything to — states every failure it does contain rather than swallowing it.
 
-Nineteen cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
+Twenty-two cases: orphaning with its refusal and its attribution, reunion with the same declaration instances
 and no fetch, the withdraw-then-replace terminal, the three withdrawn-address answers, selective eviction
 with live-hash preservation and the unreadable-manifest refusal, the state-change filter with its eviction,
 its disposal, the serialized transaction across both entry paths, its in-lease announcement, its refusal by
-an observer and by a subscriber, and the newest-wins refresh guard, plus two witnesses for abandonment —
+an observer and by a subscriber, the view's overtaken-refresh discard, its refusing subscriber and its
+reload, the newest-wins guard itself, plus two witnesses for abandonment —
 a timeout that becomes an outcome, and a canceled load that leaves residency and the report describing one
 installation. Mutation: dropping
 the orphan flag from `Find`, trusting the installation hash without checking what was published, skipping
 reconciliation, applying the bookkeeping before the cancellable work, dropping the watcher's sweep, and
 announcing before it, letting a refused notification abort it, accepting an overtaken refresh, announcing
-outside the lease, and dropping serialization altogether each fail. Removing the early-out
+outside the lease, dropping serialization altogether, committing an overtaken refresh's failure or its keys,
+and swallowing a subscriber's refusal each fail. Removing the early-out
 *entirely* fails nothing, which is recorded as debt rather than dressed up — the reuse path it precedes
 already returns before any fetch or hash.
 

@@ -63,6 +63,10 @@ public static class ArronixClientServiceCollectionExtensions
         // callers with their own gates would still let an older sweep land after a newer read.
         services.TryAddSingleton<ContractReloader>();
 
+        // What a view shows, refreshed newest-wins: two notifications arrive per reload and their store
+        // reads do not complete in the order they started.
+        services.TryAddSingleton<ContractView>();
+
         // Its value is its subscription, so something has to resolve it. Program does, before the stream
         // opens, so no extension-state event arrives with nothing listening.
         services.TryAddSingleton<ContractStateWatcher>();

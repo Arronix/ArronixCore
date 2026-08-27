@@ -6,17 +6,11 @@ namespace Arronix.Client.Contracts;
 /// Reads the installation and sheds the bytes it no longer names, as one serialized transaction.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The loader serializes its own reads and nothing else. A sweep computed from an older read finishing
-/// after a newer one would evict exactly the addresses the newer installation had just fetched, so load and
-/// sweep have to be one step and that step has to be the only one. Every caller uses this: an operator
-/// pressing reload and a tab reacting to an extension changing state race each other otherwise.
-/// </para>
-/// <para>
-/// Each step is contained separately — one failing must not cancel the next — and each subscriber is told
-/// in turn, so one refusal costs the others nothing. An unsound process is contained nowhere, and
-/// cancellation belongs to the caller that asked for it.
-/// </para>
+/// The loader serializes its own reads and nothing else, so a sweep computed from an older read could
+/// finish after a newer one and evict what that one just fetched. Read and sweep are therefore one step,
+/// and every caller uses this one — an operator's button and a tab reacting to an extension changing state
+/// race each other otherwise. Each step is contained separately, an unsound process is contained nowhere,
+/// and cancellation belongs to the caller that asked for it.
 /// </remarks>
 public sealed class ContractReloader
 {
@@ -48,9 +42,8 @@ public sealed class ContractReloader
 
     /// <summary>Gets why the last reload failed, or <see langword="null"/> when it did not.</summary>
     /// <remarks>
-    /// The loader names every outcome it can describe in its own report, so a value here is a defect in
-    /// this client — a consumer refusing a notification, most likely — rather than a fact about the
-    /// installation. Nothing awaits a reload started by an event, so this is where one can be seen.
+    /// The loader names every outcome it can in its own report, so a value here is a defect in this client
+    /// rather than a fact about the installation, and nothing awaits a reload an event started.
     /// </remarks>
     public string? LastFailure { get; private set; }
 
@@ -96,36 +89,14 @@ public sealed class ContractReloader
 
             // Inside the lease. A reload that announced after releasing would let the next one read, sweep
             // and record over it, so subscribers would learn of two installations out of order.
-            Announce();
+            if (Announcement.ToEachSubscriber(Completed, this) is { } refused)
+            {
+                LastFailure = refused;
+            }
         }
         finally
         {
             _gate.Release();
-        }
-    }
-
-    /// <summary>Tells each subscriber, one at a time.</summary>
-    /// <remarks>
-    /// Raising the delegate whole would let the first refusal deny every later subscriber the state this
-    /// reload produced, and fault a task nothing awaits.
-    /// </remarks>
-    private void Announce()
-    {
-        if (Completed is not { } subscribers)
-        {
-            return;
-        }
-
-        foreach (var subscriber in subscribers.GetInvocationList())
-        {
-            try
-            {
-                ((EventHandler)subscriber)(this, EventArgs.Empty);
-            }
-            catch (Exception failure) when (!ProcessFailure.IsFatal(failure))
-            {
-                LastFailure = failure.Message;
-            }
         }
     }
 }

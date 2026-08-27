@@ -3,11 +3,9 @@
 }
 @using Arronix.Client.Contracts
 @using Arronix.Client.Serialization
-@using Arronix.Client.Services
 @implements IDisposable
-@inject MediaContractLoader Contracts
+@inject ContractView View
 @inject ContractStore Store
-@inject ContractReloader Reloader
 @*
     What this browser verified, what it loaded, and what the host said each of them should be.
 
@@ -36,11 +34,7 @@
     <span class="chip chip-quiet" id="contract-store-mode">@StoreMode</span>
 </div>
 
-@if (_report is null)
-{
-    <LoadingIndicator Message="Reading what this host publishes…" />
-}
-else
+@if (View.Report is { } report)
 {
     @*
         The same report, verbatim, for a browser driver to read. Rendered rather than exposed through script
@@ -52,47 +46,52 @@ else
     <section class="panel" id="contract-summary">
         <header class="panel-head">
             <h2>Installation</h2>
-            <span class="chip" id="contract-compatibility">@_report.Compatibility</span>
-            <span class="chip chip-quiet" id="contract-can-project">@(_report.CanProject ? "projection permitted" : "projection withheld")</span>
+            <span class="chip" id="contract-compatibility">@report.Compatibility</span>
+            <span class="chip chip-quiet" id="contract-can-project">@(report.CanProject ? "projection permitted" : "projection withheld")</span>
         </header>
 
         <dl class="contract-facts">
             <dt>Client contract</dt>
-            <dd id="client-contract-identity">@_report.ClientContractIdentity</dd>
+            <dd id="client-contract-identity">@report.ClientContractIdentity</dd>
 
             <dt>Host contract</dt>
-            <dd id="host-contract-identity">@(_report.PublishedContractIdentity ?? "—")</dd>
+            <dd id="host-contract-identity">@(report.PublishedContractIdentity ?? "—")</dd>
 
             <dt>Installation hash</dt>
-            <dd id="installation-hash">@(_report.InstallationHash ?? "—")</dd>
+            <dd id="installation-hash">@(report.InstallationHash ?? "—")</dd>
 
             <dt>Stored keys</dt>
-            <dd id="stored-key-count">@_storedKeys.Count</dd>
+            <dd id="stored-key-count">@View.StoredKeys.Count</dd>
         </dl>
 
-        @if (_report.Failure is { Length: > 0 } failure)
+        @if (report.Failure is { Length: > 0 } failure)
         {
             <p class="panel-detail tone-problem" id="contract-failure">@failure</p>
         }
 
-        @if (Reloader.LastFailure is { Length: > 0 } contained)
+        @if (View.LastReloadFailure is { Length: > 0 } reload)
         {
-            <p class="panel-detail tone-problem" id="contract-recheck-failure">
-                The last reload failed: @contained
+            <p class="panel-detail tone-problem" id="contract-reload-failure">The last reload failed: @reload</p>
+        }
+
+        @if (View.LastFailure is { Length: > 0 } refresh)
+        {
+            <p class="panel-detail tone-problem" id="contract-refresh-failure">
+                The last refresh of this page failed: @refresh
             </p>
         }
     </section>
 
-    @if (_report.Refused.Count > 0)
+    @if (report.Refused.Count > 0)
     {
         <section class="panel" id="contract-refusals">
             <header class="panel-head">
                 <h2>Withheld by this host</h2>
-                <span class="chip">@_report.Refused.Count</span>
+                <span class="chip">@report.Refused.Count</span>
             </header>
 
             <ul class="plugin-list">
-                @foreach (var refusal in _report.Refused)
+                @foreach (var refusal in report.Refused)
                 {
                     <li class="plugin tone-problem contract-refusal" data-package="@refusal.Package.Value">
                         <div class="plugin-head">
@@ -129,12 +128,12 @@ else
         </section>
     }
 
-    @if (_report.Orphaned.Count > 0)
+    @if (report.Orphaned.Count > 0)
     {
         <section class="panel" id="contract-orphans">
             <header class="panel-head">
                 <h2>Held here, no longer installed</h2>
-                <span class="chip">@_report.Orphaned.Count</span>
+                <span class="chip">@report.Orphaned.Count</span>
             </header>
 
             <p class="panel-detail">
@@ -143,7 +142,7 @@ else
             </p>
 
             <ul class="plugin-list">
-                @foreach (var orphan in _report.Orphaned)
+                @foreach (var orphan in report.Orphaned)
                 {
                     <li class="plugin tone-problem contract-orphan"
                         data-assembly="@orphan.Verified.AssemblyName"
@@ -161,13 +160,13 @@ else
         </section>
     }
 
-    @if (_report.Packages.Count == 0)
+    @if (report.Packages.Count == 0)
     {
         <EmptyState Title="No media contracts"
                     Detail="This host publishes no contract assembly a client may load." />
     }
 
-    @foreach (var package in _report.Packages)
+    @foreach (var package in report.Packages)
     {
         <section class="panel contract-package" id="@($"contract-package-{package.Id.Value}")">
             <header class="panel-head">
@@ -236,66 +235,31 @@ else
         </section>
     }
 }
+else
+{
+    <LoadingIndicator Message="Reading what this host publishes…" />
+}
 
 @code {
-    private readonly NewestWins _refreshes = new();
-
-    private ContractLoadReport? _report;
-    private IReadOnlyList<string> _storedKeys = [];
     private bool _busy;
 
-    private string StoreMode => _report?.StoreAvailable == true
+    private string StoreMode => View.Report?.StoreAvailable == true
         ? "persistent store"
         : "no persistent store";
 
-    private string ProofText => _report is null
-        ? string.Empty
-        : System.Text.Json.JsonSerializer.Serialize(_report, ApiJsonOptions.Default);
+    private string ProofText => View.Report is { } report
+        ? System.Text.Json.JsonSerializer.Serialize(report, ApiJsonOptions.Default)
+        : string.Empty;
 
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
-        // A reload this page did not start still changes what it is showing. ReportChanged covers a read
-        // by any other consumer; the reloader's own signal comes after it has swept, which is the only
-        // point at which the stored-key count below is the one this installation left behind.
-        Contracts.ReportChanged += OnLoaded;
-        Reloader.Completed += OnLoaded;
-
-        _report = Contracts.Report;
+        View.Changed += OnChanged;
         await ReloadAsync();
     }
 
     /// <inheritdoc />
-    public void Dispose()
-    {
-        Contracts.ReportChanged -= OnLoaded;
-        Reloader.Completed -= OnLoaded;
-    }
-
-    private void OnLoaded(object? sender, EventArgs e) => _ = RefreshAsync();
-
-    /// <remarks>
-    /// An automatic reload offers two notifications — the load, then the sweep that follows it — and each
-    /// refresh reads the store behind an await. Without a number, the older read can land last and put the
-    /// evicted address back on the page.
-    /// </remarks>
-    private async Task RefreshAsync()
-    {
-        var request = _refreshes.Request();
-        var keys = await Store.KeysAsync();
-
-        await InvokeAsync(() =>
-        {
-            if (!_refreshes.IsCurrent(request))
-            {
-                return;
-            }
-
-            _report = Contracts.Report;
-            _storedKeys = keys;
-            StateHasChanged();
-        });
-    }
+    public void Dispose() => View.Changed -= OnChanged;
 
     private static bool IsResident(LoadedContractAssembly assembly)
         => assembly.Outcome is ContractLoadOutcome.Loaded or ContractLoadOutcome.AlreadyLoaded;
@@ -313,16 +277,17 @@ else
         _ => $"This host no longer offers the package '{orphan.PackageId.Value}'.",
     };
 
+    private void OnChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
     private async Task ReloadAsync()
     {
         _busy = true;
 
         try
         {
-            // Through the one reloader, so this button cannot overlap an automatic reload and leave an
-            // older sweep to evict what the newer installation just fetched.
-            await Reloader.ReloadAsync();
-            await RefreshAsync();
+            // Through the one reloader every caller shares, so this button cannot overlap an automatic
+            // reload and leave an older sweep to evict what the newer installation just fetched.
+            await View.ReloadAsync();
         }
         finally
         {
@@ -342,7 +307,7 @@ else
         try
         {
             await Store.ClearAsync();
-            _storedKeys = await Store.KeysAsync();
+            await View.RefreshAsync();
         }
         finally
         {

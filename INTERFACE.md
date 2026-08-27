@@ -194,7 +194,10 @@ installation. A finished load notifies, because the consumer showing a report is
 asked for it. Reading and sweeping are one serialized transaction owned by a single reloader every caller
 shares — an operator's reload and an extension-state event cannot overlap, so no older sweep evicts what a
 newer read just fetched — and it announces inside that same lease, telling each subscriber in turn, so one
-refusal costs the others nothing and no later reload overtakes the notification. Cancellation is the
+refusal costs the others nothing and no later reload overtakes the notification. What a view shows is one
+type over that: it commits report and stored keys as one observation, discards an overtaken refresh whole
+rather than letting an older read land on newer state, and records a failure a refresh nobody awaits has
+nowhere else to return. Cancellation is the
 caller's token and nothing else: a
 request timeout is an ordinary `Unreachable` or `Unavailable` outcome that replaces the report it failed to
 read, and no boundary in this path contains an unsound process.

@@ -1,8 +1,8 @@
-using Arronix.Client.Services;
+using Arronix.Client.Contracts;
 using FluentAssertions;
 using FluentAssertions.Execution;
 
-namespace Arronix.Client.Tests.Services;
+namespace Arronix.Client.Tests.Contracts;
 
 /// <summary>
 /// Which of several overlapping refreshes is allowed to commit what it read.

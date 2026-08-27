@@ -1,4 +1,4 @@
-namespace Arronix.Client.Services;
+namespace Arronix.Client.Contracts;
 
 /// <summary>Lets only the newest of several overlapping refreshes commit what it read.</summary>
 /// <remarks>

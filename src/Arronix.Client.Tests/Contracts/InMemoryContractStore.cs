@@ -20,6 +20,10 @@ internal sealed class InMemoryContractStore(params string[] held)
     /// <summary>Opens a store over this content. One instance is one browser's store.</summary>
     public ContractStore Open() => new(new StoreRuntime(this));
 
+    /// <summary>Drops a content hash, as a sweep this fixture is not modelling would have.</summary>
+    /// <param name="contentHash">The hash to drop.</param>
+    public void Discard(string contentHash) => _keys.Remove(contentHash);
+
     /// <summary>Stalls the next listing until the returned release is completed.</summary>
     /// <param name="reached">Completed once that listing has been asked for and is waiting.</param>
     /// <returns>The release to complete when the listing may proceed.</returns>
@@ -73,16 +77,20 @@ internal sealed class InMemoryContractStore(params string[] held)
         return ValueTask.FromResult((TValue)Invoke(identifier, args)!);
     }
 
-    /// <remarks>Answered after the release, so a held sweep sees the store as it is when it resumes.</remarks>
+    /// <remarks>
+    /// Answered from the store as it is when asked, and delivered when released: a read that happened early
+    /// and completed late is the hazard, not one that reads late.
+    /// </remarks>
     private async Task<TValue> Stalled<TValue>(
         TaskCompletionSource hold,
         TaskCompletionSource? reached,
         string identifier,
         object?[]? args)
     {
+        var answer = (TValue)Invoke(identifier, args)!;
         reached?.TrySetResult();
         await hold.Task.ConfigureAwait(false);
-        return (TValue)Invoke(identifier, args)!;
+        return answer;
     }
 
     private sealed class StoreRuntime(InMemoryContractStore store) : IJSRuntime, IJSObjectReference
