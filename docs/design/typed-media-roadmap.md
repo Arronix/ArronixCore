@@ -612,6 +612,11 @@ total / 3,593 enabled and passed / 0 failed / 302 skipped, with all three requir
 compiler-input provenance checks green. Final G07B acceptance remains outstanding until the merged generic
 typed Client/browser proof supplies the combined evidence.
 
+The candidate now also carries a generic visible catalog workspace: it discovers exact paired catalogers,
+offers only configured active schemes, and renders/adds/refreshes typed catalog views without media or vendor
+branches. This is implementation and focused-test evidence, not the retained real-browser acceptance proof;
+G07B remains open until that proof runs through the accepted G07.3/G07A harness.
+
 Implement only the narrow EF Core/LINQ slice needed for:
 
 - configured provider definitions;

@@ -1,0 +1,209 @@
+@inject ArronixApiClient Api
+@inject ClientOptions Options
+
+<header class="catalog-workspace-head">
+    <h1>Find @Kind.PluralName in a catalog</h1>
+</header>
+
+@if (_discovering)
+{
+    <LoadingIndicator Message="Reading configured catalogs…" />
+}
+else if (_discoveryError is { } discoveryError)
+{
+    <ErrorNotice Message="@discoveryError" OnRetry="DiscoverAsync" />
+}
+else if (_schemes.Count == 0)
+{
+    <EmptyState Title="No catalog is configured"
+                Detail="Configure and enable a catalog for this library before searching." />
+}
+else
+{
+    <CatalogSearchForm Schemes="_schemes" Busy="_searching" OnSearch="SearchAsync" />
+
+    @if (_searching)
+    {
+        <LoadingIndicator Message="Searching the catalog…" />
+    }
+    else if (_searchError is { } searchError)
+    {
+        <ErrorNotice Message="@searchError" OnRetry="RepeatSearchAsync" OnDismiss="@(() => _searchError = null)" />
+    }
+    else if (_results is { } results)
+    {
+        <CatalogResultList Kind="Kind"
+                           Items="results"
+                           Statuses="_statuses"
+                           Errors="_rowErrors"
+                           BusyCatalogId="_busyCatalogId"
+                           OnAdd="AddAsync"
+                           OnRefresh="RefreshAsync"
+                           OnOpen="OpenAsync" />
+    }
+}
+
+@code {
+    private IReadOnlyList<string> _schemes = [];
+    private IReadOnlyList<CatalogItemView>? _results;
+    private readonly Dictionary<ExternalId, string> _statuses = [];
+    private readonly Dictionary<ExternalId, string> _rowErrors = [];
+    private CatalogSearch? _lastSearch;
+    private ExternalId? _busyCatalogId;
+    private bool _discovering;
+    private bool _searching;
+    private string? _discoveryError;
+    private string? _searchError;
+    private string? _boundKind;
+
+    /// <summary>Gets or sets the media kind whose configured catalogs are searched.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the callback raised to open a materialized library item.</summary>
+    [Parameter]
+    public EventCallback<ItemView> OnOpenItem { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.Equals(_boundKind, Kind.Kind.Value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _boundKind = Kind.Kind.Value;
+        _results = null;
+        _lastSearch = null;
+        _statuses.Clear();
+        _rowErrors.Clear();
+        await DiscoverAsync();
+    }
+
+    private async Task DiscoverAsync()
+    {
+        _discovering = true;
+        _discoveryError = null;
+
+        try
+        {
+            var providers = Api.GetProvidersAsync(ProviderFamily.Cataloger, Kind.Kind);
+            var definitions = Api.GetProviderDefinitionsAsync();
+            await Task.WhenAll(providers, definitions);
+            _schemes = CatalogSchemeDiscovery.ConfiguredFor(Kind.Kind, providers.Result, definitions.Result);
+        }
+        catch (HostUnreachableException)
+        {
+            _schemes = [];
+        }
+        catch (Exception failure)
+        {
+            _schemes = [];
+            _discoveryError = failure.Message;
+        }
+        finally
+        {
+            _discovering = false;
+        }
+    }
+
+    private async Task SearchAsync(CatalogSearch search)
+    {
+        _lastSearch = search;
+        _searching = true;
+        _searchError = null;
+        _statuses.Clear();
+        _rowErrors.Clear();
+
+        try
+        {
+            var page = await Api.SearchCatalogAsync(
+                Kind.Kind,
+                search.Scheme,
+                search.Text,
+                search.Identity,
+                page: 1,
+                pageSize: Options.PageSize);
+            _results = page.Items;
+        }
+        catch (HostUnreachableException)
+        {
+            _results = null;
+        }
+        catch (Exception failure)
+        {
+            _results = null;
+            _searchError = failure.Message;
+        }
+        finally
+        {
+            _searching = false;
+        }
+    }
+
+    private Task RepeatSearchAsync() => _lastSearch is { } search ? SearchAsync(search) : Task.CompletedTask;
+
+    private async Task AddAsync(CatalogItemView view)
+    {
+        _busyCatalogId = view.CatalogId;
+        _rowErrors.Remove(view.CatalogId);
+
+        try
+        {
+            var added = await Api.AddCatalogItemAsync(Kind.Kind, view.CatalogId);
+            Replace(view.CatalogId, added.Item);
+            _statuses[added.Item.CatalogId] = added.Created ? "Added to library." : "Already in library.";
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once by the application shell.
+        }
+        catch (Exception failure)
+        {
+            _rowErrors[view.CatalogId] = failure.Message;
+        }
+        finally
+        {
+            _busyCatalogId = null;
+        }
+    }
+
+    private async Task RefreshAsync(CatalogItemView view)
+    {
+        _busyCatalogId = view.CatalogId;
+        _rowErrors.Remove(view.CatalogId);
+
+        try
+        {
+            var refreshed = await Api.RefreshCatalogItemAsync(Kind.Kind, view.Item.Ref);
+            Replace(view.CatalogId, refreshed);
+            _statuses[refreshed.CatalogId] = "Catalog facts refreshed.";
+        }
+        catch (HostUnreachableException)
+        {
+            // Said once by the application shell.
+        }
+        catch (Exception failure)
+        {
+            _rowErrors[view.CatalogId] = failure.Message;
+        }
+        finally
+        {
+            _busyCatalogId = null;
+        }
+    }
+
+    private void Replace(ExternalId priorCatalogId, CatalogItemView replacement)
+    {
+        if (_results is null)
+        {
+            return;
+        }
+
+        _statuses.Remove(priorCatalogId);
+        _rowErrors.Remove(priorCatalogId);
+        _results = _results.Select(item => item.CatalogId == priorCatalogId ? replacement : item).ToArray();
+    }
+
+    private Task OpenAsync(ItemView item) => OnOpenItem.InvokeAsync(item);
+}

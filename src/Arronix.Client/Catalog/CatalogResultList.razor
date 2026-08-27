@@ -1,0 +1,64 @@
+<section role="region" aria-label="Catalog results" data-testid="catalog-results" aria-live="polite">
+    @if (Items.Count == 0)
+    {
+        <EmptyState Title="No catalog matches" Detail="Try another search." />
+    }
+    else
+    {
+        <div class="catalog-results" role="list">
+            @foreach (var item in Items)
+            {
+                <CatalogResult @key="item.CatalogId"
+                               Kind="Kind"
+                               View="item"
+                               Status="@StatusFor(item.CatalogId, item.InLibrary)"
+                               Error="@ErrorFor(item.CatalogId)"
+                               Busy="@(BusyCatalogId == item.CatalogId)"
+                               OnAdd="OnAdd"
+                               OnRefresh="OnRefresh"
+                               OnOpen="OnOpen" />
+            }
+        </div>
+    }
+</section>
+
+@code {
+    /// <summary>Gets or sets the kind description used to project each result.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the results to render.</summary>
+    [Parameter]
+    public IReadOnlyList<CatalogItemView> Items { get; set; } = [];
+
+    /// <summary>Gets or sets row status messages by catalog identity.</summary>
+    [Parameter]
+    public IReadOnlyDictionary<ExternalId, string> Statuses { get; set; } = new Dictionary<ExternalId, string>();
+
+    /// <summary>Gets or sets row failures by catalog identity.</summary>
+    [Parameter]
+    public IReadOnlyDictionary<ExternalId, string> Errors { get; set; } = new Dictionary<ExternalId, string>();
+
+    /// <summary>Gets or sets the catalog identity being changed.</summary>
+    [Parameter]
+    public ExternalId? BusyCatalogId { get; set; }
+
+    /// <summary>Gets or sets the callback raised to add a result.</summary>
+    [Parameter]
+    public EventCallback<CatalogItemView> OnAdd { get; set; }
+
+    /// <summary>Gets or sets the callback raised to refresh a result.</summary>
+    [Parameter]
+    public EventCallback<CatalogItemView> OnRefresh { get; set; }
+
+    /// <summary>Gets or sets the callback raised to open a library item.</summary>
+    [Parameter]
+    public EventCallback<ItemView> OnOpen { get; set; }
+
+    private string? StatusFor(ExternalId catalogId, bool inLibrary)
+        => Statuses.TryGetValue(catalogId, out var status) ? status : inLibrary ? "In library." : null;
+
+    private string? ErrorFor(ExternalId catalogId)
+        => Errors.TryGetValue(catalogId, out var error) ? error : null;
+}

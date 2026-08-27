@@ -65,12 +65,25 @@ public static class ItemProjection
         ArgumentNullException.ThrowIfNull(level);
         ArgumentNullException.ThrowIfNull(item);
 
+        return Artwork(level, item.Item);
+    }
+
+    /// <summary>Gets a published item's picture through its declared level.</summary>
+    /// <param name="level">The level's description.</param>
+    /// <param name="item">The published item.</param>
+    /// <returns>The address of the image, or <see langword="null"/> when the item has none.</returns>
+    /// <exception cref="ArgumentNullException">Any argument is <see langword="null"/>.</exception>
+    public static Uri? Artwork(LevelPresentation level, ItemView item)
+    {
+        ArgumentNullException.ThrowIfNull(level);
+        ArgumentNullException.ThrowIfNull(item);
+
         foreach (var field in level.Fields)
         {
             var isArtwork = field.ValueKind is FieldValueKind.Artwork
                 || field.Semantics.HasFlag(FieldSemantics.Artwork);
 
-            if (!isArtwork || !item.Item.Fields.TryGetValue(field.FieldId, out var value))
+            if (!isArtwork || !item.Fields.TryGetValue(field.FieldId, out var value))
             {
                 continue;
             }

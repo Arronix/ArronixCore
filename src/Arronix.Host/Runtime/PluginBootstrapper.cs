@@ -1260,7 +1260,12 @@ public sealed partial class PluginBootstrapper : IHostedService
 
         errorCode = CoreErrorCode.PluginLoadFailure;
 
-        if (!TryCheckProviderContracts(mediaKinds, registrations, out var contractDefects, out var contractCode))
+        if (!TryCheckProviderContracts(
+                mediaKinds,
+                registrations,
+                out var pairedKinds,
+                out var contractDefects,
+                out var contractCode))
         {
             prepared = [];
             defects = contractDefects;
@@ -1294,7 +1299,7 @@ public sealed partial class PluginBootstrapper : IHostedService
                     registration.Family,
                     registration.Descriptor,
                     provider,
-                    registration.MediaItemType,
+                    registration.MediaItemType is { } item ? pairedKinds[item] : null,
                     out var candidate,
                     out var error,
                     ledger.Invocation))
@@ -1306,7 +1311,8 @@ public sealed partial class PluginBootstrapper : IHostedService
                 // Registration captures the cataloger's declaration once. Validate and route by that
                 // captured value; a mutable implementation getter cannot change the contract after
                 // admission.
-                if (candidate.Provider is ICataloger
+                if (candidate.Family == ProviderFamily.Cataloger
+                    && candidate.Provider is ICataloger
                     && !CatalogIdentity.IsCanonicalScheme(candidate.CatalogScheme))
                 {
                     found.Add(
@@ -1362,6 +1368,7 @@ public sealed partial class PluginBootstrapper : IHostedService
     /// </summary>
     /// <param name="mediaKinds">The kinds this attempt admitted, which are not published yet.</param>
     /// <param name="registrations">Every provider the extension registered.</param>
+    /// <param name="pairedKinds">The admission-validated item-type to semantic-kind mapping.</param>
     /// <param name="defects">One actionable defect per unsound registration.</param>
     /// <param name="errorCode">
     /// The failure class, meaningful only when this returns false:
@@ -1388,10 +1395,11 @@ public sealed partial class PluginBootstrapper : IHostedService
     [SuppressMessage(
         "Design",
         "CA1021:Avoid out parameters",
-        Justification = "One private step returning a verdict, the complete defect list and a machine-readable code.")]
+        Justification = "One private step returning a verdict, the resolved semantic pairings, the complete defect list and a machine-readable code.")]
     private bool TryCheckProviderContracts(
         IReadOnlyList<RegisteredMediaKind> mediaKinds,
         IReadOnlyList<ProviderTypeRegistration> registrations,
+        out IReadOnlyDictionary<Type, MediaKindId> pairedKinds,
         out IReadOnlyList<string> defects,
         out CoreErrorCode errorCode)
     {
@@ -1405,6 +1413,7 @@ public sealed partial class PluginBootstrapper : IHostedService
 
         if (structural.Count > 0)
         {
+            pairedKinds = new Dictionary<Type, MediaKindId>();
             defects = structural;
             return false;
         }
@@ -1442,6 +1451,7 @@ public sealed partial class PluginBootstrapper : IHostedService
                 + "type, or pair the provider with a kind this installation has.");
         }
 
+        pairedKinds = supplied;
         defects = found;
         errorCode = CoreErrorCode.PluginMediaPairingUnsatisfied;
         return found.Count == 0;

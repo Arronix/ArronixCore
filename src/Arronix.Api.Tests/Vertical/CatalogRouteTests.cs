@@ -120,6 +120,22 @@ internal sealed class CatalogRouteTests
         response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
     }
 
+    [Test]
+    public async Task ProviderDiscoveryFindsTheSeparatelyPackagedCatalogerByItsExactPairedKind()
+    {
+        using var response = await _client.GetAsync("/api/v1/providers?family=Cataloger&kind=movies");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        var entries = body.RootElement.EnumerateArray().ToArray();
+        var tmdb = entries.Single(entry => entry.GetProperty("catalogScheme").GetString() == "tmdb");
+
+        using var assertions = new AssertionScope();
+        tmdb.GetProperty("pairedMediaKind").GetString().Should().Be("movies");
+        tmdb.GetProperty("provider").GetString().Should().StartWith("tmdb:");
+        entries.Should().OnlyContain(entry => entry.GetProperty("pairedMediaKind").GetString() == "movies");
+    }
+
     /// <summary>A catalog that fails is not a malformed request.</summary>
     [Test]
     public async Task ACatalogerThatThrowsIsABadGateway()

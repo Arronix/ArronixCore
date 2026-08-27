@@ -1,0 +1,110 @@
+@*
+    A catalog result is intentionally not an ItemCard: it is a provider-owned projection, not a library
+    item detail. Its visual fields still come from the selected kind's declared level.
+*@
+
+<article class="catalog-result"
+         role="listitem"
+         data-testid="catalog-result"
+         data-catalog-id="@View.CatalogId"
+         data-item-ref="@ApiPaths.ItemReference(View.Item.Ref)">
+    <div class="catalog-result-art">
+        @if (Artwork is { } artwork)
+        {
+            <img src="@artwork" alt="" loading="lazy" />
+        }
+        else
+        {
+            <span aria-hidden="true">@Initial</span>
+        }
+    </div>
+
+    <div class="catalog-result-body">
+        <h3>@View.Item.Title</h3>
+
+        @if (Level is { } level)
+        {
+            <dl>
+                @foreach (var field in ItemProjection.FieldsUpTo(level, Prominence.Secondary).Take(3))
+                {
+                    <div>
+                        <dt>@field.Name</dt>
+                        <dd><FieldValueView Descriptor="field" Value="@ValueOf(field.FieldId)" Compact="true" /></dd>
+                    </div>
+                }
+            </dl>
+        }
+
+        @if (Error is { } error)
+        {
+            <p role="alert">@error</p>
+        }
+        else if (Status is { } status)
+        {
+            <p role="status">@status</p>
+        }
+    </div>
+
+    <div class="catalog-result-actions">
+        @if (View.InLibrary)
+        {
+            <button type="button" class="button" data-action="open-item" disabled="@Busy" @onclick="OpenAsync">Open</button>
+            <button type="button" class="button button-quiet" data-action="refresh" disabled="@Busy" @onclick="RefreshAsync">Refresh</button>
+        }
+        else
+        {
+            <button type="button" class="button" data-action="add" disabled="@Busy" @onclick="AddAsync">Add</button>
+        }
+    </div>
+</article>
+
+@code {
+    /// <summary>Gets or sets the kind description used to project this result.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required MediaKindDescriptor Kind { get; set; }
+
+    /// <summary>Gets or sets the provider-owned result.</summary>
+    [Parameter]
+    [EditorRequired]
+    public required CatalogItemView View { get; set; }
+
+    /// <summary>Gets or sets the row's stated result.</summary>
+    [Parameter]
+    public string? Status { get; set; }
+
+    /// <summary>Gets or sets the row's failure.</summary>
+    [Parameter]
+    public string? Error { get; set; }
+
+    /// <summary>Gets or sets whether this row is being changed.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Gets or sets the callback raised to add this result.</summary>
+    [Parameter]
+    public EventCallback<CatalogItemView> OnAdd { get; set; }
+
+    /// <summary>Gets or sets the callback raised to refresh this result.</summary>
+    [Parameter]
+    public EventCallback<CatalogItemView> OnRefresh { get; set; }
+
+    /// <summary>Gets or sets the callback raised to open this result's library item.</summary>
+    [Parameter]
+    public EventCallback<ItemView> OnOpen { get; set; }
+
+    private LevelPresentation? Level => ItemProjection.Level(Kind, View.Item.Ref.Level);
+
+    private Uri? Artwork => Level is { } level ? ItemProjection.Artwork(level, View.Item) : null;
+
+    private string Initial => View.Item.Title is { Length: > 0 } title ? title[..1].ToUpperInvariant() : "·";
+
+    private FieldValue? ValueOf(string fieldId)
+        => View.Item.Fields.TryGetValue(fieldId, out var value) ? value : null;
+
+    private Task AddAsync() => OnAdd.InvokeAsync(View);
+
+    private Task RefreshAsync() => OnRefresh.InvokeAsync(View);
+
+    private Task OpenAsync() => OnOpen.InvokeAsync(View.Item);
+}

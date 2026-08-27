@@ -16,7 +16,7 @@ namespace Arronix.Client.Serialization;
 /// <para>
 /// <b>The server must mirror exactly this:</b> web defaults (camel-cased names, case-insensitive reads,
 /// numeric values accepted from strings), nulls omitted when writing, enumerations on the wire as their
-/// numbers, and the four converters below. Enumerations stay numeric because every one of them is a
+/// numbers, and the converters below. Enumerations stay numeric because every one of them is a
 /// closed vocabulary switched over exhaustively at both ends; a name would add a second spelling of a
 /// value that already has one.
 /// </para>
@@ -65,6 +65,7 @@ public static class ApiJsonOptions
         options.PropertyNameCaseInsensitive = true;
         options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        options.Converters.Add(new MediaKindIdJsonConverter());
         options.Converters.Add(new MediaLevelIdJsonConverter());
         options.Converters.Add(new PluginIdJsonConverter());
         options.Converters.Add(new ProviderIdJsonConverter());

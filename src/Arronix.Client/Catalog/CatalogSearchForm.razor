@@ -1,0 +1,85 @@
+<form role="search" data-testid="catalog-search-form" @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+    <label>
+        Catalog
+        <select data-testid="catalog-scheme" @bind="_scheme" disabled="@Busy">
+            <option value="">Choose a catalog</option>
+            @foreach (var scheme in Schemes)
+            {
+                <option value="@scheme">@scheme</option>
+            }
+        </select>
+    </label>
+
+    <label>
+        Search text
+        <input data-testid="catalog-query" @bind="_text" disabled="@Busy" />
+    </label>
+
+    <label>
+        Catalog identity
+        <input data-testid="catalog-id" @bind="_identity" placeholder="scheme:value" disabled="@Busy" />
+    </label>
+
+    <button type="submit" class="button" data-action="search" disabled="@Busy">Search</button>
+
+    @if (_error is { } error)
+    {
+        <p role="alert">@error</p>
+    }
+</form>
+
+@code {
+    private string _scheme = string.Empty;
+    private string? _text;
+    private string? _identity;
+    private string? _error;
+
+    /// <summary>Gets or sets the catalog schemes the installation can search.</summary>
+    [Parameter]
+    public IReadOnlyList<string> Schemes { get; set; } = [];
+
+    /// <summary>Gets or sets whether a search is in progress.</summary>
+    [Parameter]
+    public bool Busy { get; set; }
+
+    /// <summary>Gets or sets the callback raised with one validated search.</summary>
+    [Parameter]
+    public EventCallback<CatalogSearch> OnSearch { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (!Schemes.Contains(_scheme, StringComparer.Ordinal))
+        {
+            _scheme = Schemes.FirstOrDefault() ?? string.Empty;
+        }
+    }
+
+    private Task SubmitAsync()
+    {
+        _error = null;
+
+        if (string.IsNullOrWhiteSpace(_scheme))
+        {
+            _error = "Choose a catalog before searching.";
+            return Task.CompletedTask;
+        }
+
+        var text = string.IsNullOrWhiteSpace(_text) ? null : _text.Trim();
+        var identityText = string.IsNullOrWhiteSpace(_identity) ? null : _identity.Trim();
+        ExternalId identity = default;
+
+        if (text is null && identityText is null)
+        {
+            _error = "Enter search text or a catalog identity.";
+            return Task.CompletedTask;
+        }
+
+        if (identityText is not null && !ExternalId.TryParse(identityText, out identity))
+        {
+            _error = "A catalog identity must be written as scheme:value.";
+            return Task.CompletedTask;
+        }
+
+        return OnSearch.InvokeAsync(new CatalogSearch(_scheme, text, identityText is null ? null : identity));
+    }
+}

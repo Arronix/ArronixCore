@@ -92,9 +92,11 @@ internal sealed class ArronixApiClientTests
             + "&id=other%3Aa%3Db%26c%2Fd&page=2&size=25");
     }
 
-    [TestCase(HttpStatusCode.Created)]
-    [TestCase(HttpStatusCode.OK)]
-    public async Task CatalogAddAcceptsNewAndIdempotentResponsesWithoutTreatingLocationAsIdentity(HttpStatusCode status)
+    [TestCase(HttpStatusCode.Created, true)]
+    [TestCase(HttpStatusCode.OK, false)]
+    public async Task CatalogAddAcceptsOnlyCreatedAndIdempotentResponsesWithoutTreatingLocationAsIdentity(
+        HttpStatusCode status,
+        bool created)
     {
         var view = CatalogView();
         using var fixture = Fixture(_ =>
@@ -108,11 +110,24 @@ internal sealed class ArronixApiClientTests
 
         using var _ = new FluentAssertions.Execution.AssertionScope();
 
-        added.Should().BeEquivalentTo(view);
+        added.Item.Should().BeEquivalentTo(view);
+        added.Created.Should().Be(created);
         fixture.Handler.Requests.Should().ContainSingle().Which.Should().Match<Request>(request =>
             request.Method == HttpMethod.Post
             && request.PathAndQuery == "/api/v1/kinds/movies/catalog/items"
             && request.Body == "{\"catalogId\":\"tmdb:603\"}");
+    }
+
+    [TestCase(HttpStatusCode.Accepted)]
+    [TestCase(HttpStatusCode.NoContent)]
+    public async Task CatalogAddRefusesUnexpectedSuccessfulStatuses(HttpStatusCode status)
+    {
+        using var fixture = Fixture(_ => new HttpResponseMessage(status));
+
+        var act = () => fixture.Client.AddCatalogItemAsync(Movies, ExternalId.Of("tmdb", "603"));
+
+        var failure = await act.Should().ThrowAsync<ApiRequestException>();
+        failure.Which.StatusCode.Should().Be(status);
     }
 
     [Test]
@@ -158,6 +173,25 @@ internal sealed class ArronixApiClientTests
         cancellation.Cancel();
 
         Func<Task> act = () => pending;
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        fixture.Handler.Requests.Should().ContainSingle();
+        fixture.Connectivity.State.Should().Be(HostState.Unknown);
+    }
+
+    [Test]
+    public async Task CatalogAddPassesCallerCancellationThroughUnchanged()
+    {
+        using var fixture = Fixture(static async (_, cancellationToken) =>
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            throw new InvalidOperationException("Cancellation must have stopped the request.");
+        });
+        using var cancellation = new CancellationTokenSource();
+
+        var pending = fixture.Client.AddCatalogItemAsync(Movies, ExternalId.Of("tmdb", "603"), cancellation.Token);
+        cancellation.Cancel();
+
+        Func<Task> act = async () => await pending;
         await act.Should().ThrowAsync<OperationCanceledException>();
         fixture.Handler.Requests.Should().ContainSingle();
         fixture.Connectivity.State.Should().Be(HostState.Unknown);
