@@ -7,25 +7,10 @@ namespace Arronix.Client.Serialization;
 /// The one description of how this client reads and writes the platform's wire contracts.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The client and the server are separately compiled and separately deployed, so the serializer
-/// configuration is the one thing about the wire that genuinely exists twice. That duplication is
-/// deliberate — the alternative is a shared implementation assembly in the browser — and it is guarded by
-/// a round-trip test that reads both configurations and requires them to agree byte for byte.
-/// </para>
-/// <para>
-/// <b>The server must mirror exactly this:</b> web defaults (camel-cased names, case-insensitive reads,
-/// numeric values accepted from strings), nulls omitted when writing, camel-case enumeration names on the
-/// wire (while accepting their legacy numeric form), and the converters below. Enumeration names preserve
-/// their semantic spelling when a member is inserted; the client still switches the closed vocabularies
-/// exhaustively after deserialization.
-/// </para>
-/// <para>
-/// Converters exist only for the identities that cannot survive a round trip without one — an identifier
-/// whose only constructor is private, and an ordinal tuple whose components are not properties. Every
-/// other identity in the contract layer is a positional record and is left to the serializer's own
-/// handling, because the fewer hand-written rules there are, the fewer there are to diverge.
-/// </para>
+/// Client and API are independently compiled, so this is the Client-owned declaration of their shared wire
+/// forms: case-insensitive camel-case property names, untouched dictionary keys, omitted nulls, trailing
+/// comma tolerance, strict ordinary numbers, camel-case enum names with legacy integer reads, and the
+/// identifier converters below. It intentionally contains no server implementation dependency.
 /// </remarks>
 public static class ApiJsonOptions
 {
@@ -42,11 +27,7 @@ public static class ApiJsonOptions
     /// <returns>The configuration.</returns>
     public static JsonSerializerOptions CreateOptions()
     {
-        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
-        {
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            NumberHandling = JsonNumberHandling.AllowReadingFromString,
-        };
+        var options = new JsonSerializerOptions();
 
         Configure(options);
         return options;
@@ -62,9 +43,12 @@ public static class ApiJsonOptions
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        options.AllowTrailingCommas = true;
         options.PropertyNameCaseInsensitive = true;
         options.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+        options.DictionaryKeyPolicy = null;
         options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+        options.NumberHandling = JsonNumberHandling.Strict;
         options.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase, allowIntegerValues: true));
         options.Converters.Add(new MediaKindIdJsonConverter());
         options.Converters.Add(new MediaItemIdJsonConverter());
