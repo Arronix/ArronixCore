@@ -28,6 +28,11 @@ internal static class ProviderRegistration
         services.TryAddSingleton<ProviderSessionStore>();
         services.TryAddSingleton<ProviderTestService>();
         services.TryAddSingleton<CatalogIdentity>();
+
+        // The read half is resolvable on its own, so a consumer that only reads identity cannot be handed
+        // something that assigns it.
+        services.TryAddSingleton<ICatalogIdentityReader>(
+            static provider => provider.GetRequiredService<CatalogIdentity>());
         services.TryAddSingleton<CatalogDispatcher>();
         services.TryAddSingleton<IndexerDispatcher>();
         services.TryAddSingleton<NotificationDispatcher>();

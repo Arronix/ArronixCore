@@ -298,11 +298,11 @@ public static class MediaTypeModelFactory
         public ReleasePolicy<TRelease>? ReleasePolicy { get; } = releasePolicy;
 
         /// <inheritdoc />
-        public ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity)
+        public ItemView Project(MediaItemRef reference, object item, ICatalogIdentityReader identity)
             => projector.Project(reference, item, identity);
 
         /// <inheritdoc />
-        public FieldValue Read(object item, string fieldId, CatalogIdentity identity)
+        public FieldValue Read(object item, string fieldId, ICatalogIdentityReader identity)
             => projector.Read(item, fieldId, identity);
     }
 }

@@ -51,7 +51,7 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
 - The `MediaType` primary constructor captures its stable kind identifier, singular/plural display names, non-empty format composition, typed minimum-availability selection, and file binding. File binding defaults to `OnePerItem`; other relationships must state their shape explicitly. Kind identity is never derived from mutable display wording. The remaining optional or repeatable media-specific declarations are virtual values for identity, groups, additional selections, searches, matching, release policy, query planning, naming, summaries, intent exceptions, workbenches, and derivations. Parsing is the deliberate exception: `IReleaseParser<TRelease>.Parse` is static abstract because the parser type itself is the executable declaration. `CompiledShapes` is a generator-supplied public override marked `EditorBrowsable(Never)`; its visibility preserves the immutable G01 executable-generator sentinel, while ordinary authors neither implement nor call it. Capture is an explicit hidden-interface operation and is absent from concrete media types' public surface. There are no public whole-media replay builders, per-kind action transcripts, parse-declaration DSLs on typed media, `IUses...` capability badges, or test corpora on the runtime contract.
 - `IMediaEntity` is the minimum interface shared by items and groups. `MediaItem<TReleaseTimeline,TReleaseStage>` is directly usable; `MediaItem<TItem,TReleaseTimeline,TReleaseStage>` retains the exact derived item type for relationships. `MediaCollection<TItem>` is the common group class.
 - `ReleaseTarget<TItem>` is the concrete one-item acquisition target. `Release<TRepresentation>` is the concrete common release carrying title, year, edition, and format-owned representation. Media types use the closed common types directly unless they add real coverage or release facts. Television's set-shaped target and coordinate-bearing release are the counterexamples which justify media-owned types.
-- The common item class exposes external identifiers, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. It carries no durable key: `MediaItemId` is host-assigned at materialization and is not a media entity fact. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
+- The common item class exposes external identifiers, titles and translations, years, description, runtime, principal organization, certification, genres, keywords, website, preview, artwork, popularity, ratings, a media-owned lifecycle object, its typed release stage, catalog presence, and plural typed collection membership. It carries no durable key: `MediaItemId` is host-assigned when the item is taken into local library state and is not a media entity fact. `IReleaseTimeline<TReleaseStage>` makes the lifecycle-to-stage relationship compiled rather than conventional.
 - Entity and workbench-row descriptor shapes are generated from their CLR definitions at build time. Host consumes generated closed getters and validates the result; it does not discover media schema with property or attribute reflection.
 - `ItemInfo` is the common localized title/overview payload. `Localized<ItemInfo>` is used when no media-specific localized facts exist.
 - The plugin SDK has no second non-generic `IMediaType`. Host-only `IMediaTypeRuntime` is the kind-blind bridge.
@@ -59,9 +59,21 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
 - Identity at the catalog boundary has one rule. A cataloger owns an item's identity in its own declared
   scheme, and every item it returns states exactly one identifier in that scheme. A curator returns
   references to catalog identities, never items, and its own entry identifier is a separate type that cannot
-  stand in for one. Host alone assigns `MediaItemId`, at materialization, and holds it as host state scoped
-  by kind and level, so a reload that rebuilds a kind's runtime does not reissue it. Routing is by scheme,
-  never by provider identifier or implementation type. See `docs/research/g04/media-item-identity.md`.
+  stand in for one. Host alone assigns `MediaItemId`, and only when a catalog item is taken into local
+  library state; it holds it as host state scoped by kind and level, so a reload that rebuilds a kind's
+  runtime does not reissue it. Routing is by scheme, never by provider identifier or implementation type.
+  See `docs/research/g04/media-item-identity.md`.
+- A catalog read is read-only. Searching, fetching and resolving a curated list answer with
+  `CatalogCandidate<TItem>` — the catalog's own identity, the exact typed item, the identifier asked for
+  when a redirect made those differ, and the reference the platform already holds it under when it holds
+  one — and allocate nothing. A held reference is read over every identifier the candidate would bind and
+  resolves to the lowest surviving assignment, so it does not depend on the order a cataloger lists them in
+  and agrees with what assignment produces. Assignment is host-internal and idempotent over that same set;
+  it is not yet an operation the platform offers, because naming a record and recording that the library
+  holds it belong in one transaction and only the first half exists. Resolution and assignment are separate
+  contracts on one state: `ICatalogIdentityReader` is the public surface of `CatalogIdentity`, assignment is
+  a host-internal interface implemented explicitly, and projection is handed the reader — so a browse or
+  read path has no member through which the identity space could grow.
 - A provider author names the media item type once, in the contract the implementation closes. Registration
   reads that pairing back from the contracts the implementation actually implements, by one-time type
   inspection; a family marker on the closed contracts makes the wrong family a compiler error but carries no
@@ -172,10 +184,16 @@ coverage.
 - The production TMDb package supplies a typed Movie cataloger and curator through constrained Host activation.
   Its cataloger returns exact `Movie` values; its curator returns TMDb catalog references. Missing or
   incompatible Movies quarantines only the provider package.
-- `CatalogDispatcher` fetches through the cataloger that owns a reference's scheme, assigns durable identity,
-  and materializes a curated list through the catalogs its references name. The installed TMDb proof executes
-  that full generic path, but no API/Client user workflow reaches it yet. `CatalogIdentity` and `IMediaStore`
-  remain in memory, and a merge does not move library rows already keyed by a superseded reference.
+- `CatalogDispatcher` fetches through the cataloger that owns a reference's scheme, resolves a curated list
+  through the catalogs its references name, and assigns durable identity only through its host-internal
+  materializing member. A catalog call records success and failure against `ProviderStatusStore`, so the cataloger
+  back-off ladder is fed as well as read. Its four fetch outcomes are distinct: a record found, every
+  authority answering that none holds it, every installed authority backed off, and an authority that did
+  not answer; absence is fail-closed, so one silent authority yields the unanswered outcome rather than
+  absence. `CatalogSchemeUnowned` now means only that no cataloger owns the scheme. The installed TMDb proof
+  executes that full generic path, but no API/Client user workflow reaches it yet. `CatalogIdentity` and
+  `IMediaStore` remain in memory; nothing writes a library row, and a merge does not move library rows
+  already keyed by a superseded reference.
 - Typed workbench proposal/commit values and generic standard rows exist, but the current `IMediaItemSource` execution seam still projects proposals and commits through the kind-blind wire form.
 - A package declares a client facet: `clientContracts` names zero or more of its own published shared
   contract assemblies a browser may download, validated as a subset so an entry assembly or an unpublished
@@ -307,10 +325,11 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current one-command full-solution run (2026-08-26) reports 3,141 passed, 302 skipped, zero failed,
-  and zero inconclusive from 3,443 total cases across 14 test projects. Of the skips, 301 are Movies cases
-  and one is an architecture case; all are registered in the compatibility ledger. Every later
-  passing-suite claim must report its observed skip count and ratchet result.
+- The current one-command full-solution run (2026-08-27) reports 3,350 passed, 302 skipped, zero failed,
+  and zero inconclusive from 3,652 total cases across 14 test projects, with the required-proof sentinel
+  ratchet at three stable rows. Of the skips, 301 are Movies cases and one is an architecture case; all are
+  registered in the compatibility ledger. Every later passing-suite claim must report its observed skip
+  count and ratchet result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The
   regression sources that name `Movie` are locked by the compatibility ledger, so the import is stated once
   in `GlobalUsings.cs` rather than repeated per file; no locked source changed and no ledger transition was

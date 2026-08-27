@@ -50,7 +50,7 @@ internal sealed class ItemProjector
     /// </summary>
     /// <param name="reference">The host-owned reference.</param>
     /// <param name="item">The entity.</param>
-    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
+    /// <param name="identity">The read half of host identity state, used to address group references.</param>
     /// <returns>The view.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
@@ -60,9 +60,9 @@ internal sealed class ItemProjector
     /// <remarks>
     /// The caller supplies the root reference, so projecting an entity does not derive its identity and an
     /// entity no catalog has named remains projectable. Reference-valued fields are resolved through the
-    /// explicit host identity state.
+    /// read half of identity state, which has no member that could assign one.
     /// </remarks>
-    internal ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity)
+    internal ItemView Project(MediaItemRef reference, object item, ICatalogIdentityReader identity)
     {
         Require(item);
         ArgumentNullException.ThrowIfNull(identity);
@@ -99,11 +99,11 @@ internal sealed class ItemProjector
     /// </summary>
     /// <param name="item">The entity.</param>
     /// <param name="fieldId">The field identifier.</param>
-    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
+    /// <param name="identity">The read half of host identity state, used to address group references.</param>
     /// <returns>The value, or an absent value when the entity carries none.</returns>
     /// <exception cref="ArgumentNullException">An argument is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">The entity is of the wrong type, or the field is unknown.</exception>
-    internal FieldValue Read(object item, string fieldId, CatalogIdentity identity)
+    internal FieldValue Read(object item, string fieldId, ICatalogIdentityReader identity)
     {
         Require(item);
         ArgumentException.ThrowIfNullOrWhiteSpace(fieldId);
@@ -128,7 +128,7 @@ internal sealed class ItemProjector
         }
     }
 
-    private FieldValue ValueOf(DerivedField field, object item, CatalogIdentity identity)
+    private FieldValue ValueOf(DerivedField field, object item, ICatalogIdentityReader identity)
     {
         var raw = field.Read(item);
         var kind = field.Descriptor.ValueKind;
@@ -169,7 +169,7 @@ internal sealed class ItemProjector
         return Scalar(field, kind, raw, identity);
     }
 
-    private FieldValue Scalar(DerivedField field, FieldValueKind kind, object raw, CatalogIdentity identity) =>
+    private FieldValue Scalar(DerivedField field, FieldValueKind kind, object raw, ICatalogIdentityReader identity) =>
         kind == FieldValueKind.Reference ? Reference(raw, identity) : ScalarOfKind(field, kind, raw);
 
     private static FieldValue ScalarOfKind(DerivedField field, FieldValueKind kind, object raw) =>
@@ -199,7 +199,7 @@ internal sealed class ItemProjector
             _ => FieldValue.Absent(kind)
         };
 
-    private FieldValue Reference(object raw, CatalogIdentity identity)
+    private FieldValue Reference(object raw, ICatalogIdentityReader identity)
     {
         // A reference carries both the handle and the referent's own title: the handle so a consumer can
         // follow it, the title so a consumer that will not follow it still has something to show a person.
@@ -226,13 +226,31 @@ internal sealed class ItemProjector
                 nameof(raw));
         }
 
+        // The referent is addressed in its own level, which is its own key space: a group's identifiers and
+        // an item's are never compared. Resolution only: a referent the host holds no identity for is
+        // projected under its catalog identity rather than given one, because minting here would make every
+        // page render a write.
+        MediaItemRef? handle = null;
+        var catalogId = entity.ExternalIds.Values[0];
+
+        foreach (var candidate in entity.ExternalIds.Values)
+        {
+            if (identity.TryFind(Kind, address, candidate, out var found))
+            {
+                handle = identity.Canonical(found);
+                catalogId = candidate;
+                break;
+            }
+        }
+
         return new FieldValue
         {
             Kind = FieldValueKind.Reference,
+            Reference = handle,
 
-            // The referent is addressed in its own level, which is its own key space: a group's identifiers
-            // and an item's are never compared.
-            Reference = identity.Identify(Kind, address, entity.ExternalIds.Values),
+            // Exactly one handle: the local one when the host holds the referent, the catalog's own when it
+            // does not, so an unresolved reference is still something a consumer can follow up.
+            External = handle is null ? catalogId : null,
             Text = entity.Title
         };
     }

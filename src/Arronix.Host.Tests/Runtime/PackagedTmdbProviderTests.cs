@@ -1,6 +1,7 @@
 using System.Collections;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Net;
 using System.Runtime.Loader;
 using System.Text;
@@ -18,6 +19,7 @@ using Arronix.Abstractions.Shape;
 using Arronix.Abstractions.Telemetry;
 using Arronix.Host.Composition;
 using Arronix.Host.Media;
+using Arronix.Host.Media.Catalog;
 using Arronix.Host.Providers;
 using Arronix.Host.Runtime;
 using Arronix.Host.Tests.Support;
@@ -92,14 +94,21 @@ internal sealed class PackagedTmdbProviderTests
                 MediaKinds = [Movies],
             });
         var dispatcher = provider.GetRequiredService<CatalogDispatcher>();
-        var first = await FetchAsync(dispatcher, kind.MediaType, itemType);
-        var second = await FetchAsync(dispatcher, kind.MediaType, itemType);
+        var identity = provider.GetRequiredService<CatalogIdentity>();
+        var beforeTakingIn = await FetchAsync(dispatcher, kind.MediaType, itemType);
+        var issuedWhileReading = identity.Issued(Movies);
+        var first = TakeIn(dispatcher, kind.MediaType, itemType, beforeTakingIn.Value);
+        var repeated = await FetchAsync(dispatcher, kind.MediaType, itemType);
+        var second = TakeIn(dispatcher, kind.MediaType, itemType, repeated.Value);
         var curated = await FetchCuratedListAsync(
             curator.Provider,
             provider.GetRequiredService<ProviderTestService>().Invocation(curatorDefinition));
         var curatedReferences = (IReadOnlyList<CuratedReference>)curated.GetType()
             .GetProperty("Items")!.GetValue(curated)!;
-        var materializedCuration = await MaterializeAsync(dispatcher, kind.MediaType, itemType, curated);
+        var resolvedCuration = await ResolveAsync(dispatcher, kind.MediaType, itemType, curated);
+        var materializedCuration = resolvedCuration
+            .Select(candidate => TakeIn(dispatcher, kind.MediaType, itemType, candidate.Value))
+            .ToArray();
         var parsed = kind.Parser!.Parse("The Matrix 1999 {tmdb-603}");
         var runtime = provider.GetRequiredService<PluginRuntimeRegistry>().Active
             .Single(result => result.Id == Tmdb);
@@ -117,18 +126,25 @@ internal sealed class PackagedTmdbProviderTests
         curator.MediaItemType.Should().BeSameAs(itemType);
         definition.Provider.Should().Be(cataloger.Id);
 
-        first.Item.GetType().Should().BeSameAs(itemType);
-        ((IMediaItem)first.Item).Title.Should().Be("The Matrix");
-        first.CatalogId.Should().Be(ExternalId.Of("tmdb", "603"));
+        beforeTakingIn.Item.GetType().Should().BeSameAs(itemType);
+        ((IMediaItem)beforeTakingIn.Item).Title.Should().Be("The Matrix");
+        beforeTakingIn.CatalogId.Should().Be(ExternalId.Of("tmdb", "603"));
+        beforeTakingIn.Held.Should().BeNull("a catalog fetch of an unheld record names nothing");
+        issuedWhileReading.Should().Be(0, "and a real provider fetch allocates no durable identity");
         first.Reference.Id.Value.Should().BeGreaterThan(0, "Host, not TMDb, assigned durable identity");
-        second.Reference.Should().Be(first.Reference, "repeating one catalog fetch is one local item");
+        repeated.Held.Should().Be(first.Reference, "a second fetch reports the reference it is now held under");
+        second.Reference.Should().Be(first.Reference, "repeating one take-in is one local item");
+        identity.Issued(Movies).Should().Be(1, "one record, one durable identity");
         itemType.GetProperty("Key").Should().BeNull("durable identity never crosses the provider contract");
 
         curatedReferences.Should().ContainSingle().Which.Should().Be(
             new CuratedReference(ExternalId.Of("tmdb", "603")));
+        resolvedCuration.Should().ContainSingle();
+        resolvedCuration[0].Held.Should().Be(first.Reference,
+            "the curator's reference is resolved through the owning cataloger, not treated as an item");
         materializedCuration.Should().ContainSingle();
         materializedCuration[0].Reference.Should().Be(first.Reference,
-            "the curator's reference is resolved through the owning cataloger, not treated as an item");
+            "so materializing it converges on the record already held rather than naming a second one");
         materializedCuration[0].CuratedEntryId.Should().BeNull();
 
         parsed.Should().NotBeNull();
@@ -286,7 +302,7 @@ internal sealed class PackagedTmdbProviderTests
     private static PluginBootstrapper Bootstrapper(ServiceProvider provider) =>
         provider.GetServices<IHostedService>().OfType<PluginBootstrapper>().Single();
 
-    private static async Task<MaterializedObservation> FetchAsync(
+    private static async Task<CandidateObservation> FetchAsync(
         CatalogDispatcher dispatcher,
         IMediaTypeRuntime kind,
         Type itemType)
@@ -300,7 +316,26 @@ internal sealed class PackagedTmdbProviderTests
 
         await task.ConfigureAwait(false);
 
-        return Observe(task.GetType().GetProperty("Result")!.GetValue(task)!);
+        var fetch = task.GetType().GetProperty("Result")!.GetValue(task)!;
+        var outcome = fetch.GetType().GetProperty("Outcome")!.GetValue(fetch)!;
+
+        outcome.ToString().Should().Be("Found", "the fake TMDb gateway holds the record");
+        return ObserveCandidate(fetch.GetType().GetProperty("Candidate")!.GetValue(fetch)!);
+    }
+
+    private static MaterializedObservation TakeIn(
+        CatalogDispatcher dispatcher,
+        IMediaTypeRuntime kind,
+        Type itemType,
+        object candidate)
+    {
+        // Host-internal: assignment is not an operation the platform offers while the library row it
+        // belongs in a transaction with does not exist.
+        var open = typeof(CatalogDispatcher)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Instance)
+            .Single(method => method.Name == nameof(CatalogDispatcher.Materialize));
+
+        return Observe(open.MakeGenericMethod(itemType).Invoke(dispatcher, [kind, candidate])!);
     }
 
     private static async Task<object> FetchCuratedListAsync(
@@ -315,14 +350,14 @@ internal sealed class PackagedTmdbProviderTests
         return task.GetType().GetProperty("Result")!.GetValue(task)!;
     }
 
-    private static async Task<IReadOnlyList<MaterializedObservation>> MaterializeAsync(
+    private static async Task<IReadOnlyList<CandidateObservation>> ResolveAsync(
         CatalogDispatcher dispatcher,
         IMediaTypeRuntime kind,
         Type itemType,
         object curatedList)
     {
         var open = typeof(CatalogDispatcher).GetMethods()
-            .Single(method => method.Name == nameof(CatalogDispatcher.MaterializeAsync)
+            .Single(method => method.Name == nameof(CatalogDispatcher.ResolveAsync)
                 && method.IsGenericMethodDefinition);
         var task = (Task)open.MakeGenericMethod(itemType).Invoke(
             dispatcher,
@@ -330,9 +365,11 @@ internal sealed class PackagedTmdbProviderTests
 
         await task.ConfigureAwait(false);
 
-        return ((IEnumerable)task.GetType().GetProperty("Result")!.GetValue(task)!)
+        var answer = task.GetType().GetProperty("Result")!.GetValue(task)!;
+
+        return ((IEnumerable)answer.GetType().GetProperty("Candidates")!.GetValue(answer)!)
             .Cast<object>()
-            .Select(Observe)
+            .Select(ObserveCandidate)
             .ToArray();
     }
 
@@ -351,10 +388,30 @@ internal sealed class PackagedTmdbProviderTests
             (CuratedEntryId?)type.GetProperty("CuratedEntryId")!.GetValue(materialized));
     }
 
+    private static CandidateObservation ObserveCandidate(object candidate)
+    {
+        var type = candidate.GetType();
+
+        return new CandidateObservation(
+            candidate,
+            (ExternalId)type.GetProperty("CatalogId")!.GetValue(candidate)!,
+            type.GetProperty("Item")!.GetValue(candidate)!,
+            (MediaItemRef?)type.GetProperty("Held")!.GetValue(candidate),
+            (CuratedEntryId?)type.GetProperty("CuratedEntryId")!.GetValue(candidate));
+    }
+
     private sealed record MaterializedObservation(
         MediaItemRef Reference,
         ExternalId CatalogId,
         object Item,
+        CuratedEntryId? CuratedEntryId);
+
+    /// <summary>One candidate, read reflectively, plus the candidate itself to hand back.</summary>
+    private sealed record CandidateObservation(
+        object Value,
+        ExternalId CatalogId,
+        object Item,
+        MediaItemRef? Held,
         CuratedEntryId? CuratedEntryId);
 
     private sealed class TmdbGateway : IHttpGateway

@@ -40,6 +40,18 @@ public sealed class CatalogIdentityAuthorityTests
         typeof(IClosedCurator),
     ];
 
+    /// <summary>
+    /// The host-internal contract through which durable identity is assigned.
+    /// </summary>
+    /// <remarks>
+    /// Found rather than named: this fixture must not reference Host internals, and the point of the rule
+    /// it serves is that the contract is not public. A missing type would fail here rather than silently
+    /// weaken the rules that use it.
+    /// </remarks>
+    private static Type Assignment => typeof(CatalogIdentity).Assembly
+        .GetTypes()
+        .Single(static type => type.IsInterface && type.Name == "ICatalogIdentityAssignment");
+
     /// <remarks>
     /// The detector's control. A closure walk that reached nothing would pass every rule below for the
     /// wrong reason.
@@ -264,7 +276,7 @@ public sealed class CatalogIdentityAuthorityTests
     [Test]
     public void DurableIdentityIsHostStateAndNotTheMediaRuntimesToAssign()
     {
-        var assign = typeof(CatalogIdentity).GetMethod(nameof(CatalogIdentity.Identify))!;
+        var assign = Assignment.GetMethod("Identify")!;
 
         Assert.Multiple(() =>
         {
@@ -281,6 +293,135 @@ public sealed class CatalogIdentityAuthorityTests
                 "the media runtime exposes no bare durable-identity assignment seam");
         });
     }
+
+    /// <summary>
+    /// Resolving an identity and assigning one are separate contracts, and only the first is public.
+    /// </summary>
+    /// <remarks>
+    /// The rule is mechanical rather than advisory: a caller holding <see cref="CatalogIdentity"/> or
+    /// <see cref="ICatalogIdentityReader"/> has no member through which the identity space can grow, because
+    /// assignment is implemented explicitly against a host-internal interface. That is what makes "a search
+    /// allocates nothing" and "a read never allocates" statements the compiler enforces rather than
+    /// statements a later change can quietly break.
+    /// </remarks>
+    [Test]
+    public void AssigningIdentityIsSeparatedFromResolvingItAndIsNotPublic()
+    {
+        var readerMembers = typeof(ICatalogIdentityReader)
+            .GetMethods()
+            .Select(static method => method.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        var publiclyAssigning = typeof(CatalogIdentity)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(static method => method.ReturnType == typeof(MediaItemRef)
+                && method.GetParameters().Any(static parameter =>
+                    parameter.ParameterType == typeof(IReadOnlyCollection<ExternalId>)))
+            .Select(static method => method.Name)
+            .ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                typeof(CatalogIdentity).IsAssignableTo(typeof(ICatalogIdentityReader)),
+                Is.True,
+                "one state, read through the narrow contract");
+            Assert.That(readerMembers, Is.EqualTo(new[] { "Canonical", "TryFind" }),
+                "the reader resolves and canonicalizes, and does nothing else");
+            Assert.That(publiclyAssigning, Is.Empty,
+                "assignment is not reachable from the public surface of identity state");
+            Assert.That(Assignment.IsPublic, Is.False, "and the contract that does assign is host-internal");
+            Assert.That(
+                Assignment.IsAssignableTo(typeof(ICatalogIdentityReader)),
+                Is.False,
+                "the two are separate contracts, so holding one is not holding the other");
+        });
+    }
+
+    /// <summary>
+    /// The kind-blind projection bridge is handed the reader, so browsing and reading a field cannot
+    /// allocate a durable identity for anything they render.
+    /// </summary>
+    /// <remarks>
+    /// The control is the second assertion: the same walk does find the assigning contract on the type that
+    /// is supposed to have it, so an empty result above means the projection bridge lacks it rather than
+    /// that the walk found nothing anywhere.
+    /// </remarks>
+    [Test]
+    public void TheProjectionBridgeIsHandedTheReaderAndNeverTheAssigningContract()
+    {
+        var projectionParameters = typeof(IMediaTypeRuntime)
+            .GetMethods()
+            .SelectMany(static method => method.GetParameters())
+            .Select(static parameter => parameter.ParameterType)
+            .ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(projectionParameters, Does.Contain(typeof(ICatalogIdentityReader)));
+            Assert.That(projectionParameters, Does.Not.Contain(typeof(CatalogIdentity)));
+            Assert.That(projectionParameters, Does.Not.Contain(Assignment));
+            Assert.That(
+                typeof(CatalogIdentity).GetInterfaces(),
+                Does.Contain(Assignment),
+                "the control: identity state really does implement the assigning contract, so its absence "
+                + "from the projection bridge is a fact about the bridge");
+        });
+    }
+
+    /// <summary>
+    /// The catalog dispatcher's public surface answers with candidates and cannot allocate.
+    /// </summary>
+    /// <remarks>
+    /// O-40 in the shape of the compiled surface, and the honest limit of this milestone. Naming a record
+    /// and recording that the library holds it are one transaction, and only the first half exists — so the
+    /// member that assigns is host-internal rather than an operation the platform offers. Everything a
+    /// caller outside Host can reach is a read. The second assertion is the control: the same walk does find
+    /// the assigning member among the non-public ones, so the empty public result is a fact about the
+    /// surface rather than a walk that found nothing.
+    /// </remarks>
+    [Test]
+    public void ThePublicCatalogSurfaceAnswersWithCandidatesAndNeverAssigns()
+    {
+        var materialized = typeof(CatalogDispatcher).Assembly
+            .GetTypes()
+            .Single(static type => type.Name == "MaterializedItem`1");
+
+        var naming = (BindingFlags visibility) => typeof(CatalogDispatcher)
+            .GetMethods(visibility | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Where(method => Returned(method.ReturnType).Any(type =>
+                type.IsGenericType && type.GetGenericTypeDefinition() == materialized))
+            .Select(static method => method.Name)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        var publicMembers = typeof(CatalogDispatcher)
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Select(static method => method.Name)
+            .ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                publicMembers,
+                Is.SupersetOf(new[] { "FetchAsync", "ResolveAsync", "SearchAsync" }),
+                "the read members are public, and are what a caller is offered");
+            Assert.That(
+                naming(BindingFlags.Public),
+                Is.Empty,
+                "no public member answers with a host-named item, because none of them assigns");
+            Assert.That(materialized.IsPublic, Is.False, "and the value that means 'named' is host-internal");
+            Assert.That(
+                naming(BindingFlags.NonPublic),
+                Is.EqualTo(new[] { "Materialize" }),
+                "the control: assignment exists, host-internal, awaiting the transaction it belongs in");
+        });
+    }
+
+    /// <summary>Every type one return type is built from, however deeply nested.</summary>
+    private static IEnumerable<Type> Returned(Type type) =>
+        [type, .. type.GetGenericArguments().SelectMany(Returned)];
 
     /// <summary>Expands the types reachable through a set of types' public member signatures.</summary>
     private static IReadOnlyCollection<Type> SignatureClosure(IEnumerable<Type> roots)

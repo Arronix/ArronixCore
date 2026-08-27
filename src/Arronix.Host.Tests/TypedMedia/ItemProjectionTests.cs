@@ -28,8 +28,17 @@ internal sealed class ItemProjectionTests
     /// <summary>Host identity state, standing in for the one a running host owns.</summary>
     private static CatalogIdentity Identity { get; } = new();
 
+    /// <summary>
+    /// The reference the host holds one entity under, assigned the way materializing it does.
+    /// </summary>
+    /// <remarks>
+    /// Reached through the assigning contract, because that is the only way to reach it. Projection below
+    /// is handed the reader, which has no such member — so these tests cannot accidentally arrange the
+    /// state they then assert the read path did not create.
+    /// </remarks>
     private static MediaItemRef Reference(IMediaEntity entity) =>
-        Identity.Identify(Model.Kind, Model.Shape.Levels[0].Id, entity.ExternalIds.Values);
+        ((ICatalogIdentityAssignment)Identity)
+            .Identify(Model.Kind, Model.Shape.Levels[0].Id, entity.ExternalIds.Values);
 
     private static ItemView Project(IMediaEntity entity) => Model.Project(Reference(entity), entity, Identity);
 
@@ -140,21 +149,89 @@ internal sealed class ItemProjectionTests
     [Test]
     public void GroupMembershipsCarryHandlesAndTheReferentsOwnTitles()
     {
-        var memberships = Read(Sample, "collections");
+        var identity = new CatalogIdentity();
+        var group = ((ICatalogIdentityAssignment)identity).Identify(
+            Model.Kind,
+            MediaLevelId.FromString("collection"),
+            [ExternalId.Of("tmdb-collection", "7")]);
+
+        var memberships = Model.Read(Sample, "collections", identity);
         var reference = memberships.Items.Should().ContainSingle().Subject;
 
         Assert.Multiple(() =>
         {
-            memberships.Items.Should().ContainSingle();
             reference.Kind.Should().Be(FieldValueKind.Reference);
             reference.Text.Should().Be("Villeneuve");
             reference.Reference!.Value.Should().Be(
-                Identity.Identify(Model.Kind, MediaLevelId.FromString("collection"), [ExternalId.Of("tmdb-collection", "7")]),
+                group,
                 "a referenced group is addressed in its own level, which is its own key space");
 
             // A group is addressed per axis rather than per level, so the axis identifier fills the level
             // slot: inventing a level per grouping axis is the fused shape the descriptor keeps apart.
             reference.Reference!.Value.Level.Value.Should().Be("collection");
+            reference.External.Should().BeNull("a resolved reference carries the local handle, not both");
+        });
+    }
+
+    /// <summary>
+    /// A referent the host holds no identity for is projected under the catalog's identity, not given one.
+    /// </summary>
+    /// <remarks>
+    /// This is what stops a browse page being a write. Rendering an item whose collection has never been
+    /// taken in used to insert a group-level identity row per render; now it carries the catalog identifier
+    /// a consumer can follow up with, and the local identity space is untouched.
+    /// </remarks>
+    [Test]
+    public void AGroupReferenceTheHostHoldsNoIdentityForProjectsItsCatalogIdentityAndNoHandle()
+    {
+        var identity = new CatalogIdentity();
+
+        var memberships = Model.Read(Sample, "collections", identity);
+        var reference = memberships.Items.Should().ContainSingle().Subject;
+
+        Assert.Multiple(() =>
+        {
+            reference.Kind.Should().Be(FieldValueKind.Reference);
+            reference.Reference.Should().BeNull("the host has not named this group");
+            reference.External.Should().Be(ExternalId.Of("tmdb-collection", "7"));
+            reference.Text.Should().Be("Villeneuve", "a consumer that will not follow it still has a label");
+            identity.Issued(Model.Kind).Should().Be(0);
+        });
+    }
+
+    /// <summary>
+    /// Projecting is a read. Rendering items and their group references allocates no durable identity.
+    /// </summary>
+    /// <remarks>
+    /// The control is the last assertion. The same counter, on the same state, does move when identity is
+    /// assigned — so a zero above is the projection not allocating rather than the instrument not looking.
+    /// Structurally the guard is stronger than the count: <c>Project</c> and <c>Read</c> are handed
+    /// <see cref="ICatalogIdentityReader"/>, which has no member that could allocate.
+    /// </remarks>
+    [Test]
+    public void ProjectingAPageAllocatesNothing()
+    {
+        var identity = new CatalogIdentity();
+        var assign = (ICatalogIdentityAssignment)identity;
+        var reference = assign.Identify(Model.Kind, Model.Shape.Levels[0].Id, Sample.ExternalIds.Values);
+        var afterNaming = identity.Issued(Model.Kind);
+
+        for (var render = 0; render < 3; render++)
+        {
+            Model.Project(reference, Sample, identity);
+            Model.Read(Sample, "collections", identity);
+        }
+
+        Assert.Multiple(() =>
+        {
+            afterNaming.Should().Be(1, "the item itself was named once, deliberately");
+            identity.Issued(Model.Kind).Should().Be(
+                afterNaming,
+                "three renders of an item carrying an unheld group reference name nothing");
+            assign.Identify(Model.Kind, MediaLevelId.FromString("collection"), [ExternalId.Of("x", "1")]);
+            identity.Issued(Model.Kind).Should().Be(
+                afterNaming + 1,
+                "the control: the counter does move when something really is assigned");
         });
     }
 

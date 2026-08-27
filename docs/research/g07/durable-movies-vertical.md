@@ -1,10 +1,11 @@
 # G07B — the narrowest durable Movies catalog vertical
 
-**Status:** architecture preparation. No production code changed on this branch; the integration is Codex's.
-This decides the shape of the slice, the rules its lifecycle obeys, and the places where the obvious
-implementation would quietly freeze a decision that belongs to G13–G19. Four questions it deliberately
-does **not** decide are recorded in section 10; where the design forks on one of them, the branches are
-carried rather than one being chosen.
+**Status:** architecture preparation, with **Q1 answered and its identity boundary built** (see the Q1 entry
+in section 10 and the addendum below). This decides the shape of the slice, the rules its lifecycle obeys,
+and the places where the obvious implementation would quietly freeze a decision that belongs to G13–G19.
+Q2, Q3 and Q4 remain open in section 10; where the design forks on one of them, the branches are carried
+rather than one being chosen. G07B is **not** complete: nothing persists, and the durable representation,
+store and transaction are untouched.
 
 **Branch:** `claude/g07b-durable-audit`
 **Base commit:** `ce643da45` (`State the filter rule as it is implemented`)
@@ -709,11 +710,14 @@ with `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet`. New skips are not how a du
 
 Four, none of them resolved here. Everything else in this report follows from signal that already exists.
 
-**Q1 — At what moment does Host allocate a `MediaItemId`?**
+**Q1 — At what moment does Host allocate a `MediaItemId`? — answered: when an item is taken in.**
 
-Settled and not in question: a cataloger owns its catalog scheme and the item's identity within it, and
-Host — no one else — allocates `MediaItemId`. The unresolved half is the moment, and O-40, the G04 record
-and the current code each say something different (2.1). The two answers and what each costs:
+**Resolved.** O-40 is decisive, and the identity and catalog-response boundary now implements it: a catalog
+search, fetch and curated resolve are reads answering with `CatalogCandidate<TItem>`, and
+assignment is host-internal. The right-hand column below is therefore
+the built behaviour, and the left-hand column is what the code used to do. Everything the report carries in
+both directions — 3.3, 4.1, 4.2, 8, 9 — collapses onto the right-hand branch. The original comparison is
+retained because it is the evidence the decision rests on:
 
 | | Allocate at every materialization *(current code)* | Allocate when an item is taken into library state *(O-40 as written)* |
 |---|---|---|
@@ -724,9 +728,9 @@ and the current code each say something different (2.1). The two answers and wha
 | Alias rows | one per identifier of every result ever seen | one per identifier of every held item |
 | Where it lands wrong | a deployment's identity space records everything anyone searched for | a search result and a library item are two types where a reader expected one |
 
-Both are defensible; they are not equally cheap in the same direction, which is why this is the owner's
-call rather than the implementer's. 2.2's separate rule — that the *read* path never allocates — holds
-under either answer and is not part of this question.
+Both were defensible; they are not equally cheap in the same direction, which is why it was the owner's
+call rather than the implementer's. 2.2's separate rule — that the *read* path never allocates — held under
+either answer and is also built.
 
 **Q2 — When a merge finds user-owned state on both sides, what survives?**
 
@@ -775,6 +779,70 @@ encryption at rest; it is named so it is not decided by omission. Second, this b
 preparation and edits no document but this one, so the `storage-layer.md` status header and any
 `CONTEXT.md`/`INTERFACE.md` wording that follows from Q1 travel with the integration rather than ahead of
 it.
+
+---
+
+## 10A. Addendum — what the identity and catalog-response boundary built
+
+Branch `claude/g07b-identity-boundary`. This is the half of G07B that does not depend on a persistence
+representation: the moment identity is allocated, the shape a catalog read answers with, and the
+provider-status semantics the catalog path had never fed. Nothing here persists, and Q2, Q3 and Q4 are
+untouched.
+
+**Q1, and 2.1.** `CatalogDispatcher.SearchAsync`, `FetchAsync` and the renamed `ResolveAsync` (was
+`MaterializeAsync`) are reads. They answer with `CatalogCandidate<TItem>` — the catalog's own identity, the
+exact typed item, the identifier asked for when a redirect made those differ, the reference the platform
+already holds the record under, and a curator's entry identifier when the candidate came from a list — and
+allocate nothing. That is 3.3's type, with `RequestedId` added: dropping it would leave a caller still
+holding a redirected alias unable to resolve locally, which is the idempotence over aliases and redirects
+O-40 requires.
+
+Assignment is **host-internal**, and deliberately so. Naming a record and recording that the library holds it
+are one transaction (5), and only the first half exists on this branch, so no public member allocates and no
+take-in operation is claimed. `Materialize` turns one candidate into `MaterializedItem<TItem>`, both
+internal, and is what the coordinator of 3.4 will call inside its transaction.
+
+`Held` is read over exactly the identifier set assignment binds — identity, requested alias, and the rest the
+item states — and returns the *lowest surviving* assignment among them, canonicalized. That is the rule
+`Identify` itself applies when identifiers turn out to name one entity, so a candidate reported as held
+materializes to the reference it was reported under, whatever order a cataloger listed its identifiers in.
+
+**2.2.** `ICatalogIdentityReader` (`TryFind`, `Canonical`) is the public surface of `CatalogIdentity`;
+assignment is a host-internal interface `CatalogIdentity` implements explicitly. `IMediaTypeRuntime.Project`
+and `Read` take the reader, so the projector has no member through which it could allocate. A group
+reference the host holds no identity for is projected under its catalog identity with its title and no local
+handle, which is 3.1's split and 2.2's rule made mechanical rather than advisory.
+
+**2.6 and 2.7.** Catalog calls now record success and failure against `ProviderStatusStore`, so the
+cataloger back-off ladder is fed as well as read. `CatalogSchemeUnowned` means only that no installed
+cataloger owns the scheme; a fetch's four outcomes are `Found`, `NotHeld`, `AuthorityUnavailable` and
+`NotAnswered`, and a search reports the same distinctions as a partial result naming each authority that did
+not contribute. `NotHeld` is **fail-closed**: it requires every available authority to have answered, because
+one that could not be leased or that failed leaves absence unestablished — and `Withdrawn`, when the refresh
+leg writes it, must never be reachable from a transport fault. A cataloger's own failure is contained; a
+process that is no longer sound propagates through `ProcessFailure.IsFatal`, wrapped forms included, and
+only the caller's own cancellation token ends a dispatch — a provider raising `OperationCanceledException`
+from its own timeout is one authority failing, not the call being abandoned.
+
+**What is deliberately not here.** No store, no representation, no transaction, no library row, no EF Core
+and no migration. `CatalogAssignment` (3.1) was **not** introduced: reporting what a merge superseded is
+useful only to a caller that can move rows, so it belongs with the store rather than ahead of it, and
+assignment returns the reference as `Identify` always did. `MonitoringScope`, `LibraryFacet`,
+`IMediaStore.MergeAsync`, `LibraryCatalog`, `CatalogEntry`, `ICatalogStore` and `RefreshOutcome` are all
+still unwritten. The seam the durable lane takes over is the internal assignment: it runs inside no
+transaction, and the write that has to join it — the catalog entry, the record, the library row and any merge
+the assignment implies — is what 3.4 and 5 describe.
+
+**Tests.** `CatalogMaterializationTests` covers the read/allocate split (a search leaves the issued count
+where it found it, with assignment as the control that the count moves at all), repeated take-in allocating
+once, convergence through a second catalog without allocating, redirect alias retention, the held reference
+being order-independent as a reversed-order witness pair, the four fetch outcomes, the fail-closed mixed case
+as a two-case witness over the same authorities, provider-raised versus caller cancellation, back-off being
+fed, and fatal-versus-ordinary containment. `ItemProjectionTests` covers a resolved group reference, an
+unresolved one, and three renders allocating nothing. `CatalogIdentityAuthorityTests` asserts the split and
+the read-only public surface from the compiled contracts. `PackagedTmdbProviderTests` exercises the whole
+path against the real installed provider package. The no-allocation, alias-retention and ordering guards were
+each mutation-checked: reverting the behaviour fails them, and only them.
 
 ---
 

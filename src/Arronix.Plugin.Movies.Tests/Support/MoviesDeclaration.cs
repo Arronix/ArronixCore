@@ -29,9 +29,28 @@ internal static class MoviesDeclaration
     /// <summary>Host identity state, standing in for the one a running host owns.</summary>
     internal static CatalogIdentity Identity { get; } = new();
 
-    /// <summary>The reference the host holds one entity under, assigned from its catalog identifiers.</summary>
+    /// <summary>
+    /// The reference the host holds one entity under, assigned from its catalog identifiers.
+    /// </summary>
+    /// <remarks>
+    /// Assignment is what taking an item in does, so the fixture reaches it the way the take-in path does —
+    /// through the assigning contract. Projection below is handed the reader and could not assign if it
+    /// tried.
+    /// </remarks>
     internal static MediaItemRef Reference(IMediaEntity entity) =>
-        Identity.Identify(Model.Kind, Level.Id, entity!.ExternalIds.Values);
+        ((ICatalogIdentityAssignment)Identity).Identify(Model.Kind, Level.Id, entity!.ExternalIds.Values);
+
+    /// <summary>
+    /// The reference the host holds one group under, in the axis that addresses it.
+    /// </summary>
+    /// <remarks>
+    /// A group is addressed per grouping axis rather than per level, so the axis identifier fills the level
+    /// slot. Naming one is assignment, the same as naming an item: a projection resolves what has been named
+    /// and never names anything itself.
+    /// </remarks>
+    internal static MediaItemRef ReferenceIn(string axisId, IMediaEntity entity) =>
+        ((ICatalogIdentityAssignment)Identity)
+            .Identify(Model.Kind, MediaLevelId.FromString(axisId), entity.ExternalIds.Values);
 
     /// <summary>Projects one entity the way the host does: host states the reference, model reads the item.</summary>
     internal static ItemView Project(IMediaEntity entity) => Model.Project(Reference(entity), entity, Identity);

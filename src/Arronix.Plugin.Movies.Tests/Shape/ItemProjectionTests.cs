@@ -181,14 +181,44 @@ public class ItemProjectionTests
     [Test]
     public void AddressesAGroupByItsAxisBecauseAGroupIsNotALevel()
     {
+        var named = MoviesDeclaration.ReferenceIn("collection", Godfather.Collections.Single());
+
         var value = MoviesDeclaration.Read(Godfather, "collections");
         var collection = value.Items!.Single();
 
         Assert.Multiple(() =>
         {
             Assert.That(value.Kind, Is.EqualTo(FieldValueKind.Reference));
+            Assert.That(collection.Reference!.Value, Is.EqualTo(named));
             Assert.That(collection.Reference!.Value.Level.Value, Is.EqualTo("collection"));
             Assert.That(collection.Text, Is.EqualTo("The Godfather Collection"));
+        });
+    }
+
+    /// <summary>
+    /// A collection the host has never named is carried by its catalog identity, not given a local one.
+    /// </summary>
+    /// <remarks>
+    /// Rendering a movie is a read. Before this rule a browse page inserted a group identity row per render,
+    /// which cost nothing while identity was a dictionary and would have been a write per page once it is a
+    /// table.
+    /// </remarks>
+    [Test]
+    public void CarriesAnUnnamedCollectionByItsCatalogIdentityRatherThanNamingIt()
+    {
+        var unnamed = MoviesSeedProjection.ToMovie(
+            Catalog.Movies.Single(static movie => movie.TmdbId == 240),
+            Catalog.Collections.Single(static collection =>
+                collection.Title.StartsWith("The Godfather", StringComparison.Ordinal)) with { TmdbId = 999_001 });
+
+        var collection = MoviesDeclaration.Read(unnamed, "collections").Items!.Single();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(collection.Kind, Is.EqualTo(FieldValueKind.Reference));
+            Assert.That(collection.Reference, Is.Null, "the host has not named this collection");
+            Assert.That(collection.External, Is.Not.Null, "and it is still addressable in its own catalog");
+            Assert.That(collection.Text, Is.Not.Empty);
         });
     }
 

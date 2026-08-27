@@ -255,11 +255,11 @@ internal sealed class DefinitionBinderTests
 
         public IRelease? Parse(Arronix.Abstractions.Parsing.ReleaseParseContext context) => null;
 
-        public ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity)
+        public ItemView Project(MediaItemRef reference, object item, ICatalogIdentityReader identity)
             => throw new NotSupportedException(
                 "Admission never projects an item; this stub carries a model, not a catalog.");
 
-        public FieldValue Read(object item, string fieldId, CatalogIdentity identity)
+        public FieldValue Read(object item, string fieldId, ICatalogIdentityReader identity)
             => throw new NotSupportedException(
                 "Admission never reads an item; this stub carries a model, not a catalog.");
     }

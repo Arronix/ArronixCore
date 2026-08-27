@@ -43,16 +43,17 @@ public interface IMediaTypeRuntime
     /// <summary>Projects one entity into the descriptor-shaped view.</summary>
     /// <param name="reference">The host-owned reference the entity is held under.</param>
     /// <param name="item">The entity.</param>
-    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
+    /// <param name="identity">The read half of host identity state, used to address group references.</param>
     /// <returns>The view.</returns>
-    ItemView Project(MediaItemRef reference, object item, CatalogIdentity identity);
+    /// <remarks>The reader, not identity state: projecting is a read, and a read cannot assign.</remarks>
+    ItemView Project(MediaItemRef reference, object item, ICatalogIdentityReader identity);
 
     /// <summary>Reads one field off one entity.</summary>
     /// <param name="item">The entity.</param>
     /// <param name="fieldId">The field identifier.</param>
-    /// <param name="identity">Host identity state, used to address the entity's group references.</param>
+    /// <param name="identity">The read half of host identity state, used to address group references.</param>
     /// <returns>The value.</returns>
-    FieldValue Read(object item, string fieldId, CatalogIdentity identity);
+    FieldValue Read(object item, string fieldId, ICatalogIdentityReader identity);
 }
 
 /// <summary>The typed host runtime available after the registration reopens its type arguments.</summary>

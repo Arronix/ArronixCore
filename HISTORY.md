@@ -1,5 +1,58 @@
 # Arronix History
 
+## 2026-08-27 — Stop naming everything anybody searched for
+
+`CatalogDispatcher.SearchAsync` gave every result a `MediaItemId`. Forty rows scrolled past and forty
+durable identities were burned, permanently, because a merge frees a number that must stay retired —
+and `ItemProjector.Reference` did the same thing for every group reference on every page render, so browsing
+was a write. Neither cost anything while identity was a dictionary. Both become a table the day G07B has
+one, which is the point of finding them now — `docs/research/g07/durable-movies-vertical.md` records both.
+O-40 is decisive and says the moment plainly: Host assigns "if and when a catalog item is materialized into
+local library state".
+
+- **A catalog read answers with candidates.** `CatalogCandidate<TItem>` carries the catalog's own identity,
+  the exact typed item, the identifier asked for when a redirect made those differ, and the reference the
+  platform already holds the record under. Search, fetch and the renamed `ResolveAsync` produce them and
+  assign nothing.
+- **Assignment is host-internal, not a new platform operation.** Naming a record and recording that the
+  library holds it are one transaction, and only the first half exists here, so nothing public allocates and
+  no take-in API is claimed. What does allocate is idempotent over exactly the identifiers a candidate's
+  held reference was read from — so a candidate answered as held resolves to that same reference rather than
+  to a second one. `Held` inspects every one of them and takes the lowest surviving assignment, which is the
+  rule assignment applies: stopping at the first match would have made the answer depend on the order a
+  cataloger happened to list identifiers in.
+- **Resolution and assignment are separate contracts on one state.** `ICatalogIdentityReader` — `TryFind`
+  and `Canonical` — is the public surface of `CatalogIdentity`; assignment is a host-internal interface it
+  implements explicitly. `IMediaTypeRuntime.Project` and `Read` take the reader, so the projector cannot
+  allocate even by accident. A group reference the host holds no identity for now projects under its catalog
+  identity and its title, with no local handle, instead of minting one.
+- **A redirect keeps the identifier that was asked for.** The candidate carries it beside the identity the
+  catalog answered with, and binding the record binds both, so a caller still holding the alias — a
+  bookmark, a stored reference — resolves. Because only records actually taken in bind anything, the
+  identity space is the size of the library rather than of every identifier anyone has typed at it.
+- **Four catalog answers, and absence is fail-closed.** An installed-but-backed-off authority was reported
+  as `CatalogSchemeUnowned`, which named an installation problem the operator did not have, and a record the
+  catalog said it did not hold was indistinguishable from a transport failure. A fetch now answers `Found`,
+  `NotHeld`, `AuthorityUnavailable` or `NotAnswered`; a search reports the same distinctions as a partial
+  result naming each authority that did not contribute; and `CatalogSchemeUnowned` means only that no
+  cataloger owns the scheme. `NotHeld` requires *every* available authority to have answered, because one
+  that could not be leased or that failed leaves absence unestablished — and a withdrawal, once the refresh
+  leg writes one, must never be reachable from a timeout.
+- **The ladder is fed as well as read.** `CatalogDispatcher` consulted `ProviderStatusStore.IsAvailable` and
+  called neither `RecordSuccess` nor `RecordFailure`, so a refresh sweep over a library would have turned a
+  provider outage into a rate-limit ban. Both are recorded now. A cataloger's own failure is contained; a
+  process that is no longer sound propagates through `ProcessFailure.IsFatal`, wrapped forms included, and
+  only the caller's own token ends a dispatch — a provider raising cancellation from its own timeout is one
+  authority failing, not the call being abandoned.
+
+The no-allocation guards are counted rather than asserted by inspection: the issued-identity count either
+side of a search must not move, with materialization as the control that the same counter does move. Making
+the projector allocate again fails five of them. Nothing here persists — no store, no representation, no
+transaction, no library row — and `CatalogAssignment` was deliberately not introduced, because reporting
+what a merge superseded is useful only to a caller that can move rows. The seam the durable lane takes over
+is the internal assignment: it runs inside no transaction, and the write that has to join it is the store's.
+G07B is not complete.
+
 ## 2026-08-26 — Stop charging for the whole telemetry stream to shape your own events
 
 `ITelemetryEnricher` and `ITelemetryEventFilter` were gated by `Capability.TelemetrySink`, which is the

@@ -221,18 +221,40 @@ is resident. What a media contract *contains* is not discovered by enumeration.
   floor remains only for kind-blind external-identifier recognition.
 - Durable media item identity is host-owned. A cataloger owns an item's identity in the scheme it declares,
   captured once and enforced as lower-case at activation, and every item it returns states exactly one
-  identifier in that scheme. Host assigns `MediaItemId` when a catalog item is materialized into local
-  library state, and no cataloger or curator contract reaches one. It is host state scoped by media kind and
+  identifier in that scheme. Host assigns `MediaItemId` only when a catalog item is taken into local library
+  state, and no cataloger or curator contract reaches one. It is host state scoped by media kind and
   level — an item's and a group's identifiers are separate key spaces — with the host's lifetime rather than
-  a media runtime's, and
-  projection takes the reference as an argument rather than deriving one. Repeated fetches, aliases and
-  redirects resolve to one reference; identifiers assigned separately and later found to name one item merge
-  onto the lower assignment, and the superseded reference resolves through `CatalogIdentity.Canonical`,
-  which moves no library rows. Catalog work routes by scheme, never by provider identifier or implementation
-  type, and a catalog reference carries neither. A reference in a scheme no installed cataloger owns is
-  refused with `CatalogSchemeUnowned`; an item stating other than exactly one identifier in its own
-  cataloger's scheme is refused with `CatalogIdentityInvalid`. The record is
-  `docs/research/g04/media-item-identity.md`.
+  a media runtime's, and projection takes the reference as an argument rather than deriving one. Repeated
+  take-ins, aliases and redirects resolve to one reference; identifiers assigned separately and later found
+  to name one item merge onto the lower assignment, and the superseded reference resolves through
+  `ICatalogIdentityReader.Canonical`, which moves no library rows. Catalog work routes by scheme, never by
+  provider identifier or implementation type, and a catalog reference carries neither. An item stating other
+  than exactly one identifier in its own cataloger's scheme is refused with `CatalogIdentityInvalid`. The
+  record is `docs/research/g04/media-item-identity.md`.
+- Resolving identity and assigning it are separate contracts on one state, so a read cannot allocate.
+  `ICatalogIdentityReader` — `TryFind` and `Canonical` — is the public surface of `CatalogIdentity`;
+  assignment is a host-internal interface `CatalogIdentity` implements explicitly. `IMediaTypeRuntime.Project`
+  and `Read` take the reader, so browsing an item whose group references the platform has never taken in
+  resolves them or projects them under their catalog identity with no local handle, rather than minting one.
+- A catalog read answers with candidates, not with library items. `CatalogDispatcher`'s public surface —
+  search, fetch and curated resolve — produces `CatalogCandidate<TItem>` values carrying catalog identity,
+  the exact typed item, the identifier asked for when a redirect made those differ, the reference the
+  platform already holds the record under, and a curator's entry identifier when the candidate came from a
+  list. It assigns nothing. A held reference is read over every identifier the candidate would bind and is
+  the lowest surviving assignment, so it is independent of the order a cataloger lists identifiers in and
+  agrees with what assignment would settle on. Assignment itself is host-internal and idempotent over that
+  same set — a repeat, an alias, a redirect and two catalogs describing one record converge on the
+  assignment made first — and is deliberately not offered as a platform operation, because naming a record
+  and recording that the library holds it are one transaction and only the first half exists.
+- A catalog fetch distinguishes four answers. `Found` carries the record. `NotHeld` means every available
+  authority answered and none holds it, and is fail-closed — one authority that could not be leased or that
+  failed yields `NotAnswered` instead, because absence was not established across the authority set.
+  `AuthorityUnavailable` means every installed authority for the scheme is backed off. `CatalogSchemeUnowned`
+  is refused before anything is asked and means only that no installed cataloger owns the scheme. A search
+  reports the same distinctions as a partial result naming each authority that did not contribute. Catalog
+  calls record success and failure against the provider status service, so the cataloger back-off ladder is
+  fed rather than only read. A cataloger's own failure is contained; a process that is no longer sound is
+  not, and only the caller's own cancellation token ends a dispatch.
 - A cataloger owns its external identifier namespace and marker spellings. Media parsers consume validated `ExternalIdReading` values and never duplicate vendor marker regular expressions.
 - Every item and group exposes `ExternalIds`, `Title`, `TitleLanguage`, `Overview`, and `Artwork` through `IMediaEntity`; media-specific facts extend that floor as ordinary typed properties. `IMediaEntity` declares no durable key, so an item a cataloger shapes is complete without one.
 - The common item class remains fully visible and strongly typed. Release dates and availability behaviour live in a media-owned lifecycle object; typed release stage, catalog presence, and plural collection membership are common item facts.

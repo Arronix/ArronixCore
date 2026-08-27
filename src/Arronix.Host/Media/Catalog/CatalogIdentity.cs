@@ -4,6 +4,43 @@ using Arronix.Abstractions.Shape;
 
 namespace Arronix.Host.Media.Catalog;
 
+/// <summary>Resolves catalog identifiers and superseded references.</summary>
+/// <remarks>
+/// Read-only by construction: no member here can grow the identity space, so a browse or projection path
+/// holding one cannot allocate. Assignment is the host-internal <see cref="ICatalogIdentityAssignment"/>.
+/// </remarks>
+public interface ICatalogIdentityReader
+{
+    /// <summary>Reads the reference already assigned to a catalog identifier.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <param name="level">The level the entity sits at, which is its key space.</param>
+    /// <param name="catalogId">The catalog identifier.</param>
+    /// <param name="reference">The reference, when one has been assigned.</param>
+    /// <returns><see langword="true"/> when one has been assigned.</returns>
+    bool TryFind(MediaKindId kind, MediaLevelId level, ExternalId catalogId, out MediaItemRef reference);
+
+    /// <summary>Resolves a reference whose local identity has been superseded by a merge.</summary>
+    /// <param name="reference">The reference held by the caller.</param>
+    /// <returns>The surviving reference, or <paramref name="reference"/> when it was never superseded.</returns>
+    MediaItemRef Canonical(MediaItemRef reference);
+}
+
+/// <summary>Assigns the durable identity a catalog record is held under.</summary>
+/// <remarks>
+/// Host-internal, so allocation is a deliberate act of the materializing path rather than something a read
+/// can do by holding the wrong object. The host assigns when a catalog item is taken into library state; a
+/// search assigns nothing.
+/// </remarks>
+internal interface ICatalogIdentityAssignment
+{
+    /// <summary>Assigns, idempotently, the reference one catalog item is held under.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <param name="level">The level the entity sits at, which is its key space.</param>
+    /// <param name="catalogIds">Every catalog identifier the entity is known by.</param>
+    /// <returns>The reference.</returns>
+    MediaItemRef Identify(MediaKindId kind, MediaLevelId level, IReadOnlyCollection<ExternalId> catalogIds);
+}
+
 /// <summary>
 /// The durable local identity the platform holds catalog items under.
 /// </summary>
@@ -20,11 +57,16 @@ namespace Arronix.Host.Media.Catalog;
 /// here carries the whole scope rather than the number alone.
 /// </para>
 /// <para>
+/// Resolution and assignment are separate contracts on one state. The public surface is the reader;
+/// assignment is the explicitly implemented <see cref="ICatalogIdentityAssignment"/>, so a caller that can
+/// only name this class cannot grow the identity space.
+/// </para>
+/// <para>
 /// In memory in this milestone. What a persistent implementation has to reproduce is the assignment rule,
 /// not this storage.
 /// </para>
 /// </remarks>
-public sealed class CatalogIdentity
+public sealed class CatalogIdentity : ICatalogIdentityReader, ICatalogIdentityAssignment
 {
     private readonly Dictionary<Scope, MediaItemId> _assigned = [];
     private readonly Dictionary<Assignment, MediaItemId> _superseded = [];
@@ -38,18 +80,12 @@ public sealed class CatalogIdentity
         => !string.IsNullOrWhiteSpace(scheme)
             && scheme.All(static character => !char.IsWhiteSpace(character) && !char.IsUpper(character));
 
-    /// <summary>
-    /// Assigns, idempotently, the reference one catalog item is held under.
-    /// </summary>
-    /// <param name="kind">The media kind.</param>
-    /// <param name="level">The level the entity sits at, which is its key space.</param>
-    /// <param name="catalogIds">Every catalog identifier the entity is known by.</param>
-    /// <returns>The reference.</returns>
+    /// <inheritdoc />
     /// <exception cref="ArgumentNullException"><paramref name="catalogIds"/> is <see langword="null"/>.</exception>
     /// <exception cref="ArgumentException">
     /// <paramref name="catalogIds"/> is empty or holds an identifier that is not well formed.
     /// </exception>
-    public MediaItemRef Identify(
+    MediaItemRef ICatalogIdentityAssignment.Identify(
         MediaKindId kind,
         MediaLevelId level,
         IReadOnlyCollection<ExternalId> catalogIds)
@@ -109,15 +145,8 @@ public sealed class CatalogIdentity
         }
     }
 
-    /// <summary>
-    /// Reads the reference already assigned to a catalog identifier.
-    /// </summary>
-    /// <param name="kind">The media kind.</param>
-    /// <param name="level">The level the entity sits at.</param>
-    /// <param name="catalogId">The catalog identifier.</param>
-    /// <param name="reference">The reference, when one has been assigned.</param>
-    /// <returns><see langword="true"/> when one has been assigned.</returns>
-    public bool TryIdentify(
+    /// <inheritdoc />
+    public bool TryFind(
         MediaKindId kind,
         MediaLevelId level,
         ExternalId catalogId,
@@ -136,11 +165,7 @@ public sealed class CatalogIdentity
         return false;
     }
 
-    /// <summary>
-    /// Resolves a reference whose local identity has been superseded by a merge.
-    /// </summary>
-    /// <param name="reference">The reference held by the caller.</param>
-    /// <returns>The surviving reference, or <paramref name="reference"/> when it was never superseded.</returns>
+    /// <inheritdoc />
     /// <remarks>
     /// This resolves the identity only. Library rows already written under a superseded identity are not
     /// moved; migrating them is a store operation this milestone does not have.
@@ -160,6 +185,21 @@ public sealed class CatalogIdentity
             }
 
             return reference with { Id = identity };
+        }
+    }
+
+    /// <summary>How many local identities one kind has issued.</summary>
+    /// <param name="kind">The media kind.</param>
+    /// <returns>The highest identity issued in it, or zero when it has issued none.</returns>
+    /// <remarks>
+    /// The allocator's own state, readable so that "this operation allocated nothing" is asserted as the
+    /// fact it is rather than inferred from what a caller was handed. Nothing in production reads it.
+    /// </remarks>
+    internal long Issued(MediaKindId kind)
+    {
+        lock (_gate)
+        {
+            return _issued.GetValueOrDefault(kind);
         }
     }
 
