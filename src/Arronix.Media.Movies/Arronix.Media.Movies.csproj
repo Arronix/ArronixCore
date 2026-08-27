@@ -30,5 +30,16 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <!--
+         The one analyzer a shared contract assembly takes, and it is a narrow exception rather than a
+         relaxation. It emits no media definition and no compiled reader delegate: a serialization
+         declaration the framework's own generator completes, a one-way projection into declared
+         presentation values, and an assembly attribute whose constructor arguments a metadata reader can
+         decode before anything is loaded. Nothing it emits has a lifecycle, so nothing it emits acquires
+         this assembly's once-per-installation cadence. Architecture rules hold it to exactly that.
+    -->
+    <ProjectReference Include="..\Arronix.Generators\Arronix.Generators.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

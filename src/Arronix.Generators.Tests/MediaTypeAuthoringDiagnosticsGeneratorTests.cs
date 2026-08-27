@@ -110,8 +110,13 @@ internal sealed class MediaTypeAuthoringDiagnosticsGeneratorTests
         Assert.That(diagnostics.Select(static diagnostic => diagnostic.Id), Does.Contain("ARX1003"));
     }
 
+    /// <remarks>
+    /// Named rather than counted. A count says an assembly has some generators; naming them says which
+    /// ones an author's build actually runs, and a component that stopped being discoverable would
+    /// otherwise be hidden by a new one arriving in the same change.
+    /// </remarks>
     [Test]
-    public void TheAnalyzerAssemblyExposesBothComponentsToRoslynDiscovery()
+    public void TheAnalyzerAssemblyExposesEveryComponentToRoslynDiscovery()
     {
         var reference = new AnalyzerFileReference(
             typeof(MediaShapeGenerator).Assembly.Location,
@@ -123,8 +128,15 @@ internal sealed class MediaTypeAuthoringDiagnosticsGeneratorTests
                 reference.GetAnalyzers(LanguageNames.CSharp),
                 Is.Empty);
             Assert.That(
-                reference.GetGenerators(LanguageNames.CSharp).Length,
-                Is.EqualTo(2));
+                reference.GetGenerators(LanguageNames.CSharp)
+                    .Select(static generator => generator.GetGeneratorType().Name)
+                    .Order(StringComparer.Ordinal),
+                Is.EqualTo(new[]
+                {
+                    nameof(ClientContractGenerator),
+                    nameof(MediaShapeGenerator),
+                    nameof(MediaTypeAuthoringDiagnosticsGenerator),
+                }));
         });
     }
 

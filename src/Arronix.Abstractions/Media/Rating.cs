@@ -1,4 +1,6 @@
 
+using System.Text.Json.Serialization;
+
 namespace Arronix.Abstractions.Media;
 
 /// <summary>The numeric interval in which a published rating is expressed.</summary>
@@ -10,6 +12,14 @@ public readonly record struct RatingScale
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="maximum"/> is not greater than <paramref name="minimum"/>.
     /// </exception>
+    /// <remarks>
+    /// Named as the constructor a deserializer must use, because it is the only one that produces a scale
+    /// at all. A struct always has a parameterless form, and here that form is the degenerate interval
+    /// zero-to-zero, which every rating value then falls outside of. A reader that reached for it would
+    /// turn a valid published rating into a refusal from <see cref="Rating"/>'s own constructor, at
+    /// deserialization time, in a stack that names neither the scale nor the value.
+    /// </remarks>
+    [JsonConstructor]
     public RatingScale(decimal minimum, decimal maximum)
     {
         if (maximum <= minimum)

@@ -124,15 +124,22 @@ public sealed class PackageFacetTopologyTests
         Assert.Multiple(() =>
         {
             Assert.That(
-                project.ProjectReferences,
+                project.RuntimeProjectReferences,
                 Is.SubsetOf(permitted),
                 $"'{projectName}' is loaded once for the whole installation, so anything it references has "
                 + "to be resolvable to one copy as well.");
 
             Assert.That(
-                project.ProjectReferences,
+                project.RuntimeProjectReferences,
                 Does.Contain(RepositoryLayout.Abstractions),
                 $"'{projectName}' closes generics declared in the universal contracts, so it references them.");
+
+            // An analyzer produces source, never a runtime dependency, so it is exempt from the rule above
+            // and held to its own: exactly one, and it is this repository's generator.
+            Assert.That(
+                project.AnalyzerProjectReferences,
+                Is.SubsetOf(new[] { RepositoryLayout.Generators }),
+                $"'{projectName}' takes an analyzer that is not the Arronix generator.");
 
             Assert.That(
                 project.PackageReferences,
@@ -143,11 +150,21 @@ public sealed class PackageFacetTopologyTests
     }
 
     /// <remarks>
+    /// <para>
     /// Stated as an explicit deny list rather than left implicit in the subset rule above, because these
     /// are the references whose absence a reader is actually asking about. Host and the loader would make
-    /// the assembly unloadable outside this repository at all; the executable half of its own package
-    /// would invert the one-way direction the whole split rests on; and the generator would mean a media
-    /// definition had moved here and brought its compiled reader delegates with it.
+    /// the assembly unloadable outside this repository at all, and the executable half of its own package
+    /// would invert the one-way direction the whole split rests on.
+    /// </para>
+    /// <para>
+    /// The generator is denied as a <i>runtime</i> reference and permitted as an analyzer. What the earlier
+    /// rule was protecting against was a media definition moving here and bringing its compiled reader
+    /// delegates onto the shared cadence, and that is asserted directly by
+    /// <see cref="SharedContractAssemblyDeclaresNoExecutablePlatformType"/> and
+    /// <see cref="SharedContractAssemblyHoldsNoMutableOrExecutableStaticState"/>. A generator whose output
+    /// holds no delegate, runs nothing on load and declares no definition acquires no cadence at all, and
+    /// it is how a contract says what it holds to a browser that may not enumerate it.
+    /// </para>
     /// </remarks>
     /// <param name="projectName">The shared contract project under test.</param>
     [Test]
@@ -162,12 +179,13 @@ public sealed class PackageFacetTopologyTests
             RepositoryLayout.Host,
             RepositoryLayout.Api,
             RepositoryLayout.Client,
-            RepositoryLayout.Generators,
             RepositoryLayout.VideoFormatContributions,
             RepositoryLayout.ReferenceLanguages,
         }.Concat(RepositoryLayout.MediaExtensionProjects).ToArray();
 
         var offenders = project.ProjectReferences.Intersect(forbidden, StringComparer.Ordinal)
+            .Concat(project.RuntimeProjectReferences.Intersect(
+                new[] { RepositoryLayout.Generators }, StringComparer.Ordinal))
             .Order(StringComparer.Ordinal)
             .ToArray();
 
