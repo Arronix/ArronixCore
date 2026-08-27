@@ -12,8 +12,9 @@ namespace Arronix.Abstractions.Client;
 /// The canonical rendering, and hash, of a live serialization graph and a live projection schema.
 /// </summary>
 /// <remarks>
-/// Taken over the running metadata so a generator's compile-time answer can be checked against it. Types
-/// resolve through the contract's own context, never through options, which can fall back to a reflecting
+/// Taken over the running metadata so a generator's compile-time answer can be checked against it. Every
+/// type is asked of the contract's own context and must come back as the same object, for that exact type,
+/// on those exact options; options are never used to resolve, since they can fall back to a reflecting
 /// resolver. State this rendering does not carry is refused rather than partly hashed.
 /// </remarks>
 public static class ClientContractDigest
@@ -31,7 +32,7 @@ public static class ClientContractDigest
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(root);
 
-        if (!ReferenceEquals(context.GetTypeInfo(root.Type), root))
+        if (!ReferenceEquals(Metadata(context, root.Type), root))
         {
             throw new ArgumentException(
                 $"The metadata for '{root.Type}' is not the metadata this context holds for it.",
@@ -97,11 +98,30 @@ public static class ClientContractDigest
     public static string OfProjection(Type entityType, IReadOnlyList<FieldDescriptor> schema) =>
         Hash(RenderProjection(entityType, schema));
 
-    private static JsonTypeInfo Metadata(JsonSerializerContext context, Type type) =>
-        context.GetTypeInfo(type)
-        ?? throw new InvalidOperationException(
-            $"This contract's serialization context holds no metadata for '{type}', so the graph it "
-            + "describes is not the graph a compiler generated.");
+    /// <summary>Reads the metadata a context holds for one type, and proves it is that type's.</summary>
+    private static JsonTypeInfo Metadata(JsonSerializerContext context, Type type)
+    {
+        var found = context.GetTypeInfo(type)
+            ?? throw new InvalidOperationException(
+                $"This contract's serialization context holds no metadata for '{type}', so the graph it "
+                + "describes is not the graph a compiler generated.");
+
+        if (found.Type != type)
+        {
+            throw new InvalidOperationException(
+                $"This contract's serialization context answered for '{found.Type}' when asked about "
+                + $"'{type}', so what it describes is not what it was asked to describe.");
+        }
+
+        if (!ReferenceEquals(context.GetTypeInfo(type), found))
+        {
+            throw new InvalidOperationException(
+                $"This contract's serialization context answers differently each time it is asked about "
+                + $"'{type}', so no rendering of it describes what a reader will use.");
+        }
+
+        return found;
+    }
 
     /// <summary>
     /// Renders the reader and typed-writer settings, having refused the ones this rendering cannot carry.
@@ -168,10 +188,16 @@ public static class ClientContractDigest
             throw new NotSupportedException($"'{name}' is a dictionary, and dictionary keys are not described.");
         }
 
+        // A consistency check, not provenance: the property is settable until the metadata is read-only.
+        // What is observable is that the context returns this exact object for this exact type, which
+        // Metadata proves on the way in.
         Refuse(
             !ReferenceEquals(type.OriginatingResolver, context),
             name,
-            "was resolved by something other than this contract's own context");
+            "does not agree that this contract's context resolved it");
+        // Assembly alone is not proof: a framework converter can be configured to write something else,
+        // and a string-enum converter is an EnumConverter like any other. The enum's wire form is measured
+        // below rather than inferred from the converter's identity.
         Refuse(
             type.Converter.GetType().Assembly != typeof(JsonSerializer).Assembly,
             name,
@@ -245,10 +271,9 @@ public static class ClientContractDigest
             rendering.Append("|element=").Append(Text(Name(element)));
         }
 
-        // An enumeration's wire form is a number in its underlying type.
         if (type.Type.IsEnum)
         {
-            rendering.Append("|underlying=").Append(Text(Name(type.Type.GetEnumUnderlyingType())));
+            RenderEnum(rendering, type);
         }
 
         rendering.Append('\n');
@@ -312,6 +337,43 @@ public static class ClientContractDigest
         _ => throw new NotSupportedException(
             $"A default value of type '{value.GetType()}' is not one this rendering describes."),
     };
+
+    /// <summary>
+    /// Renders an enumeration by what its own metadata writes, not by what its converter is.
+    /// </summary>
+    /// <remarks>
+    /// A names-writing converter is an <c>EnumConverter</c> like any other, registers nothing on the
+    /// options, and changes the payload, so nothing about the metadata's shape reveals it. Two values are
+    /// written: a declared constant, chosen by ordinal name so the choice is stable, which a names mode
+    /// renders as a string and a numeric mode as a number; and zero, which is a second reading whenever it
+    /// is not itself declared. This detects the framework's supported converter modes; what an arbitrary
+    /// delegate would do is pinned by the assembly's content, not here.
+    /// </remarks>
+    private static void RenderEnum(StringBuilder rendering, JsonTypeInfo type)
+    {
+        rendering.Append("|underlying=").Append(Text(Name(type.Type.GetEnumUnderlyingType())));
+
+        var names = Enum.GetNames(type.Type);
+        Array.Sort(names, StringComparer.Ordinal);
+
+        rendering.Append("|named=").Append(names.Length == 0 ? "~" : Text(names[0]))
+            .Append("|namedWire=")
+            .Append(names.Length == 0 ? "~" : Text(Written(type, Enum.Parse(type.Type, names[0]))))
+            .Append("|zeroWire=").Append(Text(Written(type, Enum.ToObject(type.Type, 0))));
+    }
+
+    private static string Written(JsonTypeInfo type, object value)
+    {
+        try
+        {
+            return JsonSerializer.Serialize(value, type);
+        }
+        catch (NotSupportedException error)
+        {
+            throw new NotSupportedException(
+                $"'{Name(type.Type)}' could not be written through its own metadata: {error.Message}");
+        }
+    }
 
     private static IEnumerable<Type> Reachable(JsonTypeInfo type)
     {

@@ -96,8 +96,8 @@ emits literals from a compile-time model of the framework's serializer, and `Cli
 recomputes the same canonical renderings from the **live** metadata. Measured, equal:
 
 ```text
-serialization      = 0962B8F5E9A3A13667A542691DB1B66A5CCBCA84AC1B7F802FB131AB173759C8
-declaredMetadata   = 0962B8F5E9A3A13667A542691DB1B66A5CCBCA84AC1B7F802FB131AB173759C8
+serialization      = CCDA9D828C1E686F71E13074DD1EAEA60FB63306C8A8752531A4A1A604415C7B
+declaredMetadata   = CCDA9D828C1E686F71E13074DD1EAEA60FB63306C8A8752531A4A1A604415C7B
 projection         = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 declaredProjection = 46E52C947A3337B2A770C4FCFB513482318540967F8C4189A86D9C46E1944FDB
 ```
@@ -294,11 +294,45 @@ is refused too, because the options-level default also generates one. Removing t
 movies context fails the build with `ARX1011` naming it, and
 `NoReachableTypeCarriesAWriteFastPath` asserts the live graph over all 34 types.
 
+### 4.6 What the metadata cannot be asked, and is measured instead
+
+Two holes survived the surface audit, and both are about believing what metadata says rather than checking
+it.
+
+**A context has to answer for the type it was asked about.** `GetTypeInfo` was taken at its word: a context
+returning another type's metadata, or a fresh object on each call, was rendered as if it were the requested
+type's. Both are now refused — the answer must be for that exact `Type` and must be the same object twice.
+`OriginatingResolver` is kept as a consistency check and nothing more: the property has a setter until the
+metadata is sealed, so it cannot prove where metadata came from. What is observable is the stable answer.
+
+**Converter identity says nothing about converter configuration.** The earlier admission rule compared the
+converter's assembly to the framework's, which reads as a guarantee and is not one. Measured:
+
+```text
+numeric: Converters=0 [] converter=EnumConverter`1 payload={"stage":1}
+stringy: Converters=0 [] converter=EnumConverter`1 payload={"stage":"Done"}
+```
+
+`UseStringEnumConverter` registers nothing on the options, keeps the same converter type, and changes what
+a payload carries. No inspection of `JsonSerializerOptions` or `JsonTypeInfo` separates the two — not the
+assembly, not the type name, not a comparison against a pristine baseline's converter, which returns
+`EnumConverter\`1` for both.
+
+So an enumeration is rendered by **what its own metadata writes**: a declared constant, chosen by ordinal
+name so the choice is stable, plus zero. A names mode renders the declared constant as a string and a
+numeric mode as a number. Zero alone would not do it — a names mode writes an undefined zero as a number,
+so an enumeration whose first member is one would still collide; the witness enumeration has no zero member
+for exactly that reason. This detects the framework's supported converter modes. What an arbitrary delegate
+would do is not detected here and is not claimed to be.
+
+The compile-time model predicts the numeric form, because the two declarations that would write names —
+`UseStringEnumConverter` and a `[JsonConverter]` on the type — are both refused before load.
+
 **The structural limit, stated rather than implied.** For `CreateObject` the digest renders *presence* and
 never behavior: nothing here proves what that factory does. What pins the code behind them is one layer up: G07.1 content-hashes the assembly's exact
 bytes and proves its CLR identity and module before it loads, and this rendering additionally requires that
-every `JsonTypeInfo` was resolved by the contract's own context and that the context and the entity ship in
-one assembly. A different delegate means different bytes, and different bytes mean a different content
+every type comes back from the contract's own context as the same object, for that exact type, on those
+exact options. A different delegate means different bytes, and different bytes mean a different content
 address.
 
 ### 4.6 One guard was inert when it was written
@@ -414,7 +448,7 @@ is projected as its own values kept together.
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh`:
 
 ```text
-projects=14 total=3569 enabled=3267 passed=3267 failed=0 skipped=302 inconclusive=0
+projects=14 total=3572 enabled=3270 passed=3270 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=14 compileItems=344 boundSources=15
 ```

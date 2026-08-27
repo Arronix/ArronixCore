@@ -99,7 +99,14 @@ public sealed class ClientContractDigestTests
             // shape even though nothing about the member that carries it moved.
             Assert.That(rendering, Does.Contain(
                 "type=45:Arronix.Abstractions.Media.CatalogRecordState|kind=None|createObject=false"
-                + "|underlying=12:System.Int32\n"));
+                + "|underlying=12:System.Int32|named=6:Active|namedWire=1:0|zeroWire=1:0\n"));
+
+            // Written through the metadata rather than read off the converter, because a names-writing
+            // converter is the same converter type and registers nothing. RatingVoice's first declared name
+            // is not zero, so a names mode would render it as a string here.
+            Assert.That(rendering, Does.Contain(
+                "type=38:Arronix.Abstractions.Media.RatingVoice|kind=None|createObject=false"
+                + "|underlying=12:System.Int32|named=8:Audience|namedWire=1:1|zeroWire=1:0\n"));
 
             // Generic arguments are spelled without assembly qualification, so a framework patch that
             // changed nothing about a payload does not move the hash.
@@ -181,8 +188,8 @@ public sealed class ClientContractDigestTests
     }
 
     /// <remarks>
-    /// A root from somewhere else describes somewhere else. Rendering it under this contract's name would
-    /// produce a hash for a graph this contract does not have.
+    /// A root from somewhere else describes somewhere else. This contract's context holds no metadata for
+    /// it at all, which is the first thing asking for it establishes.
     /// </remarks>
     [Test]
     public void ARootFromAnotherContextIsRefused()
@@ -191,7 +198,7 @@ public sealed class ClientContractDigestTests
             () => ClientContractDigest.RenderSerialization(
                 Declaration.SerializationContext,
                 Serialization.WireBehaviorContext.Default.WireChild!),
-            Throws.ArgumentException);
+            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("holds no metadata"));
     }
 
     /// <remarks>

@@ -210,12 +210,79 @@ public sealed class ClientContractDigestRefusalTests
     // ------------------------------------------------------------- type level
 
     /// <remarks>
-    /// The check that separates a contract's own generated graph from an arbitrary hand-built one.
+    /// A consistency check rather than provenance — the property is settable until the metadata is sealed.
     /// </remarks>
     [Test]
-    public void MetadataResolvedBySomethingElseIsRefused()
+    public void MetadataThatDisagreesAboutItsResolverIsRefused()
     {
-        Refuses(new Probe(ownResolver: false), "other than this contract's own context");
+        Refuses(new Probe(ownResolver: false), "does not agree that this contract's context resolved it");
+    }
+
+    /// <remarks>
+    /// The observable check: a context must answer for the type it was asked about, and answer with the
+    /// same object each time. Neither is something a resolver flag can stand in for.
+    /// </remarks>
+    [Test]
+    public void AContextAnsweringForAnotherTypeIsRefused()
+    {
+        var probe = new Crooked(Crooked.Trick.WrongType);
+
+        Assert.That(
+            () => ClientContractDigest.OfSerialization(probe, probe.Root),
+            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("was asked to describe"));
+    }
+
+    [Test]
+    public void AContextAnsweringDifferentlyEachTimeIsRefused()
+    {
+        var probe = new Crooked(Crooked.Trick.Unstable);
+
+        Assert.That(
+            () => ClientContractDigest.OfSerialization(probe, probe.Root),
+            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("answers differently each time"));
+    }
+
+    /// <summary>A context that answers badly in one specific way.</summary>
+    private sealed class Crooked : JsonSerializerContext
+    {
+        internal enum Trick
+        {
+            WrongType,
+            Unstable,
+        }
+
+        private readonly Trick _trick;
+        private readonly JsonTypeInfo _root;
+        private readonly JsonTypeInfo _other;
+
+        internal Crooked(Trick trick)
+            : base(Probe.Honest())
+        {
+            _trick = trick;
+            _root = JsonTypeInfo.CreateJsonTypeInfo<Sample>(Options);
+            _other = JsonTypeInfo.CreateJsonTypeInfo(typeof(string), Options);
+            _root.OriginatingResolver = this;
+            _other.OriginatingResolver = this;
+            _root.MakeReadOnly();
+            _other.MakeReadOnly();
+        }
+
+        internal JsonTypeInfo Root => _root;
+
+        protected override JsonSerializerOptions? GeneratedSerializerOptions => Options;
+
+        public override JsonTypeInfo? GetTypeInfo(Type type)
+        {
+            if (_trick == Trick.WrongType)
+            {
+                return _other;
+            }
+
+            var fresh = JsonTypeInfo.CreateJsonTypeInfo(type, Options);
+            fresh.OriginatingResolver = this;
+            fresh.MakeReadOnly();
+            return fresh;
+        }
     }
 
     /// <remarks>

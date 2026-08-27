@@ -135,9 +135,28 @@ internal static class ClientContractSerializationModel
 
         // An enumeration's wire form is a number in its underlying type, so widening one is a change to
         // what a payload carries even though nothing about the member moved.
-        if (type is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlying })
+        if (type is INamedTypeSymbol { TypeKind: TypeKind.Enum, EnumUnderlyingType: { } underlying } enumeration)
         {
+            // Numbers, because the declaration that would write names is refused before load.
             rendering.Append("|underlying=").Append(Text(Name(underlying)));
+
+            string? first = null;
+            object? constant = null;
+
+            foreach (var member in enumeration.GetMembers().OfType<IFieldSymbol>())
+            {
+                if (member.HasConstantValue
+                    && (first is null || string.CompareOrdinal(member.Name, first) < 0))
+                {
+                    first = member.Name;
+                    constant = member.ConstantValue;
+                }
+            }
+
+            rendering.Append("|named=").Append(first is null ? "~" : Text(first))
+                .Append("|namedWire=")
+                .Append(first is null ? "~" : Text(Convert.ToString(constant, CultureInfo.InvariantCulture) ?? "0"))
+                .Append("|zeroWire=").Append(Text("0"));
         }
 
         rendering.Append('\n');

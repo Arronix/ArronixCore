@@ -2,6 +2,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using Arronix.Abstractions.Client;
 
 namespace Arronix.Plugin.Movies.Tests.Serialization;
 
@@ -118,6 +119,43 @@ public sealed class FrameworkWireBehaviorTests
     }
 
     /// <remarks>
+    /// The hole no metadata inspection can see. A string enum keeps the same converter type name, leaves
+    /// the options' converter list empty, and changes what a payload carries. This enumeration has no zero
+    /// member on purpose: a names mode writes an undefined zero as a number, so probing zero alone would
+    /// read the same either way, and only a declared constant separates them.
+    /// </remarks>
+    [Test]
+    public void AStringEnumIsInvisibleInMetadataAndVisibleInWhatItWrites()
+    {
+        var numeric = WireBehaviorContext.Default;
+        var stringy = StringEnumContext.Default;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                stringy.GetTypeInfo(typeof(WireStage))!.Converter.GetType().Name,
+                Is.EqualTo(numeric.GetTypeInfo(typeof(WireStage))!.Converter.GetType().Name),
+                "the converter type is the same");
+            Assert.That(stringy.Options.Converters, Is.Empty, "and nothing is registered on the options");
+
+            Assert.That(
+                JsonSerializer.Serialize(default(WireStage), stringy.GetTypeInfo(typeof(WireStage))!),
+                Is.EqualTo(JsonSerializer.Serialize(default(WireStage), numeric.GetTypeInfo(typeof(WireStage))!)),
+                "an undefined zero reads the same in both modes");
+
+            Assert.That(
+                JsonSerializer.Serialize(WireStage.Done, stringy.GetTypeInfo(typeof(WireStage))!),
+                Is.Not.EqualTo(JsonSerializer.Serialize(WireStage.Done, numeric.GetTypeInfo(typeof(WireStage))!)),
+                "and a declared constant does not");
+
+            Assert.That(
+                ClientContractDigest.RenderSerialization(stringy, stringy.GetTypeInfo(typeof(WireHolder))!),
+                Is.Not.EqualTo(ClientContractDigest.RenderSerialization(numeric, numeric.GetTypeInfo(typeof(WireHolder))!)),
+                "and so does the rendering");
+        });
+    }
+
+    /// <remarks>
     /// The premise of resolving every type through the context rather than through its options: a context
     /// answers for the graph a compiler generated, and for nothing else.
     /// </remarks>
@@ -155,6 +193,23 @@ public class WireChild : WireParent
     public byte[]? Blob { get; init; }
 }
 
+/// <summary>An enumeration with no zero member, so a zero probe alone would read the same either way.</summary>
+public enum WireStage
+{
+    /// <summary>The first value, deliberately not zero.</summary>
+    Done = 1,
+
+    /// <summary>The second.</summary>
+    Pending = 2,
+}
+
+/// <summary>A holder for the enumeration above.</summary>
+public class WireHolder
+{
+    /// <summary>Gets the stage.</summary>
+    public WireStage Stage { get; init; }
+}
+
 /// <summary>A member that is not nullable, filled by a parameter that is.</summary>
 public class WireLenient : WireGrandparent
 {
@@ -172,7 +227,16 @@ public class WireLenient : WireGrandparent
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(WireChild))]
 [JsonSerializable(typeof(WireLenient))]
+[JsonSerializable(typeof(WireHolder))]
 internal sealed partial class WireBehaviorContext : JsonSerializerContext;
+
+/// <summary>The same holder with enumerations written as names.</summary>
+[JsonSourceGenerationOptions(
+    JsonSerializerDefaults.Strict,
+    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+    UseStringEnumConverter = true)]
+[JsonSerializable(typeof(WireHolder))]
+internal sealed partial class StringEnumContext : JsonSerializerContext;
 
 /// <summary>The same graph without the generated write fast path.</summary>
 [JsonSourceGenerationOptions(
