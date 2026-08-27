@@ -117,21 +117,19 @@ public sealed class MediaContractLoader
             : null;
     }
 
-    /// <summary>
-    /// Gets the verified client contracts one loaded assembly declares, in published order.
-    /// </summary>
+    /// <summary>Gets the client contracts one loaded assembly was admitted with, in published order.</summary>
     /// <param name="assemblyName">The simple assembly name.</param>
-    /// <returns>The declarations, or empty when this page holds no complete verified installation.</returns>
+    /// <returns>The contracts, or empty when this page holds no complete verified installation.</returns>
     /// <remarks>
-    /// The instances the post-load proof accepted, never a second resolution, and gated like
+    /// What the proof captured, never a second reading of the declaration, and gated like
     /// <see cref="Find"/>.
     /// </remarks>
-    public IReadOnlyList<ClientContractEntryPointAttribute> ContractsOf(string assemblyName)
+    internal IReadOnlyList<VerifiedClientContract> ContractsOf(string assemblyName)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(assemblyName);
 
         return Report?.CanProject == true && _resident.TryGetValue(assemblyName, out var resident)
-            ? resident.EntryPoints
+            ? resident.Contracts
             : [];
     }
 
@@ -308,7 +306,8 @@ public sealed class MediaContractLoader
 
             // Preflight proved what the bytes declare; this proves what the runtime did with them. A load
             // context may return an occupant rather than the bytes it was handed.
-            if (RuntimeDisagreement(assembly, published, out var entryPoints) is { } disagreement)
+            if (RuntimeDisagreement(assembly, published, cancellationToken, out var contracts)
+                is { } disagreement)
             {
                 _terminal = $"'{published.FileName}' was verified and the runtime produced something else: "
                     + disagreement
@@ -327,7 +326,7 @@ public sealed class MediaContractLoader
             }
 
             // Only now, and with the entry points the proof resolved, so reuse hands back what passed.
-            _resident[published.AssemblyName] = new ResidentContract(assembly, published, entryPoints);
+            _resident[published.AssemblyName] = new ResidentContract(assembly, published, contracts);
 
             // Loaded, and only now. Until this line the report said Verified, which is what was true.
             verified[published.AssemblyName] = entry.Committed();
@@ -621,9 +620,10 @@ public sealed class MediaContractLoader
     private static string? RuntimeDisagreement(
         Assembly assembly,
         ClientContractAssembly published,
-        out IReadOnlyList<ClientContractEntryPointAttribute> entryPoints)
+        CancellationToken cancellationToken,
+        out IReadOnlyList<VerifiedClientContract> contracts)
     {
-        entryPoints = [];
+        contracts = [];
         var loaded = assembly.GetName();
 
         if (!string.Equals(loaded.FullName, published.Identity, StringComparison.OrdinalIgnoreCase))
@@ -661,35 +661,57 @@ public sealed class MediaContractLoader
             return $"its reference to '{ContractAssemblyName}' could not be resolved: {resolution.Message}";
         }
 
-        return DeclarationDisagreement(assembly, published, out entryPoints);
+        return DeclarationDisagreement(assembly, published, cancellationToken, out contracts);
     }
 
     /// <summary>
-    /// Describes how the loaded assembly's declarations differ from what was published, or nothing, and
-    /// yields the resolved declarations when they agree.
+    /// Admits the loaded assembly's declarations, or says why none of them may be, and yields what was
+    /// proved when they all are.
     /// </summary>
-    /// <remarks>Runs the payload's own code, so it is contained rather than allowed to escape.</remarks>
+    /// <remarks>
+    /// Runs the contract's own code, so it is contained. Each value is read exactly once and kept; nothing
+    /// is admitted until every declaration on the assembly has passed.
+    /// </remarks>
     private static string? DeclarationDisagreement(
         Assembly assembly,
         ClientContractAssembly published,
-        out IReadOnlyList<ClientContractEntryPointAttribute> entryPoints)
+        CancellationToken cancellationToken,
+        out IReadOnlyList<VerifiedClientContract> verified)
     {
-        entryPoints = [];
+        verified = [];
 
-        // One boundary around construction and every member read; both are the payload's own code.
         try
         {
             var resolved = ResolveDeclarations(assembly);
 
-            if (Disagreement(assembly, published, resolved) is { } disagreement)
+            if (resolved.Length != published.Declarations.Count)
             {
-                return disagreement;
+                return $"it declares {resolved.Length} client contract(s) once loaded; the host published "
+                    + $"{published.Declarations.Count}.";
             }
 
-            entryPoints = resolved;
+            var admitted = new List<VerifiedClientContract>(resolved.Length);
+
+            for (var index = 0; index < resolved.Length; index++)
+            {
+                if (Admit(assembly, resolved[index], published.Declarations[index], out var contract)
+                    is { } refusal)
+                {
+                    return refusal;
+                }
+
+                admitted.Add(contract!);
+            }
+
+            verified = admitted;
             return null;
         }
-        catch (Exception failure)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The caller abandoned the load; that is not a statement about the contract.
+            throw;
+        }
+        catch (Exception failure) when (!IsFatal(failure))
         {
             return $"its client contract declarations could not be read once loaded: {failure.Message}";
         }
@@ -702,64 +724,131 @@ public sealed class MediaContractLoader
             .GetCustomAttributes<ClientContractEntryPointAttribute>()
             .OrderBy(entry => entry.GetType().FullName, StringComparer.Ordinal)];
 
-    private static string? Disagreement(
+    /// <summary>Proves one declaration, reading each of its values exactly once.</summary>
+    private static string? Admit(
         Assembly assembly,
-        ClientContractAssembly published,
-        IReadOnlyList<ClientContractEntryPointAttribute> resolved)
+        ClientContractEntryPointAttribute declaration,
+        ClientContractDeclaration expected,
+        out VerifiedClientContract? contract)
     {
-        if (resolved.Count != published.Declarations.Count)
+        contract = null;
+        var implementation = declaration.GetType();
+
+        if (!string.Equals(implementation.FullName, expected.EntryPointType, StringComparison.Ordinal))
         {
-            return $"it declares {resolved.Count} client contract(s) once loaded; the host published "
-                + $"{published.Declarations.Count}.";
+            return $"it loaded the client contract entry point '{implementation.FullName}' where the host "
+                + $"published '{expected.EntryPointType}'.";
         }
 
-        for (var index = 0; index < resolved.Count; index++)
+        if (!ReferenceEquals(implementation.Assembly, assembly))
         {
-            var entry = resolved[index];
-            var expected = published.Declarations[index];
-            var implementation = entry.GetType();
-
-            if (!string.Equals(implementation.FullName, expected.EntryPointType, StringComparison.Ordinal))
-            {
-                return $"it loaded the client contract entry point '{implementation.FullName}' where the "
-                    + $"host published '{expected.EntryPointType}'.";
-            }
-
-            // Object identity, not a name: a declaration is this assembly's statement about itself.
-            if (!ReferenceEquals(implementation.Assembly, assembly))
-            {
-                return $"'{expected.EntryPointType}' is implemented in "
-                    + $"'{implementation.Assembly.GetName().Name}' rather than in the assembly that declared it.";
-            }
-
-            if (!ReferenceEquals(entry.EntityType.Assembly, assembly))
-            {
-                return $"'{expected.EntryPointType}' resolves its entity type to "
-                    + $"'{entry.EntityType.Assembly.GetName().Name}' rather than to the assembly that "
-                    + "declared it.";
-            }
-
-            if (!string.Equals(entry.EntityType.FullName, expected.EntityTypeName, StringComparison.Ordinal))
-            {
-                return $"'{expected.EntryPointType}' resolves its entity type to "
-                    + $"'{entry.EntityType.FullName}'; the host published '{expected.EntityTypeName}'.";
-            }
-
-            if (!string.Equals(entry.GeneratedMetadataHash, expected.GeneratedMetadataHash, StringComparison.Ordinal)
-                || !string.Equals(entry.ProjectionSchemaHash, expected.ProjectionSchemaHash, StringComparison.Ordinal))
-            {
-                return $"'{expected.EntryPointType}' reports hashes once loaded that are not the ones the "
-                    + "host published.";
-            }
-
-            // Read here so a throwing schema is refused with the rest. Empty is a schema; null is not one.
-            if (entry.Schema is null)
-            {
-                return $"'{expected.EntryPointType}' answers null for its projection schema once loaded.";
-            }
+            return $"'{expected.EntryPointType}' is implemented in "
+                + $"'{implementation.Assembly.GetName().Name}' rather than in the assembly that declared it.";
         }
 
+        // Directly, so the four members the proof reads are the ones this assembly wrote.
+        if (implementation.BaseType != typeof(ClientContractEntryPointAttribute))
+        {
+            return $"'{expected.EntryPointType}' does not derive directly from the client contract "
+                + "declaration.";
+        }
+
+        var entityType = declaration.EntityType;
+
+        if (!ReferenceEquals(entityType.Assembly, assembly))
+        {
+            return $"'{expected.EntryPointType}' resolves its entity type to "
+                + $"'{entityType.Assembly.GetName().Name}' rather than to the assembly that declared it.";
+        }
+
+        if (!string.Equals(entityType.FullName, expected.EntityTypeName, StringComparison.Ordinal))
+        {
+            return $"'{expected.EntryPointType}' resolves its entity type to '{entityType.FullName}'; the "
+                + $"host published '{expected.EntityTypeName}'.";
+        }
+
+        // Once each. A getter asked twice may answer twice, and everything below is proved about these.
+        var context = declaration.SerializationContext;
+        var root = declaration.EntityTypeInfo;
+        var schema = declaration.Schema;
+
+        if (context is null || root is null || schema is null)
+        {
+            return $"'{expected.EntryPointType}' answers null for its serialization context, its entity "
+                + "metadata or its projection schema.";
+        }
+
+        if (!ReferenceEquals(context.GetType().Assembly, assembly))
+        {
+            return $"'{expected.EntryPointType}' serializes through a context from "
+                + $"'{context.GetType().Assembly.GetName().Name}' rather than from the assembly that "
+                + "declared it.";
+        }
+
+        if (root.Type != entityType)
+        {
+            return $"'{expected.EntryPointType}' offers metadata for '{root.Type}' as the entity metadata "
+                + $"of '{entityType.FullName}'.";
+        }
+
+        // The context's own answer for that type, not merely one that describes it.
+        if (!ReferenceEquals(context.GetTypeInfo(entityType), root))
+        {
+            return $"'{expected.EntryPointType}' offers entity metadata its own context does not hold for "
+                + $"'{entityType.FullName}'.";
+        }
+
+        // Before anything walks the schema recursively. It is a shape the contract's own code returned, and
+        // a cycle or a few thousand levels of nesting would take the process down rather than fail a payload.
+        if (BoundedGraph.Exceeded(schema, static field => field.Components, "its projection schema")
+            is { } unwalkable)
+        {
+            return $"'{expected.EntryPointType}' {unwalkable}";
+        }
+
+        // Renders the whole reachable graph through that exact context, and refuses what it cannot describe.
+        var serialization = ClientContractDigest.OfSerialization(context, root);
+        var projection = ClientContractDigest.OfProjection(entityType, schema);
+
+        if (!string.Equals(serialization, declaration.GeneratedMetadataHash, StringComparison.Ordinal)
+            || !string.Equals(projection, declaration.ProjectionSchemaHash, StringComparison.Ordinal))
+        {
+            return $"'{expected.EntryPointType}' does not hash to what it declares: its wire is "
+                + $"{serialization} and its schema {projection}.";
+        }
+
+        if (!string.Equals(serialization, expected.GeneratedMetadataHash, StringComparison.Ordinal)
+            || !string.Equals(projection, expected.ProjectionSchemaHash, StringComparison.Ordinal))
+        {
+            return $"'{expected.EntryPointType}' hashes to {serialization} and {projection}; the host "
+                + $"published {expected.GeneratedMetadataHash} and {expected.ProjectionSchemaHash}.";
+        }
+
+        contract = new VerifiedClientContract(declaration, entityType, context, root, schema);
         return null;
+    }
+
+    /// <summary>Whether a failure means the process is no longer sound, and must not be contained.</summary>
+    private static bool IsFatal(Exception failure)
+    {
+        for (var current = failure; current is not null; current = current.InnerException)
+        {
+            if (current is OutOfMemoryException and not InsufficientMemoryException
+                or StackOverflowException
+                or AccessViolationException
+                or System.Runtime.InteropServices.SEHException)
+            {
+                return true;
+            }
+
+            if (current is AggregateException aggregate
+                && aggregate.InnerExceptions.Any(IsFatal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -854,11 +943,11 @@ public sealed class MediaContractLoader
     /// <summary>One contract this page has loaded, and the exact description it was verified against.</summary>
     /// <param name="Assembly">The loaded assembly.</param>
     /// <param name="Verified">What the host published for it, proved against its bytes and its runtime.</param>
-    /// <param name="EntryPoints">The declarations that proof resolved, in published order.</param>
+    /// <param name="Contracts">What that proof captured, in published order.</param>
     private sealed record ResidentContract(
         Assembly Assembly,
         ClientContractAssembly Verified,
-        IReadOnlyList<ClientContractEntryPointAttribute> EntryPoints);
+        IReadOnlyList<VerifiedClientContract> Contracts);
 
     /// <summary>What verification decided about one published assembly, before anything was loaded.</summary>
     private sealed record Preflight(
