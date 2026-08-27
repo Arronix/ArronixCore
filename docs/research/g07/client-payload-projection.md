@@ -186,7 +186,7 @@ packages. Observed:
 `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet bash eng/ci/run-tests.sh` — exit 0.
 
 ```text
-projects=14 total=3749 enabled=3447 passed=3447 failed=0 skipped=302 inconclusive=0
+projects=14 total=3750 enabled=3448 passed=3448 failed=0 skipped=302 inconclusive=0
 cases=302 replacements=0 passingWitnesses=0 closureEligibleWitnesses=0 requiredTests=3
 compileLogs=1 compileProjects=14 compileItems=359 boundSources=15
 ```
