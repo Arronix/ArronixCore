@@ -2,17 +2,25 @@
 
 **Status:** architecture preparation. No production code changed on this branch; the integration is Codex's.
 This decides the shape of the slice, the rules its lifecycle obeys, and the places where the obvious
-implementation would quietly freeze a decision that belongs to G13–G19.
+implementation would quietly freeze a decision that belongs to G13–G19. Three questions it deliberately
+does **not** decide are recorded in section 10; where the design forks on one of them, both branches are
+carried rather than one being chosen.
 
 **Branch:** `claude/g07b-durable-audit`
 **Base commit:** `ce643da45` (`State the filter rule as it is implemented`)
+**SDK:** `/usr/local/share/dotnet/dotnet`, pinned .NET 11 Preview 7 `11.0.100-preview.7.26381.103`. The
+`dotnet` first on `PATH` here is `10.0.400` and cannot satisfy `global.json`; every restore, build and test
+uses the pinned path, and no target is downgraded to make a different one work.
 **Reads:** `CONTEXT.md`, `INTERFACE.md`, `docs/design/typed-media-north-star.md`,
 `docs/design/typed-media-roadmap.md` (G04, G05, G07B, G18, G19), `docs/owner-ledger.md` (O-22, O-23, O-40),
-`docs/research/g04/media-item-identity.md`, `docs/research/g05/tmdb-provider-pressure-test.md`.
+`docs/research/g04/media-item-identity.md`, `docs/research/g05/tmdb-provider-pressure-test.md`,
+`docs/design/storage-layer.md`.
 
 G07B exists to find out what is wrong with the current model *before* Television, Music and Books copy it.
-Section 2 is therefore the most valuable part of this report: seven behaviours that are correct while
-`CatalogIdentity` and `IMediaStore` are dictionaries and become defects the day they are rows.
+Section 2 is therefore the most valuable part of this report: seven behaviours that cost nothing while
+`CatalogIdentity` and `IMediaStore` are dictionaries and become consequential the day they are rows. Six
+are defects with one right answer. The seventh, 2.1, is a question three sources answer differently, and
+it is left as one.
 
 ---
 
@@ -40,20 +48,28 @@ currently writes it on the catalog path, which the refresh leg has to fix whethe
 
 ## 2. What durability changes about code that already exists
 
-### 2.1 Search assigns durable identity
+### 2.1 The moment identity is allocated is unresolved, and durability is what makes it matter
 
-`CatalogDispatcher.SearchAsync` calls `Materialize`, and `Materialize` calls `CatalogIdentity.Identify`.
-Every row a catalog search returns is therefore given a `MediaItemId` — including the forty results the
-user scrolls past. In a dictionary this is free. As a table it is an unbounded, monotonically growing
-write path driven by search text, and the numbers it burns can never be reused (see 4.6).
+Two halves of the identity rule are settled and are not reopened here. **A cataloger owns its catalog
+scheme and the item's identity within it**, declared once at registration and enforced as exactly one
+identifier per item. **Host owns `MediaItemId` allocation**, and no provider contract reaches one. Both are
+implemented, gated by `CatalogIdentityAuthorityTests`, and out of scope for this report.
 
-The ledger's wording is `O-40`: Host assigns `MediaItemId` "if and when a catalog item is materialized
-**into local library state**". `docs/research/g04/media-item-identity.md` records it as "when a catalog
-item is materialized", and the implementation materializes search results. The three readings agree until
-identity is durable and then they do not. This is owner question **Q1**.
+What is unresolved is *when* Host allocates, and three sources say three things:
 
-Recommended resolution, which is also the narrowest one: searching and fetching *read*; only taking an item
-into the library *assigns*. That needs one typed distinction, not a field bag — see 3.3.
+| Source | Wording |
+|---|---|
+| `docs/owner-ledger.md` O-40 | Host assigns `MediaItemId` "if and when a catalog item is materialized **into local library state**" |
+| `docs/research/g04/media-item-identity.md` | "The host alone assigns `MediaItemId`, when a catalog item is materialized" — the qualifying clause is absent |
+| Current code | `CatalogDispatcher.SearchAsync` → `Materialize` → `CatalogIdentity.Identify`, so every search result is allocated |
+
+The three agree while `CatalogIdentity` is a dictionary and stop agreeing the moment it is a table. Every
+row a catalog search returns is given a `MediaItemId`, including the forty a user scrolls past; as a table
+that is a write path driven by search text, and 4.6 requires that the numbers it burns are never reused.
+Whether that is correct depends on which of the three sentences above is the rule.
+
+This report does not pick one. It is owner question **Q1**, and section 10 states what each branch costs.
+Where the rest of the design forks on it — 3.3, 4.1, 4.2, 8, 9 — both branches are carried.
 
 ### 2.2 Projection assigns durable identity, on the read path
 
@@ -249,9 +265,19 @@ is a `ValidatedDefinition → IMediaItemSource` factory — so it cannot reach t
 a payload. Either that factory gains the runtime handle, or restoring happens above the seam. It is a
 small change; it is not a free one.
 
-### 3.3 A catalog result is not a library item
+### 3.3 The fork Q1 creates, in both directions
 
-The typed distinction 2.1 needs, and the only new vocabulary in this report:
+This is the only place in the design where the two readings of 2.1 produce different types, so both are
+written out rather than one being assumed.
+
+**If allocation happens at every materialization** (the code as it stands, and the G04 record read without
+O-40's clause), nothing here changes. `MaterializedItem<TItem>` already means "a catalog item with the
+reference the host holds it under", `SearchAsync` already produces them, and the durable consequence is
+that the identity and alias tables grow with search traffic. The store carries that growth; 6 and 4.6 say
+what it costs, and nothing needs a new type.
+
+**If allocation happens only when an item is taken into local library state** (O-40 as written), then a
+search result is a value the platform has no reference for, and that value needs a name:
 
 ```csharp
 /// One catalog result the platform has not taken in. It carries the catalog's identity and, when the
@@ -264,9 +290,12 @@ public sealed record CatalogCandidate<TItem>(
     where TItem : class, IMediaItem;
 ```
 
-`SearchAsync` and `FetchAsync` return candidates. `MaterializedItem<TItem>` keeps its current meaning —
-an item that has a durable reference because it was taken in — and is produced only by the coordinator in
-3.4. This is the "exact typed lifecycle boundary, not a second field vocabulary" G04's exit gate allows.
+`SearchAsync` and `FetchAsync` would return candidates; `MaterializedItem<TItem>` would keep its current
+meaning and be produced only by the coordinator in 3.4. That is the "exact typed lifecycle boundary, not a
+second field vocabulary" G04's exit gate allows, and section 8 records the one further cost it carries — an
+unheld candidate cannot fill `ItemView.Ref`.
+
+Everything else in section 3 is the same under either branch.
 
 ### 3.4 The coordinator owns the transactions
 
@@ -375,17 +404,25 @@ the obvious implementation would freeze cross-media schema, so it is the place t
 
 ### 4.1 Search
 
-Route by scheme, call every available authority, return `CatalogCandidate` values with `Held` populated
-from `ICatalogIdentityReader.FindAsync`. No identity is assigned, no row is written, and a result the
-platform already holds is visibly already held so the client does not offer to add it twice.
+Common to both branches of Q1: route by scheme, call every available authority, and tell the caller which
+results the platform already holds so a client does not offer to add the same item twice. No catalog row
+and no library row is written by a search under either reading.
+
+Where they differ is the identity table. Under allocation-at-materialization a search inserts an
+assignment per result and the "already held" answer falls out of it. Under allocation-at-take-in a search
+inserts nothing and the answer comes from `ICatalogIdentityReader.FindAsync`, which is the reason that
+reader exists as a separate contract in 3.1 — it is useful under both, and mandatory under one.
 
 ### 4.2 Add
 
-One transaction: `IdentifyAsync` for the item and for every catalog reference it carries, `WriteAsync` for
-the entry and payload, `UpsertLibraryAsync` for the user's monitoring scope and added-at, and — if the
-assignment reported supersessions — `MergeAsync` for each. Adding an item the platform already holds is not
-an error: it converges on the held reference and applies the monitoring scope, which is the same
-idempotence G04 already requires of repeated fetches.
+One transaction under either branch: allocate for the item and for every catalog reference it carries,
+`WriteAsync` for the entry and payload, `UpsertLibraryAsync` for the user's monitoring scope and added-at,
+and — if the allocation reported supersessions — `MergeAsync` for each. Under
+allocation-at-materialization the allocation has usually already happened during the search or fetch that
+led here, so the step is a lookup that returns the existing reference; under allocation-at-take-in this is
+where it happens for the first time. Either way, adding an item the platform already holds is not an
+error: it converges on the held reference and applies the monitoring scope, which is the same idempotence
+G04 already requires of repeated fetches.
 
 ### 4.3 Refresh
 
@@ -478,33 +515,38 @@ state that is about to roll back.
 
 ## 7. Migrations and the package graph
 
-**EF Core with LINQ and no SQL is owner signal** (O-22, O-23), and both are currently recorded as "not
-built" / "recorded, not exercised". G07B is where they are first exercised, and the G07B exit gate repeats
-the constraint as "no raw SQL, provider-shaped persistence API, silent in-memory fallback, or temporary
-per-kind item source".
+### 7.1 The persistence mechanism is contradicted in the repository, and this report does not choose
 
-`docs/design/storage-layer.md` must not be followed as written. It predates the typed model and states
-"**No EF Core** (hard contributor rule). Dapper + FluentMigrator + SQLite/Postgres", and its decision #20
-chooses hand-written SQL. That is a direct contradiction of O-22 and O-23 and of the roadmap's own G18
-wording ("the selected EF Core/LINQ-only persistence boundary"). Its *reasoning* remains valuable — the
-catalog/library split, the retained-orphan rule, one `provider_status` table rather than five, no
-cross-owner foreign keys, forward-only with a ledger — and G18's instruction to revalidate it should be
-read as revalidating those conclusions against EF Core, not as adopting its mechanism. Codex should not be
-left to discover the contradiction mid-implementation.
+Three in-repository sources disagree about what G07B is allowed to persist with. They are recorded here
+with their provenance and nothing more; picking one is owner question **Q3**.
 
-Concrete consequences for the package graph, which is locked and consumed-only:
+| Source | What it says | What kind of source it is |
+|---|---|---|
+| `docs/owner-ledger.md` O-22, O-23 | "Use EF Core for persistence"; "Use LINQ for everything and zero SQL anywhere". Status today: **Not built** and **Recorded, not exercised** | Owner signal, dated and provenanced to owner messages |
+| `docs/design/typed-media-roadmap.md` G07B / G18 | "Implement only the narrow **EF Core/LINQ** slice needed for…"; "the selected **EF Core/LINQ-only** persistence boundary and migrations, revalidating older storage design notes" | Roadmap, the active execution gate |
+| `docs/design/storage-layer.md` | "**No EF Core** (hard contributor rule). Dapper + FluentMigrator + SQLite/Postgres, all already registered in `Directory.Packages.props`"; decision #20 drops the LINQ translator for "hand-written SQL, Dapper for materialization" | Design document, authored before the typed model, status "Design. No code has been written" |
 
-- `Directory.Packages.props` gains EF Core and one provider, pinned to the same `.NET 11 Preview 7` train
-  (`11.0.100-preview.7.26381.103`, `rollForward: disable`). The file's own rule — "a package enters this
-  graph only with a consuming project and executable proof" — is satisfied by this gate and not before it.
-- `Arronix.Host/packages.lock.json` is regenerated; `eng/ci/run-tests.sh` restores locked, so a stale lock
-  fails the rail rather than resolving quietly.
-- Host keeps its dependency direction: Abstractions, Common, Plugins. Nothing about EF Core reaches
-  Abstractions, a media package, a provider package, or the Client.
+One premise in that third row has since expired, and it is worth checking before it tilts the answer:
+`Directory.Packages.props` holds 26 package versions and **none** of them is Dapper, FluentMigrator,
+SQLite, Npgsql or EF Core. Neither candidate stack is registered today, so "already registered" is no
+longer a reason to prefer one, and Q3 costs the same package-graph and lock-file churn either way.
 
-Migration rules:
+The contradiction is total on mechanism and narrow in scope: the storage document's *conclusions* are not
+in conflict with the roadmap at all. The catalog/library split, the retained-orphan rule for definitions,
+one `provider_status` table rather than five, no cross-owner foreign keys, forward-only with a ledger, and
+keep-on-uninstall are all reached independently of Dapper, and several of them are already implemented in
+the in-memory store. What is in conflict is the data-access stack and the "no raw SQL" line: EF Core with
+LINQ and hand-written SQL with Dapper cannot both satisfy the G07B exit gate's "no raw SQL", and the
+storage document's own framing of "No EF Core" as a *hard contributor rule* is a claim this report cannot
+adjudicate from the ledger, because no audited owner message either states it or rejects it.
 
-- Host owns the schema and its migrations. Forward-only; `Down` is not written and not required.
+Whichever way Q3 resolves, `docs/design/storage-layer.md` needs a status header saying which parts of it
+survive, because it currently reads as an authoritative instruction to do the opposite of the active gate.
+
+### 7.2 What holds under either mechanism
+
+- Host owns the schema and its migrations. Forward-only; `Down` is not written and not required. (Both
+  candidate stacks support this; the storage document argues the case at length and its reasoning stands.)
 - Migrations are applied at startup, and a database whose schema is **newer** than the binary refuses to
   start rather than running against it.
 - A media package's payload shape is not a database migration and cannot be, because Host cannot name the
@@ -513,9 +555,27 @@ Migration rules:
 - Plugin-owned tables are out of scope. G07B must not ship the declarative plugin-schema mechanism
   `storage-layer.md` designs, because nothing needs it yet and shipping it would freeze it.
 - No silent in-memory fallback. If the database cannot be opened or migrated, the host fails to start with
-  the reason. `InMemoryMediaStore` stays a test double; the production composition registers the relational
+  the reason. `InMemoryMediaStore` stays a test double; the production composition registers the durable
   store unconditionally. The current `TryAddSingleton<IMediaStore, InMemoryMediaStore>()` in
   `StorageRegistration` is exactly the shape a silent fallback would take, and is the line to change.
+- The package graph is locked and consumed-only, so whichever stack is chosen enters
+  `Directory.Packages.props` under its own rule — "a package enters this graph only with a consuming
+  project and executable proof" — and `Arronix.Host/packages.lock.json` is regenerated with it.
+  `eng/ci/run-tests.sh` restores locked, so a stale lock fails the rail rather than resolving quietly.
+- Whatever the stack, it is pinned to the same `.NET 11 Preview 7` train as everything else
+  (`11.0.100-preview.7.26381.103`, `rollForward: disable`), restored and built with
+  `/usr/local/share/dotnet/dotnet`. Nothing in the persistence stack reaches `Arronix.Abstractions`, a
+  media package, a provider package, or the Client; Host keeps its dependency direction of Abstractions,
+  Common, Plugins.
+
+### 7.3 What Q3 actually changes
+
+Less than it looks, which is why it can be recorded rather than blocking. Sections 3 to 6 name no data
+access at all: `ICatalogStore` moves entries and payloads, `ICatalogIdentityReader` and `IMediaStore` are
+the contracts they already are, and the transaction and concurrency rules in 5 and 6 are stated as units of
+work and unique constraints rather than as any one library's API. What Q3 decides is how those contracts
+are implemented, how migrations are authored, and whether the architecture gate in 9 forbids raw SQL
+outright or forbids it outside a reviewed query set.
 
 ---
 
@@ -534,17 +594,21 @@ which today answers `501` for everything except `SetMonitoring`. G07B gives that
 capabilities. Nothing new crosses the wire.
 
 **Catalog search does need one endpoint**, because searching a catalog for something to add is not an item
-query: it returns candidates that are not library items and may never become any. It assigns nothing
-(2.1), and that has one honest cost worth stating rather than discovering: `ItemView.Ref` is `required`,
-and `ItemProjector.Project` takes the reference as an argument and validates it, so a candidate with no
-local identity cannot be projected as an `ItemView` at all.
+query: it returns results that are not library items and may never become any. This is the one endpoint
+whose shape depends on Q1.
 
-The narrow answer is not a second item schema. `Project` already builds two things — the derived field map
-and the reference-bearing envelope around it. Splitting it so the field map can be produced on its own
-gives the candidate wire shape the same derived field vocabulary a browse row has, carrying the catalog
-identifier and `Held` where a browse row carries `Ref`. One projector, one field vocabulary, two envelopes.
-Group references inside a candidate resolve through the reader and may be absent, which is 2.2's rule
-applied unchanged.
+Under allocation-at-materialization every result already has a reference, so the endpoint returns the
+ordinary `ItemView` projection plus the catalog identifier and a flag for whether the item is in the
+library, and nothing else moves.
+
+Under allocation-at-take-in a result has no reference, and `ItemView.Ref` is `required` while
+`ItemProjector.Project` takes the reference as an argument and validates it against the kind and level — so
+an unheld candidate cannot be projected as an `ItemView` at all. The answer is not a second item schema.
+`Project` already builds two things: the derived field map, and the reference-bearing envelope around it.
+Splitting it so the field map can be produced on its own gives the candidate the same derived field
+vocabulary a browse row has, carrying the catalog identifier and `Held` where a browse row carries `Ref`.
+One projector, one field vocabulary, two envelopes. Group references inside a candidate resolve through the
+reader and may be absent, which is 2.2's rule applied unchanged.
 
 **Typed Client browse rides G07.2.** The Client already loads the exact contract assembly (G07.1) and
 already discovers nothing by enumerating it. Typed deserialization and typed rendering of a Movie are
@@ -566,7 +630,6 @@ Behavioural cases, each named for the rule it defends:
 
 | Case | Defends |
 |---|---|
-| Search returns candidates and the identity table is unchanged | 2.1 / Q1 |
 | Rendering a page of movies with collections writes no identity row | 2.2 |
 | Fetching the same identifier twice yields one reference and one row | G04 idempotence |
 | An alias fetched after its canonical merges, and the library row moves with it | 2.3 / 4.5 |
@@ -578,50 +641,84 @@ Behavioural cases, each named for the rule it defends:
 | A payload written under a contract stamp the current package cannot read is refused, not partially read | 3.2 |
 | An identity freed by a merge is never reissued after restart | 4.6 |
 | A sort or filter outside the common floor is refused visibly, naming the field | 3.6 |
-| Opening a database that cannot be migrated fails startup; no in-memory store is registered | 7 |
+| Opening a database that cannot be opened or migrated fails startup; no in-memory store is registered | 7.2 |
+
+One further case is written once Q1 is answered, and it is written either way — the point is that the
+allocation moment is asserted rather than incidental. Under allocation-at-take-in: a search leaves the
+identity table byte-identical. Under allocation-at-materialization: a search allocates exactly one
+assignment per distinct result and a repeated search allocates none, so the growth is bounded by distinct
+results seen rather than by requests made.
 
 Architecture gates to add beside the existing `CatalogIdentityAuthorityTests`:
 
-- No EF Core type is reachable from `Arronix.Abstractions`, any media or format package, any provider
-  package, or `Arronix.Client`.
-- No raw SQL: no `FromSql*`, `ExecuteSql*` or `DbCommand` construction in the Host source.
-- No public persistence contract names a provider, a vendor, or a media concept.
+- No persistence-stack type — whichever stack Q3 selects — is reachable from `Arronix.Abstractions`, any
+  media or format package, any provider package, or `Arronix.Client`.
+- No public persistence contract names a provider, a vendor, or a media concept. The contracts in section 3
+  are gateable against this today, because they name only references, entries and payloads.
 - The file, link and group-membership operations have no production writer (3.5), so the day one appears
   the gate fails and the schema decision is taken deliberately.
+- The raw-SQL gate is Q3-dependent and is the one place the two candidate stacks give different rules: an
+  EF Core/LINQ slice can be gated absolutely (no `FromSql*`, `ExecuteSql*`, or `DbCommand` construction in
+  Host), whereas a Dapper slice cannot be gated that way at all, only against a reviewed query set. This is
+  worth stating plainly because the G07B exit gate's "no raw SQL" is only mechanically enforceable under
+  one of the two answers.
 
-`eng/ci/run-tests.sh` remains the rail: locked restore, one warnings-as-errors build, non-empty results
-from every discovered project, and the exact skip ratchet. New skips are not how a durable slice ships.
+`eng/ci/run-tests.sh` remains the rail — locked restore, one warnings-as-errors Release build with its
+binlog retained, non-empty results from every discovered project, and the exact 302-skip ratchet — invoked
+with `DOTNET_COMMAND=/usr/local/share/dotnet/dotnet`. New skips are not how a durable slice ships.
 
 ---
 
 ## 10. Owner questions
 
-Only two. Everything else in this report follows from signal that already exists.
+Three, none of them resolved here. Everything else in this report follows from signal that already exists.
 
-**Q1 — Does a catalog *search* assign durable identity?**
-`O-40` says Host assigns `MediaItemId` "if and when a catalog item is materialized into local library
-state". `docs/research/g04/media-item-identity.md` says "when a catalog item is materialized". The
-implementation assigns on search as well as on fetch. The three agree until identity is durable. Assigning
-on search makes the identity table grow with search traffic and burns numbers that can never be reused;
-not assigning needs the typed candidate/materialized distinction in 3.3 and the split projector in
-section 8, because an unheld candidate cannot fill `ItemView.Ref`. Recommendation: searching and fetching
-read, taking in assigns — the cost is one refactor of an existing projector, and the alternative is a
-table that grows with search traffic for as long as the deployment lives.
+**Q1 — At what moment does Host allocate a `MediaItemId`?**
+
+Settled and not in question: a cataloger owns its catalog scheme and the item's identity within it, and
+Host — no one else — allocates `MediaItemId`. The unresolved half is the moment, and O-40, the G04 record
+and the current code each say something different (2.1). The two answers and what each costs:
+
+| | Allocate at every materialization *(current code)* | Allocate when an item is taken into library state *(O-40 as written)* |
+|---|---|---|
+| Search | inserts one assignment per distinct result | inserts nothing; "already held" comes from the reader |
+| New types | none | `CatalogCandidate<TItem>` (3.3) |
+| Projection | unchanged | `ItemProjector.Project` splits so a field map can be produced without a `Ref` (8) |
+| Identity table | grows with distinct results ever seen, permanently, and 4.6 forbids reusing what a merge frees | grows with the library |
+| Alias rows | one per identifier of every result ever seen | one per identifier of every held item |
+| Where it lands wrong | a deployment's identity space records everything anyone searched for | a search result and a library item are two types where a reader expected one |
+
+Both are defensible; they are not equally cheap in the same direction, which is why this is the owner's
+call rather than the implementer's. 2.2's separate rule — that the *read* path never allocates — holds
+under either answer and is not part of this question.
 
 **Q2 — When a merge finds user-owned state on both sides, what survives?**
-This is the one place in the slice where the platform must discard something a person entered, and no
-existing signal decides it. Proposed default in 4.5: earlier `AddedAt` wins; monitoring takes the wanted
-answer where the two differ; path, root folder and selected variant keep the survivor's and report the
-discarded one rather than moving files; tags are the union. Every discard is reported in `Conflicts`, so
-whatever rule is chosen is visible rather than silent.
+
+The one place in the slice where the platform must discard something a person entered, and no existing
+signal decides it. The candidate rule in 4.5 is written out so it can be accepted, amended or replaced:
+earlier `AddedAt` wins; monitoring takes the wanted answer where the two differ; path, root folder and
+selected variant keep the survivor's and report the discarded one rather than moving files; tags are the
+union. Whatever rule is chosen, every discard is reported in `Conflicts` rather than applied silently.
+
+**Q3 — Which persistence mechanism does G07B implement?**
+
+The repository contradicts itself (7.1). O-22 and O-23 are owner signal for EF Core and LINQ with zero
+SQL, recorded as "not built" and "recorded, not exercised". The roadmap states G07B and G18 as an EF
+Core/LINQ-only slice. `docs/design/storage-layer.md` states "No EF Core" as a *hard contributor rule* with
+Dapper, FluentMigrator and hand-written SQL, and no audited owner message either establishes or rejects
+that rule. This report records the contradiction and implements neither: section 3's contracts, section 5's
+units of work and section 6's constraints are written without naming a data-access library, so the answer
+can be applied to them rather than around them. Section 9 notes the one gate that is not mechanism-neutral
+— "no raw SQL" is mechanically enforceable under one answer and not the other. Whichever way this goes,
+`docs/design/storage-layer.md` needs a status header saying which of its conclusions survive.
 
 Two further things are worth the owner *knowing* without being questions. First, G07B is the first
 milestone that writes an operator's credentials to disk, and the threat model has no at-rest item —
 `SettingSensitivity.Secret` currently governs redaction on the wire and in logs only. Nothing here decides
-encryption at rest; it is named so it is not decided by omission. Second,
-`docs/design/storage-layer.md` contradicts O-22 and O-23 on its face (section 7) and needs a status header
-saying so; this branch is architecture preparation and edits no document but this one, so that correction
-travels with the integration.
+encryption at rest; it is named so it is not decided by omission. Second, this branch is architecture
+preparation and edits no document but this one, so the `storage-layer.md` status header and any
+`CONTEXT.md`/`INTERFACE.md` wording that follows from Q1 travel with the integration rather than ahead of
+it.
 
 ---
 
@@ -630,7 +727,8 @@ travels with the integration.
 | G07B exit gate | Where |
 |---|---|
 | A real G05 provider result becomes a valid Movie, survives restart, refreshes provider-owned facts, preserves user-owned state | 4.2, 4.3, 4.6, 9 |
-| Identity collision, redirect, deleted-record and retry match the G04 contract | 4.4, 4.5; retry is read in both its senses — idempotent re-materialization (4.2) and provider back-off (2.6, 4.3) |
+| Identity collision, redirect, deleted-record and retry match the G04 contract | 4.4, 4.5, which hold under either answer to Q1; retry is read in both its senses — idempotent re-materialization (4.2) and provider back-off (2.6, 4.3). The *allocation moment* those rules hang from is **Q1** |
 | `HostItemSource` no longer returns an empty placeholder for Movies | 2.5, 3.2, 8 |
-| No raw SQL, provider-shaped persistence API, silent in-memory fallback, or temporary per-kind item source | 7, 9; the persistence contracts in 3 name a reference and a payload, never a provider, a vendor or an item type |
+| No provider-shaped persistence API, silent in-memory fallback, or temporary per-kind item source | 7.2, 9; the persistence contracts in 3 name a reference, an entry and a payload — never a provider, a vendor or an item type |
+| No raw SQL | **blocked on Q3.** Mechanically enforceable under an EF Core/LINQ slice; not enforceable as written under the Dapper slice `docs/design/storage-layer.md` specifies (7.1, 9) |
 | Do not design cross-media groups, unit/file links, profiles, operation records or import state | 1, 3.5, 3.6 |
