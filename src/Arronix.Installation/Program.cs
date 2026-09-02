@@ -154,76 +154,8 @@ static async Task<int> RunAsync(string repositoryRoot, InstallationLayout layout
 
 static int Reset(InstallationLayout layout, CommandLine options)
 {
-    if (!Directory.Exists(layout.Root))
-    {
-        throw new InstallationException($"There is no installation at '{layout.Root}'.");
-    }
-
-    // A root is never self-authorizing for a destructive operation. This is the ownership check: the exact
-    // target must carry a manifest this tool wrote, whose schema, identity and every declared path validate
-    // against what is actually on disk. Anything else — an arbitrary directory that happens to be named
-    // right, or one whose manifest has drifted from reality — is refused rather than trusted.
-    //
-    // A valid manifest proves the declared Arronix payload underneath the root; it proves nothing about any
-    // other entry that root happens to contain. A reset therefore never deletes the root wholesale — only
-    // the finite set of paths this tool itself ever creates, named below, are ever touched.
-    InstallationManifest.ReadFrom(layout);
-
-    // Narrow by default and explicit when wide. The paths a reset owns are the ones an installation
-    // accumulates by being used; the published server, client and packages are rebuilt by composing again
-    // and are not a reset's business.
-    var owned = options.ResetEverything
-        ? new[]
-        {
-            layout.ServerFolder,
-            layout.ClientFolder,
-            layout.PackagesFolder,
-            layout.PackageStateFolder,
-            layout.StateFolder,
-            layout.ManifestFile,
-        }
-        : [layout.StateFolder, layout.PackageStateFolder];
-
-    var removed = new List<string>();
-
-    foreach (var target in owned)
-    {
-        if (!layout.Contains(target))
-        {
-            throw new InstallationException(
-                $"'{target}' is not inside the installation at '{layout.Root}'; refusing to remove it.");
-        }
-
-        if (Directory.Exists(target))
-        {
-            Directory.Delete(target, recursive: true);
-            removed.Add(target);
-        }
-        else if (File.Exists(target))
-        {
-            File.Delete(target);
-            removed.Add(target);
-        }
-    }
-
-    var remaining = Array.Empty<string>();
-
-    if (options.ResetEverything && Directory.Exists(layout.Root))
-    {
-        remaining = Directory.EnumerateFileSystemEntries(layout.Root)
-            .Order(StringComparer.Ordinal)
-            .ToArray();
-
-        // Only ever removes a directory this loop just emptied, and only because it is now provably empty —
-        // never a recursive delete of a root that might still hold something this tool does not own.
-        if (remaining.Length == 0)
-        {
-            Directory.Delete(layout.Root);
-            removed.Add(layout.Root);
-        }
-    }
-
-    Report.Reset(layout, removed, remaining);
+    var outcome = InstallationReset.Execute(layout, options.ResetEverything);
+    Report.Reset(layout, outcome.Removed, outcome.Remaining);
     return 0;
 }
 
