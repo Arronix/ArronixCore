@@ -8,6 +8,60 @@ machinery. It does not obtain a small surface by flattening domain shape or expo
 
 The project is pre-alpha. It builds and has a broad local test suite, but persistence, authentication, production provider packages, and an end-to-end typed acquisition flow are incomplete.
 
+## Run it
+
+```bash
+bash eng/run-arronix.sh
+```
+
+That one command builds this repository's deliverables, installs them, and starts the installation it just
+made. It prints the address to open, the packages it installed and where the state lives, then keeps running
+until you interrupt it. It stops only the server it started, and it never signals a process it did not
+launch. The script itself only resolves the pinned .NET 11 SDK; composing and running an installation is
+owned by `src/Arronix.Installation`.
+
+Everything it produces lives under one directory that git ignores:
+
+```text
+artifacts/installation/
+  server/            the published Arronix.Api
+  client/wwwroot/    the published Arronix.Client
+  packages/          one folder per installed package
+  package-state/     each package's own data, cache and scratch folders
+  state/arronix.db   the durable catalog and library state
+  installation.json  what this installation holds
+```
+
+The installation carries the real Movies extension, the Video format package it requires, the reference
+languages, the production TMDb provider and a sample movie catalog. TMDb needs an API read access token
+before it can answer; add one under Settings. The sample catalog is an ordinary separately packaged
+`ICataloger<Movie>` with invented titles, configured for you on first run, so the catalog path can be
+evaluated before any account exists anywhere. `--no-sample-catalog` leaves it out.
+
+Once it is up: the dashboard lists the installed extensions and the platform's health; **Movies** is the
+generic media workspace derived from the extension's own declaration; **Find in catalog** searches the
+catalogs configured for that kind — search the sample catalog for `sample` to see everything it holds — and
+each result can be added, opened, monitored and refreshed;
+**Contracts** shows the shared contract assemblies the browser downloaded from this host and verified;
+**Settings** configures providers. Everything you add survives a restart.
+
+```bash
+bash eng/run-arronix.sh --port 5300     # take that port, or refuse if something holds it
+bash eng/run-arronix.sh --no-build      # start what is already installed
+bash eng/run-arronix.sh --open          # open the address once it answers
+bash eng/run-arronix.sh install         # compose the installation without running it
+bash eng/run-arronix.sh reset           # empty its state, leaving the installed code
+bash eng/run-arronix.sh reset --all     # remove the installation directory
+bash eng/run-arronix.sh --help          # every argument
+```
+
+The installed server knows which installation it belongs to. `Arronix:Installation:Root` in
+`artifacts/installation/server/appsettings.json` is what makes the packages folder, the per-package state
+folder, the database and the client root one installation rather than four settings that have to be kept in
+agreement; leave it unset and each is configured independently, as before. A fresh installation reports
+health as *degraded* because no library root folder is configured, which is accurate — nothing above needs
+one, and importing files is not yet implemented.
+
 ## The architectural center
 
 A media extension closes an ordinary abstract definition over three C# domain types and one typed parser:

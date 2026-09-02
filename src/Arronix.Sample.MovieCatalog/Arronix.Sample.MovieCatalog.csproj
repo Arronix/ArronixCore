@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Sample.MovieCatalog</RootNamespace>
+    <AssemblyName>Arronix.Sample.MovieCatalog</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>A separately packaged sample movie catalog. It exists so an Arronix installation can be evaluated end to end without credentials for any external service; it closes ICataloger&lt;Movie&gt; over the public contracts exactly as a production provider package does, and ships its own invented titles.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+  </PropertyGroup>
+
+  <!--
+       The same topology as the production TMDb package, and that is the point of shipping it: a sample
+       whose data lived inside Abstractions, Host, the movies package or the client would prove nothing and
+       would put invented titles inside the product. This package references only the universal contracts
+       and the movies media domain, is published into an installation as its own package, and is admitted,
+       paired and routed by exactly the rules a third-party catalog is held to.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Abstractions\Arronix.Abstractions.csproj" />
+    <ProjectReference Include="..\Arronix.Media.Movies\Arronix.Media.Movies.csproj" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="plugin.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

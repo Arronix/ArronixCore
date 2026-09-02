@@ -15,7 +15,10 @@ Current ownership:
 - generic host orchestration, storage seams, scheduling, provider dispatch, and API projection;
 - derivation of standard media operations, generic presentation, and runtime dispatch from typed owner-authored definitions;
 - an authoring contract whose cognitive load is proportional to a plugin's genuine semantic differences rather than the size of the platform;
-- reference media, format, and language extensions, plus the independently packaged TMDb provider.
+- reference media, format, and language extensions, plus the independently packaged TMDb provider and
+  the separately packaged sample movie catalog;
+- one owned route from these deliverables to an installed, runnable Arronix, and the installation
+  layout that route and the running server both read.
 
 Potential future ownership includes persistent storage, authenticated multi-user hosting, dynamic .NET client definition loading, and independently distributed format packages.
 
@@ -75,6 +78,30 @@ registry and compiler-input evidence. Its optional `--classification-report <fil
 `arronix.compatibility.classification-report` JSON document whose version-1 rows expose declared requirement,
 owner, disposition, target and source-provenance facts. It is an inventory contract, not a parity, approval or
 closure claim; its closed record shapes preserve provisional, unresolved, baseline-only and ineligible states.
+
+`Arronix.Common.Installation.InstallationLayout` is the one description of an installed Arronix on disk: a
+root directory, and beneath it the published server, the published client's static root, one folder per
+installed package, the per-package state folder, the host's own state folder with its database file, and the
+manifest. It computes paths and creates nothing. A package identifier must name exactly one folder directly
+inside the packages folder, and `Contains` states whether a path belongs to the installation, so a
+destructive operation can refuse anything it does not own. It is unrelated to the client's contract
+*installation*, which is the set of shared contract assemblies a browser page has admitted.
+
+`Arronix:Installation:Root` is the configuration key naming the installation a server belongs to. When it is
+set, `Arronix:Plugins:RootFolder`, `Arronix:Plugins:StateFolder`, `Arronix:Store:DataSource` and
+`Arronix:Api:ClientRoot` are derived from it and take precedence over earlier configuration sources; a
+relative value is resolved against the server's content root, so an installation can be moved or copied
+without editing anything inside it. When it is absent nothing is derived and each path is configured
+independently, exactly as before. No other setting is affected — an installation states where its own
+packages, state and client live and does not decide where an operator keeps their media.
+
+`src/Arronix.Installation` is that route's implementation and is a tool rather than a layer: it references
+`Arronix.Common` for the layout and nothing in the running platform references it. It declares its
+deliverables — the server project, the client project, and each installed package with its identifier and
+role — rather than discovering them, because several projects in this repository carry a package manifest
+without being product. Every payload it installs comes from a real `dotnet publish` into a cleared
+directory. It is not a compatibility surface: its command line, its console output and the
+`installation.json` it writes may change with the deliverables they describe.
 
 Extension authors reference the packaging-only `Arronix.Sdk`. It supplies `Arronix.Abstractions` as its sole
 runtime dependency and carries `Arronix.Generators` only under `analyzers/dotnet/cs`; the SDK contributes no
@@ -463,6 +490,13 @@ processing begins therefore leaves no prior report looking current, and no parti
 - `Arronix.Provider.Tmdb` depends only on Abstractions and `Arronix.Media.Movies`. It ships its executable
   provider assembly independently, declares a runtime dependency on package `movies`, and owns every TMDb
   endpoint, credential field, DTO, identifier, marker, transport, and mapping rule.
+- `Arronix.Sample.MovieCatalog` has exactly that topology and exists so an installation can be evaluated
+  without credentials for any external service. It closes `ICataloger<Movie>` over the public contracts, is
+  the identity authority for the `sample` scheme, ships as the package `sample.movie.catalog`, and owns
+  every invented title it answers with. No platform, format, movies or vendor project may name that content,
+  and an architecture rule holds both halves of that.
+- `Arronix.Installation` composes and runs an installation. It depends on `Arronix.Common` alone, for the
+  installation layout, and nothing that runs depends on it.
 
 A separately shipped provider compiles against a media domain without taking the extension: an
 `ICataloger<Movie>` or `ICurator<Movie>` needs Abstractions and `Arronix.Media.Movies`, two media packages

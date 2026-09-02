@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 
-# G07B proof foundation. It owns its external cataloger, package root, client output, SQLite file and
-# evidence. It deliberately stops at a documented integration dependency: provider discovery currently
-# cannot return an independently contributed cataloger for a kind or disclose its catalog scheme.
+# G07B proof foundation. It owns its external cataloger, its installation and its evidence.
+#
+# The installation itself is not this script's business any more. Composing one - publishing the server, the
+# client and the packages into a directory the server can read as a whole - is owned by
+# src/Arronix.Installation, and this proof consumes that route rather than restating it. What remains here
+# is the proof's own driving: an external cataloger built against the packed public contracts, a port it
+# refuses to share, two API lifetimes across one restart, and the browser and store phases.
 
 set -euo pipefail
 
@@ -12,11 +16,13 @@ dotnet_command=${DOTNET_COMMAND:-dotnet}
 proof_root="$repository_root/artifacts/g07b-browser-proof"
 feed_root="$proof_root/feed"
 cache_root="$proof_root/nuget-cache"
-package_root="$proof_root/packages"
-client_root="$proof_root/client"
-state_root="$proof_root/state"
-database="$proof_root/store/arronix.db"
+installation_root="$proof_root/installation"
+server_root="$installation_root/server"
+package_root="$installation_root/packages"
+database="$installation_root/state/arronix.db"
+api="$server_root/Arronix.Api.dll"
 evidence_root="$proof_root/evidence"
+composer_project="$repository_root/src/Arronix.Installation/Arronix.Installation.csproj"
 provider_project="$repository_root/eng/proofs/fixtures/g07b-provider/Proof.Movies.Catalog/Proof.Movies.Catalog.csproj"
 port=5225
 browser=0
@@ -119,7 +125,7 @@ trap 'on_signal TERM' TERM
 trap 'on_signal HUP' HUP
 
 rm -rf "$proof_root"
-mkdir -p "$feed_root" "$cache_root" "$package_root" "$client_root" "$state_root" "$(dirname "$database")" "$evidence_root"
+mkdir -p "$feed_root" "$cache_root" "$evidence_root"
 
 echo "== build and publish the public packages =="
 "$dotnet_command" build "$repository_root/Arronix.sln" --configuration Release -warnaserror
@@ -137,33 +143,44 @@ provider_properties=(
 "$dotnet_command" restore "$provider_project" --source "$feed_root" --packages "$cache_root" "${provider_properties[@]}"
 "$dotnet_command" build "$provider_project" --configuration Release --no-restore -warnaserror "${provider_properties[@]}"
 
-echo "== stage only published payloads =="
-"$dotnet_command" publish "$repository_root/src/Arronix.Plugin.Movies/Arronix.Plugin.Movies.csproj" --configuration Release --no-build --output "$package_root/movies"
-"$dotnet_command" publish "$repository_root/src/Arronix.Format.Video/Arronix.Format.Video.csproj" --configuration Release --no-build --output "$package_root/arronix.format.video"
-"$dotnet_command" publish "$provider_project" --configuration Release --no-build --output "$package_root/proof.movies.catalog" "${provider_properties[@]}"
-"$dotnet_command" publish "$repository_root/src/Arronix.Client/Arronix.Client.csproj" --configuration Release --output "$client_root"
+# The product's own composition route, restricted to the two packages this proof is about, so the
+# unrelated catalogs an ordinary installation ships cannot appear in the provider evidence below.
+echo "== compose the installation through the owned composition route =="
+DOTNET_COMMAND="$dotnet_command" "$dotnet_command" run --project "$composer_project" --configuration Release -- \
+    install --root "$installation_root" --package arronix.format.video --package movies
 
-api="$repository_root/src/Arronix.Api/bin/Release/net11.0/Arronix.Api.dll"
-ASPNETCORE_URLS="http://127.0.0.1:$port" \
-ASPNETCORE_ENVIRONMENT=Production \
-ASPNETCORE_CONTENTROOT="$repository_root/src/Arronix.Api" \
-Arronix__Plugins__RootFolder="$package_root" \
-Arronix__Plugins__StateFolder="$state_root" \
-Arronix__Store__DataSource="$database" \
-Arronix__Api__ClientRoot="$client_root/wwwroot" \
-    "$dotnet_command" "$api" > "$evidence_root/server.log" 2>&1 &
-api_pid=$!
+echo "== install the proof-only cataloger beside them =="
+"$dotnet_command" publish "$provider_project" --configuration Release --no-build --output "$package_root/proof.movies.catalog" "${provider_properties[@]}"
+
+# One API lifetime, started from the installation it belongs to. The server reads its packages, its state,
+# its database and its client from that installation's own configuration; this proof states only the
+# address it owns.
+start_api() {
+    local log="$1"
+    (
+        cd "$server_root" || exit 1
+        exec env \
+            ASPNETCORE_URLS="http://127.0.0.1:$port" \
+            ASPNETCORE_ENVIRONMENT=Production \
+            "$dotnet_command" "$api"
+    ) > "$log" 2>&1 &
+    api_pid=$!
+}
+
+wait_for_ready() {
+    local log="$1"
+    for _ in $(seq 1 60); do
+        if curl -fsS -o /dev/null "$address/api" 2>/dev/null; then return 0; fi
+        if ! is_running "$api_pid"; then echo "error: API stopped before readiness; see $log" >&2; return 1; fi
+        sleep 1
+    done
+    echo "error: API did not become ready within 60 seconds; see $log" >&2
+    return 1
+}
+
 address="http://127.0.0.1:$port"
-ready=0
-for _ in $(seq 1 60); do
-    if curl -fsS -o /dev/null "$address/api" 2>/dev/null; then ready=1; break; fi
-    if ! is_running "$api_pid"; then echo "error: API stopped before readiness; see $evidence_root/server.log" >&2; exit 1; fi
-    sleep 1
-done
-if [[ $ready -ne 1 ]]; then
-    echo "error: API did not become ready within 60 seconds; see $evidence_root/server.log" >&2
-    exit 1
-fi
+start_api "$evidence_root/server.log"
+wait_for_ready "$evidence_root/server.log"
 curl -fsS "$address/api/v1/providers?family=Cataloger&kind=movies" > "$evidence_root/providers-for-movies.json"
 curl -fsS "$address/api/v1/providers?family=Cataloger" > "$evidence_root/catalogers.json"
 curl -fsS "$address/api/v1/client-contracts" > "$evidence_root/client-contracts.json"
@@ -302,25 +319,8 @@ snapshot refreshed monitored
 stop_api
 # A restart uses the persisted state but a new API process.  It never reuses a browser tab from before the
 # restart, which keeps the proof claim intentionally narrower than stale-tab continuity.
-ASPNETCORE_URLS="http://127.0.0.1:$port" \
-ASPNETCORE_ENVIRONMENT=Production \
-ASPNETCORE_CONTENTROOT="$repository_root/src/Arronix.Api" \
-Arronix__Plugins__RootFolder="$package_root" \
-Arronix__Plugins__StateFolder="$state_root" \
-Arronix__Store__DataSource="$database" \
-Arronix__Api__ClientRoot="$client_root/wwwroot" \
-    "$dotnet_command" "$api" > "$evidence_root/server-restart.log" 2>&1 &
-api_pid=$!
-ready=0
-for _ in $(seq 1 60); do
-    if curl -fsS -o /dev/null "$address/api" 2>/dev/null; then ready=1; break; fi
-    if ! is_running "$api_pid"; then echo "error: API stopped before restart readiness; see $evidence_root/server-restart.log" >&2; exit 1; fi
-    sleep 1
-done
-if [[ $ready -ne 1 ]]; then
-    echo "error: API did not become ready after restart within 60 seconds; see $evidence_root/server-restart.log" >&2
-    exit 1
-fi
+start_api "$evidence_root/server-restart.log"
+wait_for_ready "$evidence_root/server-restart.log"
 run_browser_phase restart "$item_ref"
 snapshot restarted refreshed
 

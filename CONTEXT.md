@@ -26,6 +26,25 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
 - `Arronix.Provider.Tmdb` is the first production provider package. It depends on Abstractions and the Movies
   domain only, closes `ICataloger<Movie>` and `ICurator<Movie>`, and owns all TMDb settings, transport, DTO,
   identity, marker, and mapping vocabulary.
+- `Arronix.Sample.MovieCatalog` is a separately packaged sample catalog with exactly the TMDb package's
+  topology: Abstractions plus the movies media domain, no package references, its own `plugin.json`, and its
+  own `ICataloger<Movie>` over the public contracts. It is the identity authority for the `sample` scheme,
+  needs no settings, and owns every invented title it answers with. It exists so an installation can be
+  clicked through before any account exists anywhere; architecture rules hold both that its topology matches
+  a production provider's and that no platform, format, movies or vendor project names its content.
+- `Arronix.Common.Installation.InstallationLayout` is the one description of an installed Arronix on disk:
+  the published server, the published client's static root, one folder per installed package, the
+  per-package state folder, the state folder holding the database, and the manifest. It computes paths and
+  creates nothing, so the composer that writes an installation, the server that runs inside one and the
+  reset that empties one agree by construction. It is unrelated to the client's contract *installation*,
+  which is the set of shared contract assemblies a browser page has admitted.
+- `src/Arronix.Installation` is the one owned route from this repository's deliverables to a running
+  Arronix. It publishes the server, the client and each declared package into an installation, records the
+  installation root in the installed server's own `appsettings.json`, chooses or refuses a loopback port,
+  starts exactly the process it owns, configures the sample catalog through the public API when that package
+  is installed, prints the address, packages and state paths, and stops only its own process within a
+  bounded effort. It is a tool rather than a layer: it depends on `Arronix.Common` for the layout, and
+  nothing that runs depends on it. `eng/run-arronix.sh` resolves the pinned SDK and hands it every argument.
 - `Arronix.Generators` emits closed entity readers and descriptor projections while a media extension compiles. It is an analyzer-only build dependency and is never loaded as a plugin runtime dependency.
 - `Arronix.Sdk` is the packaging-only extension-authoring metapackage. It depends on
   `Arronix.Abstractions`, carries `Arronix.Generators` under `analyzers/dotnet/cs`, and contributes no
@@ -111,6 +130,14 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
 - Search, refresh, rescan, monitoring, availability, rename, add, remove, exclusion, and group operations are platform-standard actions derived by Host. A media type supplies only facts that specialize them, including names, identity roles, availability, and grouping capabilities.
 - `StandardMediaAction` is the semantic action identity. String action and parameter identifiers are stable wire spellings only; Client does not repeat them as private conventions.
 - `ActionRequest` is one shared typed wire contract. Its subjects are `MediaItemRef` values; only descriptor-defined parameter values cross as keyed text.
+- An installation is one directory and one fact. Where its packages, its per-package state, its database and
+  its client live are four settings that stay independently configurable, but a deployment that declares
+  `Arronix:Installation:Root` derives all four from it, and that derivation outranks earlier configuration
+  sources for exactly those four paths and nothing else. Producing an installation is owned by
+  `src/Arronix.Installation`: every payload comes from a real publish into a cleared directory, the
+  deliverable set is declared rather than globbed so a loader fixture cannot be installed as product, and
+  state is never cleared by composing. Proof scripts consume that route rather than restating it, and no
+  runnable path serves a payload out of a project's build directory.
 
 ## Active migration state
 
@@ -424,6 +451,16 @@ work does not substitute for closing an earlier dependency.
   non-final on ownership: 187 cases have provisional owners and 114 have unresolved ownership. The upstream
   feature inventory, current independent clean-room corpus and field-observation corpus remain missing.
 
+A first-class run path is in place and is deliberately outside the gate sequence, because it is a
+packaging and composition fact rather than a compatibility claim. `bash eng/run-arronix.sh` builds,
+installs and runs the real deliverables — the published `Arronix.Api`, the published `Arronix.Client`, the
+plugin loader, and separately published Video, Movies, reference-language, TMDb and sample-catalog packages
+— against durable SQLite catalog and library state under `artifacts/installation`. It has been exercised in
+a real browser: dashboard, the generic Movies workspace, catalog search over the sample catalog, add, open,
+monitoring, refresh, the contracts page, the provider settings page, and persistence of both catalog records
+and user-owned monitoring across a restart. It claims nothing about acquisition, import, or *arr feature
+coverage.
+
 The five platform services a running host needs are done and are no longer between G07.1 and G07.2: an
 ordinary server composes `ICacheProvider`, `ITelemetryEmitter`, `IEventPublisher`, `IHostRuntimeInfo` and
 `IOperatingSystemInfo`, and activates the independently published Video and Movies packages installed beside
@@ -436,6 +473,27 @@ duplicated checklist drifting from current state.
 
 ## Technical debt
 
+- Every browse axis other than `all` refuses with HTTP 400 in a real installation. The durable store filters
+  catalog records by title text only and says so rather than returning an unfiltered page, so the Movies
+  workspace's Collections, By year, By status, By genres and every other derived axis produce a visible
+  refusal naming `arronix.group-axis`. The refusal is correct and the axes are real; what is missing is
+  store-side filtering behind them. This is the largest visible gap in the workspace an evaluator sees.
+- A fresh installation reports health as degraded because no library root folder is configured. That is
+  accurate and is deliberately not papered over: the installation composer does not invent a media library,
+  and importing files has no durable home yet.
+- The client renders an integer field with a group separator, so a movie's year reads `1,998`. The fix is a
+  presentation hint on a numeric field rather than a global format change, because vote counts on the same
+  page should keep their separators; it is a contract decision, not a client bug fix.
+- The published client's `index.html` still declares only the deprecated `apple-mobile-web-app-capable`
+  meta, which every Chromium console reports on every page load.
+- The retained G07B proof now composes its installation through the owned route and starts the installed
+  server, so it no longer publishes payloads by hand or runs the API out of `bin`. It still owns its port
+  refusal, its two API lifetimes and its bounded teardown, because it needs a deterministic restart and a
+  refusal the product launcher does not expose. That duplication is deliberate and bounded to process
+  driving.
+- `src/Arronix.Installation` invokes `dotnet publish` per deliverable rather than driving MSBuild in
+  process, so a full composition rebuilds each project's closure separately. It is correct and incremental
+  but not fast; a first run publishes the Blazor client, which dominates.
 - `MediaKindModel`, legacy shapes, `ParsedRelease`, and quality ladders remain during migration.
 - Durable catalog records need the item type to live in a different assembly from the media type that
   declares it. One source generator cannot read another's output in the same compilation, so
@@ -493,10 +551,11 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current rail reports 3,509 passed, 302 skipped, zero failed and zero inconclusive from 3,811 cases
-  across 14 test projects. Of the skips, 301 are Movies cases and one is an architecture case; all are
-  registered in the compatibility ledger. Every later passing-suite claim must report its observed skip
-  count and ratchet result.
+- The current rail reports 3,683 enabled and passed, 302 skipped, zero failed and zero inconclusive from
+  3,985 cases across 14 test projects, with all three required sentinels and the compiler-input provenance
+  checks green. Of the skips, 301 are Movies cases and one is an architecture case; all are registered in
+  the compatibility ledger. Every later passing-suite claim must report its observed skip count and ratchet
+  result.
 - The Movies test project imports the movies media domain through one project-level `global using`. The
   regression sources that name `Movie` are locked by the compatibility ledger, so the import is stated once
   in `GlobalUsings.cs` rather than repeated per file; no locked source changed and no ledger transition was

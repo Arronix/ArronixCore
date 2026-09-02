@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Arronix.Installation</RootNamespace>
+    <AssemblyName>Arronix.Installation</AssemblyName>
+    <Version>0.1.0</Version>
+    <Description>The one route that turns this repository's deliverables into a running Arronix installation. It publishes the server, the client and the installed packages into one installation directory, runs the installed server on a loopback port it chose or refused, and stops only the process it started.</Description>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <!--
+         Enabled for one generated marshalling stub and nothing else. Asking a process to stop politely on
+         a Unix-like system means sending it a signal, and the framework exposes no managed way to send one;
+         the source-generated interop for libc's kill is emitted into an unsafe context whether or not its
+         arguments need marshalling. No unsafe code is written by hand in this project.
+    -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!--
+       This tool is not part of the running platform and nothing in the platform references it. It takes
+       Arronix.Common for one type: the installation layout. Re-deriving those paths here instead would
+       recreate exactly the defect it exists to remove - a composer and a server that agree about where an
+       installation keeps its packages, its state and its client only because one author wrote both.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Common\Arronix.Common.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Arronix.Installation.Tests" />
+  </ItemGroup>
+</Project>

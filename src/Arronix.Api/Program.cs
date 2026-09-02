@@ -23,6 +23,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 // whole capability model rests on being able to say exactly what is in the container.
 var builder = WebApplication.CreateBuilder(args);
 
+// --- where this server is installed ---------------------------------------------------------------
+// Nothing if no installation root is configured. When one is, the packages folder, the per-package state
+// folder, the database file and the client's static root are all derived from it, so an installation is
+// one fact rather than four settings that have to be kept in agreement by whoever launched the process.
+builder.Configuration.AddArronixInstallation(builder.Environment.ContentRootPath);
+
 // --- the platform ---------------------------------------------------------------------------------
 // One call brings up configuration, the clock, the filesystem, the extension loader and its isolation,
 // the media-kind and provider registries, storage, the scheduler and health aggregation. Extensions are

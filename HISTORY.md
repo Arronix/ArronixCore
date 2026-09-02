@@ -1,5 +1,65 @@
 # Arronix History
 
+## 2026-09-03 — Make the repository produce an installation somebody can open
+
+Arronix could be built, tested and proved, and could not be installed. Every deliverable published on its
+own, and nothing owned the step that puts them together: the server read four unrelated settings — a package
+folder, a package state folder, a database file and a client root — and only something outside the product
+could make them describe the same installation. The G07B proof script was that something. That is why the
+running baseline existed only because its server environment had been reconstructed by hand, and it is a
+missing composition boundary rather than a missing convenience.
+
+Two production concepts close it, and a wrapper around the proof script would have closed neither.
+
+`Arronix.Common.Installation.InstallationLayout` is the one description of an installed Arronix on disk: a
+root, and beneath it the published server, the published client's static root, one folder per installed
+package, the per-package state folder, the state folder holding the database, and the manifest. It computes
+paths and creates nothing, so the composer that writes an installation, the server that runs inside one and
+the reset that empties one agree by construction rather than by convention. `Arronix:Installation:Root` is
+the configuration key that names it. When it is set, `Arronix.Api` derives those four settings from it and
+that derivation outranks earlier sources for exactly those paths and nothing else; a relative value resolves
+against the server's content root, so an installation can be moved or copied without editing anything
+inside it. When it is absent, nothing changes.
+
+`src/Arronix.Installation` is the one owned route from these deliverables to a running Arronix, invoked as
+`bash eng/run-arronix.sh`, which only resolves the pinned SDK. It publishes the server, the client and each
+declared package into an installation, records the installation root in the installed server's own
+`appsettings.json`, chooses or refuses a loopback port, starts exactly the process it owns, prints the
+address, the installed packages and the state paths, stays up until interrupted, and then stops only its own
+process — polite request, bounded wait, forced stop, bounded wait, visible failure with a process identifier
+rather than an abandoned process. `reset` empties the state an installation accumulated; `reset --all`
+removes the installation directory; neither can touch a path outside the root. Every payload comes from a
+real publish into a cleared directory, and the deliverable set is declared rather than globbed, because six
+projects here carry a package manifest without being product: three are loader fixtures owned by test
+suites, and three are media extensions still on the legacy imperative seams.
+
+`Arronix.Sample.MovieCatalog` makes the installation evaluable without an account anywhere. It is a real,
+separately packaged `ICataloger<Movie>` with exactly the production TMDb package's topology — Abstractions
+plus the movies media domain, no package references, its own manifest — and it owns every invented title it
+answers with. The run configures it once through the public provider route and never again. The G07B
+fixture's semantics were deliberately not moved into it: that fixture exists to drive a revision-controlled
+refresh and a withdrawn record over one identifier, which is proof choreography rather than sample content,
+and moving it would have degraded both.
+
+The G07B proof now consumes the composition route instead of restating it. Its hand-written Movies, Video
+and client publishes are gone, and it no longer runs the API out of `src/Arronix.Api/bin`; it composes an
+installation restricted to the two packages it is about, installs its own cataloger beside them, and starts
+the installed server from the installation's own configuration. It keeps its port refusal, its two API
+lifetimes and its bounded teardown, which are proof driving rather than composition. Its evidence identity
+is unchanged: the reworked script passed its own 46 browser checks with provider, API-retry and six
+store-phase assertions.
+
+Exercised in a real browser against a composed installation on a chosen loopback port: the dashboard
+reported 5 of 5 installed extensions running and one configured provider in service; the generic Movies
+workspace rendered its derived browse axes, filters, sorts and workbenches; catalog search over the sample
+scheme returned typed results with derived lifecycle stages; add, open, monitoring and refresh each
+succeeded and reported themselves; the contracts page verified and loaded both shared contract assemblies
+from this host; and after stopping and restarting the server, both catalog records and a user-owned
+monitoring choice were still there. The console carried no error attributable to the product. Two visible
+defects were recorded rather than fixed here, because each is a contract or presentation decision rather
+than a composition one: every browse axis other than `all` refuses with HTTP 400 because the durable store
+filters catalog records by title text only, and a movie's year renders as `1,998`.
+
 ## 2026-08-28 — Start G08 with a generated classification inventory
 
 The compatibility ratchet now emits an optional typed, versioned classification report only after ledger,

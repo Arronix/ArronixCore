@@ -60,6 +60,12 @@ internal static class RepositoryLayout
     /// <summary>The independently shipped production TMDb provider package.</summary>
     public const string TmdbProvider = "Arronix.Provider.Tmdb";
 
+    /// <summary>The independently shipped sample movie catalog package.</summary>
+    public const string SampleMovieCatalog = "Arronix.Sample.MovieCatalog";
+
+    /// <summary>The tool that composes and runs an installation. Never part of the running platform.</summary>
+    public const string InstallationComposer = "Arronix.Installation";
+
     /// <summary>The reference language implementation assembly.</summary>
     public const string ReferenceLanguages = "Arronix.Language.Reference";
 

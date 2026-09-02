@@ -55,5 +55,8 @@
                       ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Arronix.Format.Video.Contributions\Arronix.Format.Video.Contributions.csproj"
                       ReferenceOutputAssembly="false" />
+    <!-- The sample catalog is held to the production provider's binary topology, so it has to be built. -->
+    <ProjectReference Include="..\Arronix.Sample.MovieCatalog\Arronix.Sample.MovieCatalog.csproj"
+                      ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>
