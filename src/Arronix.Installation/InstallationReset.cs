@@ -8,7 +8,8 @@ namespace Arronix.Installation;
 /// <param name="Removed">The paths this reset deleted, in the order they were removed.</param>
 /// <param name="Remaining">
 /// Entries directly inside the root a <c>reset --all</c> could not remove the root for, because this tool
-/// does not own them. Always empty for a narrow reset, and for a wide one that did not empty the root.
+/// does not own them. Empty for a narrow reset, and for a wide reset that did empty and remove the root;
+/// non-empty when unrelated entries prevented the root from being removed.
 /// </param>
 internal sealed record ResetOutcome(IReadOnlyList<string> Removed, IReadOnlyList<string> Remaining);
 

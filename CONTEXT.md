@@ -572,8 +572,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current rail reports 3,758 enabled and passed, 302 skipped, zero failed and zero inconclusive from
-  4,060 cases across 15 test projects, with all three required sentinels and the compiler-input provenance
+- The current rail reports 3,771 enabled and passed, 302 skipped, zero failed and zero inconclusive from
+  4,073 cases across 15 test projects, with all three required sentinels and the compiler-input provenance
   checks green. Of the skips, 301 are Movies cases and one is an architecture case; all are registered in
   the compatibility ledger. Every later passing-suite claim must report its observed skip count and ratchet
   result.

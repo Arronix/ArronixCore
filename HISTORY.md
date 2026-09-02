@@ -81,7 +81,7 @@ file and the root directory in place while removing everything this tool had ins
 composed installation's manifest correctly declaring all three packages, including the externally named
 fixture.
 
-Full rail: 15 test projects, 4,060 total cases, 3,758 enabled and passed, 0 failed, 302 skipped (unchanged),
+Full rail: 15 test projects, 4,073 total cases, 3,771 enabled and passed, 0 failed, 302 skipped (unchanged),
 0 inconclusive, all three required sentinels and compiler-input provenance green.
 
 ## 2026-09-03 — Make the repository produce an installation somebody can open
