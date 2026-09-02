@@ -26,11 +26,9 @@ try
     var repositoryRoot = RepositoryRoot();
     var layout = InstallationLayout.At(options.Root, repositoryRoot);
 
-    if (string.Equals(layout.Root, repositoryRoot, StringComparison.Ordinal))
-    {
-        throw new InstallationException(
-            "An installation directory cannot be the repository itself. Name one beneath it.");
-    }
+    // A supplied root is never self-authorizing. This runs before every command, not only the destructive
+    // ones, because composing already clears and recreates whole subtrees under whatever root it is given.
+    InstallationRootGuard.EnsureSafe(layout.Root, repositoryRoot);
 
     return options.Command switch
     {
@@ -57,7 +55,30 @@ static int Install(string repositoryRoot, InstallationLayout layout, CommandLine
 static InstallationManifest Compose(string repositoryRoot, InstallationLayout layout, CommandLine options)
 {
     var dotnet = DotNetCli.Resolve();
-    var packages = Deliverables.Select(options.Samples, options.Packages);
+    var declared = Deliverables.Select(repositoryRoot, options.Samples, options.Packages);
+
+    var packages = declared
+        .Select(package => new PackageSource(
+            package.Id,
+            Deliverables.ProjectFile(repositoryRoot, package.ProjectName),
+            package.Role))
+        .Concat(options.ExternalPackages.Select(external => new PackageSource(
+            external.Id,
+            Path.GetFullPath(external.ProjectFile),
+            PackageRole.Fixture)))
+        .ToArray();
+
+    var duplicate = packages
+        .GroupBy(static package => package.Id, StringComparer.Ordinal)
+        .FirstOrDefault(static group => group.Count() > 1);
+
+    if (duplicate is not null)
+    {
+        throw new InstallationException(
+            $"'{duplicate.Key}' is named more than once between --package, its dependencies and "
+            + "--external-package. Each package identifier this run installs must be unique.");
+    }
+
     var composer = new InstallationComposer(dotnet, repositoryRoot, layout);
 
     return composer.Install(packages, static message => Console.WriteLine($"==> {message}"));
@@ -138,16 +159,34 @@ static int Reset(InstallationLayout layout, CommandLine options)
         throw new InstallationException($"There is no installation at '{layout.Root}'.");
     }
 
+    // A root is never self-authorizing for a destructive operation. This is the ownership check: the exact
+    // target must carry a manifest this tool wrote, whose schema, identity and every declared path validate
+    // against what is actually on disk. Anything else — an arbitrary directory that happens to be named
+    // right, or one whose manifest has drifted from reality — is refused rather than trusted.
+    //
+    // A valid manifest proves the declared Arronix payload underneath the root; it proves nothing about any
+    // other entry that root happens to contain. A reset therefore never deletes the root wholesale — only
+    // the finite set of paths this tool itself ever creates, named below, are ever touched.
+    InstallationManifest.ReadFrom(layout);
+
     // Narrow by default and explicit when wide. The paths a reset owns are the ones an installation
     // accumulates by being used; the published server, client and packages are rebuilt by composing again
     // and are not a reset's business.
-    var targets = options.ResetEverything
-        ? new[] { layout.Root }
+    var owned = options.ResetEverything
+        ? new[]
+        {
+            layout.ServerFolder,
+            layout.ClientFolder,
+            layout.PackagesFolder,
+            layout.PackageStateFolder,
+            layout.StateFolder,
+            layout.ManifestFile,
+        }
         : [layout.StateFolder, layout.PackageStateFolder];
 
     var removed = new List<string>();
 
-    foreach (var target in targets)
+    foreach (var target in owned)
     {
         if (!layout.Contains(target))
         {
@@ -160,9 +199,31 @@ static int Reset(InstallationLayout layout, CommandLine options)
             Directory.Delete(target, recursive: true);
             removed.Add(target);
         }
+        else if (File.Exists(target))
+        {
+            File.Delete(target);
+            removed.Add(target);
+        }
     }
 
-    Report.Reset(layout, removed);
+    var remaining = Array.Empty<string>();
+
+    if (options.ResetEverything && Directory.Exists(layout.Root))
+    {
+        remaining = Directory.EnumerateFileSystemEntries(layout.Root)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        // Only ever removes a directory this loop just emptied, and only because it is now provably empty —
+        // never a recursive delete of a root that might still hold something this tool does not own.
+        if (remaining.Length == 0)
+        {
+            Directory.Delete(layout.Root);
+            removed.Add(layout.Root);
+        }
+    }
+
+    Report.Reset(layout, removed, remaining);
     return 0;
 }
 

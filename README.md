@@ -50,10 +50,22 @@ bash eng/run-arronix.sh --port 5300     # take that port, or refuse if something
 bash eng/run-arronix.sh --no-build      # start what is already installed
 bash eng/run-arronix.sh --open          # open the address once it answers
 bash eng/run-arronix.sh install         # compose the installation without running it
+bash eng/run-arronix.sh --package movies       # install just movies and what it depends on
 bash eng/run-arronix.sh reset           # empty its state, leaving the installed code
-bash eng/run-arronix.sh reset --all     # remove the installation directory
+bash eng/run-arronix.sh reset --all     # remove what this tool installed, leaving anything else there alone
 bash eng/run-arronix.sh --help          # every argument
 ```
+
+Composing never clears or partially overwrites a live installation: the server, the client and every
+package are published and validated in a sibling staging directory first, and only a fully validated
+generation is promoted into place, keeping the previous one as a backup restored on a failed promotion. A
+narrowed `--package` selection still installs whatever it depends on — `--package movies` alone still
+installs the video package Movies requires — read from each package's own manifest. A supplied `--root` is
+never taken on trust: this repository itself, an ancestor of it, any other directory inside the checkout, and
+a short list of other broad or sensitive directories are all refused outright, and `reset`/`reset --all`
+additionally require the target to already carry a manifest this tool wrote that matches what is actually on
+disk. `reset --all` removes only what this tool installed, never a directory recursively; it reports, and
+leaves alone, anything else it finds there.
 
 The installed server knows which installation it belongs to. `Arronix:Installation:Root` in
 `artifacts/installation/server/appsettings.json` is what makes the packages folder, the per-package state

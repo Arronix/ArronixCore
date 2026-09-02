@@ -86,7 +86,11 @@ internal static class Report
                                      (default: the first free port from 5227)
               --no-build             run what is already installed, publishing nothing
               --no-sample-catalog    install no sample data
-              --package ID           install only the named package; repeatable
+              --package ID           install only the named package (with its dependencies); repeatable
+              --external-package ID=PROJECT
+                                     also install the package that PROJECT publishes, under ID;
+                                     repeatable. For proofs and fixtures that need a real composed
+                                     installation beside a package this repository does not ship.
               --open                 open the address in the default browser once it answers
               --help                 this text
             """);
@@ -95,22 +99,40 @@ internal static class Report
     /// <summary>Writes what a reset removed.</summary>
     /// <param name="layout">The installation.</param>
     /// <param name="removed">The paths that were removed.</param>
-    public static void Reset(InstallationLayout layout, IReadOnlyList<string> removed)
+    /// <param name="remaining">
+    /// Entries a <c>reset --all</c> found directly under the root that this tool does not own, and therefore
+    /// left in place along with the root itself.
+    /// </param>
+    public static void Reset(InstallationLayout layout, IReadOnlyList<string> removed, IReadOnlyList<string> remaining)
     {
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(removed);
+        ArgumentNullException.ThrowIfNull(remaining);
 
         Console.WriteLine($"Installation {layout.Root}");
 
         if (removed.Count == 0)
         {
             Console.WriteLine("  Nothing to remove; it held none of the paths a reset owns.");
-            return;
+        }
+        else
+        {
+            foreach (var path in removed)
+            {
+                Console.WriteLine($"  Removed {Path.GetRelativePath(layout.Root, path)}");
+            }
         }
 
-        foreach (var path in removed)
+        if (remaining.Count > 0)
         {
-            Console.WriteLine($"  Removed {Path.GetRelativePath(layout.Root, path)}");
+            Console.WriteLine(
+                "  Left in place, because this tool did not create it and a valid installation manifest "
+                + "does not prove ownership of anything beyond what it declares:");
+
+            foreach (var path in remaining)
+            {
+                Console.WriteLine($"    {Path.GetRelativePath(layout.Root, path)}");
+            }
         }
     }
 
@@ -118,6 +140,7 @@ internal static class Report
     {
         PackageRole.NeedsCredentials => "  — needs credentials before it can answer",
         PackageRole.Sample => "  — sample data, shipped for evaluation",
+        PackageRole.Fixture => "  — named on the command line; not shipped by this repository",
         PackageRole.Product => string.Empty,
         _ => string.Empty,
     };

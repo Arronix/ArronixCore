@@ -103,7 +103,9 @@ public sealed class InstallationCompositionTests
 
     /// <remarks>
     /// The composer is a tool, not a layer. Anything in the running platform that referenced it would make
-    /// the product depend on the thing that installs it.
+    /// the product depend on the thing that installs it. Its own test project is the one deliberate
+    /// exception: proving the composer's behaviour needs a reference to it, and a test project is never part
+    /// of what runs.
     /// </remarks>
     [Test]
     public void NothingInTheRunningPlatformReferencesTheComposer()
@@ -112,6 +114,10 @@ public sealed class InstallationCompositionTests
             .Where(static project => !string.Equals(
                 project,
                 RepositoryLayout.InstallationComposer,
+                StringComparison.Ordinal))
+            .Where(static project => !string.Equals(
+                project,
+                RepositoryLayout.InstallationComposer + ".Tests",
                 StringComparison.Ordinal))
             .Where(static project => ProjectFile.Load(project).ProjectReferences
                 .Contains(RepositoryLayout.InstallationComposer, StringComparer.Ordinal))

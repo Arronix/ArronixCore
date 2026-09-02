@@ -13,7 +13,7 @@ namespace Arronix.Installation;
 /// payload a publish computes, and installing the second one is the whole difference between a staged
 /// closure and a listing of whatever MSBuild happened to leave behind.
 /// </remarks>
-internal sealed class DotNetCli(string command)
+internal sealed class DotNetCli(string command) : IDotNetCli
 {
     /// <summary>Gets the command used to invoke the SDK.</summary>
     public string Command { get; } = command;

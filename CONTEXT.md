@@ -39,12 +39,29 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
   reset that empties one agree by construction. It is unrelated to the client's contract *installation*,
   which is the set of shared contract assemblies a browser page has admitted.
 - `src/Arronix.Installation` is the one owned route from this repository's deliverables to a running
-  Arronix. It publishes the server, the client and each declared package into an installation, records the
-  installation root in the installed server's own `appsettings.json`, chooses or refuses a loopback port,
-  starts exactly the process it owns, configures the sample catalog through the public API when that package
-  is installed, prints the address, packages and state paths, and stops only its own process within a
-  bounded effort. It is a tool rather than a layer: it depends on `Arronix.Common` for the layout, and
-  nothing that runs depends on it. `eng/run-arronix.sh` resolves the pinned SDK and hands it every argument.
+  Arronix. It publishes the server, the client and each declared package into a sibling staging directory,
+  validates the whole staged generation — entry assembly, client index, every package manifest, and that
+  every package's own declared dependency is also present — and only then promotes it into the live
+  installation, keeping the previous generation as a bounded backup it restores on a failed promotion; the
+  live installation is never cleared or partially overwritten while that validation is still running. It
+  records the installation root in the installed server's own `appsettings.json`, chooses or refuses a
+  loopback port, starts exactly the process it owns, configures the sample catalog through the public API
+  when that package is installed, prints the address, packages and state paths, and stops only its own
+  process within a bounded effort. Selecting a package selects its whole dependency closure, read from each
+  candidate's own `plugin.json` rather than a second hand-maintained graph, so `--package movies` alone still
+  installs the `arronix.format.video` package it requires. `--external-package id=path` installs one package
+  named by its own project file rather than declared here, for a proof or fixture that needs a real composed
+  installation beside a package this repository does not ship; it is described as such in the manifest rather
+  than presented as product. A supplied `--root` is never self-authorizing: every command refuses the
+  repository itself or any ancestor of it, a repository descendant other than its ignored `artifacts` scratch
+  area, and a handful of other broad or sensitive directories, and resolves symbolic links before deciding,
+  refusing outright if one is found in the root's path. `reset` and `reset --all` additionally require the
+  exact target to already carry a manifest this tool wrote whose schema, identity and every declared path
+  validate against what is actually on disk; `reset --all` then removes only the finite set of paths this
+  tool itself ever creates — never the root directory wholesale — and removes the now-empty root only when
+  nothing else is left in it, reporting anything it left behind. It is a tool rather than a layer: it depends
+  on `Arronix.Common` for the layout, and nothing that runs depends on it except its own `Arronix.Installation.Tests`
+  project. `eng/run-arronix.sh` resolves the pinned SDK and hands it every argument.
 - `Arronix.Generators` emits closed entity readers and descriptor projections while a media extension compiles. It is an analyzer-only build dependency and is never loaded as a plugin runtime dependency.
 - `Arronix.Sdk` is the packaging-only extension-authoring metapackage. It depends on
   `Arronix.Abstractions`, carries `Arronix.Generators` under `analyzers/dotnet/cs`, and contributes no
@@ -134,10 +151,11 @@ The plugin-consumable `Arronix.Abstractions` contract line is `0.9.0`. First-par
   its client live are four settings that stay independently configurable, but a deployment that declares
   `Arronix:Installation:Root` derives all four from it, and that derivation outranks earlier configuration
   sources for exactly those four paths and nothing else. Producing an installation is owned by
-  `src/Arronix.Installation`: every payload comes from a real publish into a cleared directory, the
-  deliverable set is declared rather than globbed so a loader fixture cannot be installed as product, and
-  state is never cleared by composing. Proof scripts consume that route rather than restating it, and no
-  runnable path serves a payload out of a project's build directory.
+  `src/Arronix.Installation`: every payload comes from a real publish into a cleared staging directory,
+  validated there and only then promoted into the live installation, the deliverable set is declared rather
+  than globbed so a loader fixture cannot be installed as product, and state is never cleared by composing.
+  Proof scripts consume that route rather than restating it, and no runnable path serves a payload out of a
+  project's build directory.
 
 ## Active migration state
 
@@ -487,10 +505,13 @@ duplicated checklist drifting from current state.
 - The published client's `index.html` still declares only the deprecated `apple-mobile-web-app-capable`
   meta, which every Chromium console reports on every page load.
 - The retained G07B proof now composes its installation through the owned route and starts the installed
-  server, so it no longer publishes payloads by hand or runs the API out of `bin`. It still owns its port
-  refusal, its two API lifetimes and its bounded teardown, because it needs a deterministic restart and a
-  refusal the product launcher does not expose. That duplication is deliberate and bounded to process
-  driving.
+  server, so it no longer publishes payloads by hand or runs the API out of `bin`. Its proof-only cataloger is
+  named to the composer as an `--external-package`, in the same call that installs the two product packages
+  it is about, rather than published into the packages folder by hand afterward; the installation manifest
+  therefore fully and accurately declares everything on disk, including the fixture, rather than a package
+  running behind its back. It still owns its port refusal, its two API lifetimes and its bounded teardown,
+  because it needs a deterministic restart and a refusal the product launcher does not expose. That
+  duplication is deliberate and bounded to process driving.
 - `src/Arronix.Installation` invokes `dotnet publish` per deliverable rather than driving MSBuild in
   process, so a full composition rebuilds each project's closure separately. It is correct and incremental
   but not fast; a first run publishes the Blazor client, which dominates.
@@ -551,8 +572,8 @@ duplicated checklist drifting from current state.
 - `src/Arronix.Api/appsettings.json` had never declared `Arronix:Identity:ApplicationName`, which
   `HostIdentityOptions` requires, so the server failed options validation at startup. One line was added; no
   other part of the API's shipped configuration has been exercised against a running process.
-- The current rail reports 3,683 enabled and passed, 302 skipped, zero failed and zero inconclusive from
-  3,985 cases across 14 test projects, with all three required sentinels and the compiler-input provenance
+- The current rail reports 3,758 enabled and passed, 302 skipped, zero failed and zero inconclusive from
+  4,060 cases across 15 test projects, with all three required sentinels and the compiler-input provenance
   checks green. Of the skips, 301 are Movies cases and one is an architecture case; all are registered in
   the compatibility ledger. Every later passing-suite claim must report its observed skip count and ratchet
   result.

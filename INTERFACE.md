@@ -99,9 +99,41 @@ packages, state and client live and does not decide where an operator keeps thei
 `Arronix.Common` for the layout and nothing in the running platform references it. It declares its
 deliverables — the server project, the client project, and each installed package with its identifier and
 role — rather than discovering them, because several projects in this repository carry a package manifest
-without being product. Every payload it installs comes from a real `dotnet publish` into a cleared
-directory. It is not a compatibility surface: its command line, its console output and the
-`installation.json` it writes may change with the deliverables they describe.
+without being product. Selecting a package selects its whole dependency closure, read from each candidate's
+own manifest at composition time rather than a second graph declared here; a candidate whose own declared
+dependency this repository does not ship as an installable package refuses composition rather than installing
+an incomplete generation. An operator may additionally name one package by its own project file with
+`--external-package id=path`, for a proof or fixture that needs a real composed installation beside a package
+this repository does not ship; it is composed and validated exactly as the declared deliverables are, and the
+manifest it writes therefore fully and accurately declares everything it installed, never a package present
+on disk that the manifest omits.
+
+Every payload it installs comes from a real `dotnet publish` into a directory staged as a sibling of the
+installation root. The whole staged generation — the server's entry assembly, the client's static index,
+every package's own manifest and identifier, and every package's declared dependency graph — is validated
+there before any live path is touched, and only a fully validated generation is promoted into the
+installation; a compose that fails at any point before that promotion leaves the previous installation, if
+any, completely unchanged. Promotion itself is a bounded sequence of filesystem renames with a backup kept
+beside each entry it replaces, restored on a best-effort basis if a later entry in the same promotion fails —
+a real guarantee against a failed compose corrupting the last good installation, but not a claim of
+multi-folder filesystem transaction atomicity stronger than a rename itself provides.
+
+A supplied installation root is never self-authorizing. Every command refuses a root that is this repository
+or an ancestor of it, a repository descendant other than its own ignored `artifacts` scratch area, or one of
+a short list of other broad or sensitive directories such as the operator's home directory or a filesystem
+root, and resolves the root through any symbolic link or reparse point before deciding, refusing outright if
+the path it was given and the path it physically resolves to disagree. `reset` and `reset --all` additionally
+require the exact target to already carry an `installation.json` this tool wrote, whose schema version,
+every declared relative path, and every declared package's own on-disk manifest and dependency graph validate
+against what is actually on disk — a directory that merely looks like an installation is refused rather than
+trusted. Even once that ownership is established, `reset --all` never deletes the root directory recursively:
+it removes only the finite set of paths this tool itself ever creates beneath it, then removes the now-empty
+root only if nothing else remains in it, and reports by name anything it left behind, because a valid
+manifest proves the declared Arronix payload underneath a root and nothing about any other entry that root
+happens to contain.
+
+It is not a compatibility surface: its command line, its console output and the `installation.json` it writes
+may change with the deliverables they describe.
 
 Extension authors reference the packaging-only `Arronix.Sdk`. It supplies `Arronix.Abstractions` as its sole
 runtime dependency and carries `Arronix.Generators` only under `analyzers/dotnet/cs`; the SDK contributes no

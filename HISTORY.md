@@ -1,5 +1,89 @@
 # Arronix History
 
+## 2026-09-03 — Harden the installation composer
+
+The first installation composer made the platform runnable, but its safety and failure behaviour did not
+match a tool that recursively deletes directories on request. `reset --all` accepted an arbitrary `--root`
+and deleted it recursively with no proof the target was ever an Arronix installation; composing cleared and
+rewrote the live server, client and packages folders directly, so a publish failing partway left a
+half-replaced installation; package selection installed exactly the identifiers named on the command line, so
+`--package movies` alone silently omitted the video package Movies requires; and the G07B proof published its
+proof-only cataloger into the packages folder by hand, after composing, so the installation manifest omitted
+a package that was genuinely running.
+
+**A supplied root is never self-authorizing.** `InstallationRootGuard` runs before every command, not only
+`reset`, because composing already clears and recreates whole subtrees under whatever root it is given. It
+refuses the repository itself or any directory above it; any other directory inside the checkout, because a
+compose or reset there would create or remove folders named `server`, `client`, `packages`, `state` and
+`installation.json` beside real tracked source — the one exception is the repository's own ignored
+`artifacts` scratch area, where the default root and this proof's own installation both already live; a short
+list of other broad or sensitive directories such as the operator's home directory and a filesystem root; and
+a root that reaches a different physical location than the one it names, by resolving every existing path
+segment through any symbolic link or reparse point and refusing outright on a disagreement, rather than
+silently following it.
+
+**A valid manifest proves the declared payload underneath a root, not everything else that root contains.**
+`reset` and `reset --all` now both require the exact target to already carry an `installation.json` this tool
+wrote — schema version, every declared relative path, the server entry assembly, the client index, and every
+declared package's own on-disk manifest, identifier and dependency graph all validated against what is
+actually on disk, through the same `InstallationManifest.Validate` an ordinary `run --no-build` already uses.
+`reset --all` then never deletes the root recursively: it removes only the finite set of paths this tool
+itself ever creates beneath it — `server`, `client`, `packages`, `package-state`, `state` and
+`installation.json` — and removes the now-empty root only once nothing else remains in it, reporting by name
+anything else it finds there and leaving it alone.
+
+**Composing never clears or partially overwrites a live installation.** `InstallationComposer` now publishes
+the server, the client and every package into a sibling staging directory, validates the whole staged
+generation there — entry assembly, client index, every package manifest and identifier, and every package's
+declared dependency graph — and only then promotes it into the live installation. Promotion is a bounded
+sequence of filesystem renames: each staged entry is moved into place only after the live entry it replaces,
+if any, is moved aside as a backup, and that single call is itself all-or-nothing, so a failure partway
+through it never leaves the entry it was working on half-written. A failure earlier in composing — before
+promotion begins — leaves the previous installation, if any, completely untouched and discards only the
+staging directory. A failure during promotion itself restores every entry already promoted from its backup on
+a best-effort basis and reports whether that restoration fully succeeded; this is a real guarantee against a
+failed compose corrupting the last good installation, stated as the bounded-effort rename sequence it actually
+is rather than a stronger multi-folder transaction atomicity claim the filesystem does not provide.
+
+**Selecting a package selects its whole dependency closure.** `Deliverables.Select` reads each candidate
+package's own `plugin.json` — the same file the installed package itself carries, not a second hand-maintained
+graph — and closes the requested set over every declared dependency before publishing anything, so
+`--package movies` alone still installs `arronix.format.video`. A declared dependency this repository does not
+ship as an installable package refuses composition with a named reason rather than installing an incomplete
+generation. `--external-package id=path` composes one package named by its own project file rather than
+declared here, for a proof or fixture that needs a real installation beside a package this repository does not
+ship; it is published, validated and promoted exactly as a declared deliverable is, so the manifest it produces
+never omits a package that is genuinely on disk. The G07B proof now names its proof-only cataloger this way in
+the same composer call that installs the two product packages it is about, instead of publishing it into the
+packages folder by hand afterward — closing exactly the gap this correction named: a package running behind
+the manifest's back.
+
+**`Arronix.Installation.Tests` is a real test project on the normal rail**, added to `Arronix.sln` and
+discovered by `eng/ci/run-tests.sh` like any other. It proves behaviour rather than source shape: command-line
+parsing; the root guard's refusals and its one exception, against isolated temporary directories standing in
+for a repository, never a real path in this checkout; reset's ownership requirement and its finite,
+non-recursive deletion, including that an unrelated entry beside a real installation survives a `reset --all`
+and blocks the root itself from being removed; manifest validation's schema, identity, path-canonicality,
+missing-artifact, package-mismatch, undeclared-package and dependency-graph cases, each built from a small
+fixture this test writes itself rather than a real publish; dependency closure against this repository's own
+real `plugin.json` files; the composer's staging/commit/rollback behaviour through `IDotNetCli`, a fast
+deterministic stand-in for a real `dotnet publish` that lets a failed compose — first-time and over an
+existing good installation — be proved without paying for one; and loopback port selection and the server's
+own preflight refusal. Restoring the previous generation when a promotion fails partway through several
+entries, rather than only the one entry that failed, is proved directly against plain temporary directories
+through the same internal calls the composer itself makes.
+
+Independently exercised end to end, not only in the test suite: composing, running, an HTTP request answered,
+a clean SIGTERM shutdown with no orphaned process, a narrow `reset`, a `reset --all` that left an unrelated
+file and the root directory in place while removing everything this tool had installed, and a refusal of
+`reset --all` against both the repository root and the operator's home directory. The G07B proof's foundation
+(without the browser half, which needs Playwright and was not exercised here) ran to completion with the
+composed installation's manifest correctly declaring all three packages, including the externally named
+fixture.
+
+Full rail: 15 test projects, 4,060 total cases, 3,758 enabled and passed, 0 failed, 302 skipped (unchanged),
+0 inconclusive, all three required sentinels and compiler-input provenance green.
+
 ## 2026-09-03 — Make the repository produce an installation somebody can open
 
 Arronix could be built, tested and proved, and could not be installed. Every deliverable published on its

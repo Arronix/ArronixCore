@@ -18,7 +18,6 @@ feed_root="$proof_root/feed"
 cache_root="$proof_root/nuget-cache"
 installation_root="$proof_root/installation"
 server_root="$installation_root/server"
-package_root="$installation_root/packages"
 database="$installation_root/state/arronix.db"
 api="$server_root/Arronix.Api.dll"
 evidence_root="$proof_root/evidence"
@@ -133,24 +132,19 @@ for project in Arronix.Abstractions Arronix.Media.Movies; do
     "$dotnet_command" pack "$repository_root/src/$project/$project.csproj" --configuration Release --no-build --output "$feed_root"
 done
 
-echo "== build the proof-only cataloger against the packed contracts =="
-provider_output_root="$proof_root/provider-build/"
-provider_intermediate_root="$proof_root/provider-intermediate/"
-provider_properties=(
-    "-p:G07BProofOutputRoot=$provider_output_root"
-    "-p:G07BProofIntermediateRoot=$provider_intermediate_root"
-)
-"$dotnet_command" restore "$provider_project" --source "$feed_root" --packages "$cache_root" "${provider_properties[@]}"
-"$dotnet_command" build "$provider_project" --configuration Release --no-restore -warnaserror "${provider_properties[@]}"
-
-# The product's own composition route, restricted to the two packages this proof is about, so the
-# unrelated catalogs an ordinary installation ships cannot appear in the provider evidence below.
+# The product's own composition route, restricted to the two packages this proof is about plus the
+# proof-only cataloger, named explicitly as an external package rather than published behind the
+# composer's back. One call therefore produces one installation manifest that accurately declares
+# everything on disk under packages/ - the unrelated catalogs an ordinary installation ships cannot appear
+# in the provider evidence below, and nothing here can drift from what the manifest states is installed.
+# The fixture restores hermetically through its own NuGet.Config, which is discovered from the project's
+# own path regardless of the composer's working directory, and declares its own isolated global-packages
+# folder so it never touches the operator's ambient NuGet cache.
 echo "== compose the installation through the owned composition route =="
 DOTNET_COMMAND="$dotnet_command" "$dotnet_command" run --project "$composer_project" --configuration Release -- \
-    install --root "$installation_root" --package arronix.format.video --package movies
-
-echo "== install the proof-only cataloger beside them =="
-"$dotnet_command" publish "$provider_project" --configuration Release --no-build --output "$package_root/proof.movies.catalog" "${provider_properties[@]}"
+    install --root "$installation_root" \
+    --package arronix.format.video --package movies \
+    --external-package "proof.movies.catalog=$provider_project"
 
 # One API lifetime, started from the installation it belongs to. The server reads its packages, its state,
 # its database and its client from that installation's own configuration; this proof states only the

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net11.0</TargetFramework>
+    <RootNamespace>Arronix.Installation.Tests</RootNamespace>
+    <AssemblyName>Arronix.Installation.Tests</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <!-- Override to mark as test project -->
+    <TestProject>true</TestProject>
+  </PropertyGroup>
+
+  <!--
+       This exercises the composer's behaviour rather than its source text: dependency closure is proved
+       against the repository's own real plugin.json files, and the staging/commit/rollback machinery is
+       proved through IDotNetCli, a fast deterministic stand-in for a real `dotnet publish`, so the suite
+       stays fast without mocking away the file-system behaviour that is actually under test.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\Arronix.Installation\Arronix.Installation.csproj" />
+    <ProjectReference Include="..\Arronix.Common\Arronix.Common.csproj" />
+  </ItemGroup>
+</Project>

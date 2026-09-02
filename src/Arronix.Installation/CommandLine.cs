@@ -18,6 +18,11 @@ internal enum InstallationCommand
     Help,
 }
 
+/// <summary>One <c>--external-package</c> argument, before its project file is resolved to a full path.</summary>
+/// <param name="Id">The identifier to install the package under.</param>
+/// <param name="ProjectFile">The project file, as given on the command line.</param>
+internal sealed record ExternalPackageArgument(string Id, string ProjectFile);
+
 /// <summary>
 /// The arguments, parsed once.
 /// </summary>
@@ -27,6 +32,10 @@ internal enum InstallationCommand
 /// <param name="Build">Whether deliverables are published before running.</param>
 /// <param name="Samples">Whether sample packages are installed.</param>
 /// <param name="Packages">The only packages to install, when the set was narrowed.</param>
+/// <param name="ExternalPackages">
+/// Packages named by their own project file rather than declared by this repository, keyed by the identifier
+/// they are installed under.
+/// </param>
 /// <param name="OpenBrowser">Whether to open the address once the installation answers.</param>
 /// <param name="ResetEverything">Whether a reset removes the whole installation rather than its state.</param>
 internal sealed record CommandLine(
@@ -36,6 +45,7 @@ internal sealed record CommandLine(
     bool Build,
     bool Samples,
     IReadOnlyList<string> Packages,
+    IReadOnlyList<ExternalPackageArgument> ExternalPackages,
     bool OpenBrowser,
     bool ResetEverything)
 {
@@ -58,6 +68,7 @@ internal sealed record CommandLine(
         var build = true;
         var samples = true;
         var packages = new List<string>();
+        var externalPackages = new List<ExternalPackageArgument>();
         var openBrowser = false;
         var resetEverything = false;
         var index = 0;
@@ -96,6 +107,9 @@ internal sealed record CommandLine(
                 case "--package":
                     packages.Add(Value(arguments, ref index));
                     break;
+                case "--external-package":
+                    externalPackages.Add(ParseExternalPackage(Value(arguments, ref index)));
+                    break;
                 case "--open":
                     openBrowser = true;
                     break;
@@ -111,7 +125,27 @@ internal sealed record CommandLine(
             }
         }
 
-        return new CommandLine(command, root, port, build, samples, packages, openBrowser, resetEverything);
+        return new CommandLine(
+            command,
+            root,
+            port,
+            build,
+            samples,
+            packages,
+            externalPackages,
+            openBrowser,
+            resetEverything);
+    }
+
+    private static ExternalPackageArgument ParseExternalPackage(string value)
+    {
+        var separator = value.IndexOf('=');
+
+        return separator > 0 && separator < value.Length - 1
+            ? new ExternalPackageArgument(value[..separator], value[(separator + 1)..])
+            : throw new InstallationException(
+                $"'--external-package {value}' is not 'ID=PROJECT'. Name the package identifier and its "
+                + "project file, separated by '='.");
     }
 
     private static string Value(IReadOnlyList<string> arguments, ref int index)
